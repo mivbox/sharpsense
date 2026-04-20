@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "sharpsense": {
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--verbosity", "quiet",
+        "--project", "/Users/mitch.box/sources/7Twenty/sharp-sense/src/SharpSense.Cli/SharpSense.Cli.csproj",
+        "--",
+        "mcp",
+        "--repo-root", "/Users/mitch.box/sources/7Twenty/sharp-sense"
+      ],
+      "tools": [
+        "semantic_search",
+        "trace_node"
+      ],
+      "type": "stdio"
+    }
+  }
+}
