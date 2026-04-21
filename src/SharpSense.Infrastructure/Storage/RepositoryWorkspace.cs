@@ -1,7 +1,15 @@
+using YamlDotNet.Serialization;
+using YamlDotNet.Serialization.NamingConventions;
+
 namespace SharpSense.Infrastructure.Storage;
 
 public sealed class RepositoryWorkspace : IRepositoryWorkspace
 {
+    private static readonly IDeserializer _yamlDeserializer = new DeserializerBuilder()
+        .IgnoreUnmatchedProperties()
+        .WithNamingConvention(CamelCaseNamingConvention.Instance)
+        .Build();
+
     private RepositoryWorkspace(string rootPath, string databasePath)
     {
         RootPath = NormalizeRootPath(rootPath);
@@ -39,6 +47,37 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
         !TryToRepositoryRelativePath(filePath, out var relativePath) ?
             throw new InvalidOperationException($"File path '{filePath}' must be located under repository root '{RootPath}'.") :
             relativePath;
+
+    public string GetRequiredSolutionDirectoryPath(string solutionPath)
+    {
+        var absoluteSolutionPath = ResolveSolutionPath(solutionPath);
+        return Path.GetDirectoryName(absoluteSolutionPath)
+               ?? throw new InvalidOperationException($"Unable to determine the solution directory for '{absoluteSolutionPath}'.");
+    }
+
+    public SharpSenseConfig LoadSharpSenseConfig(string solutionPath)
+    {
+        var solutionDirectoryPath = GetRequiredSolutionDirectoryPath(solutionPath);
+        var configPath = Path.Combine(solutionDirectoryPath, "sharpsense.yaml");
+
+        if (!File.Exists(configPath))
+        {
+            return new SharpSenseConfig();
+        }
+
+        using var configReader = File.OpenText(configPath);
+        var config = _yamlDeserializer.Deserialize<SharpSenseConfig>(configReader) ?? new SharpSenseConfig();
+
+        return new SharpSenseConfig
+        {
+            IncludePaths =
+            [
+                .. config.IncludePaths
+                    .Where(static includePath => !string.IsNullOrWhiteSpace(includePath))
+                    .Select(static includePath => includePath.Trim())
+            ]
+        };
+    }
 
     public bool TryToRepositoryRelativePath(string? filePath, out string relativePath)
     {
@@ -92,6 +131,32 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
     {
         ArgumentNullException.ThrowIfNull(path);
         return path.Replace('\\', '/');
+    }
+
+    private string ResolveSolutionPath(string solutionPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(solutionPath);
+
+        var absoluteSolutionPath = Path.IsPathRooted(solutionPath)
+            ? Path.GetFullPath(solutionPath)
+            : Path.GetFullPath(Path.Combine(RootPath, solutionPath));
+
+        if (!IsSameOrSubPath(absoluteSolutionPath))
+        {
+            throw new InvalidOperationException($"Solution path '{absoluteSolutionPath}' must be located under repository root '{RootPath}'.");
+        }
+
+        if (!File.Exists(absoluteSolutionPath))
+        {
+            throw new FileNotFoundException($"Solution file '{absoluteSolutionPath}' was not found.", absoluteSolutionPath);
+        }
+
+        if (!string.Equals(Path.GetExtension(absoluteSolutionPath), ".sln", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException($"Solution path '{absoluteSolutionPath}' must point to a .sln file.");
+        }
+
+        return absoluteSolutionPath;
     }
 
     private static string ResolveRootPathFromWorkingDirectory(string workingDirectory)

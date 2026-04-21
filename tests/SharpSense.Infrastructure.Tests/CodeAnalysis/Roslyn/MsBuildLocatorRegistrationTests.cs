@@ -5,7 +5,7 @@ namespace SharpSense.Infrastructure.Tests.CodeAnalysis.Roslyn;
 public sealed class MsBuildLocatorRegistrationTests
 {
     [Fact]
-    public void SelectPreferredInstance_prefers_highest_version_then_name_then_discovery_type_then_path()
+    public void WhenSelectingPreferredInstance_ThenPrefersHighestVersionNameDiscoveryTypeAndPath()
     {
         var instances = new[]
         {
@@ -23,7 +23,7 @@ public sealed class MsBuildLocatorRegistrationTests
     }
 
     [Fact]
-    public void SelectPreferredInstance_throws_when_no_instances_are_available()
+    public void WhenSelectingPreferredInstanceWithoutAvailableInstances_ThenThrowsInvalidOperationException()
     {
         Assert.Throws<InvalidOperationException>(() => MsBuildLocatorRegistration.SelectPreferredInstance(Array.Empty<MsBuildInstanceCandidate>()));
     }

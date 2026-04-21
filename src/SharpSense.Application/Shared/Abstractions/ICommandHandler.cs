@@ -2,5 +2,5 @@ namespace SharpSense.Application.Shared.Abstractions;
 
 public interface ICommandHandler<TCommand>
 {
-    Task HandleAsync(TCommand command, CancellationToken ct);
+    Task Handle(TCommand command, CancellationToken ct);
 }

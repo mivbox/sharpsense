@@ -114,4 +114,33 @@ public sealed class SharpSenseDbContextTests
         Assert.Equal("SharpSense.Domain", persistedProject.Name);
         Assert.Equal("src/SharpSense.Domain/SharpSense.Domain.csproj", persistedProject.RelativeFilePath);
     }
+
+    [Fact]
+    public async Task WhenSaveChangesAsyncWithNullProjectId_ThenPersistsDocumentNodes()
+    {
+        await using var inMemoryFactory = new InMemoryContextFactory();
+        await using var context = inMemoryFactory.GetContext<SharpSenseDbContext>(_ => { });
+
+        context.CodeNodes.Add(new CodeNode
+        {
+            Id = "code:doc:docs/Guide.md#getting-started",
+            ProjectId = null,
+            FullyQualifiedName = "docs/Guide.md#getting-started",
+            NodeType = NodeType.Document,
+            RelativeFilePath = "docs/Guide.md",
+            StartLine = 1,
+            EndLine = 2,
+            Summary = "Getting Started"
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        context.ChangeTracker.Clear();
+
+        var persistedNode = await context.CodeNodes.SingleAsync(
+            codeNode => codeNode.Id == "code:doc:docs/Guide.md#getting-started",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Null(persistedNode.ProjectId);
+        Assert.Equal(NodeType.Document, persistedNode.NodeType);
+    }
 }

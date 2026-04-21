@@ -8,6 +8,6 @@ namespace SharpSense.Application.Features.Indexing.IndexSolution;
 public sealed class IndexSolutionCommandHandler(IKnowledgeGraphIndexing indexing)
     : ICommandHandler<IndexSolutionCommand>
 {
-    public async Task HandleAsync(IndexSolutionCommand command, CancellationToken ct) =>
+    public async Task Handle(IndexSolutionCommand command, CancellationToken ct) =>
         await indexing.Index(command, ct);
 }

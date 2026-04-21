@@ -38,6 +38,7 @@ internal sealed class ToonOutputFormatter : IOutputFormatter
             NodeType.Interface => "I",
             NodeType.Property => "P",
             NodeType.Field => "F",
+            NodeType.Document => "D",
             _ => throw new InvalidOperationException($"Unsupported node type '{nodeType}'.")
         };
 }

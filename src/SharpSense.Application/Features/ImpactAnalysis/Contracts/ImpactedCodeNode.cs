@@ -4,7 +4,7 @@ namespace SharpSense.Application.Features.ImpactAnalysis.Contracts;
 
 public sealed record ImpactedCodeNode(
     string Id,
-    string ProjectId,
+    string? ProjectId,
     string FullyQualifiedName,
     NodeType NodeType,
     string RelativeFilePath,

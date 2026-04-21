@@ -10,7 +10,7 @@ public sealed class HybridSearchQueryHandlerTests
     [Fact]
     public void WhenConstructingHybridSearchQueryHandler_ThenImplementsQueryHandlerContract()
     {
-        var handler = new HybridSearchQueryHandler(new FakeHybridSearchService());
+        var handler = new HybridSearchQueryHandler(new FakeHybridSearcher());
 
         Assert.IsAssignableFrom<IQueryHandler<HybridSearchQuery, HybridSearchResult>>(handler);
     }
@@ -18,7 +18,7 @@ public sealed class HybridSearchQueryHandlerTests
     [Fact]
     public async Task WhenHandleWithValidQuery_ThenInvokesSearchService()
     {
-        var service = new FakeHybridSearchService();
+        var service = new FakeHybridSearcher();
         var handler = new HybridSearchQueryHandler(service);
         var query = new HybridSearchQuery("ProjectNode");
 
@@ -28,7 +28,7 @@ public sealed class HybridSearchQueryHandlerTests
         Assert.Equal("ProjectNode", result.SearchText);
     }
 
-    private sealed class FakeHybridSearchService : IHybridSearchService
+    private sealed class FakeHybridSearcher : IHybridSearcher
     {
         public HybridSearchQuery? LastQuery { get; private set; }
 

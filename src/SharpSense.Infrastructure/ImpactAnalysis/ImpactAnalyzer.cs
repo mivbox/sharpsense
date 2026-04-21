@@ -8,8 +8,8 @@ using SharpSense.Infrastructure.Shared;
 
 namespace SharpSense.Infrastructure.ImpactAnalysis;
 
-public sealed class ImpactAnalysisService(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
-    : IImpactAnalysisService
+public sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
+    : IImpactAnalyzer
 {
     public async Task<ImpactAnalysisResult> Analyze(ImpactAnalysisQuery query, CancellationToken ct)
     {
@@ -18,7 +18,7 @@ public sealed class ImpactAnalysisService(IDbContextFactory<SharpSenseDbContext>
 
         await using var context = await dbContextFactory.CreateDbContextAsync(ct);
 
-        var rootNode = await CodeNodeNavigationQueries.FindRootNodeAsync(context, query.Identifier, ct);
+        var rootNode = await CodeNodeNavigationQueries.FindRootNode(context, query.Identifier, ct);
         if (rootNode is null)
         {
             return new ImpactAnalysisResult(query.Identifier, [], []);

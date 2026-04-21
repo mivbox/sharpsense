@@ -10,26 +10,27 @@ using System.Diagnostics;
 
 namespace SharpSense.Infrastructure.Tests.CodeAnalysis.Roslyn;
 
+[Collection("MSBuild workspace")]
 public sealed class RoslynSolutionAnalysisEngineTests
 {
     [Fact]
-    public async Task ExtractAsync_throws_for_blank_paths()
+    public async Task WhenExtractingWithBlankPath_ThenThrowsArgumentException()
     {
         var engine = new RoslynSolutionAnalysisEngine();
         var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(Environment.CurrentDirectory);
 
-        await Assert.ThrowsAsync<ArgumentException>(() => engine.ExtractAsync(string.Empty, workspace, ct: TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<ArgumentException>(() => engine.Extract(string.Empty, workspace, ct: TestContext.Current.CancellationToken));
     }
 
     [Fact]
-    public async Task ExtractAsync_loads_fixture_solution_and_emits_projects_code_nodes_and_edges()
+    public async Task WhenExtractingFixtureSolution_ThenEmitsProjectsCodeNodesAndEdges()
     {
         var repositoryRoot = GetRepositoryRoot();
         var solutionPath = GetFixturePath("CommandPipelineFixture.sln");
         var engine = new RoslynSolutionAnalysisEngine();
         var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(repositoryRoot);
 
-        var payload = await engine.ExtractAsync(solutionPath, workspace, new RoslynWorkspaceOptions(), ct: TestContext.Current.CancellationToken);
+        var payload = await engine.Extract(solutionPath, workspace, new RoslynWorkspaceOptions(), ct: TestContext.Current.CancellationToken);
         var fullyQualifiedNamesById = payload.CodeNodes.ToDictionary(static codeNode => codeNode.Id, static codeNode => codeNode.FullyQualifiedName, StringComparer.Ordinal);
 
         var appProject = Assert.Single(payload.Projects, static project => project.Name == "CommandPipelineFixture.App");
@@ -180,14 +181,14 @@ public sealed class RoslynSolutionAnalysisEngineTests
     }
 
     [Fact]
-    public async Task ExtractAsync_reports_progress_for_each_project()
+    public async Task WhenExtractingFixtureSolution_ThenReportsProgressForEachProject()
     {
         var solutionPath = GetFixturePath("CommandPipelineFixture.sln");
         var engine = new RoslynSolutionAnalysisEngine();
         var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(GetRepositoryRoot());
         var progress = new RecordingProgress();
 
-        await engine.ExtractAsync(solutionPath, workspace, new RoslynWorkspaceOptions(), progress, TestContext.Current.CancellationToken);
+        await engine.Extract(solutionPath, workspace, new RoslynWorkspaceOptions(), progress, TestContext.Current.CancellationToken);
 
         Assert.Collection(
             progress.Reports,
@@ -206,7 +207,7 @@ public sealed class RoslynSolutionAnalysisEngineTests
     }
 
     [Fact]
-    public async Task ExtractAsync_emits_sharpsense_trace_activities()
+    public async Task WhenExtractingFixtureSolution_ThenEmitsSharpSenseTraceActivities()
     {
         var solutionPath = GetFixturePath("CommandPipelineFixture.sln");
         var engine = new RoslynSolutionAnalysisEngine();
@@ -222,7 +223,7 @@ public sealed class RoslynSolutionAnalysisEngineTests
 
         ActivitySource.AddActivityListener(listener);
 
-        await engine.ExtractAsync(solutionPath, workspace, new RoslynWorkspaceOptions(), ct: TestContext.Current.CancellationToken);
+        await engine.Extract(solutionPath, workspace, new RoslynWorkspaceOptions(), ct: TestContext.Current.CancellationToken);
 
         Assert.Contains("roslyn.extract", activityNames);
         Assert.Contains("roslyn.open-solution", activityNames);
@@ -233,7 +234,7 @@ public sealed class RoslynSolutionAnalysisEngineTests
     }
 
     [Fact]
-    public void KnowledgeGraphExtractionPayload_exposes_domain_collections()
+    public void WhenCreatingKnowledgeGraphExtractionPayload_ThenExposesDomainCollections()
     {
         var payload = new KnowledgeGraphExtractionPayload(
             "SharpSense.sln",

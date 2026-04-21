@@ -17,7 +17,7 @@ public sealed class UiCommandIntegrationTests
             ".SharpSense",
             "logs",
             "ui.log");
-        var uiProcess = await StartUiProcessAsync(cliAssemblyPath, repositoryRoot);
+        var uiProcess = await StartUiProcess(cliAssemblyPath, repositoryRoot);
         using var process = uiProcess.Process;
         var baseUrl = uiProcess.BaseUrl;
 
@@ -36,10 +36,10 @@ public sealed class UiCommandIntegrationTests
             Assert.Equal(HttpStatusCode.OK, graphResponse.StatusCode);
             Assert.Equal(HttpStatusCode.OK, rootResponse.StatusCode);
 
-            await StopProcessAsync(process);
+            await StopProcess(process);
             stopped = true;
 
-            var logContents = await WaitForLogContentsAsync(logFilePath, baseUrl);
+            var logContents = await WaitForLogContents(logFilePath, baseUrl);
 
             Assert.Contains($"Configuring UI application for {baseUrl}", logContents, StringComparison.Ordinal);
             Assert.Contains($"Request starting HTTP/1.1 GET {baseUrl}/api/graph", logContents, StringComparison.Ordinal);
@@ -49,12 +49,12 @@ public sealed class UiCommandIntegrationTests
         {
             if (!stopped)
             {
-                await StopProcessAsync(process);
+                await StopProcess(process);
             }
         }
     }
 
-    private static async Task<UiProcessHandle> StartUiProcessAsync(string cliAssemblyPath, string repositoryRoot)
+    private static async Task<UiProcessHandle> StartUiProcess(string cliAssemblyPath, string repositoryRoot)
     {
         var failures = new List<string>();
 
@@ -77,13 +77,13 @@ public sealed class UiCommandIntegrationTests
 
             try
             {
-                await WaitForServerAsync(process, $"{baseUrl}/", output);
+                await WaitForServer(process, $"{baseUrl}/", output);
                 return new UiProcessHandle(process, baseUrl);
             }
             catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
             {
                 failures.Add(ex.Message);
-                await StopProcessAsync(process);
+                await StopProcess(process);
                 process.Dispose();
             }
         }
@@ -121,7 +121,7 @@ public sealed class UiCommandIntegrationTests
         output.AppendLine(data);
     }
 
-    private static async Task WaitForServerAsync(Process process, string url, StringBuilder output)
+    private static async Task WaitForServer(Process process, string url, StringBuilder output)
     {
         using var httpClient = new HttpClient
         {
@@ -158,7 +158,7 @@ public sealed class UiCommandIntegrationTests
         throw new TimeoutException($"The UI command did not become ready at '{url}'.{Environment.NewLine}{output}");
     }
 
-    private static async Task<string> WaitForLogContentsAsync(string logFilePath, string baseUrl)
+    private static async Task<string> WaitForLogContents(string logFilePath, string baseUrl)
     {
         var startedAtUtc = DateTime.UtcNow;
         while (DateTime.UtcNow - startedAtUtc < TimeSpan.FromSeconds(10))
@@ -178,7 +178,7 @@ public sealed class UiCommandIntegrationTests
         throw new FileNotFoundException($"The UI log file '{logFilePath}' did not contain the expected URL '{baseUrl}'.");
     }
 
-    private static async Task StopProcessAsync(Process process)
+    private static async Task StopProcess(Process process)
     {
         if (process.HasExited)
         {

@@ -9,7 +9,7 @@ public static class ImpactAnalysisInfrastructureServiceCollectionExtensions
     public static IServiceCollection AddImpactAnalysisInfrastructure(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.TryAddScoped<IImpactAnalysisService, ImpactAnalysisService>();
+        services.TryAddScoped<IImpactAnalyzer, ImpactAnalyzer>();
 
         return services;
     }

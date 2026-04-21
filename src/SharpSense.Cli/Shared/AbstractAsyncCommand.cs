@@ -26,7 +26,7 @@ public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
         var executionContext = CommandOutput.GetExecutionContext(context);
 
         builder.Services.AddSerilog((_, cfg) =>
-            SharpSenseLogging.ConfigureLogger(cfg, settings.IsVerbose, logFilePath));
+            SharpSenseLogging.ConfigureLogger(cfg, settings.IsVerbose, logFilePath, false));
 
         Log.Information(
             "Building host for command {CommandName} and settings type {SettingsType} with log file {LogFilePath}",

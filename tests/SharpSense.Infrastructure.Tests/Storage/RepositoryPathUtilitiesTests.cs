@@ -7,7 +7,7 @@ namespace SharpSense.Infrastructure.Tests.Storage;
 public sealed class RepositoryWorkspaceTests
 {
     [Fact]
-    public void ToRepositoryRelativePath_normalizes_absolute_paths()
+    public void WhenConvertingAbsolutePathToRepositoryRelativePath_ThenReturnsNormalizedPath()
     {
         var repositoryRoot = CreateRepositoryRoot();
 
@@ -27,7 +27,7 @@ public sealed class RepositoryWorkspaceTests
     }
 
     [Fact]
-    public void ToRepositoryRelativePath_normalizes_relative_paths()
+    public void WhenConvertingRelativePathToRepositoryRelativePath_ThenReturnsNormalizedPath()
     {
         var repositoryRoot = CreateRepositoryRoot();
 
@@ -47,7 +47,7 @@ public sealed class RepositoryWorkspaceTests
     }
 
     [Fact]
-    public void ToRepositoryRelativePath_rejects_paths_outside_repository_root()
+    public void WhenConvertingPathOutsideRepositoryRoot_ThenThrowsInvalidOperationException()
     {
         var repositoryRoot = CreateRepositoryRoot();
 
@@ -68,7 +68,7 @@ public sealed class RepositoryWorkspaceTests
     }
 
     [Fact]
-    public void CreateFromWorkingDirectory_returns_git_ancestor_when_present()
+    public void WhenCreatingWorkspaceFromDirectoryWithGitAncestor_ThenUsesGitAncestorAsRootPath()
     {
         var testRoot = Path.Combine(AppContext.BaseDirectory, $"repository-path-{Guid.NewGuid():N}");
         var nestedDirectory = Path.Combine(testRoot, "src", "Sample");
@@ -94,7 +94,7 @@ public sealed class RepositoryWorkspaceTests
     }
 
     [Fact]
-    public void CreateFromWorkingDirectory_uses_local_application_data_with_repository_hash()
+    public void WhenCreatingWorkspaceFromWorkingDirectory_ThenUsesRepositoryHashDatabasePath()
     {
         var repositoryRootPath = CreateRepositoryRoot();
 
@@ -124,7 +124,7 @@ public sealed class RepositoryWorkspaceTests
     }
 
     [Fact]
-    public void IsSameOrSubPath_returns_false_for_paths_outside_root()
+    public void WhenCheckingPathOutsideRepositoryRoot_ThenReturnsFalse()
     {
         var repositoryRoot = CreateRepositoryRoot();
 
@@ -134,6 +134,62 @@ public sealed class RepositoryWorkspaceTests
             var filePath = Path.Combine(Path.GetDirectoryName(repositoryRoot)!, "outside", "ProjectNode.cs");
 
             Assert.False(workspace.IsSameOrSubPath(filePath));
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(repositoryRoot);
+        }
+    }
+
+    [Fact]
+    public void WhenGettingRequiredSolutionDirectoryPath_ThenReturnsSolutionDirectory()
+    {
+        var repositoryRoot = CreateRepositoryRoot();
+        var solutionDirectory = Path.Combine(repositoryRoot, "src", "Sample");
+        var solutionPath = Path.Combine(solutionDirectory, "Sample.sln");
+
+        Directory.CreateDirectory(solutionDirectory);
+        File.WriteAllText(solutionPath, string.Empty);
+
+        try
+        {
+            var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(repositoryRoot);
+
+            var resolvedDirectory = workspace.GetRequiredSolutionDirectoryPath(solutionPath);
+
+            Assert.Equal(Path.GetFullPath(solutionDirectory), resolvedDirectory);
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(repositoryRoot);
+        }
+    }
+
+    [Fact]
+    public void WhenLoadingSharpSenseConfig_ThenReadsYamlFromSolutionDirectory()
+    {
+        var repositoryRoot = CreateRepositoryRoot();
+        var solutionDirectory = Path.Combine(repositoryRoot, "src", "Sample");
+        var solutionPath = Path.Combine(solutionDirectory, "Sample.sln");
+        var configPath = Path.Combine(solutionDirectory, "sharpsense.yaml");
+
+        Directory.CreateDirectory(solutionDirectory);
+        File.WriteAllText(solutionPath, string.Empty);
+        File.WriteAllText(
+            configPath,
+            """
+            includePaths:
+              - docs/**/*.md
+              - README.md
+            """);
+
+        try
+        {
+            var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(repositoryRoot);
+
+            var config = workspace.LoadSharpSenseConfig(solutionPath);
+
+            Assert.Equal(["docs/**/*.md", "README.md"], config.IncludePaths);
         }
         finally
         {

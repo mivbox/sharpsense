@@ -29,7 +29,7 @@ public sealed class RoslynSolutionAnalysisEngine : IRoslynSolutionAnalysisEngine
         _edgeExtractor = edgeExtractor ?? throw new ArgumentNullException(nameof(edgeExtractor));
     }
 
-    public async Task<KnowledgeGraphExtractionPayload> ExtractAsync(
+    public async Task<KnowledgeGraphExtractionPayload> Extract(
         string solutionPath,
         IRepositoryWorkspace repositoryWorkspace,
         RoslynWorkspaceOptions? options = null,

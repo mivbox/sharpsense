@@ -6,5 +6,6 @@ public enum NodeType
     Interface,
     Method,
     Property,
-    Field
+    Field,
+    Document
 }

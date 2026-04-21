@@ -30,8 +30,8 @@
 //             repositoryRoot,
 //             configureServices: services => services.AddSingleton<ILocalEmbeddingsService>(embeddingsService));
 //         var indexingService = provider.GetRequiredService<IKnowledgeGraphIndexingService>();
-//         var searchService = provider.GetRequiredService<IHybridSearchService>();
-//         var impactService = provider.GetRequiredService<IImpactAnalysisService>();
+//         var searchService = provider.GetRequiredService<IHybridSearcher>();
+//         var impactService = provider.GetRequiredService<IImpactAnalyzer>();
 //         var dbContextFactory = provider.GetRequiredService<IDbContextFactory<SharpSenseDbContext>>();
 //
 //         try

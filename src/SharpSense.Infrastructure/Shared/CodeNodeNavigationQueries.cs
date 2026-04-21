@@ -33,7 +33,7 @@ public static class CodeNodeNavigationQueries
                 codeNode.EndLine,
                 codeNode.Summary));
 
-    public static async Task<CodeNode?> FindRootNodeAsync(
+    public static async Task<CodeNode?> FindRootNode(
         SharpSenseDbContext context,
         string nodeIdentifier,
         CancellationToken ct)

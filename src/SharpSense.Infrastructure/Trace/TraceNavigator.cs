@@ -7,8 +7,8 @@ using SharpSense.Infrastructure.Shared;
 
 namespace SharpSense.Infrastructure.Trace;
 
-public sealed class TraceService(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
-    : ITraceService
+public sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
+    : ITraceNavigator
 {
     public async Task<CodeNodeResult[]> GetCallees(TraceQuery query, CancellationToken ct)
     {
@@ -16,7 +16,7 @@ public sealed class TraceService(IDbContextFactory<SharpSenseDbContext> dbContex
         ArgumentException.ThrowIfNullOrWhiteSpace(query.Identifier);
 
         await using var context = await dbContextFactory.CreateDbContextAsync(ct);
-        var rootNode = await CodeNodeNavigationQueries.FindRootNodeAsync(context, query.Identifier, ct);
+        var rootNode = await CodeNodeNavigationQueries.FindRootNode(context, query.Identifier, ct);
         if (rootNode is null)
         {
             return [];

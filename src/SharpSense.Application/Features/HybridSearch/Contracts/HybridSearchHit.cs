@@ -4,7 +4,7 @@ namespace SharpSense.Application.Features.HybridSearch.Contracts;
 
 public sealed record HybridSearchHit(
     string Id,
-    string ProjectId,
+    string? ProjectId,
     string FullyQualifiedName,
     NodeType NodeType,
     string RelativeFilePath,

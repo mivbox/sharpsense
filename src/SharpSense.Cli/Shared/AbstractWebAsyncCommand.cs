@@ -27,7 +27,8 @@ public abstract class AbstractWebAsyncCommand<TSettings> : AsyncCommand<TSetting
         var builder = WebApplication.CreateBuilder();
         var logFilePath = SharpSenseLogging.GetLogFilePath(context.Name);
 
-        builder.Host.UseSerilog((_, cfg) => SharpSenseLogging.ConfigureLogger(cfg, settings.IsVerbose, logFilePath));
+        builder.Host.UseSerilog((_, cfg) =>
+            SharpSenseLogging.ConfigureLogger(cfg, settings.IsVerbose, logFilePath, true));
 
         _logger.Information(
             "Building web host for command {CommandName} and settings type {SettingsType} with log file {LogFilePath}",

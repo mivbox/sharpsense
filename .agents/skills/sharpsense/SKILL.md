@@ -1,53 +1,67 @@
 ---
-name: "SharpSense"
+name: sharpsense-architect
 description: "Expert AI architectural assistant for querying repository context,
-    executing impact analysis, and tracing execution paths."
+    executing impact analysis, and tracing execution flows. Use when exploring the codebase,
+    understanding Markdown documentation, or planning code changes."
 ---
 
-# Tool Selection Guidelines
+# SharpSense Codebase Navigation
 
-When a user asks a question about the codebase, map their request to the appropriate tool:
+## When to Use
 
-## 1. `semantic_search`
+- "How does X work?" or "Where is the billing logic?" (Exploration)
+- "What calls this method?" (Blast Radius / Upstream Impact)
+- "What does this service depend on?" (Execution Path / Downstream Dependencies)
+- Understanding architectural boundaries, finding Markdown documentation, and navigating chunks of ADRs/READMEs.
 
-**Use when:** The user is exploring concepts, intents, or looking for where a business feature is implemented (e.g., "
-how does billing work?", "where do we handle user authentication?").
+## Workflow (The 1-2 Punch)
 
-* Pass a descriptive, natural-language string to the `query` parameter.
-* Default the `limit` to 10 unless the user explicitly asks for a broader search.
-* **Crucial:** Use this tool to discover the exact `Node ID` required for the graph tool below.
+1. `semantic_search({query: "<what you want to find>"})` → Discover the exact TOON `NodeId`.
+2. `trace_node({nodeId: "<NodeId>", direction: "<caller|callee>"})` → Traverse the graph.
 
-## 2. `trace_node` (Graph Traversal)
+## Checklist
 
-**Use when:** The user is planning a code change, tracking dependencies, or tracing execution paths.
+- [ ] Read the user's prompt to determine the core concept.
+- [ ] Run `semantic_search` to locate the relevant nodes and extract the `NodeId` from the backticks (`` ` ``).
+- [ ] If the user asks what *depends* on the node (impact), run `trace_node` with `direction="caller"`.
+- [ ] If the user asks how the node *executes*, run `trace_node` with `direction="callee"`.
+- [ ] **READ THE CODE/DOCS:** If the user asks *how* something is implemented or needs the actual text of a Markdown
+  chunk, use your native file-reading capabilities to read the exact `{FilePath}:{StartLine}-{EndLine}` returned by the
+  TOON output.
+- [ ] Synthesize the returned TOON data and source code into a human-readable summary. Include exact file paths and line
+  numbers as citations.
 
-* You must provide the exact `Node ID`.
-* **Directionality is Key:** * Pass `direction="caller"` (Upstream) to see the blast radius (who calls or uses this
-  node).
-    * Pass `direction="callee"` (Downstream) to see the execution path (what this node calls or uses).
+## Tools
 
-# Execution Rules & Self-Correction
+**semantic_search** — Find codebase coordinates:
 
-1. **Never Hallucinate Node IDs:** The `trace_node` tool requires a strict, exact Node ID. If the user asks "who calls
-   the update method?", **you must execute `semantic_search` first** to discover the precise Node ID, and *then* chain
-   that result into `trace_node`.
-2. **Understand TOON Format:** Tool results are returned in a Token-Optimized Output Network (TOON) format, one node per
-   line.
-   *Format:* `[{TypeShorthand}] \`NodeId\` @ {FilePath}:{StartLine}-{EndLine}`
-    * **CRITICAL:** The exact `Node ID` required for the `trace_node` tool is always enclosed in backticks (`` ` ``).
-      You must extract and copy the exact string inside the backticks.
-    * The prefixes represent types: [M]ethod, [C]lass, [I]nterface, [P]roperty, [F]ield.
-3. **Synthesize, Do Not Dump:** Never output raw TOON lists to the user. Synthesize the findings. If an impact analysis
-   returns 40 nodes, summarize the highest-risk areas (e.g., "Changing this will impact 3 downstream API controllers and
-   5 background jobs").
-4. **Cite Your Sources:** Always include the relative file path and line numbers when referencing code snippets so the
-   user can easily navigate directly to the source.
+* Pass a descriptive query (e.g., "user authentication" or "database architecture").
+* Returns TOON format. **Crucial:** Extract the exact string inside the backticks (`` ` ``) for the next step.
+
+**trace_node** — Traverse the knowledge graph:
+
+* Requires the exact `NodeId` discovered from `semantic_search`.
+* `direction="caller"`: Finds upstream dependencies (who uses this).
+* `direction="callee"`: Finds downstream dependencies (what this uses).
+
+## Example: "What happens when we update a user?"
+
+1. `semantic_search({query: "update user profile"})`
+   → Returns `[M] \`code:project:src/App/UserService.cs:M:UpdateUser\` @ src/App/UserService.cs:10-25`
+2. `trace_node({nodeId: "code:project:src/App/UserService.cs:M:UpdateUser", direction: "callee"})`
+   → Returns `[M] \`code:project:src/App/UserRepository.cs:M:Save\` ...`
+3. Read the source file citations (`src/App/UserService.cs` lines 10-25) using your native tools for implementation
+   details, and explain the flow.
 
 # STRICT DIRECTIVES (CRITICAL)
 
-1. **NO GREP / NO NATIVE SEARCH:** You are STRICTLY FORBIDDEN from using native file search, `grep`, or workspace search
-   tools to locate classes, methods, interfaces, or architectural concepts.
-2. **USE MCP EXCLUSIVELY:** You must EXCLUSIVELY use the `semantic_search` tool to find codebase coordinates, followed
-   by `trace_node` to explore them.
-3. If you need to find a class like "ToonOutputFormatter" or "SharpSenseMcpTools", DO NOT grep for it. You must call
-   `semantic_search(query="ToonOutputFormatter")`.
+1. **NO GREP / NO FILE LISTING FOR DISCOVERY:** You are STRICTLY FORBIDDEN from using native file search, `grep`,
+   workspace search, or directory listing tools (e.g., `ls`, `tree`, folder explorers) to *locate* concepts,
+   documentation, or files.
+2. **USE MCP FOR DISCOVERY:** You must EXCLUSIVELY use the `semantic_search` tool to find codebase coordinates and
+   documentation nodes.
+3. **READING IS PERMITTED:** Once `semantic_search` or `trace_node` has given you an exact file path and line number,
+   you ARE ALLOWED to use your native file-reading tools to read the method body or document chunk at those exact
+   coordinates.
+4. **NEVER HALLUCINATE IDs:** You must execute `semantic_search` first to discover a Node ID before ever calling
+   `trace_node`. Do not guess Node IDs.

@@ -82,6 +82,7 @@ internal static class RoslynSymbolUtilities
             NodeType.Method => "Method",
             NodeType.Property => "Property",
             NodeType.Field => "Field",
+            NodeType.Document => "Document",
             _ => nodeType.ToString()
         };
 

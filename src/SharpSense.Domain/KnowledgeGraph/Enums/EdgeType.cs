@@ -7,5 +7,7 @@ public enum EdgeType
     Implements,
     Instantiates,
     FieldAccess,
-    ServiceRegistration
+    ServiceRegistration,
+    DocumentLink,
+    DocumentHierarchy
 }

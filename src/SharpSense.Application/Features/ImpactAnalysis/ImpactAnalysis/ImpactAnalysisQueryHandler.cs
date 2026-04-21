@@ -4,9 +4,9 @@ using SharpSense.Application.Shared.Abstractions;
 
 namespace SharpSense.Application.Features.ImpactAnalysis.ImpactAnalysis;
 
-public sealed class ImpactAnalysisQueryHandler(IImpactAnalysisService impactAnalysisService)
+public sealed class ImpactAnalysisQueryHandler(IImpactAnalyzer impactAnalyzer)
     : IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult>
 {
     public Task<ImpactAnalysisResult> Handle(ImpactAnalysisQuery query, CancellationToken ct)
-        => impactAnalysisService.Analyze(query, ct);
+        => impactAnalyzer.Analyze(query, ct);
 }

@@ -87,7 +87,7 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
                     embeddingsTask.Value = CalculateEmbeddingsProgressPercentage(update);
                 });
 
-                await handler.HandleAsync(
+                await handler.Handle(
                     new IndexSolutionCommand(
                         settings.SolutionPath,
                         Progress: progress,

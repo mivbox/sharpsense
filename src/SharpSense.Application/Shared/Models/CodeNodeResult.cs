@@ -4,7 +4,7 @@ namespace SharpSense.Application.Shared.Models;
 
 public sealed record CodeNodeResult(
     string Id,
-    string ProjectId,
+    string? ProjectId,
     string FullyQualifiedName,
     NodeType NodeType,
     string RelativeFilePath,

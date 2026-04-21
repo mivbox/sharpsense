@@ -10,10 +10,10 @@ using SharpSense.Infrastructure.Persistence;
 
 namespace SharpSense.Infrastructure.HybridSearch;
 
-public sealed class HybridSearchService(
+public sealed class HybridSearcher(
     IDbContextFactory<SharpSenseDbContext> dbContextFactory,
     IEmbeddingGenerator embeddingsService)
-    : IHybridSearchService
+    : IHybridSearcher
 {
     private const int _candidateLimitMultiplier = 20;
     private const int _minimumCandidateLimit = 50;
@@ -64,7 +64,7 @@ public sealed class HybridSearchService(
         }
 
         var candidateLimit = GetCandidateLimit(query.Limit);
-        var candidateIds = await LoadKeywordCandidateIdsAsync(
+        var candidateIds = await LoadKeywordCandidateIds(
                 context,
                 query.SearchText,
                 candidateLimit,
@@ -96,7 +96,7 @@ public sealed class HybridSearchService(
             : null;
         var tokens = Tokenize(query.SearchText);
         var vectorScores = queryEmbedding is { Length: > 0 }
-            ? await LoadVectorScoresAsync(
+            ? await LoadVectorScores(
                     context,
                     codeNodes.Select(static codeNode => codeNode.Id).ToArray(),
                     queryEmbedding,
@@ -125,7 +125,7 @@ public sealed class HybridSearchService(
         return new HybridSearchResult(query.SearchText, HybridSearchMapper.ToSearchHit(rankedNodes));
     }
 
-    private async Task<string[]> LoadKeywordCandidateIdsAsync(
+    private async Task<string[]> LoadKeywordCandidateIds(
         SharpSenseDbContext dbContext,
         string searchText,
         int candidateLimit,
@@ -170,7 +170,7 @@ public sealed class HybridSearchService(
         return candidateIds.ToArray();
     }
 
-    private async Task<Dictionary<string, float>> LoadVectorScoresAsync(
+    private async Task<Dictionary<string, float>> LoadVectorScores(
         SharpSenseDbContext dbContext,
         IReadOnlyList<string> candidateIds,
         float[] queryVector,

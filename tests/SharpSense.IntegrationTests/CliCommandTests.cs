@@ -18,9 +18,9 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenTraceCallerDirectionRuns_ThenOutputsUpstreamNodesAsJson()
     {
-        await using var database = await CliCommandTestDatabase.CreateAsync();
+        await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
-        var app = SharpSense.Cli.Program.CreateCommandApp(console, database.ConfigureServices);
+        var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
 
         var exitCode = await app.RunAsync(
             ["trace", CliCommandTestDatabase.SeedNodeId, "--direction", "caller"],
@@ -43,31 +43,61 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenTraceCalleeDirectionRunsWithToon_ThenOutputsDownstreamNodesInToonFormat()
     {
-        await using var database = await CliCommandTestDatabase.CreateAsync();
+        await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
-        var app = SharpSense.Cli.Program.CreateCommandApp(console, database.ConfigureServices);
+        var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
 
         var exitCode = await app.RunAsync(
             ["trace", CliCommandTestDatabase.SeedNodeId, "--direction", "callee", "--toon"],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        console.Output.Should().Be($"[M] {CliCommandTestDatabase.CalleeNodeId} @ src/Fixture.App/MessageProvider.cs:7-11");
+        console.Output.Should().Be($"[M] `{CliCommandTestDatabase.CalleeNodeId}` @ src/Fixture.App/MessageProvider.cs:7-11");
     }
 
     [Fact]
     public async Task WhenSearchRunsWithToon_ThenOutputsMatchingNodesInToonFormat()
     {
-        await using var database = await CliCommandTestDatabase.CreateAsync();
+        await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
-        var app = SharpSense.Cli.Program.CreateCommandApp(console, database.ConfigureServices);
+        var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
 
         var exitCode = await app.RunAsync(
             ["search", "MessageProvider", "--toon"],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        console.Output.Should().Be($"[M] {CliCommandTestDatabase.CalleeNodeId} @ src/Fixture.App/MessageProvider.cs:7-11");
+        console.Output.Should().Be($"[M] `{CliCommandTestDatabase.CalleeNodeId}` @ src/Fixture.App/MessageProvider.cs:7-11");
+    }
+
+    [Fact]
+    public async Task WhenSearchRunsWithToonForDocumentNode_ThenOutputsDocumentNodesInToonFormat()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
+
+        var exitCode = await app.RunAsync(
+            ["search", "Getting Started", "--toon"],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Be($"[D] `{CliCommandTestDatabase.DocumentNodeId}` @ docs/Guide.md:1-3");
+    }
+
+    [Fact]
+    public async Task WhenTraceCalleeDirectionRunsForDocumentRoot_ThenOutputsDownstreamDocumentNodesInToonFormat()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
+
+        var exitCode = await app.RunAsync(
+            ["trace", CliCommandTestDatabase.DocumentRootNodeId, "--direction", "callee", "--toon"],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Be($"[D] `{CliCommandTestDatabase.LinkedDocumentRootNodeId}` @ docs/Reference.md:1-1");
     }
 
     private sealed class CliCommandTestDatabase(InMemoryContextFactory contextFactory) : IAsyncDisposable
@@ -76,14 +106,17 @@ public sealed class CliCommandTests
         public const string SeedNodeId = "code:project-app:Fixture.App.MessageConsumer.Render()";
         public const string CallerNodeId = "code:project-app:Fixture.App.HttpEndpoint.Handle()";
         public const string CalleeNodeId = "code:project-app:Fixture.App.MessageProvider.GetMessage()";
+        public const string DocumentRootNodeId = "code:doc:docs/DocA.md#document-root";
+        public const string LinkedDocumentRootNodeId = "code:doc:docs/Reference.md#document-root";
+        public const string DocumentNodeId = "code:doc:docs/Guide.md#getting-started";
 
-        public static async Task<CliCommandTestDatabase> CreateAsync()
+        public static async Task<CliCommandTestDatabase> Create()
         {
             var contextFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
                 UseMigrations: true,
                 LoadVectorExtension: true));
             var database = new CliCommandTestDatabase(contextFactory);
-            await database.InitializeAsync();
+            await database.Initialize();
             return database;
         }
 
@@ -98,9 +131,9 @@ public sealed class CliCommandTests
             await contextFactory.DisposeAsync();
         }
 
-        private async Task InitializeAsync()
+        private async Task Initialize()
         {
-            await using var dbContext = await contextFactory.GetContextAsync<SharpSenseDbContext>(
+            await using var dbContext = await contextFactory.GetContext<SharpSenseDbContext>(
                 ct: TestContext.Current.CancellationToken);
 
             dbContext.CodeNodes.AddRange(
@@ -136,6 +169,39 @@ public sealed class CliCommandTests
                     StartLine = 7,
                     EndLine = 11,
                     Summary = "Gets a message."
+                },
+                new CodeNode
+                {
+                    Id = DocumentRootNodeId,
+                    ProjectId = null,
+                    FullyQualifiedName = "docs/DocA.md#document-root",
+                    NodeType = NodeType.Document,
+                    RelativeFilePath = "docs/DocA.md",
+                    StartLine = 1,
+                    EndLine = 1,
+                    Summary = "See [Reference](./Reference.md)."
+                },
+                new CodeNode
+                {
+                    Id = LinkedDocumentRootNodeId,
+                    ProjectId = null,
+                    FullyQualifiedName = "docs/Reference.md#document-root",
+                    NodeType = NodeType.Document,
+                    RelativeFilePath = "docs/Reference.md",
+                    StartLine = 1,
+                    EndLine = 1,
+                    Summary = "Reference document."
+                },
+                new CodeNode
+                {
+                    Id = DocumentNodeId,
+                    ProjectId = null,
+                    FullyQualifiedName = "docs/Guide.md#getting-started",
+                    NodeType = NodeType.Document,
+                    RelativeFilePath = "docs/Guide.md",
+                    StartLine = 1,
+                    EndLine = 3,
+                    Summary = "Getting Started guide."
                 });
 
             dbContext.DependencyEdges.AddRange(
@@ -150,6 +216,12 @@ public sealed class CliCommandTests
                     CallerId = SeedNodeId,
                     CalleeId = CalleeNodeId,
                     EdgeType = EdgeType.MethodCall
+                },
+                new DependencyEdge
+                {
+                    CallerId = DocumentRootNodeId,
+                    CalleeId = LinkedDocumentRootNodeId,
+                    EdgeType = EdgeType.DocumentLink
                 });
 
             await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);

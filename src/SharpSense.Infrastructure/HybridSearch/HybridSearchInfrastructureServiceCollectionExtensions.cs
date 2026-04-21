@@ -8,7 +8,7 @@ public static class HybridSearchInfrastructureServiceCollectionExtensions
     public static IServiceCollection AddHybridSearchInfrastructure(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.AddSingleton<IHybridSearchService, HybridSearchService>();
+        services.AddSingleton<IHybridSearcher, HybridSearcher>();
         return services;
     }
 }

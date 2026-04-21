@@ -10,7 +10,7 @@ public static class TraceInfrastructureServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.TryAddScoped<ITraceService, TraceService>();
+        services.TryAddScoped<ITraceNavigator, TraceNavigator>();
         return services;
     }
 }

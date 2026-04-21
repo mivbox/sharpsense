@@ -84,8 +84,8 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
             }
             case "callee":
                 nodes = await services
-                    .GetRequiredService<IQueryHandler<SharpSense.Application.Features.Trace.TraceQuery, CodeNodeResult[]>>()
-                    .Handle(new SharpSense.Application.Features.Trace.TraceQuery(settings.Identifier), ct);
+                    .GetRequiredService<IQueryHandler<TraceQuery, CodeNodeResult[]>>()
+                    .Handle(new TraceQuery(settings.Identifier), ct);
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported direction '{direction}'.");

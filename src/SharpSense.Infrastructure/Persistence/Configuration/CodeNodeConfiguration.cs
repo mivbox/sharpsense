@@ -30,7 +30,6 @@ public sealed class CodeNodeConfiguration : IEntityTypeConfiguration<CodeNode>
             .HasMaxLength(2048);
 
         builder.Property(codeNode => codeNode.ProjectId)
-            .IsRequired()
             .HasMaxLength(2048);
 
         builder.Property(codeNode => codeNode.FullyQualifiedName)

@@ -13,9 +13,9 @@ public sealed class DependencyGraphRepositoryTests
     public async Task WhenGetGraphWithSeededNodesAndEdges_ThenReturnsProjectedNodesAndEdges()
     {
         await using var inMemoryFactory = new InMemoryContextFactory();
-        await using var context = await inMemoryFactory.GetContextAsync<SharpSenseDbContext>(ct: TestContext.Current.CancellationToken);
+        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(ct: TestContext.Current.CancellationToken);
 
-        await SeedGraphAsync(context);
+        await SeedGraph(context);
         var service = new DependencyGraphRepository(context);
 
         var result = await service.GetGraph(CancellationToken.None);
@@ -50,7 +50,7 @@ public sealed class DependencyGraphRepositoryTests
             });
     }
 
-    private static async Task SeedGraphAsync(SharpSenseDbContext db)
+    private static async Task SeedGraph(SharpSenseDbContext db)
     {
         db.ProjectNodes.AddRange(
             new ProjectNode

@@ -10,7 +10,7 @@ public sealed class ImpactAnalysisQueryHandlerTests
     [Fact]
     public void WhenConstructingImpactAnalysisQueryHandler_ThenImplementsQueryHandlerContract()
     {
-        var handler = new ImpactAnalysisQueryHandler(new FakeImpactAnalysisService());
+        var handler = new ImpactAnalysisQueryHandler(new FakeImpactAnalyzer());
 
         Assert.IsAssignableFrom<IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult>>(handler);
     }
@@ -18,7 +18,7 @@ public sealed class ImpactAnalysisQueryHandlerTests
     [Fact]
     public async Task WhenHandleWithValidQuery_ThenInvokesImpactAnalysisService()
     {
-        var service = new FakeImpactAnalysisService();
+        var service = new FakeImpactAnalyzer();
         var handler = new ImpactAnalysisQueryHandler(service);
         var query = new ImpactAnalysisQuery("node-1");
 
@@ -28,7 +28,7 @@ public sealed class ImpactAnalysisQueryHandlerTests
         Assert.Equal("node-1", result.TargetSymbol);
     }
 
-    private sealed class FakeImpactAnalysisService : IImpactAnalysisService
+    private sealed class FakeImpactAnalyzer : IImpactAnalyzer
     {
         public ImpactAnalysisQuery? LastQuery { get; private set; }
 

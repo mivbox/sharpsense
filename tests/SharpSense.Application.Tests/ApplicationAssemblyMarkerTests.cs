@@ -3,9 +3,9 @@ namespace SharpSense.Application.Tests;
 public sealed class ApplicationAssemblyMarkerTests
 {
     [Fact]
-    public void ApplicationAssemblyMarker_can_be_loaded()
+    public void WhenResolvingApplicationAssemblyNameFromMarker_ThenReturnsSharpSenseApplication()
     {
-        var assemblyName = typeof(SharpSense.Application.ApplicationAssemblyMarker).Assembly.GetName().Name;
+        var assemblyName = typeof(ApplicationAssemblyMarker).Assembly.GetName().Name;
 
         Assert.NotNull(assemblyName);
         Assert.Equal("SharpSense.Application", assemblyName);

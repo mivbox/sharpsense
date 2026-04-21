@@ -22,7 +22,11 @@ internal static class SharpSenseLogging
         return Path.Combine(loggingDirectory, $"{safeCommandName}.log");
     }
 
-    public static void ConfigureLogger(LoggerConfiguration configuration, bool isVerbose, string logFilePath)
+    public static void ConfigureLogger(
+        LoggerConfiguration configuration,
+        bool isVerbose,
+        string logFilePath,
+        bool enableConsoleLogging)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentException.ThrowIfNullOrWhiteSpace(logFilePath);
@@ -36,8 +40,12 @@ internal static class SharpSenseLogging
                 rollOnFileSizeLimit: true,
                 retainedFileCountLimit: 10,
                 shared: true,
-                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {SourceContext}{NewLine}{Exception}")
-            .WriteTo.Console(standardErrorFromLevel: LogEventLevel.Verbose);
+                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {SourceContext}{NewLine}{Exception}");
+
+        if (enableConsoleLogging)
+        {
+            configuration.WriteTo.Console(standardErrorFromLevel: LogEventLevel.Verbose);
+        }
     }
 
     private static string CreateSafeFileNameSegment(string? value)

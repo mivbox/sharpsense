@@ -59,7 +59,6 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ProjectId")
-                        .IsRequired()
                         .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 

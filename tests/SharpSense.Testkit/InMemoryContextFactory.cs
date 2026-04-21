@@ -28,13 +28,13 @@ public sealed class InMemoryContextFactory : IDisposable, IAsyncDisposable
         return context;
     }
 
-    public async Task<TContext> GetContextAsync<TContext>(
-        Action<string>? writeLine = null,
-        CancellationToken ct = default)
+    public async Task<TContext> GetContext<TContext>(
+        CancellationToken ct,
+        Action<string>? writeLine = null)
         where TContext : DbContext
     {
         var context = CreateContext<TContext>(writeLine);
-        await InitializeDatabaseAsync(context, ct);
+        await InitializeDatabase(context, ct);
         return context;
     }
 
@@ -123,7 +123,7 @@ public sealed class InMemoryContextFactory : IDisposable, IAsyncDisposable
         context.Database.EnsureCreated();
     }
 
-    private async Task InitializeDatabaseAsync(
+    private async Task InitializeDatabase(
         DbContext context,
         CancellationToken ct)
     {
@@ -162,6 +162,6 @@ public sealed class InMemoryContextFactory : IDisposable, IAsyncDisposable
             => inMemoryContextFactory.GetContext<TContext>(writeLine);
 
         public Task<TContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
-            => inMemoryContextFactory.GetContextAsync<TContext>(writeLine, cancellationToken);
+            => inMemoryContextFactory.GetContext<TContext>(cancellationToken, writeLine);
     }
 }

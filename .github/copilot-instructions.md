@@ -26,6 +26,17 @@
 * **Namespace Conflict Resolution**: If mapping between layers and class names conflict (e.g. mapping a Domain ObjectA
   to an Application ObjectA), use the fully qualified domain name (FQDN) for the layer you are not currently operating
   in (e.g. Namespace.ObjectA) to resolve the ambiguity.
+* **No "Service" Suffixes**: Class names must reflect their purpose or role as an actor. Do not use the generic Service
+  suffix.
+* **No "Async" Suffixes**: **Drop the Async suffix from all custom asynchronous method names. Exception: Do not drop the
+  suffix when calling standard .NET base class library or external NuGet package methods.
+
+# Documentation & Comments
+
+* **Document the Contract, Not the Implementation**: Place comprehensive XML <summary> comments on interface definitions
+  to explain exactly "why" the interface exists and "what" the method is responsible for.
+* **No Redundant Implementation Comments**: Do not add method comments to concrete implementation classes. The interface
+  acts as the single source of truth.
 
 # Formatting
 
@@ -50,12 +61,14 @@
 
 # Testing
 
-* We use **xUnit SDK v3** for tests.
+* We use xUnit SDK v3 for tests.
 * Do not emit "Act", "Arrange" or "Assert" comments.
-* Use **Moq** for mocking in tests.
-* Use **AwesomeAssertions** (`.Should()` syntax) for assertions in unit test projects.
-* Copy the existing style in nearby files for test method names and capitalisation.
-* Test projects are located in `tests/` subdirectories within each service.
+* Use Moq for mocking in tests.
+* Use AwesomeAssertions (.Should() syntax) for assertions in unit test projects.
+* Test Method Naming: Use strict BDD-style naming conventions formatted as When[ConditionOrAction]_
+  Then[ExpectedOutcome]. Use PascalCase for the clauses with exactly one underscore separator (e.g.
+  WhenSolutionHasNoCode_ThenReturnsEmpty).
+* Test projects are located in tests/ subdirectories within each service.
 
 # Dependency Injection Standards
 

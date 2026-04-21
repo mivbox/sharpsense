@@ -5,7 +5,7 @@ namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
 public interface IRoslynSolutionAnalysisEngine
 {
-    Task<KnowledgeGraphExtractionPayload> ExtractAsync(
+    Task<KnowledgeGraphExtractionPayload> Extract(
         string solutionPath,
         IRepositoryWorkspace repositoryWorkspace,
         RoslynWorkspaceOptions? options = null,
