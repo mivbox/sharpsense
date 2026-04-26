@@ -32,6 +32,18 @@ internal static class RoslynSymbolUtilities
         miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes |
                               SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers);
 
+    private static readonly SymbolDisplayFormat _displayNameFormat = new(
+        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypes,
+        genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
+        memberOptions: SymbolDisplayMemberOptions.IncludeContainingType |
+                       SymbolDisplayMemberOptions.IncludeParameters |
+                       SymbolDisplayMemberOptions.IncludeExplicitInterface,
+        parameterOptions: SymbolDisplayParameterOptions.IncludeType |
+                          SymbolDisplayParameterOptions.IncludeParamsRefOut,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes |
+                              SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers);
+
     public static ISymbol Canonicalize(ISymbol symbol)
     {
         return symbol switch
@@ -53,10 +65,13 @@ internal static class RoslynSymbolUtilities
         return symbol.ToDisplayString(_fullyQualifiedNameFormat);
     }
 
-    public static string GetNodeId(string projectId, ISymbol symbol)
+    public static string GetCanonicalId(string projectId, ISymbol symbol)
     {
         return $"code:{projectId}:{GetLookupKey(symbol)}";
     }
+
+    public static string GetDisplayName(ISymbol symbol)
+        => symbol.ToDisplayString(_displayNameFormat);
 
     public static ISymbol? ResolveReferencedSymbol(SymbolInfo symbolInfo)
     {

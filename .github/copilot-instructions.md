@@ -82,3 +82,14 @@ based on architectural layers and vertical slices:
    `{FeatureName}InfrastructureServiceCollectionExtensions.Add{FeatureName}Infrastructure()` (e.g.,
    `AddIndexingInfrastructure()` for external/IO services).
    Chain these methods cleanly in the host setup.
+
+# Wiki Maintenance Workflow
+
+You are responsible for keeping the `docs/wiki/` directory up to date. If we complete a conversation where we
+successfully implement a new architectural pattern, refactor an extractor, or change database schemas, you must:
+
+1. Propose updates to the relevant files in `docs/wiki/architecture/`, `docs/wiki/extractors/`, or `docs/wiki/persistence/`.
+2. Ensure any new wiki pages conform to the YAML frontmatter format defined in `docs/wiki/index.md`.
+3. Append a brief entry to `docs/wiki/log.md` detailing the architectural shift and the date.
+
+When in doubt, stop and ask the human for clarification. Do not guess.

@@ -41,7 +41,17 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("SharpSense.Domain.KnowledgeGraph.Nodes.CodeNode", b =>
                 {
-                    b.Property<string>("Id")
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CanonicalId")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
                         .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 
@@ -78,6 +88,9 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
                         .HasColumnType("BLOB");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CanonicalId")
+                        .IsUnique();
 
                     b.HasIndex("FullyQualifiedName");
 

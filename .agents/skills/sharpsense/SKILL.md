@@ -1,8 +1,6 @@
 ---
 name: sharpsense-architect
-description: "Expert AI architectural assistant for querying repository context,
-    executing impact analysis, and tracing execution flows. Use when exploring the codebase,
-    understanding Markdown documentation, or planning code changes."
+description: "Expert AI architectural assistant for querying repository context, executing impact analysis, and tracing execution flows. Use when exploring the codebase, understanding Markdown documentation, or planning code changes. Enforces strict architectural rules via the internal docs wiki."
 ---
 
 # SharpSense Codebase Navigation
@@ -12,7 +10,8 @@ description: "Expert AI architectural assistant for querying repository context,
 - "How does X work?" or "Where is the billing logic?" (Exploration)
 - "What calls this method?" (Blast Radius / Upstream Impact)
 - "What does this service depend on?" (Execution Path / Downstream Dependencies)
-- Understanding architectural boundaries, finding Markdown documentation, and navigating chunks of ADRs/READMEs.
+- Understanding architectural boundaries, navigating the project's LLM Wiki (`docs/wiki/`), and finding Markdown
+  documentation.
 
 ## Workflow (The 1-2 Punch)
 
@@ -21,10 +20,18 @@ description: "Expert AI architectural assistant for querying repository context,
 
 ## Checklist
 
+- [ ] **Wiki-First for Architecture:** If the user asks an architectural, rule-based, or systemic question (e.g., "How
+  do we handle CLI options?"), run `semantic_search` targeting wiki concepts first to find the project rules before
+  exploring raw code.
 - [ ] Read the user's prompt to determine the core concept.
-- [ ] Run `semantic_search` to locate the relevant nodes and extract the `NodeId` from the backticks (`` ` ``).
+- [ ] Run `semantic_search` to locate the relevant nodes and extract the exact `NodeId` string from the backticks (
+  `` ` ``).
+- [ ] **Query Iteration:** If `semantic_search` returns 0 results, do NOT give up. Try 2-3 different synonyms or broader
+  terms.
 - [ ] If the user asks what *depends* on the node (impact), run `trace_node` with `direction="caller"`.
 - [ ] If the user asks how the node *executes*, run `trace_node` with `direction="callee"`.
+- [ ] **Trace Filtering:** If `trace_node` returns an overwhelming number of connections, summarize the primary
+  groupings. Do not attempt to read 50+ files at once.
 - [ ] **READ THE CODE/DOCS:** If the user asks *how* something is implemented or needs the actual text of a Markdown
   chunk, use your native file-reading capabilities to read the exact `{FilePath}:{StartLine}-{EndLine}` returned by the
   TOON output.
@@ -35,7 +42,7 @@ description: "Expert AI architectural assistant for querying repository context,
 
 **semantic_search** — Find codebase coordinates:
 
-* Pass a descriptive query (e.g., "user authentication" or "database architecture").
+* Pass a descriptive query (e.g., "user authentication", "AST parsing", "database architecture").
 * Returns TOON format. **Crucial:** Extract the exact string inside the backticks (`` ` ``) for the next step.
 
 **trace_node** — Traverse the knowledge graph:

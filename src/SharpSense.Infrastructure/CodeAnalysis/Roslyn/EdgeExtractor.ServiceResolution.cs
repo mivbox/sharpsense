@@ -12,7 +12,7 @@ internal sealed partial class EdgeExtractor
         SemanticModel semanticModel,
         InvocationExpressionSyntax invocation,
         IMethodSymbol? methodSymbol,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         var registeredTypes = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
@@ -23,7 +23,7 @@ internal sealed partial class EdgeExtractor
                 continue;
             }
 
-            TryAddEdge(callerId, registeredType, EdgeType.ServiceRegistration, symbolNodeIds, edgeKeys);
+            TryAddEdge(callerId, registeredType, EdgeType.ServiceRegistration, nodeResolver, edgeKeys);
         }
     }
 
@@ -32,7 +32,7 @@ internal sealed partial class EdgeExtractor
         SemanticModel semanticModel,
         InvocationExpressionSyntax invocation,
         IMethodSymbol? methodSymbol,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         var resolvedTypes = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
@@ -47,7 +47,7 @@ internal sealed partial class EdgeExtractor
                 callerId,
                 resolvedType,
                 GetDependencyResolutionEdgeType(resolvedType),
-                symbolNodeIds,
+                nodeResolver,
                 edgeKeys);
         }
     }

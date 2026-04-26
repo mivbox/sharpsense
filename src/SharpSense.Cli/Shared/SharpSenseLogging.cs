@@ -9,6 +9,22 @@ internal static class SharpSenseLogging
     private const string _defaultLogFileName = "sharp-sense";
     private static readonly HashSet<char> _invalidFileNameCharacters = [.. Path.GetInvalidFileNameChars()];
 
+    public static ILogger CreateLogger(
+        bool isVerbose,
+        string? commandName,
+        bool enableConsoleLogging)
+    {
+        var configuration = new LoggerConfiguration();
+        ConfigureLogger(configuration, isVerbose, GetLogFilePath(commandName), enableConsoleLogging);
+        return configuration.CreateLogger();
+    }
+
+    public static void UseGlobalLogger(
+        bool isVerbose,
+        string? commandName,
+        bool enableConsoleLogging)
+        => Log.Logger = CreateLogger(isVerbose, commandName, enableConsoleLogging);
+
     public static string GetLogFilePath(string? commandName)
     {
         var loggingDirectory = Path.Combine(

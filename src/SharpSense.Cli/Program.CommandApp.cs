@@ -43,12 +43,12 @@ public partial class Program
 
             var index = config
                 .AddCommand<AnalyzeCommand>("index")
-                .WithDescription("Index the current repository target.");
+                .WithDescription("Legacy alias for analyze.");
             AttachData(index, executionContext);
 
             var analyze = config
                 .AddCommand<AnalyzeCommand>("analyze")
-                .WithDescription("Analyze and index a solution or project.");
+                .WithDescription("Analyze and index a target.");
             AttachData(analyze, executionContext);
 
             var mcp = config

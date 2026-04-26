@@ -11,8 +11,10 @@ public static class HybridSearchMapper
 
         return new HybridSearchHit(
             codeNode.Id,
+            codeNode.CanonicalId,
             codeNode.ProjectId,
             codeNode.FullyQualifiedName,
+            codeNode.DisplayName,
             codeNode.NodeType,
             codeNode.RelativeFilePath,
             codeNode.StartLine,

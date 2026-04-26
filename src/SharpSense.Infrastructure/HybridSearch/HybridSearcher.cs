@@ -78,6 +78,7 @@ public sealed class HybridSearcher(
                 .ConfigureAwait(false)
             : await codeNodesQuery
                 .Where(codeNode =>
+                    codeNode.DisplayName.Contains(query.SearchText) ||
                     codeNode.FullyQualifiedName.Contains(query.SearchText) ||
                     codeNode.Summary.Contains(query.SearchText) ||
                     codeNode.RelativeFilePath.Contains(query.SearchText))
@@ -102,7 +103,7 @@ public sealed class HybridSearcher(
                     queryEmbedding,
                     ct)
                 .ConfigureAwait(false)
-            : new Dictionary<string, float>(StringComparer.Ordinal);
+            : new Dictionary<int, float>();
 
         var rankedNodes = codeNodes
             .Select(
@@ -117,7 +118,7 @@ public sealed class HybridSearcher(
             .ThenByDescending(static result => result.KeywordScore)
             .ThenByDescending(static result => result.VectorScore)
             .ThenBy(static result => result.Node.FullyQualifiedName, StringComparer.Ordinal)
-            .ThenBy(static result => result.Node.Id, StringComparer.Ordinal)
+            .ThenBy(static result => result.Node.Id)
             .Take(query.Limit)
             .Select(static result => result.Node)
             .ToArray();
@@ -125,7 +126,7 @@ public sealed class HybridSearcher(
         return new HybridSearchResult(query.SearchText, HybridSearchMapper.ToSearchHit(rankedNodes));
     }
 
-    private async Task<string[]> LoadKeywordCandidateIds(
+    private async Task<int[]> LoadKeywordCandidateIds(
         SharpSenseDbContext dbContext,
         string searchText,
         int candidateLimit,
@@ -145,7 +146,7 @@ public sealed class HybridSearcher(
 
         await using var command = connection.CreateCommand();
         command.CommandText = $"""
-            SELECT Id
+            SELECT CAST(Id AS INTEGER)
             FROM CodeNodeSearch
             WHERE CodeNodeSearch MATCH $matchQuery
             ORDER BY bm25(CodeNodeSearch)
@@ -157,28 +158,28 @@ public sealed class HybridSearcher(
         matchQueryParameter.Value = BuildMatchQuery(tokens);
         command.Parameters.Add(matchQueryParameter);
 
-        var candidateIds = new List<string>(candidateLimit);
+        var candidateIds = new List<int>(candidateLimit);
         await using var reader = await command.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct).ConfigureAwait(false))
         {
             if (!reader.IsDBNull(0))
             {
-                candidateIds.Add(reader.GetString(0));
+                candidateIds.Add(Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture));
             }
         }
 
         return candidateIds.ToArray();
     }
 
-    private async Task<Dictionary<string, float>> LoadVectorScores(
+    private async Task<Dictionary<int, float>> LoadVectorScores(
         SharpSenseDbContext dbContext,
-        IReadOnlyList<string> candidateIds,
+        IReadOnlyList<int> candidateIds,
         float[] queryVector,
         CancellationToken ct)
     {
         if (candidateIds.Count == 0)
         {
-            return new Dictionary<string, float>(StringComparer.Ordinal);
+            return new Dictionary<int, float>();
         }
 
         var connection = dbContext.Database.GetDbConnection();
@@ -212,7 +213,7 @@ public sealed class HybridSearcher(
               AND Id IN ({{string.Join(", ", parameterNames)}});
             """;
 
-        var vectorScores = new Dictionary<string, float>(candidateIds.Count, StringComparer.Ordinal);
+        var vectorScores = new Dictionary<int, float>(candidateIds.Count);
         await using var reader = await command.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct).ConfigureAwait(false))
         {
@@ -221,7 +222,7 @@ public sealed class HybridSearcher(
                 continue;
             }
 
-            var codeNodeId = reader.GetString(0);
+            var codeNodeId = Convert.ToInt32(reader.GetValue(0), CultureInfo.InvariantCulture);
             var distance = Convert.ToSingle(reader.GetValue(1), CultureInfo.InvariantCulture);
             vectorScores[codeNodeId] = Math.Clamp(1f - distance, 0f, 1f);
         }
@@ -255,6 +256,11 @@ public sealed class HybridSearcher(
             score += 120f;
         }
 
+        if (Contains(codeNode.DisplayName, searchText))
+        {
+            score += 90f;
+        }
+
         if (Contains(codeNode.FullyQualifiedName, searchText))
         {
             score += 70f;
@@ -272,6 +278,11 @@ public sealed class HybridSearcher(
 
         foreach (var token in tokens)
         {
+            if (Contains(codeNode.DisplayName, token))
+            {
+                score += 16f;
+            }
+
             if (Contains(codeNode.FullyQualifiedName, token))
             {
                 score += 12f;

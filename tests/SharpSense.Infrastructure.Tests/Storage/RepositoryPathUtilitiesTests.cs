@@ -1,6 +1,4 @@
 using SharpSense.Infrastructure.Storage;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace SharpSense.Infrastructure.Tests.Storage;
 
@@ -101,15 +99,7 @@ public sealed class RepositoryWorkspaceTests
         try
         {
             var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(repositoryRootPath);
-            var normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(repositoryRootPath));
-            var hashInput = normalizedRoot.Replace('\\', '/');
-
-            if (OperatingSystem.IsWindows() && hashInput is [_, ':', ..])
-            {
-                hashInput = char.ToUpperInvariant(hashInput[0]) + hashInput[1..];
-            }
-
-            var expectedHash = Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(hashInput))).ToLowerInvariant();
+            var expectedHash = RepositoryHashCalculator.ComputeHash(workspace.RootPath);
             var expectedPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 ".SharpSense",
@@ -142,22 +132,22 @@ public sealed class RepositoryWorkspaceTests
     }
 
     [Fact]
-    public void WhenGettingRequiredSolutionDirectoryPath_ThenReturnsSolutionDirectory()
+    public void WhenGettingRequiredTargetDirectoryPath_ThenReturnsTargetDirectory()
     {
         var repositoryRoot = CreateRepositoryRoot();
-        var solutionDirectory = Path.Combine(repositoryRoot, "src", "Sample");
-        var solutionPath = Path.Combine(solutionDirectory, "Sample.sln");
+        var targetDirectory = Path.Combine(repositoryRoot, "src", "Sample");
+        var targetPath = Path.Combine(targetDirectory, "Sample.sln");
 
-        Directory.CreateDirectory(solutionDirectory);
-        File.WriteAllText(solutionPath, string.Empty);
+        Directory.CreateDirectory(targetDirectory);
+        File.WriteAllText(targetPath, string.Empty);
 
         try
         {
             var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(repositoryRoot);
 
-            var resolvedDirectory = workspace.GetRequiredSolutionDirectoryPath(solutionPath);
+            var resolvedDirectory = workspace.GetRequiredTargetDirectoryPath(targetPath);
 
-            Assert.Equal(Path.GetFullPath(solutionDirectory), resolvedDirectory);
+            Assert.Equal(Path.GetFullPath(targetDirectory), resolvedDirectory);
         }
         finally
         {
@@ -166,30 +156,22 @@ public sealed class RepositoryWorkspaceTests
     }
 
     [Fact]
-    public void WhenLoadingSharpSenseConfig_ThenReadsYamlFromSolutionDirectory()
+    public void WhenGettingRequiredTargetDirectoryPathForProjectFile_ThenReturnsProjectDirectory()
     {
         var repositoryRoot = CreateRepositoryRoot();
-        var solutionDirectory = Path.Combine(repositoryRoot, "src", "Sample");
-        var solutionPath = Path.Combine(solutionDirectory, "Sample.sln");
-        var configPath = Path.Combine(solutionDirectory, "sharpsense.yaml");
+        var targetDirectory = Path.Combine(repositoryRoot, "src", "Sample");
+        var targetPath = Path.Combine(targetDirectory, "Sample.csproj");
 
-        Directory.CreateDirectory(solutionDirectory);
-        File.WriteAllText(solutionPath, string.Empty);
-        File.WriteAllText(
-            configPath,
-            """
-            includePaths:
-              - docs/**/*.md
-              - README.md
-            """);
+        Directory.CreateDirectory(targetDirectory);
+        File.WriteAllText(targetPath, string.Empty);
 
         try
         {
             var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(repositoryRoot);
 
-            var config = workspace.LoadSharpSenseConfig(solutionPath);
+            var resolvedDirectory = workspace.GetRequiredTargetDirectoryPath(targetPath);
 
-            Assert.Equal(["docs/**/*.md", "README.md"], config.IncludePaths);
+            Assert.Equal(Path.GetFullPath(targetDirectory), resolvedDirectory);
         }
         finally
         {

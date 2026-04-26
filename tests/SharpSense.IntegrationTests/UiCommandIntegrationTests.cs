@@ -1,30 +1,39 @@
-using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using SharpSense.Domain.KnowledgeGraph.Edges;
+using SharpSense.Domain.KnowledgeGraph.Enums;
+using SharpSense.Domain.KnowledgeGraph.Nodes;
+using SharpSense.Infrastructure.Persistence;
+using SharpSense.Testkit;
 
 namespace SharpSense.IntegrationTests;
 
 public sealed class UiCommandIntegrationTests
 {
     [Fact]
-    public async Task WhenUiCommandRuns_ThenEndpointsReturnSuccessAndLogsAreWritten()
+    public async Task WhenUiCommandRuns_ThenEndpointsReturnSuccessAndGraphIsServedFromInMemoryContext()
     {
-        var cliAssemblyPath = Path.Combine(AppContext.BaseDirectory, "SharpSense.Cli.dll");
-        var repositoryRoot = GetRepositoryPath(string.Empty);
+        await using var database = await UiCommandTestDatabase.Create();
+        var repositoryRoot = CreateRepositoryRoot();
+        var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
         var logFilePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".SharpSense",
             "logs",
             "ui.log");
-        var uiProcess = await StartUiProcess(cliAssemblyPath, repositoryRoot);
-        using var process = uiProcess.Process;
-        var baseUrl = uiProcess.BaseUrl;
-
-        var stopped = false;
+        var app = Cli.Program.CreateCommandApp(configureServices: database.ConfigureServices);
+        using var shutdown = new CancellationTokenSource();
+        var runTask = app.RunAsync(
+            ["ui", "--url", baseUrl, "--repo-root", repositoryRoot],
+            shutdown.Token);
 
         try
         {
+            await WaitForServer(runTask, $"{baseUrl}/");
+
             using var httpClient = new HttpClient
             {
                 Timeout = TimeSpan.FromSeconds(5)
@@ -36,8 +45,32 @@ public sealed class UiCommandIntegrationTests
             Assert.Equal(HttpStatusCode.OK, graphResponse.StatusCode);
             Assert.Equal(HttpStatusCode.OK, rootResponse.StatusCode);
 
-            await StopProcess(process);
-            stopped = true;
+            await using var graphStream = await graphResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+            using var jsonDocument = await JsonDocument.ParseAsync(graphStream, cancellationToken: TestContext.Current.CancellationToken);
+            var nodes = jsonDocument.RootElement.GetProperty("nodes");
+            var edges = jsonDocument.RootElement.GetProperty("edges");
+
+            Assert.Contains(
+                nodes.EnumerateArray(),
+                node =>
+                    node.GetProperty("id").GetString() == UiCommandTestDatabase.CallerCanonicalId &&
+                    node.GetProperty("label").GetString() == "Fixture.App.HttpEndpoint.Handle()" &&
+                    node.GetProperty("type").GetString() == "method");
+            Assert.Contains(
+                nodes.EnumerateArray(),
+                node =>
+                    node.GetProperty("id").GetString() == UiCommandTestDatabase.CalleeCanonicalId &&
+                    node.GetProperty("label").GetString() == "Fixture.App.MessageProvider.GetMessage()" &&
+                    node.GetProperty("type").GetString() == "method");
+            Assert.Contains(
+                edges.EnumerateArray(),
+                edge =>
+                    edge.GetProperty("source").GetString() == UiCommandTestDatabase.CallerCanonicalId &&
+                    edge.GetProperty("target").GetString() == UiCommandTestDatabase.CalleeCanonicalId &&
+                    edge.GetProperty("type").GetString() == "methodcall");
+
+            shutdown.Cancel();
+            Assert.Equal(0, await runTask);
 
             var logContents = await WaitForLogContents(logFilePath, baseUrl);
 
@@ -47,81 +80,18 @@ public sealed class UiCommandIntegrationTests
         }
         finally
         {
-            if (!stopped)
+            shutdown.Cancel();
+
+            if (!runTask.IsCompleted)
             {
-                await StopProcess(process);
+                await runTask;
             }
+
+            DeleteDirectoryIfExists(repositoryRoot);
         }
     }
 
-    private static async Task<UiProcessHandle> StartUiProcess(string cliAssemblyPath, string repositoryRoot)
-    {
-        var failures = new List<string>();
-
-        for (var attempt = 0; attempt < 5; attempt++)
-        {
-            var port = GetAvailablePort();
-            var baseUrl = $"http://127.0.0.1:{port}";
-            var output = new StringBuilder();
-            var process = new Process
-            {
-                StartInfo = CreateStartInfo(cliAssemblyPath, repositoryRoot, baseUrl)
-            };
-
-            process.OutputDataReceived += (_, args) => AppendOutput(output, args.Data);
-            process.ErrorDataReceived += (_, args) => AppendOutput(output, args.Data);
-
-            Assert.True(process.Start());
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-
-            try
-            {
-                await WaitForServer(process, $"{baseUrl}/", output);
-                return new UiProcessHandle(process, baseUrl);
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or TimeoutException)
-            {
-                failures.Add(ex.Message);
-                await StopProcess(process);
-                process.Dispose();
-            }
-        }
-
-        throw new InvalidOperationException(
-            $"Unable to start the UI command after multiple attempts:{Environment.NewLine}{string.Join(Environment.NewLine, failures)}");
-    }
-
-    private static ProcessStartInfo CreateStartInfo(string cliAssemblyPath, string repositoryRoot, string baseUrl)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "dotnet",
-            WorkingDirectory = repositoryRoot,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false
-        };
-
-        startInfo.ArgumentList.Add(cliAssemblyPath);
-        startInfo.ArgumentList.Add("ui");
-        startInfo.ArgumentList.Add("--url");
-        startInfo.ArgumentList.Add(baseUrl);
-
-        return startInfo;
-    }
-
-    private static void AppendOutput(StringBuilder output, string? data)
-    {
-        if (string.IsNullOrWhiteSpace(data))
-        {
-            return;
-        }
-
-        output.AppendLine(data);
-    }
-
-    private static async Task WaitForServer(Process process, string url, StringBuilder output)
+    private static async Task WaitForServer(Task<int> runTask, string url)
     {
         using var httpClient = new HttpClient
         {
@@ -131,16 +101,16 @@ public sealed class UiCommandIntegrationTests
         var startedAtUtc = DateTime.UtcNow;
         while (DateTime.UtcNow - startedAtUtc < TimeSpan.FromSeconds(30))
         {
-            if (process.HasExited)
+            if (runTask.IsCompleted)
             {
                 throw new InvalidOperationException(
-                    $"The UI command exited before it became ready at '{url}'. Exit code: {process.ExitCode}.{Environment.NewLine}{output}");
+                    $"The UI command exited before it became ready at '{url}'. Exit code: {await runTask}.");
             }
 
             try
             {
                 using var response = await httpClient.GetAsync(url, TestContext.Current.CancellationToken);
-                if (response.IsSuccessStatusCode && !process.HasExited)
+                if (response.IsSuccessStatusCode && !runTask.IsCompleted)
                 {
                     return;
                 }
@@ -155,7 +125,7 @@ public sealed class UiCommandIntegrationTests
             await Task.Delay(TimeSpan.FromMilliseconds(250), TestContext.Current.CancellationToken);
         }
 
-        throw new TimeoutException($"The UI command did not become ready at '{url}'.{Environment.NewLine}{output}");
+        throw new TimeoutException($"The UI command did not become ready at '{url}'.");
     }
 
     private static async Task<string> WaitForLogContents(string logFilePath, string baseUrl)
@@ -178,17 +148,6 @@ public sealed class UiCommandIntegrationTests
         throw new FileNotFoundException($"The UI log file '{logFilePath}' did not contain the expected URL '{baseUrl}'.");
     }
 
-    private static async Task StopProcess(Process process)
-    {
-        if (process.HasExited)
-        {
-            return;
-        }
-
-        process.Kill(entireProcessTree: true);
-        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
-    }
-
     private static int GetAvailablePort()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -196,8 +155,92 @@ public sealed class UiCommandIntegrationTests
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
-    private static string GetRepositoryPath(string relativePath)
-        => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../", relativePath));
+    private static string CreateRepositoryRoot()
+    {
+        var repositoryRoot = Path.Combine(Path.GetTempPath(), $"sharp-sense-ui-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(repositoryRoot, ".git"));
+        return repositoryRoot;
+    }
 
-    private sealed record UiProcessHandle(Process Process, string BaseUrl);
+    private static void DeleteDirectoryIfExists(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            Directory.Delete(path, recursive: true);
+        }
+    }
+
+    private sealed class UiCommandTestDatabase(InMemoryContextFactory contextFactory) : IAsyncDisposable
+    {
+        public const string ProjectId = "project-app";
+        public const string CallerCanonicalId = "code:project-app:Fixture.App.HttpEndpoint.Handle()";
+        public const string CalleeCanonicalId = "code:project-app:Fixture.App.MessageProvider.GetMessage()";
+
+        public static async Task<UiCommandTestDatabase> Create()
+        {
+            var contextFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(UseMigrations: true));
+            var database = new UiCommandTestDatabase(contextFactory);
+            await database.Initialize();
+            return database;
+        }
+
+        public Action<IServiceCollection> ConfigureServices => services =>
+            contextFactory.ConfigureServices<SharpSenseDbContext>(services);
+
+        public async ValueTask DisposeAsync()
+        {
+            await contextFactory.DisposeAsync();
+        }
+
+        private async Task Initialize()
+        {
+            await using var dbContext = await contextFactory.GetContext<SharpSenseDbContext>(
+                ct: TestContext.Current.CancellationToken);
+
+            dbContext.ProjectNodes.Add(new ProjectNode
+            {
+                Id = ProjectId,
+                Name = "Fixture.App",
+                RelativeFilePath = "src/Fixture.App/Fixture.App.csproj",
+                ContentHash = "project-hash"
+            });
+
+            dbContext.CodeNodes.AddRange(
+                new CodeNode
+                {
+                    Id = 1,
+                    CanonicalId = CallerCanonicalId,
+                    ProjectId = ProjectId,
+                    FullyQualifiedName = "Fixture.App.HttpEndpoint.Handle()",
+                    DisplayName = "HttpEndpoint.Handle()",
+                    NodeType = NodeType.Method,
+                    RelativeFilePath = "src/Fixture.App/HttpEndpoint.cs",
+                    StartLine = 5,
+                    EndLine = 12,
+                    Summary = "Handles the HTTP endpoint."
+                },
+                new CodeNode
+                {
+                    Id = 2,
+                    CanonicalId = CalleeCanonicalId,
+                    ProjectId = ProjectId,
+                    FullyQualifiedName = "Fixture.App.MessageProvider.GetMessage()",
+                    DisplayName = "MessageProvider.GetMessage()",
+                    NodeType = NodeType.Method,
+                    RelativeFilePath = "src/Fixture.App/MessageProvider.cs",
+                    StartLine = 7,
+                    EndLine = 11,
+                    Summary = "Gets a message."
+                });
+
+            dbContext.DependencyEdges.Add(new DependencyEdge
+            {
+                CallerId = CallerCanonicalId,
+                CalleeId = CalleeCanonicalId,
+                EdgeType = EdgeType.MethodCall
+            });
+
+            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+    }
 }

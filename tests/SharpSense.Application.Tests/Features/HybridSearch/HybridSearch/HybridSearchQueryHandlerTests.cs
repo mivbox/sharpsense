@@ -1,3 +1,4 @@
+using Moq;
 using SharpSense.Application.Features.HybridSearch.Contracts;
 using SharpSense.Application.Features.HybridSearch.HybridSearch;
 using SharpSense.Application.Features.HybridSearch.Infrastructure;
@@ -10,7 +11,7 @@ public sealed class HybridSearchQueryHandlerTests
     [Fact]
     public void WhenConstructingHybridSearchQueryHandler_ThenImplementsQueryHandlerContract()
     {
-        var handler = new HybridSearchQueryHandler(new FakeHybridSearcher());
+        var handler = new HybridSearchQueryHandler(new Mock<IHybridSearcher>(MockBehavior.Strict).Object);
 
         Assert.IsAssignableFrom<IQueryHandler<HybridSearchQuery, HybridSearchResult>>(handler);
     }
@@ -18,24 +19,15 @@ public sealed class HybridSearchQueryHandlerTests
     [Fact]
     public async Task WhenHandleWithValidQuery_ThenInvokesSearchService()
     {
-        var service = new FakeHybridSearcher();
-        var handler = new HybridSearchQueryHandler(service);
         var query = new HybridSearchQuery("ProjectNode");
+        var service = new Mock<IHybridSearcher>(MockBehavior.Strict);
+        service.Setup(searcher => searcher.Search(query, CancellationToken.None))
+            .ReturnsAsync(new HybridSearchResult(query.SearchText, []));
+        var handler = new HybridSearchQueryHandler(service.Object);
 
         var result = await handler.Handle(query, CancellationToken.None);
 
-        Assert.Same(query, service.LastQuery);
+        service.Verify(searcher => searcher.Search(query, CancellationToken.None), Times.Once);
         Assert.Equal("ProjectNode", result.SearchText);
-    }
-
-    private sealed class FakeHybridSearcher : IHybridSearcher
-    {
-        public HybridSearchQuery? LastQuery { get; private set; }
-
-        public Task<HybridSearchResult> Search(HybridSearchQuery query, CancellationToken ct)
-        {
-            LastQuery = query;
-            return Task.FromResult(new HybridSearchResult(query.SearchText, []));
-        }
     }
 }

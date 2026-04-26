@@ -1,6 +1,8 @@
 using JetBrains.Annotations;
 using Serilog;
+using SharpSense.Cli.Shared;
 
+SharpSenseLogging.UseGlobalLogger(isVerbose: false, commandName: null, enableConsoleLogging: false);
 var logger = Log.ForContext<Program>();
 logger.Information("Configuring SharpSense CLI command application.");
 
@@ -16,7 +18,7 @@ try
 catch (Exception ex)
 {
     logger.Error(ex, "SharpSense CLI terminated unexpectedly.");
-    throw;
+    return 1;
 }
 finally
 {

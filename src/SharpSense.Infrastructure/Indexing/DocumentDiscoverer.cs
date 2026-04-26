@@ -1,56 +1,97 @@
-using Microsoft.Extensions.FileSystemGlobbing;
-using Microsoft.Extensions.FileSystemGlobbing.Abstractions;
+using Microsoft.Extensions.Options;
+using SharpSense.Application.Features.Indexing.Contracts;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
+using SharpSense.Infrastructure.Indexing.Markdown;
 using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Infrastructure.Indexing;
 
 public sealed class DocumentDiscoverer(
     IRepositoryWorkspace repositoryWorkspace,
+    IOptionsMonitor<SharpSenseConfig> configMonitor,
+    IWorkspaceFileDiscoverer fileDiscoverer,
     MarkdownIndexer markdownIndexer)
 {
     public async Task<MarkdownIndexResult> Discover(
-        string solutionPath,
+        string targetPath,
         CancellationToken ct)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(solutionPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
 
-        var config = repositoryWorkspace.LoadSharpSenseConfig(solutionPath);
-        if (config.IncludePaths.Length == 0)
+        var includePaths = GetIncludePaths();
+        if (includePaths.Length == 0)
         {
             return new MarkdownIndexResult([], []);
         }
 
-        var solutionDirectoryPath = repositoryWorkspace.GetRequiredSolutionDirectoryPath(solutionPath);
-        var matcher = new Matcher(GetPathComparison());
-
-        foreach (var includePath in config.IncludePaths)
-        {
-            matcher.AddInclude(repositoryWorkspace.NormalizeDirectorySeparators(includePath));
-        }
-
-        var matchResult = matcher.Execute(new DirectoryInfoWrapper(new DirectoryInfo(solutionDirectoryPath)));
-        if (!matchResult.HasMatches)
+        var targetDirectoryPath = repositoryWorkspace.GetRequiredTargetDirectoryPath(targetPath);
+        var discoveredFiles = await fileDiscoverer.GetAllowedFiles(targetDirectoryPath, includePaths, ct);
+        if (discoveredFiles.Count == 0)
         {
             return new MarkdownIndexResult([], []);
         }
 
-        var matchedRelativePaths = matchResult.Files
-            .Select(static match => match.Path.Replace('\\', '/'))
-            .Distinct(GetPathComparer())
-            .OrderBy(static path => path, GetPathComparer())
-            .ToArray();
+        return await DiscoverFiles(discoveredFiles, ct);
+    }
+
+    public async Task<MarkdownIndexResult> DiscoverFiles(
+        string targetPath,
+        IReadOnlyList<string> filePaths,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
+        ArgumentNullException.ThrowIfNull(filePaths);
+
+        var includePaths = GetIncludePaths();
+        if (includePaths.Length == 0)
+        {
+            return new MarkdownIndexResult([], []);
+        }
+
+        var targetDirectoryPath = repositoryWorkspace.GetRequiredTargetDirectoryPath(targetPath);
+        var allowedFiles = await fileDiscoverer.GetAllowedFiles(targetDirectoryPath, includePaths, ct);
+        if (allowedFiles.Count == 0)
+        {
+            return new MarkdownIndexResult([], []);
+        }
+
+        var requestedPaths = filePaths
+            .Where(static filePath => !string.IsNullOrWhiteSpace(filePath))
+            .Select(ResolveAbsolutePath)
+            .ToHashSet(GetPathComparer());
+        if (requestedPaths.Count == 0)
+        {
+            return new MarkdownIndexResult([], []);
+        }
+
+        return await DiscoverFiles(
+            [
+                .. allowedFiles.Where(discoveredFile => requestedPaths.Contains(discoveredFile.AbsolutePath))
+            ],
+            ct);
+    }
+
+    private async Task<MarkdownIndexResult> DiscoverFiles(
+        IReadOnlyList<DiscoveredFile> discoveredFiles,
+        CancellationToken ct)
+    {
         var documentNodes = new List<CodeNode>();
         var documentEdges = new List<Domain.KnowledgeGraph.Edges.DependencyEdge>();
+        var orderedFiles = discoveredFiles
+            .Where(static file => !string.IsNullOrWhiteSpace(file.AbsolutePath) &&
+                                  !string.IsNullOrWhiteSpace(file.RelativeFilePath))
+            .Where(file => File.Exists(file.AbsolutePath))
+            .GroupBy(static file => file.RelativeFilePath, GetPathComparer())
+            .Select(static group => group.First())
+            .OrderBy(static file => file.RelativeFilePath, GetPathComparer())
+            .ToArray();
 
-        foreach (var relativeFilePath in matchedRelativePaths)
+        foreach (var discoveredFile in orderedFiles)
         {
             ct.ThrowIfCancellationRequested();
 
-            var absoluteFilePath = Path.GetFullPath(Path.Combine(solutionDirectoryPath, relativeFilePath));
-            var rawText = await File.ReadAllTextAsync(absoluteFilePath, ct);
-            var repositoryRelativeFilePath = repositoryWorkspace.ToRepositoryRelativePath(absoluteFilePath);
-            var indexResult = markdownIndexer.Index(rawText, repositoryRelativeFilePath);
+            var rawText = await File.ReadAllTextAsync(discoveredFile.AbsolutePath, ct);
+            var indexResult = markdownIndexer.Index(rawText, discoveredFile.RelativeFilePath);
             documentNodes.AddRange(indexResult.CodeNodes);
             documentEdges.AddRange(indexResult.Edges);
         }
@@ -60,19 +101,28 @@ public sealed class DocumentDiscoverer(
                 .. documentNodes
                     .OrderBy(static node => node.RelativeFilePath, GetPathComparer())
                     .ThenBy(static node => node.StartLine)
-                    .ThenBy(static node => node.Id, StringComparer.Ordinal)
-            ],
+                    .ThenBy(static node => node.CanonicalId, StringComparer.Ordinal)
+             ],
             [
                 .. documentEdges
                     .OrderBy(static edge => edge.CallerId, StringComparer.Ordinal)
                     .ThenBy(static edge => edge.CalleeId, StringComparer.Ordinal)
                     .ThenBy(static edge => edge.EdgeType)
-            ]);
+             ]);
+    }
+
+    private string ResolveAbsolutePath(string filePath)
+        => Path.GetFullPath(
+            Path.IsPathRooted(filePath)
+                ? filePath
+                : Path.Combine(repositoryWorkspace.RootPath, filePath));
+
+    private string[] GetIncludePaths()
+    {
+        var includePaths = configMonitor.CurrentValue.IncludePaths;
+        return includePaths.Length == 0 ? [] : [.. includePaths];
     }
 
     private static StringComparer GetPathComparer()
         => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-
-    private static StringComparison GetPathComparison()
-        => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 }

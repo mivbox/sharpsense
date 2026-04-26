@@ -7,17 +7,25 @@
     <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>sharpsense</ToolCommandName>
+    <PackageOutputPath>./nupkg</PackageOutputPath>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>SharpSense.Cli</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Mitchel Box</Authors>
   </PropertyGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
- 
+
   <ItemGroup>
     <ProjectReference Include="..\SharpSense.Application\SharpSense.Application.csproj" />
     <ProjectReference Include="..\SharpSense.Infrastructure\SharpSense.Infrastructure.csproj" />
   </ItemGroup>
- 
+
   <ItemGroup>
     <PackageReference Include="JetBrains.Annotations" Version="2025.2.4" />
     <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.6" />

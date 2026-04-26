@@ -1,15 +1,7 @@
-using YamlDotNet.Serialization;
-using YamlDotNet.Serialization.NamingConventions;
-
 namespace SharpSense.Infrastructure.Storage;
 
 public sealed class RepositoryWorkspace : IRepositoryWorkspace
 {
-    private static readonly IDeserializer _yamlDeserializer = new DeserializerBuilder()
-        .IgnoreUnmatchedProperties()
-        .WithNamingConvention(CamelCaseNamingConvention.Instance)
-        .Build();
-
     private RepositoryWorkspace(string rootPath, string databasePath)
     {
         RootPath = NormalizeRootPath(rootPath);
@@ -48,35 +40,11 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
             throw new InvalidOperationException($"File path '{filePath}' must be located under repository root '{RootPath}'.") :
             relativePath;
 
-    public string GetRequiredSolutionDirectoryPath(string solutionPath)
+    public string GetRequiredTargetDirectoryPath(string targetPath)
     {
-        var absoluteSolutionPath = ResolveSolutionPath(solutionPath);
-        return Path.GetDirectoryName(absoluteSolutionPath)
-               ?? throw new InvalidOperationException($"Unable to determine the solution directory for '{absoluteSolutionPath}'.");
-    }
-
-    public SharpSenseConfig LoadSharpSenseConfig(string solutionPath)
-    {
-        var solutionDirectoryPath = GetRequiredSolutionDirectoryPath(solutionPath);
-        var configPath = Path.Combine(solutionDirectoryPath, "sharpsense.yaml");
-
-        if (!File.Exists(configPath))
-        {
-            return new SharpSenseConfig();
-        }
-
-        using var configReader = File.OpenText(configPath);
-        var config = _yamlDeserializer.Deserialize<SharpSenseConfig>(configReader) ?? new SharpSenseConfig();
-
-        return new SharpSenseConfig
-        {
-            IncludePaths =
-            [
-                .. config.IncludePaths
-                    .Where(static includePath => !string.IsNullOrWhiteSpace(includePath))
-                    .Select(static includePath => includePath.Trim())
-            ]
-        };
+        var absoluteTargetPath = ResolveTargetPath(targetPath);
+        return Path.GetDirectoryName(absoluteTargetPath)
+               ?? throw new InvalidOperationException($"Unable to determine the target directory for '{absoluteTargetPath}'.");
     }
 
     public bool TryToRepositoryRelativePath(string? filePath, out string relativePath)
@@ -88,9 +56,9 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
             return false;
         }
 
-        var absolutePath = Path.IsPathRooted(filePath)
-            ? Path.GetFullPath(filePath)
-            : Path.GetFullPath(Path.Combine(RootPath, filePath));
+        var absolutePath = NormalizeRootPath(Path.IsPathRooted(filePath)
+            ? filePath
+            : Path.Combine(RootPath, filePath));
 
         if (!IsSameOrSubPath(absolutePath))
         {
@@ -112,9 +80,9 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
             return false;
         }
 
-        var absolutePath = Path.IsPathRooted(filePath)
-            ? Path.GetFullPath(filePath)
-            : Path.GetFullPath(Path.Combine(RootPath, filePath));
+        var absolutePath = NormalizeRootPath(Path.IsPathRooted(filePath)
+            ? filePath
+            : Path.Combine(RootPath, filePath));
         var comparison = OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
@@ -133,30 +101,25 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
         return path.Replace('\\', '/');
     }
 
-    private string ResolveSolutionPath(string solutionPath)
+    private string ResolveTargetPath(string targetPath)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(solutionPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
 
-        var absoluteSolutionPath = Path.IsPathRooted(solutionPath)
-            ? Path.GetFullPath(solutionPath)
-            : Path.GetFullPath(Path.Combine(RootPath, solutionPath));
+        var absoluteTargetPath = Path.IsPathRooted(targetPath)
+            ? Path.GetFullPath(targetPath)
+            : Path.GetFullPath(Path.Combine(RootPath, targetPath));
 
-        if (!IsSameOrSubPath(absoluteSolutionPath))
+        if (!IsSameOrSubPath(absoluteTargetPath))
         {
-            throw new InvalidOperationException($"Solution path '{absoluteSolutionPath}' must be located under repository root '{RootPath}'.");
+            throw new InvalidOperationException($"Target path '{absoluteTargetPath}' must be located under repository root '{RootPath}'.");
         }
 
-        if (!File.Exists(absoluteSolutionPath))
+        if (!File.Exists(absoluteTargetPath))
         {
-            throw new FileNotFoundException($"Solution file '{absoluteSolutionPath}' was not found.", absoluteSolutionPath);
+            throw new FileNotFoundException($"Target file '{absoluteTargetPath}' was not found.", absoluteTargetPath);
         }
 
-        if (!string.Equals(Path.GetExtension(absoluteSolutionPath), ".sln", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException($"Solution path '{absoluteSolutionPath}' must point to a .sln file.");
-        }
-
-        return absoluteSolutionPath;
+        return absoluteTargetPath;
     }
 
     private static string ResolveRootPathFromWorkingDirectory(string workingDirectory)
@@ -180,6 +143,61 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
     private static string NormalizeRootPath(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        return Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+        var fullPath = Path.GetFullPath(path);
+        var resolvedPath = ResolveExistingPath(fullPath);
+        return TrimEndingDirectorySeparatorPreservingRoot(Path.GetFullPath(resolvedPath));
+    }
+
+    private static string ResolveExistingPath(string fullPath)
+    {
+        var root = Path.GetPathRoot(fullPath);
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return fullPath;
+        }
+
+        var resolvedPath = root;
+        var segments = fullPath[root.Length..]
+            .Split(
+                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                StringSplitOptions.RemoveEmptyEntries);
+
+        foreach (var segment in segments)
+        {
+            var candidatePath = Path.Combine(resolvedPath, segment);
+            resolvedPath = TryResolveLinkTarget(candidatePath) ?? candidatePath;
+        }
+
+        return resolvedPath;
+    }
+
+    private static string? TryResolveLinkTarget(string path)
+    {
+        FileSystemInfo? fileSystemInfo = null;
+        if (Directory.Exists(path))
+        {
+            fileSystemInfo = new DirectoryInfo(path);
+        }
+        else if (File.Exists(path))
+        {
+            fileSystemInfo = new FileInfo(path);
+        }
+
+        return fileSystemInfo?.ResolveLinkTarget(returnFinalTarget: true) is { } target
+            ? ResolveExistingPath(target.FullName)
+            : null;
+    }
+
+    private static string TrimEndingDirectorySeparatorPreservingRoot(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var root = Path.GetPathRoot(fullPath);
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        return string.Equals(fullPath, root, comparison)
+            ? fullPath
+            : Path.TrimEndingDirectorySeparator(fullPath);
     }
 }

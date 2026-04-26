@@ -21,24 +21,27 @@ public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
         TSettings settings,
         CancellationToken ct)
     {
+        var previousLogger = Log.Logger;
+        SharpSenseLogging.UseGlobalLogger(settings.IsVerbose, context.Name, enableConsoleLogging: false);
+
         var builder = Host.CreateApplicationBuilder();
         var logFilePath = SharpSenseLogging.GetLogFilePath(context.Name);
         var executionContext = CommandOutput.GetExecutionContext(context);
 
-        builder.Services.AddSerilog((_, cfg) =>
-            SharpSenseLogging.ConfigureLogger(cfg, settings.IsVerbose, logFilePath, false));
-
-        Log.Information(
-            "Building host for command {CommandName} and settings type {SettingsType} with log file {LogFilePath}",
-            context.Name,
-            typeof(TSettings).FullName,
-            logFilePath);
-        Configure(settings, builder.Services);
-        executionContext?.ConfigureServices?.Invoke(builder.Services);
-        Log.Information("Finished configuring services for {SettingsType}", typeof(TSettings).FullName);
-
         try
         {
+            builder.Services.AddSerilog((_, cfg) =>
+                SharpSenseLogging.ConfigureLogger(cfg, settings.IsVerbose, logFilePath, false));
+
+            Log.Information(
+                "Building host for command {CommandName} and settings type {SettingsType} with log file {LogFilePath}",
+                context.Name,
+                typeof(TSettings).FullName,
+                logFilePath);
+            Configure(settings, builder.Services);
+            executionContext?.ConfigureServices?.Invoke(builder.Services);
+            Log.Information("Finished configuring services for {SettingsType}", typeof(TSettings).FullName);
+
             using var host = builder.Build();
             Log.Information("Service provider built successfully for {SettingsType}", typeof(TSettings).FullName);
             await host.StartAsync(ct);
@@ -67,6 +70,11 @@ public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
                 typeof(TSettings).FullName);
 
             return 1;
+        }
+        finally
+        {
+            await Log.CloseAndFlushAsync();
+            Log.Logger = previousLogger;
         }
     }
 }

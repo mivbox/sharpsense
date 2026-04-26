@@ -26,13 +26,20 @@ public sealed class CodeNodeConfiguration : IEntityTypeConfiguration<CodeNode>
         builder.HasKey(codeNode => codeNode.Id);
 
         builder.Property(codeNode => codeNode.Id)
-            .ValueGeneratedNever()
+            .ValueGeneratedOnAdd();
+
+        builder.Property(codeNode => codeNode.CanonicalId)
+            .IsRequired()
             .HasMaxLength(2048);
 
         builder.Property(codeNode => codeNode.ProjectId)
             .HasMaxLength(2048);
 
         builder.Property(codeNode => codeNode.FullyQualifiedName)
+            .IsRequired()
+            .HasMaxLength(2048);
+
+        builder.Property(codeNode => codeNode.DisplayName)
             .IsRequired()
             .HasMaxLength(2048);
 
@@ -58,6 +65,8 @@ public sealed class CodeNodeConfiguration : IEntityTypeConfiguration<CodeNode>
             .HasColumnType("BLOB")
             .HasConversion(VectorEmbeddingConverter, VectorEmbeddingComparer);
 
+        builder.HasIndex(codeNode => codeNode.CanonicalId)
+            .IsUnique();
         builder.HasIndex(codeNode => codeNode.ProjectId);
         builder.HasIndex(codeNode => codeNode.FullyQualifiedName);
         builder.HasIndex(codeNode => codeNode.RelativeFilePath);

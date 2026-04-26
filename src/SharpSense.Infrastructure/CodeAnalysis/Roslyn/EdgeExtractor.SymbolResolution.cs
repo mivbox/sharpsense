@@ -9,7 +9,7 @@ internal sealed partial class EdgeExtractor
         string callerId,
         ISymbol? targetSymbol,
         EdgeType edgeType,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         if (targetSymbol is null)
@@ -17,8 +17,7 @@ internal sealed partial class EdgeExtractor
             return;
         }
 
-        var canonicalTargetSymbol = RoslynSymbolUtilities.Canonicalize(targetSymbol);
-        if (!TryGetNodeId(symbolNodeIds, targetSymbol, canonicalTargetSymbol, out var calleeId))
+        if (!nodeResolver.TryGetNodeId(targetSymbol, out var calleeId))
         {
             return;
         }
@@ -29,29 +28,5 @@ internal sealed partial class EdgeExtractor
         }
 
         edgeKeys.Add((callerId, calleeId, edgeType));
-    }
-
-    private static bool TryGetNodeId(
-        IReadOnlyDictionary<string, string> symbolNodeIds,
-        ISymbol symbol,
-        ISymbol canonicalSymbol,
-        out string calleeId)
-    {
-        var canonicalLookupKey = RoslynSymbolUtilities.GetLookupKey(canonicalSymbol);
-        if (symbolNodeIds.TryGetValue(canonicalLookupKey, out var canonicalNodeId))
-        {
-            calleeId = canonicalNodeId;
-            return true;
-        }
-
-        var symbolLookupKey = RoslynSymbolUtilities.GetLookupKey(symbol);
-        if (symbolNodeIds.TryGetValue(symbolLookupKey, out var symbolNodeId))
-        {
-            calleeId = symbolNodeId;
-            return true;
-        }
-
-        calleeId = string.Empty;
-        return false;
     }
 }

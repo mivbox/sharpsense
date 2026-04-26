@@ -9,6 +9,7 @@ using SharpSense.Application.Features.DependencyGraph;
 using SharpSense.Application.Features.DependencyGraph.Contracts;
 using SharpSense.Application.Features.DependencyGraph.GetDependencyGraph;
 using SharpSense.Application.Shared.Abstractions;
+using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.DependencyGraph;
 using SharpSense.Infrastructure.Persistence;
@@ -19,7 +20,7 @@ namespace SharpSense.Cli.Ui;
 
 internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
 {
-    private static readonly ILogger _logger = Log.ForContext<UiCommand>();
+    private static ILogger Logger => Log.ForContext<UiCommand>();
     private const string _namespace = "SharpSense.UI";
 
     [UsedImplicitly]
@@ -27,11 +28,21 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
     {
         [CommandOption("--url <url>")]
         public string Url { get; set; } = "http://localhost:50069";
+
+        [CommandOption("--repo-root <path>")]
+        public string? RepositoryRoot { get; init; }
     }
 
     protected override void ConfigureServices(Settings settings, IServiceCollection services)
     {
-        services.AddRepositoryWorkspace(Environment.CurrentDirectory);
+        var repositoryRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
+
+        services.Configure<SharpSenseCliOptions>(options =>
+        {
+            options.RepositoryRoot = repositoryRoot;
+        });
+        services.AddRepositoryWorkspace(repositoryRoot);
+        services.AddSharpSenseConfiguration(repositoryRoot);
 
         services.AddDependencyGraph();
         services.AddDependencyGraphInfrastructure();
@@ -40,7 +51,7 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
 
     protected override void ConfigureApp(Settings settings, WebApplication app)
     {
-        _logger.Information(
+        Logger.Information(
             "Configuring UI application for {Url} with embedded asset namespace {EmbeddedNamespace}",
             settings.Url,
             _namespace);
@@ -74,7 +85,7 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
                 var indexFile = fileProvider.GetFileInfo("index.html");
                 if (!indexFile.Exists)
                 {
-                    _logger.Error(
+                    Logger.Error(
                         "Embedded UI asset {AssetName} was not found in namespace {EmbeddedNamespace}",
                         "index.html",
                         _namespace);

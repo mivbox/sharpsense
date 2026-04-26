@@ -29,4 +29,16 @@ public interface ILanguageExtractor
     Task<ExtractedNodes> Extract(
         ExtractionContext context,
         CancellationToken ct);
+
+    /// <summary>
+    /// Extracts only the knowledge-graph delta for the changed workspace files described by the supplied context.
+    /// Implementations are responsible for honoring cancellation, reporting progress when appropriate, and returning
+    /// only the replacement nodes and dependency edges that should be persisted for the current change set.
+    /// </summary>
+    /// <param name="context">The incremental indexing context containing the watched target path and file changes.</param>
+    /// <param name="ct"><see cref="CancellationToken"/> for the current incremental indexing operation.</param>
+    /// <returns>The extracted replacement projects, code nodes, dependency edges, and diagnostics for the change set.</returns>
+    Task<ExtractedNodes> ExtractIncremental(
+        IncrementalExtractionContext context,
+        CancellationToken ct);
 }

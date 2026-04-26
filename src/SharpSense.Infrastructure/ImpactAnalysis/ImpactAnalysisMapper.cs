@@ -12,8 +12,10 @@ public static class ImpactAnalysisMapper
 
         return new ImpactedCodeNode(
             codeNode.Id,
+            codeNode.CanonicalId,
             codeNode.ProjectId,
             codeNode.FullyQualifiedName,
+            codeNode.DisplayName,
             codeNode.NodeType,
             codeNode.RelativeFilePath,
             codeNode.StartLine,

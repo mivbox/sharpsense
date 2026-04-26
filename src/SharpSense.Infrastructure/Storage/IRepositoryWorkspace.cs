@@ -8,9 +8,7 @@ public interface IRepositoryWorkspace
 
     string ToRepositoryRelativePath(string? filePath);
 
-    string GetRequiredSolutionDirectoryPath(string solutionPath);
-
-    SharpSenseConfig LoadSharpSenseConfig(string solutionPath);
+    string GetRequiredTargetDirectoryPath(string targetPath);
 
     bool TryToRepositoryRelativePath(string? filePath, out string relativePath);
 

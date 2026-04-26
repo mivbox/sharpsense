@@ -3,9 +3,11 @@ using SharpSense.Domain.KnowledgeGraph.Enums;
 namespace SharpSense.Application.Features.ImpactAnalysis.Contracts;
 
 public sealed record ImpactedCodeNode(
-    string Id,
+    int Id,
+    string CanonicalId,
     string? ProjectId,
     string FullyQualifiedName,
+    string DisplayName,
     NodeType NodeType,
     string RelativeFilePath,
     int StartLine,

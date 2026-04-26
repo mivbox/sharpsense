@@ -14,6 +14,7 @@ internal sealed class ToonOutputFormatter : IOutputFormatter
             nodes.Select(static node => FormatNode(
                 node.NodeType,
                 node.Id,
+                node.DisplayName,
                 node.RelativeFilePath,
                 node.StartLine,
                 node.EndLine)));
@@ -21,13 +22,16 @@ internal sealed class ToonOutputFormatter : IOutputFormatter
 
     internal static string FormatNode(
         NodeType nodeType,
-        string nodeId,
+        int nodeId,
+        string displayName,
         string relativeFilePath,
         int startLine,
         int endLine)
     {
-        // Added backticks around {nodeId} to create a bulletproof parsing boundary for LLMs
-        return $"[{GetNodeTypeShorthand(nodeType)}] `{nodeId}` @ {relativeFilePath}:{startLine}-{endLine}";
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(relativeFilePath);
+
+        return $"[{GetNodeTypeShorthand(nodeType)}] `{nodeId}` {displayName} @ {relativeFilePath}:{startLine}-{endLine}";
     }
 
     private static string GetNodeTypeShorthand(NodeType nodeType) =>

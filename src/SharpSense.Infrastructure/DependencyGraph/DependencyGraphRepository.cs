@@ -22,22 +22,23 @@ public sealed class DependencyGraphRepository(
             .OrderBy(codeNode => codeNode.FullyQualifiedName)
             .ThenBy(codeNode => codeNode.Id)
             .ToArrayAsync(ct);
-
-        var graphNodeIds = projectNodes
+        var graphNodeIdsQuery = context.ProjectNodes
+            .AsNoTracking()
             .Select(projectNode => projectNode.Id)
-            .Concat(codeNodes.Select(codeNode => codeNode.Id))
-            .ToHashSet(StringComparer.Ordinal);
+            .Concat(
+                context.CodeNodes
+                    .AsNoTracking()
+                    .Select(codeNode => codeNode.CanonicalId));
 
-        var dependencyEdges = (await context.DependencyEdges
-                .AsNoTracking()
-                .ToArrayAsync(ct))
+        var dependencyEdges = await context.DependencyEdges
+            .AsNoTracking()
             .Where(dependencyEdge =>
-                graphNodeIds.Contains(dependencyEdge.CallerId) &&
-                graphNodeIds.Contains(dependencyEdge.CalleeId))
-            .OrderBy(dependencyEdge => dependencyEdge.CallerId, StringComparer.Ordinal)
-            .ThenBy(dependencyEdge => dependencyEdge.CalleeId, StringComparer.Ordinal)
+                graphNodeIdsQuery.Contains(dependencyEdge.CallerId) &&
+                graphNodeIdsQuery.Contains(dependencyEdge.CalleeId))
+            .OrderBy(dependencyEdge => dependencyEdge.CallerId)
+            .ThenBy(dependencyEdge => dependencyEdge.CalleeId)
             .ThenBy(dependencyEdge => dependencyEdge.EdgeType)
-            .ToArray();
+            .ToArrayAsync(ct);
 
         return new GraphResult(
             DependencyGraphMapper.ToGraphNodes(projectNodes, codeNodes),

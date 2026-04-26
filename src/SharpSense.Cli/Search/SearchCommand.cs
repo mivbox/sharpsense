@@ -6,6 +6,7 @@ using SharpSense.Application.Features.HybridSearch.Contracts;
 using SharpSense.Application.Features.HybridSearch.HybridSearch;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
+using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.HybridSearch;
@@ -39,11 +40,14 @@ internal sealed class SearchCommand : AbstractAsyncCommand<SearchCommand.Setting
 
     protected override void Configure(Settings settings, IServiceCollection services)
     {
-        var workspacePath = !string.IsNullOrWhiteSpace(settings.RepositoryRoot)
-            ? settings.RepositoryRoot
-            : Environment.CurrentDirectory;
+        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
 
-        services.AddRepositoryWorkspace(workspacePath);
+        services.Configure<SharpSenseCliOptions>(options =>
+        {
+            options.RepositoryRoot = rawRoot;
+        });
+        services.AddRepositoryWorkspace(rawRoot);
+        services.AddSharpSenseConfiguration(rawRoot);
         services.AddHybridSearch();
         services.AddHybridSearchInfrastructure();
         services.AddEmbeddingsInfrastructure();
@@ -72,8 +76,10 @@ internal sealed class SearchCommand : AbstractAsyncCommand<SearchCommand.Setting
     private static CodeNodeResult[] MapHits(IEnumerable<HybridSearchHit> hits)
         => [.. hits.Select(static hit => new CodeNodeResult(
             hit.Id,
+            hit.CanonicalId,
             hit.ProjectId,
             hit.FullyQualifiedName,
+            hit.DisplayName,
             hit.NodeType,
             hit.RelativeFilePath,
             hit.StartLine,

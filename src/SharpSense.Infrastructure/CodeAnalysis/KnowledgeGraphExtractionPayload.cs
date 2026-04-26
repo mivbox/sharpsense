@@ -4,7 +4,7 @@ using SharpSense.Domain.KnowledgeGraph.Nodes;
 namespace SharpSense.Infrastructure.CodeAnalysis;
 
 public sealed record KnowledgeGraphExtractionPayload(
-    string SolutionPath,
+    string TargetPath,
     IReadOnlyList<ProjectNode> Projects,
     IReadOnlyList<CodeNode> CodeNodes,
     IReadOnlyList<DependencyEdge> Edges,

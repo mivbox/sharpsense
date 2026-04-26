@@ -50,6 +50,30 @@ public sealed class DependencyGraphRepositoryTests
             });
     }
 
+    [Fact]
+    public async Task WhenGetGraphContainsDanglingEdges_ThenItFiltersThemOut()
+    {
+        await using var inMemoryFactory = new InMemoryContextFactory();
+        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(ct: TestContext.Current.CancellationToken);
+
+        await SeedGraph(context);
+        context.DependencyEdges.Add(
+            new DependencyEdge
+            {
+                CallerId = "node-user-service",
+                CalleeId = "missing-node",
+                EdgeType = EdgeType.MethodCall
+            });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var service = new DependencyGraphRepository(context);
+
+        var result = await service.GetGraph(CancellationToken.None);
+
+        Assert.DoesNotContain(result.Edges, static edge => edge.Target == "missing-node");
+        Assert.Equal(2, result.Edges.Length);
+    }
+
     private static async Task SeedGraph(SharpSenseDbContext db)
     {
         db.ProjectNodes.AddRange(
@@ -71,18 +95,22 @@ public sealed class DependencyGraphRepositoryTests
         db.CodeNodes.AddRange(
             new CodeNode
             {
-                Id = "node-user",
+                Id = 1,
+                CanonicalId = "node-user",
                 ProjectId = "project:MyCompany.Core/MyCompany.Core.csproj",
                 FullyQualifiedName = "MyCompany.Core.User",
+                DisplayName = "User",
                 NodeType = NodeType.Class,
                 RelativeFilePath = "MyCompany.Core/User.cs",
                 Summary = "User model."
             },
             new CodeNode
             {
-                Id = "node-user-service",
+                Id = 2,
+                CanonicalId = "node-user-service",
                 ProjectId = "project:MyCompany.App/MyCompany.App.csproj",
                 FullyQualifiedName = "MyCompany.App.UserService.LoadUser()",
+                DisplayName = "UserService.LoadUser()",
                 NodeType = NodeType.Method,
                 RelativeFilePath = "MyCompany.App/UserService.cs",
                 Summary = "Loads users."

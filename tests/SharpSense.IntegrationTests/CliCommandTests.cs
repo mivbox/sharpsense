@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -23,7 +24,7 @@ public sealed class CliCommandTests
         var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
 
         var exitCode = await app.RunAsync(
-            ["trace", CliCommandTestDatabase.SeedNodeId, "--direction", "caller"],
+            ["trace", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "caller"],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -34,8 +35,10 @@ public sealed class CliCommandTests
         nodes.GetArrayLength().Should().Be(1);
 
         var node = nodes[0];
-        node.GetProperty("id").GetString().Should().Be(CliCommandTestDatabase.CallerNodeId);
+        node.GetProperty("id").GetInt32().Should().Be(CliCommandTestDatabase.CallerNodeId);
+        node.GetProperty("canonicalId").GetString().Should().Be(CliCommandTestDatabase.CallerCanonicalId);
         node.GetProperty("fullyQualifiedName").GetString().Should().Be("Fixture.App.HttpEndpoint.Handle()");
+        node.GetProperty("displayName").GetString().Should().Be("HttpEndpoint.Handle()");
         node.GetProperty("startLine").GetInt32().Should().Be(5);
         node.GetProperty("endLine").GetInt32().Should().Be(12);
     }
@@ -48,11 +51,26 @@ public sealed class CliCommandTests
         var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
 
         var exitCode = await app.RunAsync(
-            ["trace", CliCommandTestDatabase.SeedNodeId, "--direction", "callee", "--toon"],
+            ["trace", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "callee", "--toon"],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        console.Output.Should().Be($"[M] `{CliCommandTestDatabase.CalleeNodeId}` @ src/Fixture.App/MessageProvider.cs:7-11");
+        console.Output.Should().Be($"[M] `{CliCommandTestDatabase.CalleeNodeId}` MessageProvider.GetMessage() @ src/Fixture.App/MessageProvider.cs:7-11");
+    }
+
+    [Fact]
+    public async Task WhenTraceRunsWithoutDirection_ThenItUsesCalleeTraversalByDefault()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
+
+        var exitCode = await app.RunAsync(
+            ["trace", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--toon"],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Be($"[M] `{CliCommandTestDatabase.CalleeNodeId}` MessageProvider.GetMessage() @ src/Fixture.App/MessageProvider.cs:7-11");
     }
 
     [Fact]
@@ -67,7 +85,7 @@ public sealed class CliCommandTests
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        console.Output.Should().Be($"[M] `{CliCommandTestDatabase.CalleeNodeId}` @ src/Fixture.App/MessageProvider.cs:7-11");
+        console.Output.Should().Be($"[M] `{CliCommandTestDatabase.CalleeNodeId}` MessageProvider.GetMessage() @ src/Fixture.App/MessageProvider.cs:7-11");
     }
 
     [Fact]
@@ -82,7 +100,7 @@ public sealed class CliCommandTests
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        console.Output.Should().Be($"[D] `{CliCommandTestDatabase.DocumentNodeId}` @ docs/Guide.md:1-3");
+        console.Output.Should().Be($"[D] `{CliCommandTestDatabase.DocumentNodeId}` Guide#getting-started @ docs/Guide.md:1-3");
     }
 
     [Fact]
@@ -93,22 +111,28 @@ public sealed class CliCommandTests
         var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
 
         var exitCode = await app.RunAsync(
-            ["trace", CliCommandTestDatabase.DocumentRootNodeId, "--direction", "callee", "--toon"],
+            ["trace", CliCommandTestDatabase.DocumentRootNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "callee", "--toon"],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        console.Output.Should().Be($"[D] `{CliCommandTestDatabase.LinkedDocumentRootNodeId}` @ docs/Reference.md:1-1");
+        console.Output.Should().Be($"[D] `{CliCommandTestDatabase.LinkedDocumentRootNodeId}` Reference @ docs/Reference.md:1-1");
     }
 
     private sealed class CliCommandTestDatabase(InMemoryContextFactory contextFactory) : IAsyncDisposable
     {
         public const string ProjectId = "project-app";
-        public const string SeedNodeId = "code:project-app:Fixture.App.MessageConsumer.Render()";
-        public const string CallerNodeId = "code:project-app:Fixture.App.HttpEndpoint.Handle()";
-        public const string CalleeNodeId = "code:project-app:Fixture.App.MessageProvider.GetMessage()";
-        public const string DocumentRootNodeId = "code:doc:docs/DocA.md#document-root";
-        public const string LinkedDocumentRootNodeId = "code:doc:docs/Reference.md#document-root";
-        public const string DocumentNodeId = "code:doc:docs/Guide.md#getting-started";
+        public const int SeedNodeId = 1;
+        public const int CallerNodeId = 2;
+        public const int CalleeNodeId = 3;
+        public const int DocumentRootNodeId = 4;
+        public const int LinkedDocumentRootNodeId = 5;
+        public const int DocumentNodeId = 6;
+        public const string SeedCanonicalId = "code:project-app:Fixture.App.MessageConsumer.Render()";
+        public const string CallerCanonicalId = "code:project-app:Fixture.App.HttpEndpoint.Handle()";
+        public const string CalleeCanonicalId = "code:project-app:Fixture.App.MessageProvider.GetMessage()";
+        public const string DocumentRootCanonicalId = "code:doc:docs/DocA.md#document-root";
+        public const string LinkedDocumentRootCanonicalId = "code:doc:docs/Reference.md#document-root";
+        public const string DocumentNodeCanonicalId = "code:doc:docs/Guide.md#getting-started";
 
         public static async Task<CliCommandTestDatabase> Create()
         {
@@ -140,8 +164,10 @@ public sealed class CliCommandTests
                 new CodeNode
                 {
                     Id = SeedNodeId,
+                    CanonicalId = SeedCanonicalId,
                     ProjectId = ProjectId,
                     FullyQualifiedName = "Fixture.App.MessageConsumer.Render()",
+                    DisplayName = "MessageConsumer.Render()",
                     NodeType = NodeType.Method,
                     RelativeFilePath = "src/Fixture.App/MessageConsumer.cs",
                     StartLine = 20,
@@ -151,8 +177,10 @@ public sealed class CliCommandTests
                 new CodeNode
                 {
                     Id = CallerNodeId,
+                    CanonicalId = CallerCanonicalId,
                     ProjectId = ProjectId,
                     FullyQualifiedName = "Fixture.App.HttpEndpoint.Handle()",
+                    DisplayName = "HttpEndpoint.Handle()",
                     NodeType = NodeType.Method,
                     RelativeFilePath = "src/Fixture.App/HttpEndpoint.cs",
                     StartLine = 5,
@@ -162,8 +190,10 @@ public sealed class CliCommandTests
                 new CodeNode
                 {
                     Id = CalleeNodeId,
+                    CanonicalId = CalleeCanonicalId,
                     ProjectId = ProjectId,
                     FullyQualifiedName = "Fixture.App.MessageProvider.GetMessage()",
+                    DisplayName = "MessageProvider.GetMessage()",
                     NodeType = NodeType.Method,
                     RelativeFilePath = "src/Fixture.App/MessageProvider.cs",
                     StartLine = 7,
@@ -173,8 +203,10 @@ public sealed class CliCommandTests
                 new CodeNode
                 {
                     Id = DocumentRootNodeId,
+                    CanonicalId = DocumentRootCanonicalId,
                     ProjectId = null,
                     FullyQualifiedName = "docs/DocA.md#document-root",
+                    DisplayName = "DocA",
                     NodeType = NodeType.Document,
                     RelativeFilePath = "docs/DocA.md",
                     StartLine = 1,
@@ -184,8 +216,10 @@ public sealed class CliCommandTests
                 new CodeNode
                 {
                     Id = LinkedDocumentRootNodeId,
+                    CanonicalId = LinkedDocumentRootCanonicalId,
                     ProjectId = null,
                     FullyQualifiedName = "docs/Reference.md#document-root",
+                    DisplayName = "Reference",
                     NodeType = NodeType.Document,
                     RelativeFilePath = "docs/Reference.md",
                     StartLine = 1,
@@ -195,8 +229,10 @@ public sealed class CliCommandTests
                 new CodeNode
                 {
                     Id = DocumentNodeId,
+                    CanonicalId = DocumentNodeCanonicalId,
                     ProjectId = null,
                     FullyQualifiedName = "docs/Guide.md#getting-started",
+                    DisplayName = "Guide#getting-started",
                     NodeType = NodeType.Document,
                     RelativeFilePath = "docs/Guide.md",
                     StartLine = 1,
@@ -207,20 +243,20 @@ public sealed class CliCommandTests
             dbContext.DependencyEdges.AddRange(
                 new DependencyEdge
                 {
-                    CallerId = CallerNodeId,
-                    CalleeId = SeedNodeId,
+                    CallerId = CallerCanonicalId,
+                    CalleeId = SeedCanonicalId,
                     EdgeType = EdgeType.MethodCall
                 },
                 new DependencyEdge
                 {
-                    CallerId = SeedNodeId,
-                    CalleeId = CalleeNodeId,
+                    CallerId = SeedCanonicalId,
+                    CalleeId = CalleeCanonicalId,
                     EdgeType = EdgeType.MethodCall
                 },
                 new DependencyEdge
                 {
-                    CallerId = DocumentRootNodeId,
-                    CalleeId = LinkedDocumentRootNodeId,
+                    CallerId = DocumentRootCanonicalId,
+                    CalleeId = LinkedDocumentRootCanonicalId,
                     EdgeType = EdgeType.DocumentLink
                 });
 
@@ -228,8 +264,8 @@ public sealed class CliCommandTests
             await dbContext.Database.ExecuteSqlRawAsync(
                 """
                 DELETE FROM CodeNodeSearch;
-                INSERT INTO CodeNodeSearch (Id, FullyQualifiedName, Summary, RelativeFilePath)
-                SELECT Id, FullyQualifiedName, Summary, RelativeFilePath
+                INSERT INTO CodeNodeSearch (Id, CanonicalId, DisplayName, FullyQualifiedName, Summary, RelativeFilePath)
+                SELECT Id, CanonicalId, DisplayName, FullyQualifiedName, Summary, RelativeFilePath
                 FROM CodeNodes;
                 """,
                 TestContext.Current.CancellationToken);

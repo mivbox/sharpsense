@@ -8,18 +8,18 @@ internal sealed partial class EdgeExtractor
 {
     private static void AddMemberDependencyEdges(
         IReadOnlyList<DeclaredSymbolContext> declaredSymbols,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         foreach (var declaredSymbol in declaredSymbols)
         {
-            AddMemberDependencyEdges(declaredSymbol, symbolNodeIds, edgeKeys);
+            AddMemberDependencyEdges(declaredSymbol, nodeResolver, edgeKeys);
         }
     }
 
     private static void AddMemberDependencyEdges(
         DeclaredSymbolContext declaredSymbol,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         if (declaredSymbol.Symbol is not (IMethodSymbol or IPropertySymbol or IFieldSymbol))
@@ -29,7 +29,7 @@ internal sealed partial class EdgeExtractor
 
         if (declaredSymbol.Symbol is IMethodSymbol methodSymbol)
         {
-            AddFactoryInstantiationEdges(declaredSymbol.NodeId, methodSymbol, symbolNodeIds, edgeKeys);
+            AddFactoryInstantiationEdges(declaredSymbol.NodeId, methodSymbol, nodeResolver, edgeKeys);
         }
 
         foreach (var node in declaredSymbol.DeclarationSyntax.DescendantNodes())
@@ -41,7 +41,7 @@ internal sealed partial class EdgeExtractor
                         declaredSymbol.NodeId,
                         declaredSymbol.SemanticModel,
                         invocation,
-                        symbolNodeIds,
+                        nodeResolver,
                         edgeKeys);
                     break;
                 case ObjectCreationExpressionSyntax objectCreation:
@@ -49,7 +49,7 @@ internal sealed partial class EdgeExtractor
                         declaredSymbol.NodeId,
                         declaredSymbol.SemanticModel,
                         objectCreation,
-                        symbolNodeIds,
+                        nodeResolver,
                         edgeKeys);
                     break;
                 case ImplicitObjectCreationExpressionSyntax implicitCreation:
@@ -57,7 +57,7 @@ internal sealed partial class EdgeExtractor
                         declaredSymbol.NodeId,
                         declaredSymbol.SemanticModel,
                         implicitCreation,
-                        symbolNodeIds,
+                        nodeResolver,
                         edgeKeys);
                     break;
                 case IdentifierNameSyntax identifier:
@@ -65,7 +65,7 @@ internal sealed partial class EdgeExtractor
                         declaredSymbol.NodeId,
                         declaredSymbol.SemanticModel,
                         identifier,
-                        symbolNodeIds,
+                        nodeResolver,
                         edgeKeys);
                     break;
             }
@@ -76,21 +76,21 @@ internal sealed partial class EdgeExtractor
         string callerId,
         SemanticModel semanticModel,
         InvocationExpressionSyntax invocation,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         var referencedSymbol = RoslynSymbolUtilities.ResolveReferencedSymbol(
             semanticModel.GetSymbolInfo(invocation));
-        TryAddEdge(callerId, referencedSymbol, EdgeType.MethodCall, symbolNodeIds, edgeKeys);
+        TryAddEdge(callerId, referencedSymbol, EdgeType.MethodCall, nodeResolver, edgeKeys);
         var referencedMethodSymbol = referencedSymbol as IMethodSymbol;
 
         switch (GetServiceReceiverKind(semanticModel, invocation))
         {
             case ServiceReceiverKind.ServiceCollection:
-                AddServiceRegistrationEdges(callerId, semanticModel, invocation, referencedMethodSymbol, symbolNodeIds, edgeKeys);
+                AddServiceRegistrationEdges(callerId, semanticModel, invocation, referencedMethodSymbol, nodeResolver, edgeKeys);
                 break;
             case ServiceReceiverKind.ServiceProvider:
-                AddServiceLocatorEdges(callerId, semanticModel, invocation, referencedMethodSymbol, symbolNodeIds, edgeKeys);
+                AddServiceLocatorEdges(callerId, semanticModel, invocation, referencedMethodSymbol, nodeResolver, edgeKeys);
                 break;
         }
     }
@@ -99,14 +99,14 @@ internal sealed partial class EdgeExtractor
         string callerId,
         SemanticModel semanticModel,
         ObjectCreationExpressionSyntax objectCreation,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         TryAddEdge(
             callerId,
             semanticModel.GetTypeInfo(objectCreation).Type,
             EdgeType.Instantiates,
-            symbolNodeIds,
+            nodeResolver,
             edgeKeys);
     }
 
@@ -114,14 +114,14 @@ internal sealed partial class EdgeExtractor
         string callerId,
         SemanticModel semanticModel,
         ImplicitObjectCreationExpressionSyntax implicitCreation,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         TryAddEdge(
             callerId,
             semanticModel.GetTypeInfo(implicitCreation).Type,
             EdgeType.Instantiates,
-            symbolNodeIds,
+            nodeResolver,
             edgeKeys);
     }
 
@@ -129,7 +129,7 @@ internal sealed partial class EdgeExtractor
         string callerId,
         SemanticModel semanticModel,
         IdentifierNameSyntax identifier,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         var referencedSymbol = RoslynSymbolUtilities.ResolveReferencedSymbol(
@@ -139,13 +139,13 @@ internal sealed partial class EdgeExtractor
             return;
         }
 
-        TryAddEdge(callerId, referencedSymbol, EdgeType.FieldAccess, symbolNodeIds, edgeKeys);
+        TryAddEdge(callerId, referencedSymbol, EdgeType.FieldAccess, nodeResolver, edgeKeys);
     }
 
     private static void AddFactoryInstantiationEdges(
         string callerId,
         IMethodSymbol methodSymbol,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         if (!IsStaticPartialFactoryMethod(methodSymbol))
@@ -159,6 +159,6 @@ internal sealed partial class EdgeExtractor
             return;
         }
 
-        TryAddEdge(callerId, instantiatedType, EdgeType.Instantiates, symbolNodeIds, edgeKeys);
+        TryAddEdge(callerId, instantiatedType, EdgeType.Instantiates, nodeResolver, edgeKeys);
     }
 }

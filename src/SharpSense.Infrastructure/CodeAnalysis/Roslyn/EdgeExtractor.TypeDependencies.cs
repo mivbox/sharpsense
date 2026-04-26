@@ -7,7 +7,7 @@ internal sealed partial class EdgeExtractor
 {
     private static void AddTypeDependencyEdges(
         IReadOnlyList<DeclaredSymbolContext> declaredSymbols,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         var processedTypeIds = new HashSet<string>(StringComparer.Ordinal);
@@ -24,34 +24,34 @@ internal sealed partial class EdgeExtractor
                 continue;
             }
 
-            AddTypeDependencyEdges(declaredSymbol.NodeId, namedTypeSymbol, symbolNodeIds, edgeKeys);
+            AddTypeDependencyEdges(declaredSymbol.NodeId, namedTypeSymbol, nodeResolver, edgeKeys);
         }
     }
 
     private static void AddTypeDependencyEdges(
         string callerId,
         INamedTypeSymbol typeSymbol,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         foreach (var interfaceSymbol in typeSymbol.Interfaces)
         {
-            TryAddEdge(callerId, interfaceSymbol, EdgeType.Implements, symbolNodeIds, edgeKeys);
+            TryAddEdge(callerId, interfaceSymbol, EdgeType.Implements, nodeResolver, edgeKeys);
         }
 
         if (typeSymbol.BaseType is { SpecialType: not SpecialType.System_Object } baseType)
         {
-            TryAddEdge(callerId, baseType, EdgeType.Implements, symbolNodeIds, edgeKeys);
+            TryAddEdge(callerId, baseType, EdgeType.Implements, nodeResolver, edgeKeys);
         }
 
-        AddConstructorDependencyEdges(callerId, typeSymbol, symbolNodeIds, edgeKeys);
-        AddImplementedMemberEdges(typeSymbol, symbolNodeIds, edgeKeys);
+        AddConstructorDependencyEdges(callerId, typeSymbol, nodeResolver, edgeKeys);
+        AddImplementedMemberEdges(typeSymbol, nodeResolver, edgeKeys);
     }
 
     private static void AddConstructorDependencyEdges(
         string callerId,
         INamedTypeSymbol typeSymbol,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         var dependencyTypes = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
@@ -79,7 +79,7 @@ internal sealed partial class EdgeExtractor
                     callerId,
                     dependencyType,
                     GetDependencyResolutionEdgeType(dependencyType),
-                    symbolNodeIds,
+                    nodeResolver,
                     edgeKeys);
             }
         }
@@ -87,7 +87,7 @@ internal sealed partial class EdgeExtractor
 
     private static void AddImplementedMemberEdges(
         INamedTypeSymbol typeSymbol,
-        IReadOnlyDictionary<string, string> symbolNodeIds,
+        SymbolNodeResolver nodeResolver,
         ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
     {
         foreach (var interfaceSymbol in typeSymbol.AllInterfaces)
@@ -102,13 +102,12 @@ internal sealed partial class EdgeExtractor
 
                 foreach (var implementation in FindImplementationMembers(typeSymbol, interfaceMember))
                 {
-                    var canonicalImplementation = RoslynSymbolUtilities.Canonicalize(implementation);
-                    if (!TryGetNodeId(symbolNodeIds, implementation, canonicalImplementation, out var implementationNodeId))
+                    if (!nodeResolver.TryGetNodeId(implementation, out var implementationNodeId))
                     {
                         continue;
                     }
 
-                    TryAddEdge(implementationNodeId, interfaceMember, EdgeType.Implements, symbolNodeIds, edgeKeys);
+                    TryAddEdge(implementationNodeId, interfaceMember, EdgeType.Implements, nodeResolver, edgeKeys);
                 }
             }
         }

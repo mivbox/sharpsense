@@ -6,6 +6,7 @@ using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
+using SharpSense.Application.Shared.Options;
 using SharpSense.Application.Features.HybridSearch;
 using SharpSense.Application.Features.ImpactAnalysis;
 using SharpSense.Application.Features.Trace;
@@ -23,7 +24,7 @@ namespace SharpSense.Cli.Mcp;
 [UsedImplicitly]
 internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
 {
-    private static readonly ILogger _logger = Log.ForContext<McpCommand>();
+    private static ILogger Logger => Log.ForContext<McpCommand>();
     private static readonly JsonSerializerOptions _toolSerializerOptions = CreateToolSerializerOptions();
 
     [UsedImplicitly]
@@ -36,14 +37,17 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
 
     protected override void Configure(Settings settings, IServiceCollection services)
     {
-        _logger.Debug("Configuring MCP command with repository root: {RepositoryRoot}",
+        Logger.Debug("Configuring MCP command with repository root: {RepositoryRoot}",
             settings.RepositoryRoot);
 
-        var workspacePath = !string.IsNullOrWhiteSpace(settings.RepositoryRoot)
-            ? settings.RepositoryRoot
-            : Environment.CurrentDirectory;
+        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
 
-        services.AddRepositoryWorkspace(workspacePath);
+        services.Configure<SharpSenseCliOptions>(options =>
+        {
+            options.RepositoryRoot = rawRoot;
+        });
+        services.AddRepositoryWorkspace(rawRoot);
+        services.AddSharpSenseConfiguration(rawRoot);
         services.AddHybridSearch();
         services.AddHybridSearchInfrastructure();
         services.AddEmbeddingsInfrastructure();

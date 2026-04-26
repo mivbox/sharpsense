@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
@@ -12,8 +13,10 @@ public static class CodeNodeNavigationQueries
             static codeNode => new CodeNode
             {
                 Id = codeNode.Id,
+                CanonicalId = codeNode.CanonicalId,
                 ProjectId = codeNode.ProjectId,
                 FullyQualifiedName = codeNode.FullyQualifiedName,
+                DisplayName = codeNode.DisplayName,
                 NodeType = codeNode.NodeType,
                 RelativeFilePath = codeNode.RelativeFilePath,
                 StartLine = codeNode.StartLine,
@@ -25,8 +28,10 @@ public static class CodeNodeNavigationQueries
         => query.Select(
             static codeNode => new CodeNodeResult(
                 codeNode.Id,
+                codeNode.CanonicalId,
                 codeNode.ProjectId,
                 codeNode.FullyQualifiedName,
+                codeNode.DisplayName,
                 codeNode.NodeType,
                 codeNode.RelativeFilePath,
                 codeNode.StartLine,
@@ -41,10 +46,24 @@ public static class CodeNodeNavigationQueries
         ArgumentNullException.ThrowIfNull(context);
         ArgumentException.ThrowIfNullOrWhiteSpace(nodeIdentifier);
 
+        if (int.TryParse(nodeIdentifier, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedId))
+        {
+            var rootNodeById = await ProjectCodeNodes(
+                    context.CodeNodes
+                        .AsNoTracking()
+                        .Where(codeNode => codeNode.Id == parsedId))
+                .FirstOrDefaultAsync(ct);
+
+            if (rootNodeById is not null)
+            {
+                return rootNodeById;
+            }
+        }
+
         var rootNode = await ProjectCodeNodes(
                 context.CodeNodes
                     .AsNoTracking()
-                    .Where(codeNode => codeNode.Id == nodeIdentifier || codeNode.FullyQualifiedName == nodeIdentifier)
+                    .Where(codeNode => codeNode.CanonicalId == nodeIdentifier || codeNode.FullyQualifiedName == nodeIdentifier)
                     .OrderBy(static codeNode => codeNode.Id))
             .FirstOrDefaultAsync(ct);
 
@@ -53,11 +72,10 @@ public static class CodeNodeNavigationQueries
             return rootNode;
         }
 
-        var normalizedIdentifier = nodeIdentifier.ToLowerInvariant();
         return await ProjectCodeNodes(
                 context.CodeNodes
                     .AsNoTracking()
-                    .Where(codeNode => codeNode.FullyQualifiedName.ToLower() == normalizedIdentifier)
+                    .Where(codeNode => EF.Functions.Collate(codeNode.FullyQualifiedName, "NOCASE") == nodeIdentifier)
                     .OrderBy(static codeNode => codeNode.Id))
             .FirstOrDefaultAsync(ct);
     }

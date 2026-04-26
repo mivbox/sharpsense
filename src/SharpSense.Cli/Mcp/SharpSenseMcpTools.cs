@@ -44,6 +44,7 @@ internal sealed class SharpSenseMcpTools
                 result.Hits.Select(static hit => ToonOutputFormatter.FormatNode(
                     hit.NodeType,
                     hit.Id,
+                    hit.DisplayName,
                     hit.RelativeFilePath,
                     hit.StartLine,
                     hit.EndLine)));
@@ -60,7 +61,7 @@ internal sealed class SharpSenseMcpTools
         IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult> impactHandler,
         IQueryHandler<TraceQuery, CodeNodeResult[]> traceHandler,
         [Description("The exact Node ID to trace.")] string nodeId,
-        [Description("Direction of the trace: 'caller' (upstream) or 'callee' (downstream).")] TraceDirection direction = TraceDirection.Caller,
+        [Description("Direction of the trace: 'caller' (upstream) or 'callee' (downstream).")] TraceDirection direction = TraceDirection.Callee,
         CancellationToken ct = default)
     {
         using var activity = SharpSenseTraceSpan.Start("mcp.tool.trace_node");
@@ -112,8 +113,10 @@ internal sealed class SharpSenseMcpTools
     private static CodeNodeResult[] MapImpactedNodes(IEnumerable<ImpactedCodeNode> impactedNodes)
         => [.. impactedNodes.Select(static node => new CodeNodeResult(
             node.Id,
+            node.CanonicalId,
             node.ProjectId,
             node.FullyQualifiedName,
+            node.DisplayName,
             node.NodeType,
             node.RelativeFilePath,
             node.StartLine,

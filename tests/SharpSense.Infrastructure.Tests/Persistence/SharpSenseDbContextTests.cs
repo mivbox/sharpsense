@@ -24,9 +24,11 @@ public sealed class SharpSenseDbContextTests
 
         context.CodeNodes.Add(new CodeNode
         {
-            Id = "code-node-1",
+            Id = 1,
+            CanonicalId = "code-node-1",
             ProjectId = "project-1",
             FullyQualifiedName = "SharpSense.Domain.KnowledgeGraph.CodeNode",
+            DisplayName = "CodeNode",
             NodeType = NodeType.Class,
             RelativeFilePath = "src/SharpSense.Domain/KnowledgeGraph/Nodes/CodeNode.cs",
             StartLine = 7,
@@ -42,7 +44,7 @@ public sealed class SharpSenseDbContextTests
             project => project.Id == "project-1",
             cancellationToken: TestContext.Current.CancellationToken);
         var persistedNode = await context.CodeNodes.SingleAsync(
-            codeNode => codeNode.Id == "code-node-1",
+            codeNode => codeNode.CanonicalId == "code-node-1",
             cancellationToken: TestContext.Current.CancellationToken);
         var vectorEmbeddingProperty = context.Model
             .FindEntityType(typeof(CodeNode))!
@@ -123,9 +125,11 @@ public sealed class SharpSenseDbContextTests
 
         context.CodeNodes.Add(new CodeNode
         {
-            Id = "code:doc:docs/Guide.md#getting-started",
+            Id = 1,
+            CanonicalId = "code:doc:docs/Guide.md#getting-started",
             ProjectId = null,
             FullyQualifiedName = "docs/Guide.md#getting-started",
+            DisplayName = "Guide#getting-started",
             NodeType = NodeType.Document,
             RelativeFilePath = "docs/Guide.md",
             StartLine = 1,
@@ -137,7 +141,7 @@ public sealed class SharpSenseDbContextTests
         context.ChangeTracker.Clear();
 
         var persistedNode = await context.CodeNodes.SingleAsync(
-            codeNode => codeNode.Id == "code:doc:docs/Guide.md#getting-started",
+            codeNode => codeNode.CanonicalId == "code:doc:docs/Guide.md#getting-started",
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Null(persistedNode.ProjectId);

@@ -7,6 +7,7 @@ using SharpSense.Application.Features.ImpactAnalysis.ImpactAnalysis;
 using SharpSense.Application.Features.Trace;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
+using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.ImpactAnalysis;
 using SharpSense.Infrastructure.Persistence;
@@ -47,11 +48,14 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
         Settings settings,
         IServiceCollection services)
     {
-        var workspacePath = !string.IsNullOrWhiteSpace(settings.RepositoryRoot)
-            ? settings.RepositoryRoot
-            : Environment.CurrentDirectory;
+        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
 
-        services.AddRepositoryWorkspace(workspacePath);
+        services.Configure<SharpSenseCliOptions>(options =>
+        {
+            options.RepositoryRoot = rawRoot;
+        });
+        services.AddRepositoryWorkspace(rawRoot);
+        services.AddSharpSenseConfiguration(rawRoot);
         services.AddImpactAnalysis();
         services.AddImpactAnalysisInfrastructure();
         services.AddTrace();
@@ -106,8 +110,10 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
     private static CodeNodeResult[] MapImpactedNodes(IEnumerable<ImpactedCodeNode> impactedNodes)
         => [.. impactedNodes.Select(static node => new CodeNodeResult(
             node.Id,
+            node.CanonicalId,
             node.ProjectId,
             node.FullyQualifiedName,
+            node.DisplayName,
             node.NodeType,
             node.RelativeFilePath,
             node.StartLine,

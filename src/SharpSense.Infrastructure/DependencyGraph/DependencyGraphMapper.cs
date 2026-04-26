@@ -44,7 +44,7 @@ internal static partial class DependencyGraphMapper
     private static GraphNode ToGraphNodes(CodeNode codeNode)
     {
         ArgumentNullException.ThrowIfNull(codeNode);
-        return new GraphNode(codeNode.Id, codeNode.FullyQualifiedName, codeNode.NodeType.ToString().ToLowerInvariant());
+        return new GraphNode(codeNode.CanonicalId, codeNode.FullyQualifiedName, codeNode.NodeType.ToString().ToLowerInvariant());
     }
 
     private static GraphEdge ToGraphEdges(DependencyEdge dependencyEdge)

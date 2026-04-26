@@ -32,8 +32,8 @@ public sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCont
             : 1;
         var impactedNodeIds = new HashSet<string>(StringComparer.Ordinal);
         var impactedEdges = new HashSet<(string CallerId, string CalleeId, Domain.KnowledgeGraph.Enums.EdgeType EdgeType)>();
-        var visitedNodeIds = new HashSet<string>(StringComparer.Ordinal) { rootNode.Id };
-        var frontierNodeIds = new[] { rootNode.Id };
+        var visitedNodeIds = new HashSet<string>(StringComparer.Ordinal) { rootNode.CanonicalId };
+        var frontierNodeIds = new[] { rootNode.CanonicalId };
 
         for (var depth = 0; depth < maxTraversalDepth && frontierNodeIds.Length > 0; depth++)
         {
@@ -70,7 +70,7 @@ public sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCont
             ? []
             : await context.CodeNodes
                 .AsNoTracking()
-                .Where(codeNode => impactedNodeIds.Contains(codeNode.Id))
+                .Where(codeNode => impactedNodeIds.Contains(codeNode.CanonicalId))
                 .OrderBy(codeNode => codeNode.FullyQualifiedName)
                 .ThenBy(codeNode => codeNode.Id)
                 .ToArrayAsync(ct)

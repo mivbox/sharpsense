@@ -4,11 +4,15 @@ namespace SharpSense.Domain.KnowledgeGraph.Nodes;
 
 public class CodeNode
 {
-    public string Id { get; set; } = string.Empty;
+    public int Id { get; set; }
+
+    public string CanonicalId { get; set; } = string.Empty;
 
     public string? ProjectId { get; set; }
 
     public string FullyQualifiedName { get; set; } = string.Empty;
+
+    public string DisplayName { get; set; } = string.Empty;
 
     public NodeType NodeType { get; set; } = NodeType.Class;
 

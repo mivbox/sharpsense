@@ -13,7 +13,7 @@ namespace SharpSense.Cli.Shared;
 public abstract class AbstractWebAsyncCommand<TSettings> : AsyncCommand<TSettings>
     where TSettings : GlobalSettings
 {
-    private static readonly ILogger _logger = Log.ForContext<AbstractWebAsyncCommand<TSettings>>();
+    private static ILogger Logger => Log.ForContext<AbstractWebAsyncCommand<TSettings>>();
 
     protected abstract void ConfigureServices(TSettings settings, IServiceCollection services);
 
@@ -24,44 +24,60 @@ public abstract class AbstractWebAsyncCommand<TSettings> : AsyncCommand<TSetting
         TSettings settings,
         CancellationToken ct)
     {
+        var previousLogger = Log.Logger;
+        SharpSenseLogging.UseGlobalLogger(settings.IsVerbose, context.Name, enableConsoleLogging: true);
+
         var builder = WebApplication.CreateBuilder();
         var logFilePath = SharpSenseLogging.GetLogFilePath(context.Name);
-
-        builder.Host.UseSerilog((_, cfg) =>
-            SharpSenseLogging.ConfigureLogger(cfg, settings.IsVerbose, logFilePath, true));
-
-        _logger.Information(
-            "Building web host for command {CommandName} and settings type {SettingsType} with log file {LogFilePath}",
-            context.Name,
-            typeof(TSettings).FullName,
-            logFilePath);
-        ConfigureServices(settings, builder.Services);
-        _logger.Information("Finished configuring web services for {SettingsType}", typeof(TSettings).FullName);
-
-        await using var app = builder.Build();
-        _logger.Information("Web service provider built successfully for {SettingsType}", typeof(TSettings).FullName);
-
-        app.UseSerilogRequestLogging();
-
-        ConfigureApp(settings, app);
+        var executionContext = CommandOutput.GetExecutionContext(context);
+        WebApplication? app = null;
 
         try
         {
+            builder.Host.UseSerilog((_, cfg) =>
+                SharpSenseLogging.ConfigureLogger(cfg, settings.IsVerbose, logFilePath, true));
+
+            Logger.Information(
+                "Building web host for command {CommandName} and settings type {SettingsType} with log file {LogFilePath}",
+                context.Name,
+                typeof(TSettings).FullName,
+                logFilePath);
+            ConfigureServices(settings, builder.Services);
+            executionContext?.ConfigureServices?.Invoke(builder.Services);
+            Logger.Information("Finished configuring web services for {SettingsType}", typeof(TSettings).FullName);
+
+            app = builder.Build();
+            Logger.Information("Web service provider built successfully for {SettingsType}", typeof(TSettings).FullName);
+
+            app.UseSerilogRequestLogging();
+            ConfigureApp(settings, app);
+
             await app.StartAsync(ct);
-            _logger.Information("Web host started for {SettingsType}", typeof(TSettings).FullName);
+            Logger.Information("Web host started for {SettingsType}", typeof(TSettings).FullName);
             await app.WaitForShutdownAsync(token: ct);
+            return 0;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
             return 0;
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Web command execution failed for {SettingsType}", typeof(TSettings).FullName);
-            throw;
+            Logger.Error(ex, "Web command execution failed for {SettingsType}", typeof(TSettings).FullName);
+            return 1;
         }
         finally
         {
-            _logger.Information("Stopping web host for {SettingsType}", typeof(TSettings).Name);
-            await app.StopAsync(CancellationToken.None);
-            _logger.Information("Web host stopped for {SettingsType}", typeof(TSettings).Name);
+            if (app is not null)
+            {
+                Logger.Information("Stopping web host for {SettingsType}", typeof(TSettings).Name);
+                await app.StopAsync(CancellationToken.None);
+                Logger.Information("Web host stopped for {SettingsType}", typeof(TSettings).Name);
+                await app.DisposeAsync();
+            }
+
+            await Log.CloseAndFlushAsync();
+            Log.Logger = previousLogger;
         }
     }
 }
