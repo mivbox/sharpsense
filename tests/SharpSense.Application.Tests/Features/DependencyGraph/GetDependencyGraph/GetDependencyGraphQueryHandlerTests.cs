@@ -1,10 +1,11 @@
 using Moq;
-using SharpSense.Application.Features.DependencyGraph.Contracts;
-using SharpSense.Application.Features.DependencyGraph.GetDependencyGraph;
-using SharpSense.Application.Features.DependencyGraph.Infrastructure;
+using SharpSense.Application.DependencyGraph.Models;
+using SharpSense.Application.DependencyGraph.GetDependencyGraph;
+using SharpSense.Application.DependencyGraph.GetDependencyGraph.Models;
+using SharpSense.Application.DependencyGraph.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
 
-namespace SharpSense.Application.Tests.Features.DependencyGraph.GetDependencyGraph;
+namespace SharpSense.Application.Tests.DependencyGraph.GetDependencyGraph;
 
 public sealed class GetDependencyGraphQueryHandlerTests
 {

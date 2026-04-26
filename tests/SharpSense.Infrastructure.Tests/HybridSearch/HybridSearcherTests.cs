@@ -1,7 +1,8 @@
 using Moq;
-using SharpSense.Application.Features.HybridSearch.HybridSearch;
+using SharpSense.Application.HybridSearch.HybridSearch.Models;
+using SharpSense.Application.Shared.Abstractions;
+using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
-using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.HybridSearch;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Tests.TestData;

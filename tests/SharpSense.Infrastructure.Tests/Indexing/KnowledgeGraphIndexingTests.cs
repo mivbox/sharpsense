@@ -1,9 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Moq;
-using SharpSense.Application.Features.Indexing.Contracts;
-using SharpSense.Application.Features.Indexing.IndexTarget;
-using SharpSense.Application.Features.Indexing.UpdateWorkspaceFiles;
+using SharpSense.Application.Indexing.Abstractions;
+using SharpSense.Application.Indexing.IndexTarget.Models;
+using SharpSense.Application.Indexing.UpdateWorkspaceFiles.Models;
+using SharpSense.Application.Indexing.Models;
+using SharpSense.Application.Indexing.IndexTarget;
+using SharpSense.Application.Indexing.UpdateWorkspaceFiles;
+using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Domain.KnowledgeGraph.Enums;
@@ -33,7 +37,7 @@ public sealed class KnowledgeGraphIndexingTests
         var repositoryRoot = GetRepositoryRoot();
         var targetPath = GetFixturePath("CommandPipelineFixture.sln");
         var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(repositoryRoot);
-        var indexing = CreateIndexing(context, workspace, targetPath);
+        var indexing = CreateIndexing(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(), workspace, targetPath);
 
         await indexing.Index(
             new IndexTargetCommand(),
@@ -143,7 +147,7 @@ public sealed class KnowledgeGraphIndexingTests
         var absoluteTargetPath = GetFixturePath("CommandPipelineFixture.sln");
         var relativeTargetPath = Path.GetRelativePath(repositoryRoot, absoluteTargetPath);
         var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(repositoryRoot);
-        var indexing = CreateIndexing(context, workspace, relativeTargetPath);
+        var indexing = CreateIndexing(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(), workspace, relativeTargetPath);
 
         await indexing.Index(
             new IndexTargetCommand(),
@@ -167,7 +171,7 @@ public sealed class KnowledgeGraphIndexingTests
         try
         {
             var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(fixtureRoot);
-            var indexing = CreateIndexing(context, workspace, solutionPath);
+            var indexing = CreateIndexing(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(), workspace, solutionPath);
 
             await indexing.Index(
                 new IndexTargetCommand(),
@@ -252,7 +256,7 @@ public sealed class KnowledgeGraphIndexingTests
                 """);
 
             var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(fixtureRoot);
-            var indexing = CreateIndexing(context, workspace, solutionPath);
+            var indexing = CreateIndexing(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(), workspace, solutionPath);
 
             await indexing.Index(
                 new IndexTargetCommand(),
@@ -362,7 +366,7 @@ public sealed class KnowledgeGraphIndexingTests
         try
         {
             var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(fixtureRoot);
-            var indexing = CreateIndexing(context, workspace, solutionPath);
+            var indexing = CreateIndexing(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(), workspace, solutionPath);
 
             await indexing.Index(
                 new IndexTargetCommand(),
@@ -426,7 +430,7 @@ public sealed class KnowledgeGraphIndexingTests
         try
         {
             var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(fixtureRoot);
-            var indexing = CreateIndexing(context, workspace, solutionPath);
+            var indexing = CreateIndexing(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(), workspace, solutionPath);
 
             await indexing.Index(
                 new IndexTargetCommand(),
@@ -479,7 +483,7 @@ public sealed class KnowledgeGraphIndexingTests
         try
         {
             var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(fixtureRoot);
-            var indexing = CreateIndexing(context, workspace, solutionPath);
+            var indexing = CreateIndexing(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(), workspace, solutionPath);
 
             await indexing.Index(
                 new IndexTargetCommand(),
@@ -585,7 +589,7 @@ public sealed class KnowledgeGraphIndexingTests
     }
 
     private static KnowledgeGraphIndexing CreateIndexing(
-        SharpSenseDbContext context,
+        IDbContextFactory<SharpSenseDbContext> dbContextFactory,
         IRepositoryWorkspace workspace,
         string targetPath)
         => new(
@@ -600,8 +604,8 @@ public sealed class KnowledgeGraphIndexingTests
                         new MarkdownIndexer()))
             },
             new NoOpEmbeddingGenerator(),
-            context,
-            workspace,
+            new KnowledgeGraphRepository(dbContextFactory),
+            new IndexingWorkspacePaths(workspace),
             Options.Create(new SharpSenseCliOptions
             {
                 RepositoryRoot = workspace.RootPath,
@@ -630,5 +634,36 @@ public sealed class KnowledgeGraphIndexingTests
             IProgress<EmbeddingGenerationProgress>? progress,
             CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<TextEmbedding>>([]);
+    }
+
+    private sealed class KnowledgeGraphIndexing(
+        IEnumerable<ILanguageExtractor> extractors,
+        IEmbeddingGenerator embeddingGenerator,
+        IKnowledgeGraphRepository knowledgeGraphRepository,
+        IIndexingWorkspacePaths workspacePaths,
+        IOptions<SharpSenseCliOptions> options)
+    {
+        private readonly IndexTargetCommandHandler _indexTargetHandler = new(
+            extractors,
+            embeddingGenerator,
+            knowledgeGraphRepository,
+            workspacePaths,
+            options);
+
+        private readonly UpdateWorkspaceFilesCommandHandler _updateWorkspaceFilesHandler = new(
+            extractors,
+            knowledgeGraphRepository,
+            workspacePaths,
+            options);
+
+        public Task Index(
+            IndexTargetCommand command,
+            CancellationToken ct)
+            => _indexTargetHandler.Handle(command, ct);
+
+        public Task UpdateIncremental(
+            UpdateWorkspaceFilesCommand command,
+            CancellationToken ct)
+            => _updateWorkspaceFilesHandler.Handle(command, ct);
     }
 }

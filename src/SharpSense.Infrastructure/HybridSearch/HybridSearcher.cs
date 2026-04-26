@@ -1,11 +1,11 @@
 using System.Data;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
-using SharpSense.Application.Features.HybridSearch.Contracts;
-using SharpSense.Application.Features.HybridSearch.HybridSearch;
-using SharpSense.Application.Features.HybridSearch.Infrastructure;
+using SharpSense.Application.HybridSearch.Models;
+using SharpSense.Application.HybridSearch.HybridSearch.Models;
+using SharpSense.Application.HybridSearch.Abstractions;
+using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
-using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.Persistence;
 
 namespace SharpSense.Infrastructure.HybridSearch;

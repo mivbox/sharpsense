@@ -6,10 +6,10 @@ using SharpSense.Application.Shared.Models;
 
 namespace SharpSense.Infrastructure.Embeddings;
 
-public sealed class EmbeddingGenerator : IEmbeddingGenerator, IDisposable
+public sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstractions.IEmbeddingGenerator, IDisposable
 {
     private readonly LocalEmbeddingsOptions _options;
-    private readonly Lazy<IEmbeddingGenerator<string, Embedding<float>>> _embeddingGenerator;
+    private readonly Lazy<Microsoft.Extensions.AI.IEmbeddingGenerator<string, Embedding<float>>> _embeddingGenerator;
     private bool _disposed;
 
     public EmbeddingGenerator(IOptions<LocalEmbeddingsOptions> options)
@@ -23,7 +23,7 @@ public sealed class EmbeddingGenerator : IEmbeddingGenerator, IDisposable
 
     public EmbeddingGenerator(
         LocalEmbeddingsOptions options,
-        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator)
+        Microsoft.Extensions.AI.IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator)
     {
         ArgumentNullException.ThrowIfNull(embeddingGenerator);
 

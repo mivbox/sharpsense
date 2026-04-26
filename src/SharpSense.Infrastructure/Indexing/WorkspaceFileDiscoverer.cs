@@ -1,7 +1,8 @@
 using GitIgnore = Ignore.Ignore;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.FileSystemGlobbing.Abstractions;
-using SharpSense.Application.Features.Indexing.Contracts;
+using SharpSense.Application.Indexing.Abstractions;
+using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Infrastructure.Indexing;

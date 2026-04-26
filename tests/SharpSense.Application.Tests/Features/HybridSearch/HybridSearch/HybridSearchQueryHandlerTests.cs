@@ -1,10 +1,11 @@
 using Moq;
-using SharpSense.Application.Features.HybridSearch.Contracts;
-using SharpSense.Application.Features.HybridSearch.HybridSearch;
-using SharpSense.Application.Features.HybridSearch.Infrastructure;
+using SharpSense.Application.HybridSearch.Models;
+using SharpSense.Application.HybridSearch.HybridSearch;
+using SharpSense.Application.HybridSearch.HybridSearch.Models;
+using SharpSense.Application.HybridSearch.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
 
-namespace SharpSense.Application.Tests.Features.HybridSearch.HybridSearch;
+namespace SharpSense.Application.Tests.HybridSearch.HybridSearch;
 
 public sealed class HybridSearchQueryHandlerTests
 {

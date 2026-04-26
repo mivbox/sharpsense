@@ -1,4 +1,7 @@
-using SharpSense.Application.Features.Indexing.Contracts;
+using SharpSense.Application.Indexing.Abstractions;
+using SharpSense.Application.Indexing.Models;
+using SharpSense.Domain.KnowledgeGraph.Edges;
+using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 using SharpSense.Infrastructure.Storage;
 
@@ -26,9 +29,9 @@ public sealed class CSharpLanguageExtractor(
             ct);
 
         return new ExtractedNodes(
-            extractionPayload.Projects,
-            extractionPayload.CodeNodes,
-            extractionPayload.Edges,
+            [.. extractionPayload.Projects.Select(ToIndexedProject)],
+            [.. extractionPayload.CodeNodes.Select(ToIndexedCodeNode)],
+            [.. extractionPayload.Edges.Select(ToIndexedDependency)],
             extractionPayload.Diagnostics);
     }
 
@@ -56,11 +59,37 @@ public sealed class CSharpLanguageExtractor(
             ct);
 
         return new ExtractedNodes(
-            extractionPayload.Projects,
-            extractionPayload.CodeNodes,
-            extractionPayload.Edges,
+            [.. extractionPayload.Projects.Select(ToIndexedProject)],
+            [.. extractionPayload.CodeNodes.Select(ToIndexedCodeNode)],
+            [.. extractionPayload.Edges.Select(ToIndexedDependency)],
             extractionPayload.Diagnostics);
     }
+
+    private static IndexedProject ToIndexedProject(ProjectNode projectNode)
+        => new(
+            projectNode.Id,
+            projectNode.Name,
+            projectNode.RelativeFilePath,
+            projectNode.ContentHash);
+
+    private static IndexedCodeNode ToIndexedCodeNode(CodeNode codeNode)
+        => new(
+            codeNode.CanonicalId,
+            codeNode.ProjectId,
+            codeNode.FullyQualifiedName,
+            codeNode.DisplayName,
+            codeNode.NodeType,
+            codeNode.RelativeFilePath,
+            codeNode.StartLine,
+            codeNode.EndLine,
+            codeNode.Summary,
+            codeNode.VectorEmbedding);
+
+    private static IndexedDependency ToIndexedDependency(DependencyEdge dependencyEdge)
+        => new(
+            dependencyEdge.CallerId,
+            dependencyEdge.CalleeId,
+            dependencyEdge.EdgeType);
 
     private static bool IsCSharpFilePath(string path)
         => string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase);

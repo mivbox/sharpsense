@@ -1,4 +1,4 @@
-using SharpSense.Application.Features.Trace;
+using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Tests.TestData;
 using SharpSense.Infrastructure.Trace;

@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.Shared.Models;
-using SharpSense.Application.Features.Trace;
-using SharpSense.Application.Features.Trace.Infrastructure;
+using SharpSense.Application.Trace.Abstractions;
+using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Shared;
 

@@ -3,9 +3,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Moq;
-using SharpSense.Application.Features.Indexing.Contracts;
-using SharpSense.Application.Features.Indexing.IndexTarget;
-using SharpSense.Application.Features.Indexing.UpdateWorkspaceFiles;
+using SharpSense.Application.Indexing.Abstractions;
+using SharpSense.Application.Indexing.Models;
+using SharpSense.Application.Indexing.IndexTarget;
+using SharpSense.Application.Indexing.IndexTarget.Models;
+using SharpSense.Application.Indexing.UpdateWorkspaceFiles;
+using SharpSense.Application.Indexing.UpdateWorkspaceFiles.Models;
 using SharpSense.Application.Shared.Abstractions;
 using Spectre.Console.Testing;
 

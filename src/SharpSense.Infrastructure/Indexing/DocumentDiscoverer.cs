@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
-using SharpSense.Application.Features.Indexing.Contracts;
+using SharpSense.Application.Indexing.Abstractions;
+using SharpSense.Application.Indexing.Models;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.Indexing.Markdown;
 using SharpSense.Infrastructure.Storage;

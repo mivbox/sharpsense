@@ -1,4 +1,4 @@
-using SharpSense.Application.Features.HybridSearch.Contracts;
+using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 
 namespace SharpSense.Infrastructure.HybridSearch;

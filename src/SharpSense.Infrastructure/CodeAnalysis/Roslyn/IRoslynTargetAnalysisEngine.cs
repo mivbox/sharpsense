@@ -1,4 +1,4 @@
-using SharpSense.Application.Features.Indexing.Contracts;
+using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Infrastructure.Storage;
 

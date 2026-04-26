@@ -1,4 +1,7 @@
-using SharpSense.Application.Features.Indexing.Contracts;
+using SharpSense.Application.Indexing.Abstractions;
+using SharpSense.Application.Indexing.Models;
+using SharpSense.Domain.KnowledgeGraph.Edges;
+using SharpSense.Domain.KnowledgeGraph.Nodes;
 
 namespace SharpSense.Infrastructure.Indexing.Markdown;
 
@@ -15,7 +18,11 @@ public sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDiscove
 
         var discoveredDocuments = await documentDiscoverer.Discover(context.TargetPath, ct);
 
-        return new ExtractedNodes([], discoveredDocuments.CodeNodes, discoveredDocuments.Edges, []);
+        return new ExtractedNodes(
+            [],
+            [.. discoveredDocuments.CodeNodes.Select(ToIndexedCodeNode)],
+            [.. discoveredDocuments.Edges.Select(ToIndexedDependency)],
+            []);
     }
 
     public async Task<ExtractedNodes> ExtractIncremental(
@@ -39,8 +46,31 @@ public sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDiscove
 
         var discoveredDocuments = await documentDiscoverer.DiscoverFiles(context.TargetPath, changedMarkdownFiles, ct);
 
-        return new ExtractedNodes([], discoveredDocuments.CodeNodes, discoveredDocuments.Edges, []);
+        return new ExtractedNodes(
+            [],
+            [.. discoveredDocuments.CodeNodes.Select(ToIndexedCodeNode)],
+            [.. discoveredDocuments.Edges.Select(ToIndexedDependency)],
+            []);
     }
+
+    private static IndexedCodeNode ToIndexedCodeNode(CodeNode codeNode)
+        => new(
+            codeNode.CanonicalId,
+            codeNode.ProjectId,
+            codeNode.FullyQualifiedName,
+            codeNode.DisplayName,
+            codeNode.NodeType,
+            codeNode.RelativeFilePath,
+            codeNode.StartLine,
+            codeNode.EndLine,
+            codeNode.Summary,
+            codeNode.VectorEmbedding);
+
+    private static IndexedDependency ToIndexedDependency(DependencyEdge dependencyEdge)
+        => new(
+            dependencyEdge.CallerId,
+            dependencyEdge.CalleeId,
+            dependencyEdge.EdgeType);
 
     private static StringComparer GetPathComparer()
         => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;

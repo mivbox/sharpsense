@@ -1,4 +1,4 @@
-using SharpSense.Application.Features.ImpactAnalysis.Contracts;
+using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 

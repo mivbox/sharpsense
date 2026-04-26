@@ -1,9 +1,9 @@
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using SharpSense.Application.Features.HybridSearch;
-using SharpSense.Application.Features.HybridSearch.Contracts;
-using SharpSense.Application.Features.HybridSearch.HybridSearch;
+using SharpSense.Application.HybridSearch;
+using SharpSense.Application.HybridSearch.Models;
+using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Shared.Options;

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using SharpSense.Application.Features.Trace.Infrastructure;
+using SharpSense.Application.Trace.Abstractions;
 
 namespace SharpSense.Infrastructure.Trace;
 

@@ -1,5 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
-using SharpSense.Application.Features.HybridSearch.Infrastructure;
+using SharpSense.Application.HybridSearch.Abstractions;
 
 namespace SharpSense.Infrastructure.HybridSearch;
 

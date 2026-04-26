@@ -25,6 +25,7 @@ raw sources, provides architectural directives, and directs queries. The human n
 * [[architecture/host-composition]] - Shared host bootstrapping, configuration binding, and DI composition for CLI routes.
 * [[architecture/file-discovery]] - The canonical discovery path for Target files, `.gitignore`, and normalized relative paths.
 * [[architecture/incremental-watch]] - Debounced watch-mode batching, recovery rules, and incremental dispatch flow.
+* [[architecture/vertical-slice-application]] - The canonical Application-layer Vertical Slice layout, boundaries, and handler locality rules.
 
 ### CLI
 
@@ -128,6 +129,13 @@ The LLM **must** obey these rules when writing code or documenting architecture 
 6. **Pathing:** * All file discovery must pass through `IWorkspaceFileDiscoverer` to respect `.gitignore` rules and
    normalize directory separators. Extractors must not manually calculate relative paths; they must use the
    `RelativeFilePath` provided by the `DiscoveredFile` record.
+7. **Application Vertical Slices:** * The `src/SharpSense.Application/Features/` root is forbidden.
+    * Every Application feature lives directly under `src/SharpSense.Application/{FeatureName}/`.
+    * Shared slice interfaces go in `Abstractions/`.
+    * Shared slice records go in `Models/`.
+    * Each command or query lives under its own `{CommandOrQueryName}/` directory.
+    * Command/query-local records go in `{CommandOrQueryName}/Models/`.
+    * Feature registration stays in `{FeatureName}ServiceCollectionExtensions.cs`.
 
 ## Workflows
 

@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using SharpSense.Application.Features.DependencyGraph.Contracts;
-using SharpSense.Application.Features.DependencyGraph.Infrastructure;
+using SharpSense.Application.DependencyGraph.Models;
+using SharpSense.Application.DependencyGraph.Abstractions;
 using SharpSense.Infrastructure.Persistence;
 
 namespace SharpSense.Infrastructure.DependencyGraph;

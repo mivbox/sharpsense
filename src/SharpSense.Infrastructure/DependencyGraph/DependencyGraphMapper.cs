@@ -1,5 +1,5 @@
 using Riok.Mapperly.Abstractions;
-using SharpSense.Application.Features.DependencyGraph.Contracts;
+using SharpSense.Application.DependencyGraph.Models;
 using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 

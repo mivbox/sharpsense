@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
-using SharpSense.Application.Features.Indexing.Contracts;
+using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Infrastructure.Storage;

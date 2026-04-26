@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.MSBuild;
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
-using SharpSense.Application.Features.Indexing.Contracts;
+using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;

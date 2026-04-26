@@ -1,4 +1,4 @@
-using SharpSense.Application.Features.ImpactAnalysis.ImpactAnalysis;
+using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.ImpactAnalysis;
 using SharpSense.Infrastructure.Persistence;

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using SharpSense.Application.Features.Indexing.Contracts;
-using SharpSense.Application.Features.Indexing.Infrastructure;
+using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 using SharpSense.Infrastructure.Indexing.CSharp;
 using SharpSense.Infrastructure.Indexing.Markdown;
@@ -20,10 +19,11 @@ public static class IndexingInfrastructureServiceCollectionExtensions
         services.TryAddSingleton<MarkdownIndexer>();
         services.TryAddSingleton<IWorkspaceWatcher, WorkspaceWatcher>();
         services.TryAddSingleton<IWorkspaceFileDiscoverer, WorkspaceFileDiscoverer>();
+        services.TryAddSingleton<IIndexingWorkspacePaths, IndexingWorkspacePaths>();
         services.TryAddScoped<DocumentDiscoverer>();
         services.AddTransient<ILanguageExtractor, CSharpLanguageExtractor>();
         services.AddTransient<ILanguageExtractor, MarkdownDocumentExtractor>();
-        services.TryAddScoped<IKnowledgeGraphIndexing, KnowledgeGraphIndexing>();
+        services.TryAddScoped<IKnowledgeGraphRepository, KnowledgeGraphRepository>();
 
         return services;
     }

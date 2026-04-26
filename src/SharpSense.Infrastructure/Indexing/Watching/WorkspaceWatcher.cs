@@ -1,7 +1,8 @@
 using System.Collections.Concurrent;
 using JetBrains.Annotations;
 using Serilog;
-using SharpSense.Application.Features.Indexing.Contracts;
+using SharpSense.Application.Indexing.Abstractions;
+using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Indexing.Markdown;
 
 namespace SharpSense.Infrastructure.Indexing.Watching;

@@ -1,12 +1,12 @@
 using ModelContextProtocol.Server;
-using SharpSense.Application.Features.HybridSearch.Contracts;
-using SharpSense.Application.Features.HybridSearch.HybridSearch;
-using SharpSense.Application.Features.ImpactAnalysis.Contracts;
-using SharpSense.Application.Features.ImpactAnalysis.ImpactAnalysis;
-using SharpSense.Application.Features.Trace;
+using SharpSense.Application.HybridSearch.Models;
+using SharpSense.Application.HybridSearch.HybridSearch.Models;
+using SharpSense.Application.ImpactAnalysis.Models;
+using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Application.Shared.Models;
+using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Shared;
 using System.ComponentModel;
 

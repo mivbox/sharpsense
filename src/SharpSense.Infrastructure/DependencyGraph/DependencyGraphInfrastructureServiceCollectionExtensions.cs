@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using SharpSense.Application.Features.DependencyGraph.Infrastructure;
+using SharpSense.Application.DependencyGraph.Abstractions;
 
 namespace SharpSense.Infrastructure.DependencyGraph;
 

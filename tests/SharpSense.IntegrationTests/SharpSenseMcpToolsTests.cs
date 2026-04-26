@@ -1,10 +1,10 @@
 using AwesomeAssertions;
 using Moq;
-using SharpSense.Application.Features.ImpactAnalysis.Contracts;
-using SharpSense.Application.Features.ImpactAnalysis.ImpactAnalysis;
-using SharpSense.Application.Features.Trace;
+using SharpSense.Application.ImpactAnalysis.Models;
+using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
+using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Mcp;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 

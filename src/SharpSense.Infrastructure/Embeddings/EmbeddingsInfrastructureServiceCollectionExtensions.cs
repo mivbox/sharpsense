@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using SharpSense.Application.Shared.Abstractions;
 
 namespace SharpSense.Infrastructure.Embeddings;
 

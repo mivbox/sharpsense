@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using SharpSense.Application.Features.ImpactAnalysis.Contracts;
-using SharpSense.Application.Features.ImpactAnalysis.ImpactAnalysis;
-using SharpSense.Application.Features.ImpactAnalysis.Infrastructure;
+using SharpSense.Application.ImpactAnalysis.Models;
+using SharpSense.Application.ImpactAnalysis.Abstractions;
+using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
 using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Shared;

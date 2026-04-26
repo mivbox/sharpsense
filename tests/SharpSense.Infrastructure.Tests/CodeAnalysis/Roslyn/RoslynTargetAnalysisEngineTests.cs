@@ -1,6 +1,6 @@
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Application.Shared.Models;
-using SharpSense.Application.Features.Indexing.Contracts;
+using SharpSense.Application.Indexing.Models;
 using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Nodes;

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using SharpSense.Application.Features.ImpactAnalysis.Infrastructure;
+using SharpSense.Application.ImpactAnalysis.Abstractions;
 
 namespace SharpSense.Infrastructure.ImpactAnalysis;
 
