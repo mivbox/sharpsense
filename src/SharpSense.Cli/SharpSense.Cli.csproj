@@ -8,6 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
+    <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>sharpsense</ToolCommandName>
     <PackageOutputPath>./nupkg</PackageOutputPath>
@@ -15,6 +16,10 @@
     <PackageId>SharpSense.Cli</PackageId>
     <Version>1.0.0</Version>
     <Authors>Mitchel Box</Authors>
+    <Description>Polyglot knowledge graph indexer and AI architecture tool.</Description>
+    <PackageProjectUrl>https://github.com/mivbox/sharpsense</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mivbox/sharpsense</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
   <ItemGroup>
