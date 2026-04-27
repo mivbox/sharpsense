@@ -6,6 +6,7 @@ cd "$REPO_ROOT" || exit 1
 COPILOT_FLAGS=(
   "--allow-tool" "shell(dotnet:*)"
   "--allow-tool" "shell(git:status,git:diff,git:add,git:commit)"
+  "--allow-tool" "sharpsense(semantic_search),sharpsense(trace_node)"
   "--deny-tool" "shell(git:push,rm)"
 )
 
