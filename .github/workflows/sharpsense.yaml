@@ -41,7 +41,7 @@ jobs:
         run: dotnet build ./src/SharpSense.Cli/SharpSense.Cli.csproj -c Release
 
       - name: Test
-        run: dotnet test -c Release --no-build
+        run: dotnet test
 
       - name: Calculate Semantic Version
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
