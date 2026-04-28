@@ -57,7 +57,7 @@ dotnet run --project src/SharpSense.Cli -- analyze SharpSense.sln --no-embedding
 dotnet run --project src/SharpSense.Cli -- analyze src/SharpSense/SharpSense.sln --repo-root /path/to/repo
 ```
 
-## Watch mode behavior
+## Watch mode behaviour
 
 - `analyze --watch` performs an initial full index, then applies incremental updates for changed files.
 - Incremental updates currently track C# and Markdown file changes only.

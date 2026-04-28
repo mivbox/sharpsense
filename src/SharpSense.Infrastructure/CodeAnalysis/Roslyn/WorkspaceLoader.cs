@@ -2,6 +2,9 @@ using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.Text;
+using Polly;
+using Polly.Retry;
+using Serilog;
 using SharpSense.Application.Indexing.Models;
 using System.IO.Abstractions;
 
@@ -9,6 +12,19 @@ namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
 internal sealed class WorkspaceLoader : IWorkspaceLoader
 {
+    private static readonly ILogger _logger = Log.ForContext<WorkspaceLoader>();
+    private static readonly ResiliencePipeline<SourceText> _documentReadPipeline = new ResiliencePipelineBuilder<SourceText>()
+        .AddRetry(new RetryStrategyOptions<SourceText>
+        {
+            ShouldHandle = new PredicateBuilder<SourceText>()
+                .Handle<IOException>()
+                .Handle<UnauthorizedAccessException>(),
+            MaxRetryAttempts = 5,
+            Delay = TimeSpan.FromMilliseconds(25),
+            BackoffType = DelayBackoffType.Exponential
+        })
+        .Build();
+
     private readonly IMsBuildWorkspaceFactory _workspaceFactory;
     private readonly IFileSystem _fileSystem;
     private readonly ConcurrentDictionary<string, WorkspaceSession> _activeWorkspaces = new(GetPathComparer());
@@ -99,7 +115,13 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
                     return new WorkspaceLoadResult(updatedSolution, diagnostics.ToArray());
                 }
 
-                var documentText = SourceText.From(await _fileSystem.File.ReadAllTextAsync(absoluteFilePath, ct));
+                var documentText = await ReadDocumentText(absoluteFilePath, normalizedTargetPath, ct);
+                if (documentText is null)
+                {
+                    updatedSolution = await ReplaceWorkspace(normalizedTargetPath, activeWorkspace, diagnostics, ct);
+                    return new WorkspaceLoadResult(updatedSolution, diagnostics.ToArray());
+                }
+
                 foreach (var documentId in documentIds)
                 {
                     updatedSolution = updatedSolution.WithDocumentText(
@@ -187,6 +209,33 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
 
     private static bool RequiresReload(IReadOnlyList<WorkspaceFileChange> changedFiles)
         => changedFiles.Any(changedFile => changedFile.ActionType is not WorkspaceFileChangeAction.Modified);
+
+    private async Task<SourceText?> ReadDocumentText(
+        string absoluteFilePath,
+        string normalizedTargetPath,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await _documentReadPipeline.ExecuteAsync(
+                async cancellationToken =>
+                {
+                    var documentContents = await _fileSystem.File.ReadAllTextAsync(absoluteFilePath, cancellationToken);
+                    return SourceText.From(documentContents);
+                },
+                ct);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.Warning(
+                exception,
+                "Workspace loader fell back to reloading target {TargetPath} after incremental document read failed for {DocumentPath}.",
+                normalizedTargetPath,
+                absoluteFilePath);
+
+            return null;
+        }
+    }
 
     private bool IsSolutionTargetPath(string absoluteTargetPath)
         => string.Equals(_fileSystem.Path.GetExtension(absoluteTargetPath), ".sln", StringComparison.OrdinalIgnoreCase);

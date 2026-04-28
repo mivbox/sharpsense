@@ -3,7 +3,7 @@ title: "CSharp"
 type: extractor
 tags: [csharp, roslyn, implemented]
 created: 2026-04-26
-updated: 2026-04-28
+updated: 2026-04-29
 confidence: high
 ---
 
@@ -25,10 +25,11 @@ C#. `CSharpLanguageExtractor` is the Roslyn-backed extractor that turns a Target
 
 1. `ExtractIncremental()` filters the incoming batch to C#-affected changes only.
 2. `IWorkspaceLoader.Load()` ensures the Target is present in the workspace cache, and `IWorkspaceLoader.UpdateDocuments()` applies modified-document text updates in place when possible.
-3. Any add, delete, rename, or unresolved file forces a workspace reload so Roslyn state never drifts from the real Target.
-4. `ITargetAnalysisEngine.ExtractIncremental()` analyzes only the changed documents from the updated in-memory `Solution`.
-5. The resulting nodes and edges flow through the RelativeFilePath-targeted overwrite path coordinated by [[architecture/incremental-watch]].
-6. Because the analysis engine accepts in-memory `Solution` and `Project` models directly, the default Roslyn tests can exercise extraction through `AdhocWorkspace` instead of temp directories.
+3. Modified-document reads now retry across short transient failures; if the file still cannot be read stably, the loader falls back to reloading the Roslyn workspace instead of failing the whole batch immediately.
+4. Any add, delete, rename, or unresolved file also forces a workspace reload so Roslyn state never drifts from the real Target.
+5. `ITargetAnalysisEngine.ExtractIncremental()` analyzes only the changed documents from the updated in-memory `Solution`.
+6. The resulting nodes and edges flow through the RelativeFilePath-targeted overwrite path coordinated by [[architecture/incremental-watch]].
+7. Because the analysis engine accepts in-memory `Solution` and `Project` models directly, the default Roslyn tests can exercise extraction through `AdhocWorkspace` instead of temp directories.
 
 ## Dependencies
 
