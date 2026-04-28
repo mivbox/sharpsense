@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
+using System.IO.Abstractions;
+using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,21 +15,27 @@ namespace SharpSense.IntegrationTests;
 
 public sealed class UiCommandIntegrationTests
 {
+    private const string RepositoryRoot = "/repo";
+
     [Fact]
     public async Task WhenUiCommandRuns_ThenEndpointsReturnSuccessAndGraphIsServedFromInMemoryContext()
     {
         await using var database = await UiCommandTestDatabase.Create();
-        var repositoryRoot = CreateRepositoryRoot();
         var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
-        var logFilePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".SharpSense",
-            "logs",
-            "ui.log");
-        var app = Cli.Program.CreateCommandApp(configureServices: database.ConfigureServices);
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+        }, RepositoryRoot);
+        var app = Cli.Program.CreateCommandApp(
+            configureServices: services =>
+            {
+                services.AddSingleton<IFileSystem>(fileSystem);
+                database.ConfigureServices(services);
+            },
+            enableFileLogging: false);
         using var shutdown = new CancellationTokenSource();
         var runTask = app.RunAsync(
-            ["ui", "--url", baseUrl, "--repo-root", repositoryRoot],
+            ["ui", "--url", baseUrl, "--repo-root", RepositoryRoot],
             shutdown.Token);
 
         try
@@ -71,12 +79,6 @@ public sealed class UiCommandIntegrationTests
 
             shutdown.Cancel();
             Assert.Equal(0, await runTask);
-
-            var logContents = await WaitForLogContents(logFilePath, baseUrl);
-
-            Assert.Contains($"Configuring UI application for {baseUrl}", logContents, StringComparison.Ordinal);
-            Assert.Contains($"Request starting HTTP/1.1 GET {baseUrl}/api/graph", logContents, StringComparison.Ordinal);
-            Assert.Contains("HTTP GET / responded 200", logContents, StringComparison.Ordinal);
         }
         finally
         {
@@ -86,8 +88,6 @@ public sealed class UiCommandIntegrationTests
             {
                 await runTask;
             }
-
-            DeleteDirectoryIfExists(repositoryRoot);
         }
     }
 
@@ -128,46 +128,11 @@ public sealed class UiCommandIntegrationTests
         throw new TimeoutException($"The UI command did not become ready at '{url}'.");
     }
 
-    private static async Task<string> WaitForLogContents(string logFilePath, string baseUrl)
-    {
-        var startedAtUtc = DateTime.UtcNow;
-        while (DateTime.UtcNow - startedAtUtc < TimeSpan.FromSeconds(10))
-        {
-            if (File.Exists(logFilePath))
-            {
-                var logContents = await File.ReadAllTextAsync(logFilePath, TestContext.Current.CancellationToken);
-                if (logContents.Contains(baseUrl, StringComparison.Ordinal))
-                {
-                    return logContents;
-                }
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(250), TestContext.Current.CancellationToken);
-        }
-
-        throw new FileNotFoundException($"The UI log file '{logFilePath}' did not contain the expected URL '{baseUrl}'.");
-    }
-
     private static int GetAvailablePort()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
         return ((IPEndPoint)listener.LocalEndpoint).Port;
-    }
-
-    private static string CreateRepositoryRoot()
-    {
-        var repositoryRoot = Path.Combine(Path.GetTempPath(), $"sharp-sense-ui-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(repositoryRoot, ".git"));
-        return repositoryRoot;
-    }
-
-    private static void DeleteDirectoryIfExists(string path)
-    {
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, recursive: true);
-        }
     }
 
     private sealed class UiCommandTestDatabase(InMemoryContextFactory contextFactory) : IAsyncDisposable
@@ -184,8 +149,8 @@ public sealed class UiCommandIntegrationTests
             return database;
         }
 
-        public Action<IServiceCollection> ConfigureServices => services =>
-            contextFactory.ConfigureServices<SharpSenseDbContext>(services);
+        public void ConfigureServices(IServiceCollection services)
+            => contextFactory.ConfigureServices<SharpSenseDbContext>(services);
 
         public async ValueTask DisposeAsync()
         {

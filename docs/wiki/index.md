@@ -25,6 +25,7 @@ raw sources, provides architectural directives, and directs queries. The human n
 * [[architecture/host-composition]] - Shared host bootstrapping, configuration binding, and DI composition for CLI routes.
 * [[architecture/file-discovery]] - The canonical discovery path for Target files, `.gitignore`, and normalized relative paths.
 * [[architecture/incremental-watch]] - Debounced watch-mode batching, recovery rules, and incremental dispatch flow.
+* [[architecture/virtual-file-system]] - The Infrastructure-owned `IFileSystem` boundary, allowed physical-edge exceptions, and stateless test rules.
 * [[architecture/vertical-slice-application]] - The canonical Application-layer Vertical Slice layout, boundaries, and handler locality rules.
 
 ### CLI

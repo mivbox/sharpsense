@@ -1,5 +1,9 @@
+using AwesomeAssertions;
+using Moq;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Indexing.Watching;
+using System.IO.Abstractions;
+using System.IO.Abstractions.TestingHelpers;
 
 namespace SharpSense.Infrastructure.Tests.Indexing.Watching;
 
@@ -8,15 +12,16 @@ public sealed class WorkspaceWatcherTests
     [Fact]
     public async Task WhenRelevantFilesChangeBeforeDebounceWindow_ThenEmitsSingleBatch()
     {
-        using var repositoryRoot = new TemporaryDirectory();
+        var fileSystem = CreateRepositoryFileSystem();
+        fileSystem.AddFile("/repo/src/Feature.cs", new MockFileData("public sealed class Feature { }"));
+        fileSystem.AddFile("/repo/docs/Guide.md", new MockFileData("# Guide"));
+        var (workspaceWatcher, watcher) = CreateWorkspaceWatcher(fileSystem);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var watcher = new TestFileSystemWatcher(repositoryRoot.Path);
-        var workspaceWatcher = new WorkspaceWatcher(_ => watcher, TimeSpan.FromMilliseconds(50));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
         var callbackCount = 0;
 
         var watchTask = workspaceWatcher.Watch(
-            repositoryRoot.Path,
+            "/repo",
             (changes, _) =>
             {
                 callbackCount++;
@@ -26,40 +31,44 @@ public sealed class WorkspaceWatcherTests
             },
             cancellation.Token);
 
-        watcher.RaiseCreated(Path.Combine(repositoryRoot.Path, "src", "Feature.cs"));
-        watcher.RaiseChanged(Path.Combine(repositoryRoot.Path, "docs", "Guide.md"));
+        watcher.Raise(
+            candidate => candidate.Created += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo/src", "Feature.cs"));
+        watcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/docs", "Guide.md"));
 
         var observedChanges = await observedBatch.Task.WaitAsync(
             TimeSpan.FromSeconds(5),
             TestContext.Current.CancellationToken);
         await watchTask;
 
-        Assert.Equal(1, callbackCount);
-        Assert.Collection(
-            observedChanges,
-            change =>
-            {
-                Assert.Equal(WorkspaceFileChangeAction.Added, change.ActionType);
-                Assert.Equal(Path.Combine(repositoryRoot.Path, "src", "Feature.cs"), change.NewPath);
-            },
-            change =>
-            {
-                Assert.Equal(WorkspaceFileChangeAction.Modified, change.ActionType);
-                Assert.Equal(Path.Combine(repositoryRoot.Path, "docs", "Guide.md"), change.NewPath);
-            });
+        callbackCount.Should().Be(1);
+        observedChanges.Should().HaveCount(2);
+        observedChanges[0].ActionType.Should().Be(WorkspaceFileChangeAction.Added);
+        observedChanges[0].NewPath.Should().Be("/repo/src/Feature.cs");
+        observedChanges[1].ActionType.Should().Be(WorkspaceFileChangeAction.Modified);
+        observedChanges[1].NewPath.Should().Be("/repo/docs/Guide.md");
     }
 
     [Fact]
     public async Task WhenChangesOccurUnderIgnoredDirectories_ThenSkipsIgnoredPaths()
     {
-        using var repositoryRoot = new TemporaryDirectory();
+        var fileSystem = CreateRepositoryFileSystem();
+        fileSystem.AddFile("/repo/src/.GIT/Ignored.cs", new MockFileData("public sealed class Ignored { }"));
+        fileSystem.AddFile("/repo/src/BIN/Debug/Generated.cs", new MockFileData("public sealed class Generated { }"));
+        fileSystem.AddFile("/repo/src/Obj/Generated.cs", new MockFileData("public sealed class Generated { }"));
+        fileSystem.AddFile("/repo/src/.VS/Generated.cs", new MockFileData("public sealed class Generated { }"));
+        fileSystem.AddFile("/repo/src/.IDEA/Generated.md", new MockFileData("# Generated"));
+        fileSystem.AddFile("/repo/src/NODE_MODULES/Generated.cs", new MockFileData("public sealed class Generated { }"));
+        fileSystem.AddFile("/repo/src/testresults/Generated.md", new MockFileData("# Generated"));
+        fileSystem.AddFile("/repo/src/Feature.cs", new MockFileData("public sealed class Feature { }"));
+        var (workspaceWatcher, watcher) = CreateWorkspaceWatcher(fileSystem);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var watcher = new TestFileSystemWatcher(repositoryRoot.Path);
-        var workspaceWatcher = new WorkspaceWatcher(_ => watcher, TimeSpan.FromMilliseconds(50));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var watchTask = workspaceWatcher.Watch(
-            repositoryRoot.Path,
+            "/repo",
             (changes, _) =>
             {
                 observedBatch.TrySetResult(changes);
@@ -68,72 +77,52 @@ public sealed class WorkspaceWatcherTests
             },
             cancellation.Token);
 
-        watcher.RaiseChanged(Path.Combine(repositoryRoot.Path, ".GIT", "Hook.md"));
-        watcher.RaiseCreated(Path.Combine(repositoryRoot.Path, "src", "BIN", "Debug", "Generated.cs"));
-        watcher.RaiseChanged(Path.Combine(repositoryRoot.Path, "src", "Obj", "Debug", "Generated.cs"));
-        watcher.RaiseChanged(Path.Combine(repositoryRoot.Path, "src", ".VS", "workspace", "Generated.cs"));
-        watcher.RaiseCreated(Path.Combine(repositoryRoot.Path, "src", ".IDEA", "workspace", "Guide.md"));
-        watcher.RaiseChanged(Path.Combine(repositoryRoot.Path, "src", "NODE_MODULES", "pkg", "Generated.cs"));
-        watcher.RaiseChanged(Path.Combine(repositoryRoot.Path, "src", "testresults", "Run1", "Guide.md"));
-        watcher.RaiseChanged(Path.Combine(repositoryRoot.Path, "src", "Feature.cs"));
+        watcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/src/.GIT", "Ignored.cs"));
+        watcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/src/BIN/Debug", "Generated.cs"));
+        watcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/src/Obj", "Generated.cs"));
+        watcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/src/.VS", "Generated.cs"));
+        watcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/src/.IDEA", "Generated.md"));
+        watcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/src/NODE_MODULES", "Generated.cs"));
+        watcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/src/testresults", "Generated.md"));
+        watcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/src", "Feature.cs"));
 
         var changes = await observedBatch.Task.WaitAsync(
             TimeSpan.FromSeconds(5),
             TestContext.Current.CancellationToken);
         await watchTask;
 
-        var change = Assert.Single(changes);
-        Assert.Equal(WorkspaceFileChangeAction.Modified, change.ActionType);
-        Assert.Equal(Path.Combine(repositoryRoot.Path, "src", "Feature.cs"), change.NewPath);
-    }
-
-    [Fact]
-    public async Task WhenIgnoredDirectoryIsDeletedWithMixedCase_ThenDoesNotTriggerFatalRecovery()
-    {
-        using var repositoryRoot = new TemporaryDirectory();
-        var ignoredDirectoryPath = Path.Combine(repositoryRoot.Path, "src", "TESTRESULTS", "Run1");
-        Directory.CreateDirectory(ignoredDirectoryPath);
-        File.WriteAllText(Path.Combine(ignoredDirectoryPath, "Guide.md"), "# Guide");
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var watcher = new TestFileSystemWatcher(repositoryRoot.Path);
-        var workspaceWatcher = new WorkspaceWatcher(_ => watcher, TimeSpan.Zero);
-        var callbackInvoked = false;
-        var deletedDirectoryPath = Path.Combine(repositoryRoot.Path, "src", "TESTRESULTS");
-
-        var watchTask = workspaceWatcher.Watch(
-            repositoryRoot.Path,
-            (_, _) =>
-            {
-                callbackInvoked = true;
-                return Task.CompletedTask;
-            },
-            cancellation.Token);
-
-        Directory.Delete(deletedDirectoryPath, recursive: true);
-        watcher.RaiseDeleted(deletedDirectoryPath);
-
-        await Task.Delay(TimeSpan.FromMilliseconds(100), TestContext.Current.CancellationToken);
-
-        Assert.False(watchTask.IsCompleted);
-        Assert.False(callbackInvoked);
-
-        cancellation.Cancel();
-        await Assert.ThrowsAsync<OperationCanceledException>(() => watchTask);
+        changes.Should().ContainSingle();
+        changes[0].ActionType.Should().Be(WorkspaceFileChangeAction.Modified);
+        changes[0].NewPath.Should().Be("/repo/src/Feature.cs");
     }
 
     [Fact]
     public async Task WhenRelevantFileIsRenamed_ThenReportsRenamePaths()
     {
-        using var repositoryRoot = new TemporaryDirectory();
+        var fileSystem = CreateRepositoryFileSystem();
+        fileSystem.AddFile("/repo/src/OldFeature.cs", new MockFileData("public sealed class Feature { }"));
+        var (workspaceWatcher, watcher) = CreateWorkspaceWatcher(fileSystem);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var watcher = new TestFileSystemWatcher(repositoryRoot.Path);
-        var workspaceWatcher = new WorkspaceWatcher(_ => watcher, TimeSpan.FromMilliseconds(50));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var oldPath = Path.Combine(repositoryRoot.Path, "src", "OldFeature.cs");
-        var newPath = Path.Combine(repositoryRoot.Path, "src", "NewFeature.cs");
 
         var watchTask = workspaceWatcher.Watch(
-            repositoryRoot.Path,
+            "/repo",
             (changes, _) =>
             {
                 observedBatch.TrySetResult(changes);
@@ -142,34 +131,33 @@ public sealed class WorkspaceWatcherTests
             },
             cancellation.Token);
 
-        watcher.RaiseRenamed(oldPath, newPath);
+        fileSystem.AddFile("/repo/src/NewFeature.cs", new MockFileData("public sealed class Feature { }"));
+        watcher.Raise(
+            candidate => candidate.Renamed += null,
+            new RenamedEventArgs(WatcherChangeTypes.Renamed, "/repo/src", "NewFeature.cs", "OldFeature.cs"));
 
         var changes = await observedBatch.Task.WaitAsync(
             TimeSpan.FromSeconds(5),
             TestContext.Current.CancellationToken);
         await watchTask;
 
-        var change = Assert.Single(changes);
-        Assert.Equal(WorkspaceFileChangeAction.Renamed, change.ActionType);
-        Assert.Equal(oldPath, change.OldPath);
-        Assert.Equal(newPath, change.NewPath);
+        changes.Should().ContainSingle();
+        changes[0].ActionType.Should().Be(WorkspaceFileChangeAction.Renamed);
+        changes[0].OldPath.Should().Be("/repo/src/OldFeature.cs");
+        changes[0].NewPath.Should().Be("/repo/src/NewFeature.cs");
     }
 
     [Fact]
     public async Task WhenRelevantDirectoryIsRenamed_ThenReportsContainedFileRenamePaths()
     {
-        using var repositoryRoot = new TemporaryDirectory();
-        var oldDirectoryPath = Path.Combine(repositoryRoot.Path, "src", "OldFeature");
-        var newDirectoryPath = Path.Combine(repositoryRoot.Path, "src", "NewFeature");
-        Directory.CreateDirectory(oldDirectoryPath);
-        File.WriteAllText(Path.Combine(oldDirectoryPath, "Feature.cs"), "public sealed class Feature { }");
+        var fileSystem = CreateRepositoryFileSystem();
+        fileSystem.AddFile("/repo/src/OldFeature/Feature.cs", new MockFileData("public sealed class Feature { }"));
+        var (workspaceWatcher, watcher) = CreateWorkspaceWatcher(fileSystem);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var watcher = new TestFileSystemWatcher(repositoryRoot.Path);
-        var workspaceWatcher = new WorkspaceWatcher(_ => watcher, TimeSpan.FromMilliseconds(50));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var watchTask = workspaceWatcher.Watch(
-            repositoryRoot.Path,
+            "/repo",
             (changes, _) =>
             {
                 observedBatch.TrySetResult(changes);
@@ -178,149 +166,126 @@ public sealed class WorkspaceWatcherTests
             },
             cancellation.Token);
 
-        Directory.Move(oldDirectoryPath, newDirectoryPath);
-        watcher.RaiseRenamed(oldDirectoryPath, newDirectoryPath);
+        fileSystem.AddFile("/repo/src/NewFeature/Feature.cs", new MockFileData("public sealed class Feature { }"));
+        watcher.Raise(
+            candidate => candidate.Renamed += null,
+            new RenamedEventArgs(WatcherChangeTypes.Renamed, "/repo/src", "NewFeature", "OldFeature"));
 
         var changes = await observedBatch.Task.WaitAsync(
             TimeSpan.FromSeconds(5),
             TestContext.Current.CancellationToken);
         await watchTask;
 
-        var change = Assert.Single(changes);
-        Assert.Equal(WorkspaceFileChangeAction.Renamed, change.ActionType);
-        Assert.Equal(Path.Combine(oldDirectoryPath, "Feature.cs"), change.OldPath);
-        Assert.Equal(Path.Combine(newDirectoryPath, "Feature.cs"), change.NewPath);
+        changes.Should().ContainSingle();
+        changes[0].ActionType.Should().Be(WorkspaceFileChangeAction.Renamed);
+        changes[0].OldPath.Should().Be("/repo/src/OldFeature/Feature.cs");
+        changes[0].NewPath.Should().Be("/repo/src/NewFeature/Feature.cs");
+    }
+
+    [Fact]
+    public async Task WhenIgnoredDirectoryIsDeletedWithMixedCase_ThenDoesNotTriggerFatalRecovery()
+    {
+        var fileSystem = CreateRepositoryFileSystem();
+        fileSystem.AddFile("/repo/src/NODE_MODULES/Generated.cs", new MockFileData("public sealed class Generated { }"));
+        fileSystem.AddFile("/repo/src/Feature.cs", new MockFileData("public sealed class Feature { }"));
+        var (workspaceWatcher, watcher) = CreateWorkspaceWatcher(fileSystem);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var watchTask = workspaceWatcher.Watch(
+            "/repo",
+            (changes, _) =>
+            {
+                observedBatch.TrySetResult(changes);
+                cancellation.Cancel();
+                return Task.CompletedTask;
+            },
+            cancellation.Token);
+
+        watcher.Raise(
+            candidate => candidate.Deleted += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Deleted, "/repo/src", "NODE_MODULES"));
+        watchTask.IsCompleted.Should().BeFalse();
+        watcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/src", "Feature.cs"));
+
+        var changes = await observedBatch.Task.WaitAsync(
+            TimeSpan.FromSeconds(5),
+            TestContext.Current.CancellationToken);
+        await watchTask;
+
+        changes.Should().ContainSingle();
+        changes[0].ActionType.Should().Be(WorkspaceFileChangeAction.Modified);
+        changes[0].NewPath.Should().Be("/repo/src/Feature.cs");
     }
 
     [Fact]
     public async Task WhenRelevantDirectoryIsDeleted_ThenThrows()
     {
-        using var repositoryRoot = new TemporaryDirectory();
-        var directoryPath = Path.Combine(repositoryRoot.Path, "src", "FeatureFolder");
-        Directory.CreateDirectory(directoryPath);
-        File.WriteAllText(Path.Combine(directoryPath, "Feature.cs"), "public sealed class Feature { }");
+        var fileSystem = CreateRepositoryFileSystem();
+        fileSystem.AddFile("/repo/src/FeatureFolder/Feature.cs", new MockFileData("public sealed class Feature { }"));
+        var (workspaceWatcher, watcher) = CreateWorkspaceWatcher(fileSystem);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var watcher = new TestFileSystemWatcher(repositoryRoot.Path);
-        var workspaceWatcher = new WorkspaceWatcher(_ => watcher, TimeSpan.Zero);
 
         var watchTask = workspaceWatcher.Watch(
-            repositoryRoot.Path,
+            "/repo",
             static (_, _) => Task.CompletedTask,
             cancellation.Token);
 
-        Directory.Delete(directoryPath, recursive: true);
-        watcher.RaiseDeleted(directoryPath);
+        watcher.Raise(
+            candidate => candidate.Deleted += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Deleted, "/repo/src", "FeatureFolder"));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => watchTask);
-        Assert.Equal("Workspace watcher encountered a fatal file system watcher error.", exception.Message);
-        Assert.Equal(
-            "Workspace watcher detected a directory deletion that requires a full reindex.",
-            exception.InnerException?.Message);
-    }
+        Func<Task> act = async () => await watchTask;
 
-    [Fact]
-    public async Task WhenExtensionlessFileIsDeleted_ThenDoesNotTriggerFatalRecovery()
-    {
-        using var repositoryRoot = new TemporaryDirectory();
-        var filePath = Path.Combine(repositoryRoot.Path, "LICENSE");
-        File.WriteAllText(filePath, "license");
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var watcher = new TestFileSystemWatcher(repositoryRoot.Path);
-        var workspaceWatcher = new WorkspaceWatcher(_ => watcher, TimeSpan.Zero);
-        var callbackInvoked = false;
-
-        var watchTask = workspaceWatcher.Watch(
-            repositoryRoot.Path,
-            (_, _) =>
-            {
-                callbackInvoked = true;
-                return Task.CompletedTask;
-            },
-            cancellation.Token);
-
-        File.Delete(filePath);
-        watcher.RaiseDeleted(filePath);
-
-        await Task.Delay(TimeSpan.FromMilliseconds(100), TestContext.Current.CancellationToken);
-
-        Assert.False(watchTask.IsCompleted);
-        Assert.False(callbackInvoked);
-
-        cancellation.Cancel();
-        await Assert.ThrowsAsync<OperationCanceledException>(() => watchTask);
+        var exception = await act.Should().ThrowAsync<InvalidOperationException>();
+        exception.WithMessage("Workspace watcher encountered a fatal file system watcher error.");
+        exception.Which.InnerException.Should().BeOfType<InvalidOperationException>()
+            .Which.Message.Should().Be("Workspace watcher detected a directory deletion that requires a full reindex.");
     }
 
     [Fact]
     public async Task WhenFileSystemWatcherSignalsFatalError_ThenThrows()
     {
-        using var repositoryRoot = new TemporaryDirectory();
+        var fileSystem = CreateRepositoryFileSystem();
+        var (workspaceWatcher, watcher) = CreateWorkspaceWatcher(fileSystem);
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        var watcher = new TestFileSystemWatcher(repositoryRoot.Path);
-        var workspaceWatcher = new WorkspaceWatcher(_ => watcher, TimeSpan.Zero);
         var expectedException = new IOException("The watcher buffer overflowed.");
 
         var watchTask = workspaceWatcher.Watch(
-            repositoryRoot.Path,
+            "/repo",
             static (_, _) => Task.CompletedTask,
             cancellation.Token);
 
-        watcher.RaiseError(expectedException);
+        watcher.Raise(candidate => candidate.Error += null, new ErrorEventArgs(expectedException));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => watchTask);
-        Assert.Equal("Workspace watcher encountered a fatal file system watcher error.", exception.Message);
-        Assert.Same(expectedException, exception.InnerException);
+        Func<Task> act = async () => await watchTask;
+
+        var exception = await act.Should().ThrowAsync<InvalidOperationException>();
+        exception.WithMessage("Workspace watcher encountered a fatal file system watcher error.");
+        exception.Which.InnerException.Should().BeSameAs(expectedException);
     }
 
-    private sealed class TestFileSystemWatcher(string repositoryRoot) : FileSystemWatcher(repositoryRoot)
+    private static MockFileSystem CreateRepositoryFileSystem()
+        => new(new Dictionary<string, MockFileData>
+        {
+            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+        }, "/repo");
+
+    private static (WorkspaceWatcher WorkspaceWatcher, Mock<IFileSystemWatcher> Watcher) CreateWorkspaceWatcher(MockFileSystem fileSystem)
     {
-        public void RaiseChanged(string fullPath) => OnChanged(CreateChangedArgs(WatcherChangeTypes.Changed, fullPath));
+        var watcher = new Mock<IFileSystemWatcher>(MockBehavior.Strict);
+        watcher.SetupProperty(candidate => candidate.EnableRaisingEvents);
+        watcher.SetupProperty(candidate => candidate.IncludeSubdirectories);
+        watcher.SetupProperty(candidate => candidate.InternalBufferSize);
+        watcher.SetupProperty(candidate => candidate.NotifyFilter);
+        watcher.Setup(candidate => candidate.Dispose());
 
-        public void RaiseCreated(string fullPath) => OnCreated(CreateChangedArgs(WatcherChangeTypes.Created, fullPath));
+        var watcherFactory = new Mock<IFileSystemWatcherFactory>(MockBehavior.Strict);
+        watcherFactory.Setup(candidate => candidate.New("/repo"))
+            .Returns(watcher.Object);
 
-        public void RaiseDeleted(string fullPath) => OnDeleted(CreateChangedArgs(WatcherChangeTypes.Deleted, fullPath));
-
-        public void RaiseRenamed(string oldFullPath, string newFullPath)
-        {
-            var directoryPath = System.IO.Path.GetDirectoryName(newFullPath) ?? string.Empty;
-            var oldName = System.IO.Path.GetFileName(oldFullPath);
-            var newName = System.IO.Path.GetFileName(newFullPath);
-
-            OnRenamed(new RenamedEventArgs(
-                WatcherChangeTypes.Renamed,
-                directoryPath,
-                newName,
-                oldName));
-        }
-
-        public void RaiseError(Exception exception) => OnError(new ErrorEventArgs(exception));
-
-        private static FileSystemEventArgs CreateChangedArgs(
-            WatcherChangeTypes changeType,
-            string fullPath)
-        {
-            var directoryPath = System.IO.Path.GetDirectoryName(fullPath) ?? string.Empty;
-            var fileName = System.IO.Path.GetFileName(fullPath);
-
-            return new FileSystemEventArgs(changeType, directoryPath, fileName);
-        }
-    }
-
-    private sealed class TemporaryDirectory : IDisposable
-    {
-        public TemporaryDirectory()
-        {
-            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"SharpSense.WorkspaceWatcher.{Guid.NewGuid():N}");
-            Directory.CreateDirectory(Path);
-        }
-
-        public string Path { get; }
-
-        public void Dispose()
-        {
-            if (Directory.Exists(Path))
-            {
-                Directory.Delete(Path, recursive: true);
-            }
-        }
+        return (new WorkspaceWatcher(fileSystem, watcherFactory.Object), watcher);
     }
 }

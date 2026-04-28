@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using SharpSense.Infrastructure.Storage;
+using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.Persistence;
 
@@ -14,6 +15,7 @@ public static class PersistenceServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        services.AddFileSystem();
         services.AddSingleton<SqlitePragmaInterceptor>();
         services.AddDbContextFactory<SharpSenseDbContext>(
             (serviceProvider, options) =>
@@ -34,17 +36,19 @@ public static class PersistenceServiceCollectionExtensions
         return services;
     }
 
-    internal class EfCoreEnsureDatabase(IServiceProvider serviceProvider) : IHostedService
+    internal class EfCoreEnsureDatabase(
+        IServiceProvider serviceProvider,
+        IFileSystem fileSystem) : IHostedService
     {
         public async Task StartAsync(CancellationToken ct)
         {
             await using var scope = serviceProvider.CreateAsyncScope();
             var repositoryWorkspace = scope.ServiceProvider.GetRequiredService<IRepositoryWorkspace>();
 
-            var directory = Path.GetDirectoryName(repositoryWorkspace.DatabasePath);
-            if (!string.IsNullOrWhiteSpace(directory) && !Directory.Exists(directory))
+            var directory = fileSystem.Path.GetDirectoryName(repositoryWorkspace.DatabasePath);
+            if (!string.IsNullOrWhiteSpace(directory) && !fileSystem.Directory.Exists(directory))
             {
-                Directory.CreateDirectory(directory);
+                fileSystem.Directory.CreateDirectory(directory);
             }
 
             var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<SharpSenseDbContext>>();

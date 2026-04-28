@@ -5,4 +5,5 @@ namespace SharpSense.Cli.Shared;
 
 internal sealed record CliCommandExecutionContext(
     IAnsiConsole? Console,
-    Action<IServiceCollection>? ConfigureServices);
+    Action<IServiceCollection>? ConfigureServices,
+    bool EnableFileLogging);

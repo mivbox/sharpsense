@@ -8,7 +8,8 @@ using SharpSense.Infrastructure.Storage;
 namespace SharpSense.Infrastructure.Indexing.CSharp;
 
 public sealed class CSharpLanguageExtractor(
-    IRoslynTargetAnalysisEngine analysisEngine,
+    IWorkspaceLoader workspaceLoader,
+    ITargetAnalysisEngine analysisEngine,
     IRepositoryWorkspace repositoryWorkspace)
     : ILanguageExtractor
 {
@@ -21,11 +22,16 @@ public sealed class CSharpLanguageExtractor(
         ArgumentNullException.ThrowIfNull(context);
         ArgumentException.ThrowIfNullOrWhiteSpace(context.TargetPath);
 
+        var loadedWorkspace = await workspaceLoader.Load(
+            context.TargetPath,
+            new RoslynWorkspaceOptions(),
+            ct);
         var extractionPayload = await analysisEngine.Extract(
             context.TargetPath,
+            loadedWorkspace.Solution,
             repositoryWorkspace,
-            new RoslynWorkspaceOptions(),
             context.Progress,
+            loadedWorkspace.Diagnostics,
             ct);
 
         return new ExtractedNodes(
@@ -51,11 +57,26 @@ public sealed class CSharpLanguageExtractor(
             return new ExtractedNodes([], [], [], []);
         }
 
+        var loadedWorkspace = await workspaceLoader.Load(
+            context.TargetPath,
+            new RoslynWorkspaceOptions(),
+            ct);
+        var updatedWorkspace = await workspaceLoader.UpdateDocuments(
+            context.TargetPath,
+            cSharpChanges,
+            ct);
+        IReadOnlyList<string> diagnostics =
+        [
+            .. loadedWorkspace.Diagnostics,
+            .. updatedWorkspace.Diagnostics
+        ];
         var extractionPayload = await analysisEngine.ExtractIncremental(
             context.TargetPath,
+            updatedWorkspace.Solution,
             repositoryWorkspace,
             cSharpChanges,
             context.Progress,
+            diagnostics,
             ct);
 
         return new ExtractedNodes(

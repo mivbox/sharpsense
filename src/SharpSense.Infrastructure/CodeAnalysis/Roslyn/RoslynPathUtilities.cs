@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using Microsoft.CodeAnalysis;
+using System.IO.Abstractions;
 using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
@@ -47,8 +48,13 @@ internal static class RoslynPathUtilities
             .Replace('\\', '/');
     }
 
-    public static string ComputeContentHash(string filePath)
+    public static string ComputeContentHash(
+        IFileSystem fileSystem,
+        string filePath)
     {
-        return Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(filePath)));
+        ArgumentNullException.ThrowIfNull(fileSystem);
+        ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
+
+        return Convert.ToHexString(SHA256.HashData(fileSystem.File.ReadAllBytes(filePath)));
     }
 }

@@ -24,24 +24,25 @@ public abstract class AbstractWebAsyncCommand<TSettings> : AsyncCommand<TSetting
         TSettings settings,
         CancellationToken ct)
     {
+        var executionContext = CommandOutput.GetExecutionContext(context);
+        var enableFileLogging = executionContext?.EnableFileLogging ?? true;
         var previousLogger = Log.Logger;
-        SharpSenseLogging.UseGlobalLogger(settings.IsVerbose, context.Name, enableConsoleLogging: true);
+        SharpSenseLogging.UseGlobalLogger(settings.IsVerbose, context.Name, enableConsoleLogging: true, enableFileLogging);
 
         var builder = WebApplication.CreateBuilder();
-        var logFilePath = SharpSenseLogging.GetLogFilePath(context.Name);
-        var executionContext = CommandOutput.GetExecutionContext(context);
+        var logFilePath = enableFileLogging ? SharpSenseLogging.GetLogFilePath(context.Name) : null;
         WebApplication? app = null;
 
         try
         {
             builder.Host.UseSerilog((_, cfg) =>
-                SharpSenseLogging.ConfigureLogger(cfg, settings.IsVerbose, logFilePath, true));
+                SharpSenseLogging.ConfigureLogger(cfg, settings.IsVerbose, logFilePath, true, enableFileLogging));
 
             Logger.Information(
                 "Building web host for command {CommandName} and settings type {SettingsType} with log file {LogFilePath}",
                 context.Name,
                 typeof(TSettings).FullName,
-                logFilePath);
+                logFilePath ?? "<disabled>");
             ConfigureServices(settings, builder.Services);
             executionContext?.ConfigureServices?.Invoke(builder.Services);
             Logger.Information("Finished configuring web services for {SettingsType}", typeof(TSettings).FullName);

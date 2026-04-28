@@ -3,48 +3,62 @@ using Microsoft.CodeAnalysis;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Application.Shared.Models;
+using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.Storage;
+using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
-public sealed class RoslynTargetAnalysisEngine : IRoslynTargetAnalysisEngine, IDisposable
+internal sealed class RoslynTargetAnalysisEngine : ITargetAnalysisEngine
 {
-    private readonly WorkspaceLoader _workspaceLoader;
     private readonly NodeExtractor _nodeExtractor;
     private readonly EdgeExtractor _edgeExtractor;
-    private bool _disposed;
+    private readonly IFileSystem _fileSystem;
 
-    public RoslynTargetAnalysisEngine(IMsBuildWorkspaceFactory? workspaceFactory = null)
-        : this(
-            new WorkspaceLoader(workspaceFactory ?? new MsBuildWorkspaceFactory()),
-            new NodeExtractor(),
-            new EdgeExtractor())
-    {
-    }
-
-    internal RoslynTargetAnalysisEngine(
-        WorkspaceLoader workspaceLoader,
+    public RoslynTargetAnalysisEngine(
         NodeExtractor nodeExtractor,
-        EdgeExtractor edgeExtractor)
+        EdgeExtractor edgeExtractor,
+        IFileSystem fileSystem)
     {
-        _workspaceLoader = workspaceLoader ?? throw new ArgumentNullException(nameof(workspaceLoader));
         _nodeExtractor = nodeExtractor ?? throw new ArgumentNullException(nameof(nodeExtractor));
         _edgeExtractor = edgeExtractor ?? throw new ArgumentNullException(nameof(edgeExtractor));
+        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+    }
+
+    public Task<KnowledgeGraphExtractionPayload> Extract(
+        string targetPath,
+        Project project,
+        IRepositoryWorkspace repositoryWorkspace,
+        IProgress<IndexingProgress>? progress = null,
+        IReadOnlyCollection<string>? diagnostics = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+
+        return Extract(
+            targetPath,
+            project.Solution,
+            repositoryWorkspace,
+            progress,
+            diagnostics,
+            ct);
     }
 
     public async Task<KnowledgeGraphExtractionPayload> Extract(
         string targetPath,
+        Solution solution,
         IRepositoryWorkspace repositoryWorkspace,
-        RoslynWorkspaceOptions? options = null,
         IProgress<IndexingProgress>? progress = null,
+        IReadOnlyCollection<string>? diagnostics = null,
         CancellationToken ct = default)
     {
-        ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
+        ArgumentNullException.ThrowIfNull(solution);
         ArgumentNullException.ThrowIfNull(repositoryWorkspace);
 
-        var absoluteTargetPath = Path.GetFullPath(targetPath);
-        var diagnostics = new ConcurrentQueue<string>();
+        var absoluteTargetPath = _fileSystem.Path.GetFullPath(targetPath);
+        var diagnosticQueue = CreateDiagnostics(diagnostics);
+        var orderedProjects = OrderProjects(solution);
 
         using var activity = SharpSenseTraceSpan.Start("roslyn.extract");
         activity.AddTag("target.path", absoluteTargetPath);
@@ -52,22 +66,21 @@ public sealed class RoslynTargetAnalysisEngine : IRoslynTargetAnalysisEngine, ID
 
         try
         {
-            var loadedWorkspace = await _workspaceLoader.Load(absoluteTargetPath, diagnostics, options, ct);
-            activity.AddTag("target.project.count", loadedWorkspace.OrderedProjects.Count);
+            activity.AddTag("target.project.count", orderedProjects.Count);
 
-            var (projects, projectIds) = _workspaceLoader.BuildProjectNodes(
-                loadedWorkspace.OrderedProjects,
+            var (projects, projectIds) = BuildProjectNodes(
+                orderedProjects,
                 repositoryWorkspace);
             var nodeExtraction = await _nodeExtractor.Extract(
-                loadedWorkspace.OrderedProjects,
+                orderedProjects,
                 repositoryWorkspace,
                 projectIds,
-                diagnostics,
+                diagnosticQueue,
                 progress,
                 ct);
             var edges = _edgeExtractor.Extract(
-                loadedWorkspace.Solution,
-                loadedWorkspace.OrderedProjects,
+                solution,
+                orderedProjects,
                 projectIds,
                 nodeExtraction.DeclaredSymbols,
                 nodeExtraction.SymbolNodeIds);
@@ -80,7 +93,7 @@ public sealed class RoslynTargetAnalysisEngine : IRoslynTargetAnalysisEngine, ID
                 projects,
                 nodeExtraction.CodeNodes,
                 edges,
-                diagnostics.ToArray());
+                diagnosticQueue.ToArray());
         }
         catch (Exception ex)
         {
@@ -91,19 +104,21 @@ public sealed class RoslynTargetAnalysisEngine : IRoslynTargetAnalysisEngine, ID
 
     public async Task<KnowledgeGraphExtractionPayload> ExtractIncremental(
         string targetPath,
+        Solution solution,
         IRepositoryWorkspace repositoryWorkspace,
         IReadOnlyList<WorkspaceFileChange> changedFiles,
         IProgress<IndexingProgress>? progress = null,
+        IReadOnlyCollection<string>? diagnostics = null,
         CancellationToken ct = default)
     {
-        ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
+        ArgumentNullException.ThrowIfNull(solution);
         ArgumentNullException.ThrowIfNull(repositoryWorkspace);
         ArgumentNullException.ThrowIfNull(changedFiles);
 
-        var absoluteTargetPath = Path.GetFullPath(targetPath);
+        var absoluteTargetPath = _fileSystem.Path.GetFullPath(targetPath);
         var absoluteChanges = NormalizeChanges(changedFiles, repositoryWorkspace.RootPath);
-        var diagnostics = new ConcurrentQueue<string>();
+        var diagnosticQueue = CreateDiagnostics(diagnostics);
 
         using var activity = SharpSenseTraceSpan.Start("roslyn.extract.incremental");
         activity.AddTag("target.path", absoluteTargetPath);
@@ -112,9 +127,7 @@ public sealed class RoslynTargetAnalysisEngine : IRoslynTargetAnalysisEngine, ID
 
         try
         {
-            await _workspaceLoader.Load(absoluteTargetPath, diagnostics, new RoslynWorkspaceOptions(), ct);
-            var updatedSolution = await _workspaceLoader.UpdateDocuments(absoluteTargetPath, absoluteChanges, diagnostics, ct);
-            var changedDocuments = GetChangedDocuments(updatedSolution, absoluteChanges);
+            var changedDocuments = GetChangedDocuments(solution, absoluteChanges);
             if (changedDocuments.Count == 0)
             {
                 return new KnowledgeGraphExtractionPayload(
@@ -122,19 +135,19 @@ public sealed class RoslynTargetAnalysisEngine : IRoslynTargetAnalysisEngine, ID
                     [],
                     [],
                     [],
-                    diagnostics.ToArray());
+                    diagnosticQueue.ToArray());
             }
 
-            var projectIds = _workspaceLoader.BuildProjectIds(OrderProjects(updatedSolution), repositoryWorkspace);
+            var projectIds = BuildProjectIds(OrderProjects(solution), repositoryWorkspace);
             var nodeExtraction = await _nodeExtractor.ExtractDocuments(
                 changedDocuments,
                 repositoryWorkspace,
                 projectIds,
-                diagnostics,
+                diagnosticQueue,
                 progress,
                 ct);
             var edges = _edgeExtractor.ExtractIncremental(
-                updatedSolution,
+                solution,
                 projectIds,
                 nodeExtraction.DeclaredSymbols,
                 nodeExtraction.SymbolNodeIds);
@@ -147,7 +160,7 @@ public sealed class RoslynTargetAnalysisEngine : IRoslynTargetAnalysisEngine, ID
                 [],
                 nodeExtraction.CodeNodes,
                 edges,
-                diagnostics.ToArray());
+                diagnosticQueue.ToArray());
         }
         catch (Exception ex)
         {
@@ -156,7 +169,57 @@ public sealed class RoslynTargetAnalysisEngine : IRoslynTargetAnalysisEngine, ID
         }
     }
 
-    private static IReadOnlyList<WorkspaceFileChange> NormalizeChanges(
+    private (IReadOnlyList<ProjectNode> Projects, IReadOnlyDictionary<ProjectId, string> ProjectIds) BuildProjectNodes(
+        IReadOnlyList<Project> orderedProjects,
+        IRepositoryWorkspace repositoryWorkspace)
+    {
+        ArgumentNullException.ThrowIfNull(orderedProjects);
+        ArgumentNullException.ThrowIfNull(repositoryWorkspace);
+
+        using var projectNodeActivity = SharpSenseTraceSpan.Start("roslyn.build-project-nodes");
+        var projects = new List<ProjectNode>(orderedProjects.Count);
+        var projectIds = BuildProjectIds(orderedProjects, repositoryWorkspace);
+
+        foreach (var project in orderedProjects)
+        {
+            var projectFilePath = RoslynPathUtilities.GetRequiredProjectFilePath(project);
+            var relativeFilePath = repositoryWorkspace.ToRepositoryRelativePath(projectFilePath);
+            var projectId = projectIds[project.Id];
+            projects.Add(
+                new ProjectNode
+                {
+                    Id = projectId,
+                    Name = project.Name,
+                    RelativeFilePath = relativeFilePath,
+                    ContentHash = RoslynPathUtilities.ComputeContentHash(_fileSystem, projectFilePath)
+                });
+        }
+
+        projectNodeActivity.AddTag("target.project.count", projects.Count);
+
+        return (projects, projectIds);
+    }
+
+    private IReadOnlyDictionary<ProjectId, string> BuildProjectIds(
+        IReadOnlyList<Project> orderedProjects,
+        IRepositoryWorkspace repositoryWorkspace)
+    {
+        ArgumentNullException.ThrowIfNull(orderedProjects);
+        ArgumentNullException.ThrowIfNull(repositoryWorkspace);
+
+        var projectIds = new Dictionary<ProjectId, string>();
+
+        foreach (var project in orderedProjects)
+        {
+            var projectFilePath = RoslynPathUtilities.GetRequiredProjectFilePath(project);
+            var relativeFilePath = repositoryWorkspace.ToRepositoryRelativePath(projectFilePath);
+            projectIds[project.Id] = $"project:{relativeFilePath}";
+        }
+
+        return projectIds;
+    }
+
+    private IReadOnlyList<WorkspaceFileChange> NormalizeChanges(
         IReadOnlyList<WorkspaceFileChange> changedFiles,
         string repositoryRoot)
     {
@@ -171,7 +234,7 @@ public sealed class RoslynTargetAnalysisEngine : IRoslynTargetAnalysisEngine, ID
         ];
     }
 
-    private static IReadOnlyList<Document> GetChangedDocuments(
+    private IReadOnlyList<Document> GetChangedDocuments(
         Solution solution,
         IReadOnlyList<WorkspaceFileChange> changedFiles)
     {
@@ -185,7 +248,7 @@ public sealed class RoslynTargetAnalysisEngine : IRoslynTargetAnalysisEngine, ID
                 continue;
             }
 
-            currentPaths.Add(Path.GetFullPath(currentPath));
+            currentPaths.Add(_fileSystem.Path.GetFullPath(currentPath));
         }
 
         if (currentPaths.Count == 0)
@@ -198,7 +261,7 @@ public sealed class RoslynTargetAnalysisEngine : IRoslynTargetAnalysisEngine, ID
             .. solution.Projects
                 .SelectMany(static project => project.Documents)
                 .Where(document => !string.IsNullOrWhiteSpace(document.FilePath) &&
-                                   currentPaths.Contains(Path.GetFullPath(document.FilePath)))
+                                   currentPaths.Contains(_fileSystem.Path.GetFullPath(document.FilePath)))
                 .OrderBy(static document => document.FilePath ?? document.Name, StringComparer.Ordinal)
         ];
     }
@@ -214,37 +277,22 @@ public sealed class RoslynTargetAnalysisEngine : IRoslynTargetAnalysisEngine, ID
         ];
     }
 
-    private static string? NormalizePath(string? path, string repositoryRoot)
+    private string? NormalizePath(string? path, string repositoryRoot)
     {
         if (string.IsNullOrWhiteSpace(path))
         {
             return null;
         }
 
-        return Path.IsPathRooted(path)
-            ? Path.GetFullPath(path)
-            : Path.GetFullPath(Path.Combine(repositoryRoot, path));
+        return _fileSystem.Path.GetFullPath(
+            _fileSystem.Path.IsPathRooted(path)
+                ? path
+                : _fileSystem.Path.Combine(repositoryRoot, path));
     }
+
+    private static ConcurrentQueue<string> CreateDiagnostics(IReadOnlyCollection<string>? diagnostics)
+        => diagnostics is null ? new ConcurrentQueue<string>() : new ConcurrentQueue<string>(diagnostics);
 
     private static StringComparer GetPathComparer()
         => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-
-    public void Dispose()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-
-        _disposed = true;
-        _workspaceLoader.Dispose();
-    }
-
-    private void ThrowIfDisposed()
-    {
-        if (_disposed)
-        {
-            throw new ObjectDisposedException(nameof(RoslynTargetAnalysisEngine));
-        }
-    }
 }

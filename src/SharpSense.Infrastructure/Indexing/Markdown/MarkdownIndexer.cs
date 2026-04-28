@@ -8,7 +8,7 @@ using System.Text;
 
 namespace SharpSense.Infrastructure.Indexing.Markdown;
 
-public sealed class MarkdownIndexer
+public sealed class MarkdownIndexer : IMarkdownIndexer
 {
     private const string DocumentRootName = "Document Root";
     private const string DocumentRootSlug = "document-root";

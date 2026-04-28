@@ -1,8 +1,15 @@
+using AwesomeAssertions;
 using Microsoft.Extensions.Options;
 using Moq;
+using SharpSense.Application.Indexing.Abstractions;
+using SharpSense.Application.Indexing.Models;
+using SharpSense.Domain.KnowledgeGraph.Edges;
+using SharpSense.Domain.KnowledgeGraph.Enums;
+using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Indexing.Markdown;
 using SharpSense.Infrastructure.Storage;
+using SharpSense.Infrastructure.Tests.Support;
 
 namespace SharpSense.Infrastructure.Tests.Indexing;
 
@@ -11,126 +18,163 @@ public sealed class DocumentDiscovererTests
     [Fact]
     public async Task WhenDiscoveringTargetDocuments_ThenAnchorsGlobsToTargetDirectoryAndEmitsDocumentEdges()
     {
-        var repositoryRoot = CreateRepositoryRoot();
-        var targetDirectory = Path.Combine(repositoryRoot, "src", "Sample");
-        var targetPath = Path.Combine(targetDirectory, "Sample.sln");
-        var targetDocumentPath = Path.Combine(targetDirectory, "docs", "nested", "Guide.md");
-        var linkedDocumentPath = Path.Combine(targetDirectory, "docs", "nested", "Reference.md");
-        var outsideDocumentPath = Path.Combine(repositoryRoot, "docs", "nested", "Outside.md");
+        const string targetPath = "/repo/src/Sample/Sample.sln";
+        const string targetDirectory = "/repo/src/Sample";
+        const string guidePath = "/repo/src/Sample/docs/nested/Guide.md";
+        const string referencePath = "/repo/src/Sample/docs/nested/Reference.md";
+        const string guideRelativePath = "src/Sample/docs/nested/Guide.md";
+        const string referenceRelativePath = "src/Sample/docs/nested/Reference.md";
+        var includePaths = new[] { "docs/**/*.md" };
+        var repositoryWorkspace = CreateRepositoryWorkspace(targetPath, targetDirectory);
+        var fileSystem = FileSystemMockFactory.Create(
+            (guidePath, "See [Reference](./Reference.md)."),
+            (referencePath, "Reference content lives here."));
+        var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
+        var markdownIndexer = new Mock<IMarkdownIndexer>(MockBehavior.Strict);
+        var discoverer = new DocumentDiscoverer(
+            repositoryWorkspace.Object,
+            CreateConfigMonitor(includePaths),
+            fileDiscoverer.Object,
+            markdownIndexer.Object,
+            fileSystem);
 
-        Directory.CreateDirectory(Path.GetDirectoryName(targetDocumentPath)!);
-        Directory.CreateDirectory(Path.GetDirectoryName(outsideDocumentPath)!);
-        File.WriteAllText(targetPath, string.Empty);
-        File.WriteAllText(
-            targetDocumentPath,
-            """
-            See [Reference](./Reference.md).
-            """);
-        File.WriteAllText(
-            linkedDocumentPath,
-            """
-            Reference content lives here.
-            """);
-        File.WriteAllText(
-            outsideDocumentPath,
-            """
-            # Outside Guide
-            Should not match.
-            """);
+        fileDiscoverer.Setup(candidate => candidate.GetAllowedFiles(
+                targetDirectory,
+                It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(includePaths)),
+                TestContext.Current.CancellationToken))
+            .ReturnsAsync(
+            [
+                new DiscoveredFile(guidePath, guideRelativePath),
+                new DiscoveredFile(referencePath, referenceRelativePath)
+            ]);
+        markdownIndexer.Setup(candidate => candidate.Index(
+                "See [Reference](./Reference.md).",
+                guideRelativePath))
+            .Returns(new MarkdownIndexResult(
+            [
+                CreateDocumentNode(
+                    "code:doc:src/Sample/docs/nested/Guide.md#document-root",
+                    guideRelativePath)
+            ],
+            [
+                CreateEdge(
+                    "code:doc:src/Sample/docs/nested/Guide.md#document-root",
+                    "code:doc:src/Sample/docs/nested/Reference.md#document-root",
+                    EdgeType.DocumentLink)
+            ]));
+        markdownIndexer.Setup(candidate => candidate.Index(
+                "Reference content lives here.",
+                referenceRelativePath))
+            .Returns(new MarkdownIndexResult(
+            [
+                CreateDocumentNode(
+                    "code:doc:src/Sample/docs/nested/Reference.md#document-root",
+                    referenceRelativePath)
+            ],
+            []));
 
-        try
-        {
-            var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(repositoryRoot);
-            var discoverer = new DocumentDiscoverer(
-                workspace,
-                CreateConfigMonitor("docs/**/*.md"),
-                new WorkspaceFileDiscoverer(workspace),
-                new MarkdownIndexer());
+        var result = await discoverer.Discover(targetPath, TestContext.Current.CancellationToken);
 
-            var result = await discoverer.Discover(targetPath, TestContext.Current.CancellationToken);
-
-            Assert.Collection(
-                result.CodeNodes,
-                node =>
-                {
-                    Assert.Equal("code:doc:src/Sample/docs/nested/Guide.md#document-root", node.CanonicalId);
-                    Assert.Equal("src/Sample/docs/nested/Guide.md", node.RelativeFilePath);
-                },
-                node =>
-                {
-                    Assert.Equal("code:doc:src/Sample/docs/nested/Reference.md#document-root", node.CanonicalId);
-                    Assert.Equal("src/Sample/docs/nested/Reference.md", node.RelativeFilePath);
-                });
-            Assert.Collection(
-                result.Edges,
-                edge =>
-                {
-                    Assert.Equal("code:doc:src/Sample/docs/nested/Guide.md#document-root", edge.CallerId);
-                    Assert.Equal("code:doc:src/Sample/docs/nested/Reference.md#document-root", edge.CalleeId);
-                    Assert.Equal(Domain.KnowledgeGraph.Enums.EdgeType.DocumentLink, edge.EdgeType);
-                });
-            Assert.DoesNotContain(
-                result.CodeNodes,
-                static candidate => candidate.CanonicalId.Contains("Outside", StringComparison.Ordinal));
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(repositoryRoot);
-        }
+        result.CodeNodes.Select(static node => node.CanonicalId)
+            .Should()
+            .Equal(
+                "code:doc:src/Sample/docs/nested/Guide.md#document-root",
+                "code:doc:src/Sample/docs/nested/Reference.md#document-root");
+        result.CodeNodes.Select(static node => node.RelativeFilePath)
+            .Should()
+            .Equal(
+                guideRelativePath,
+                referenceRelativePath);
+        result.Edges.Should().ContainSingle();
+        result.Edges[0].CallerId.Should().Be("code:doc:src/Sample/docs/nested/Guide.md#document-root");
+        result.Edges[0].CalleeId.Should().Be("code:doc:src/Sample/docs/nested/Reference.md#document-root");
+        result.Edges[0].EdgeType.Should().Be(EdgeType.DocumentLink);
+        result.CodeNodes.Should().NotContain(
+            static candidate => candidate.CanonicalId.Contains("Outside", StringComparison.Ordinal));
     }
 
     [Fact]
     public async Task WhenDiscoveringExplicitFiles_ThenHonorsTargetIncludes()
     {
-        var repositoryRoot = CreateRepositoryRoot();
-        var targetDirectory = Path.Combine(repositoryRoot, "src", "Sample");
-        var targetPath = Path.Combine(targetDirectory, "Sample.sln");
-        var includedDocumentPath = Path.Combine(targetDirectory, "docs", "Guide.md");
-        var excludedDocumentPath = Path.Combine(targetDirectory, "notes", "Outside.md");
+        const string targetPath = "/repo/src/Sample/Sample.sln";
+        const string targetDirectory = "/repo/src/Sample";
+        const string guidePath = "/repo/src/Sample/docs/Guide.md";
+        const string outsidePath = "/repo/src/Sample/notes/Outside.md";
+        const string guideRelativePath = "src/Sample/docs/Guide.md";
+        var includePaths = new[] { "docs/**/*.md" };
+        var repositoryWorkspace = CreateRepositoryWorkspace(targetPath, targetDirectory);
+        var fileSystem = FileSystemMockFactory.Create((guidePath, "# Guide\nIncluded."));
+        var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
+        var markdownIndexer = new Mock<IMarkdownIndexer>(MockBehavior.Strict);
+        var discoverer = new DocumentDiscoverer(
+            repositoryWorkspace.Object,
+            CreateConfigMonitor(includePaths),
+            fileDiscoverer.Object,
+            markdownIndexer.Object,
+            fileSystem);
 
-        Directory.CreateDirectory(Path.GetDirectoryName(includedDocumentPath)!);
-        Directory.CreateDirectory(Path.GetDirectoryName(excludedDocumentPath)!);
-        File.WriteAllText(targetPath, string.Empty);
-        File.WriteAllText(
-            includedDocumentPath,
-            """
-            # Guide
-            Included.
-            """);
-        File.WriteAllText(
-            excludedDocumentPath,
-            """
-            # Outside
-            Excluded.
-            """);
+        fileDiscoverer.Setup(candidate => candidate.GetAllowedFiles(
+                targetDirectory,
+                It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(includePaths)),
+                TestContext.Current.CancellationToken))
+            .ReturnsAsync([new DiscoveredFile(guidePath, guideRelativePath)]);
+        markdownIndexer.Setup(candidate => candidate.Index(
+                "# Guide\nIncluded.",
+                guideRelativePath))
+            .Returns(new MarkdownIndexResult(
+            [
+                CreateDocumentNode(
+                    "code:doc:src/Sample/docs/Guide.md#document-root",
+                    guideRelativePath)
+            ],
+            []));
 
-        try
-        {
-            var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(repositoryRoot);
-            var discoverer = new DocumentDiscoverer(
-                workspace,
-                CreateConfigMonitor("docs/**/*.md"),
-                new WorkspaceFileDiscoverer(workspace),
-                new MarkdownIndexer());
+        var result = await discoverer.DiscoverFiles(
+            targetPath,
+            [guidePath, outsidePath],
+            TestContext.Current.CancellationToken);
 
-            var result = await discoverer.DiscoverFiles(
-                targetPath,
-                [includedDocumentPath, excludedDocumentPath],
-                TestContext.Current.CancellationToken);
-
-            Assert.NotEmpty(result.CodeNodes);
-            Assert.All(
-                result.CodeNodes,
-                node => Assert.Equal("src/Sample/docs/Guide.md", node.RelativeFilePath));
-            Assert.Contains(
-                result.CodeNodes,
-                static node => node.CanonicalId == "code:doc:src/Sample/docs/Guide.md#document-root");
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(repositoryRoot);
-        }
+        result.CodeNodes.Should().NotBeEmpty();
+        result.CodeNodes.Should().OnlyContain(node => node.RelativeFilePath == guideRelativePath);
+        result.CodeNodes.Should().Contain(
+            static node => node.CanonicalId == "code:doc:src/Sample/docs/Guide.md#document-root");
     }
+
+    private static Mock<IRepositoryWorkspace> CreateRepositoryWorkspace(
+        string targetPath,
+        string targetDirectory)
+    {
+        var repositoryWorkspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);
+        repositoryWorkspace.Setup(candidate => candidate.GetRequiredTargetDirectoryPath(targetPath))
+            .Returns(targetDirectory);
+        return repositoryWorkspace;
+    }
+
+    private static CodeNode CreateDocumentNode(
+        string canonicalId,
+        string relativeFilePath)
+        => new()
+        {
+            CanonicalId = canonicalId,
+            FullyQualifiedName = canonicalId["code:doc:".Length..],
+            DisplayName = canonicalId[(canonicalId.LastIndexOf('/') + 1)..],
+            NodeType = NodeType.Document,
+            RelativeFilePath = relativeFilePath,
+            StartLine = 1,
+            EndLine = 1,
+            Summary = string.Empty
+        };
+
+    private static DependencyEdge CreateEdge(
+        string callerId,
+        string calleeId,
+        EdgeType edgeType)
+        => new()
+        {
+            CallerId = callerId,
+            CalleeId = calleeId,
+            EdgeType = edgeType
+        };
 
     private static IOptionsMonitor<SharpSenseConfig> CreateConfigMonitor(params string[] includePaths)
     {
@@ -141,20 +185,5 @@ public sealed class DocumentDiscovererTests
                 IncludePaths = includePaths
             });
         return configMonitor.Object;
-    }
-
-    private static string CreateRepositoryRoot()
-    {
-        var repositoryRoot = Path.Combine(Path.GetTempPath(), $"sharp-sense-discovery-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(repositoryRoot, ".git"));
-        return repositoryRoot;
-    }
-
-    private static void DeleteDirectoryIfExists(string path)
-    {
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, recursive: true);
-        }
     }
 }
