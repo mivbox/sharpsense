@@ -1,13 +1,15 @@
 using GitIgnore = Ignore.Ignore;
 using Microsoft.Extensions.FileSystemGlobbing;
-using Microsoft.Extensions.FileSystemGlobbing.Abstractions;
+using System.IO.Abstractions;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Infrastructure.Indexing;
 
-public sealed class WorkspaceFileDiscoverer(IRepositoryWorkspace repositoryWorkspace) : IWorkspaceFileDiscoverer
+public sealed class WorkspaceFileDiscoverer(
+    IRepositoryWorkspace repositoryWorkspace,
+    IFileSystem fileSystem) : IWorkspaceFileDiscoverer
 {
     public Task<IReadOnlyList<DiscoveredFile>> GetAllowedFiles(
         string targetDirectory,
@@ -19,14 +21,14 @@ public sealed class WorkspaceFileDiscoverer(IRepositoryWorkspace repositoryWorks
 
         ct.ThrowIfCancellationRequested();
 
-        var absoluteTargetDirectory = Path.GetFullPath(targetDirectory);
+        var absoluteTargetDirectory = fileSystem.Path.GetFullPath(targetDirectory);
         if (!repositoryWorkspace.IsSameOrSubPath(absoluteTargetDirectory))
         {
             throw new InvalidOperationException(
                 $"Target directory '{absoluteTargetDirectory}' must be located under repository root '{repositoryWorkspace.RootPath}'.");
         }
 
-        if (!Directory.Exists(absoluteTargetDirectory))
+        if (!fileSystem.Directory.Exists(absoluteTargetDirectory))
         {
             return Task.FromResult<IReadOnlyList<DiscoveredFile>>([]);
         }
@@ -46,21 +48,23 @@ public sealed class WorkspaceFileDiscoverer(IRepositoryWorkspace repositoryWorks
             matcher.AddInclude(includeGlob);
         }
 
-        var matchResult = matcher.Execute(new DirectoryInfoWrapper(new DirectoryInfo(absoluteTargetDirectory)));
-        if (!matchResult.HasMatches)
-        {
-            return Task.FromResult<IReadOnlyList<DiscoveredFile>>([]);
-        }
-
         var ignoreEngine = CreateIgnoreEngine();
         var discoveredFilesByRelativePath = new Dictionary<string, DiscoveredFile>(GetPathComparer());
 
-        foreach (var match in matchResult.Files.OrderBy(static match => match.Path, GetPathComparer()))
+        foreach (var absolutePath in fileSystem.Directory
+                     .EnumerateFiles(absoluteTargetDirectory, "*", SearchOption.AllDirectories)
+                     .OrderBy(static path => path, GetPathComparer()))
         {
             ct.ThrowIfCancellationRequested();
 
-            var absolutePath = Path.GetFullPath(Path.Combine(absoluteTargetDirectory, match.Path));
-            if (!File.Exists(absolutePath))
+            if (!fileSystem.File.Exists(absolutePath))
+            {
+                continue;
+            }
+
+            var targetRelativePath = repositoryWorkspace.NormalizeDirectorySeparators(
+                fileSystem.Path.GetRelativePath(absoluteTargetDirectory, absolutePath));
+            if (!matcher.Match(targetRelativePath).HasMatches)
             {
                 continue;
             }
@@ -87,13 +91,13 @@ public sealed class WorkspaceFileDiscoverer(IRepositoryWorkspace repositoryWorks
     private GitIgnore CreateIgnoreEngine()
     {
         var ignoreEngine = new GitIgnore();
-        var gitIgnorePath = Path.Combine(repositoryWorkspace.RootPath, ".gitignore");
-        if (!File.Exists(gitIgnorePath))
+        var gitIgnorePath = fileSystem.Path.Combine(repositoryWorkspace.RootPath, ".gitignore");
+        if (!fileSystem.File.Exists(gitIgnorePath))
         {
             return ignoreEngine;
         }
 
-        return ignoreEngine.Add(File.ReadAllLines(gitIgnorePath));
+        return ignoreEngine.Add(fileSystem.File.ReadAllLines(gitIgnorePath));
     }
 
     private static StringComparer GetPathComparer()

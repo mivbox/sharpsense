@@ -1,5 +1,7 @@
+using AwesomeAssertions;
 using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Storage;
+using System.IO.Abstractions.TestingHelpers;
 
 namespace SharpSense.Infrastructure.Tests.Indexing;
 
@@ -8,86 +10,46 @@ public sealed class WorkspaceFileDiscovererTests
     [Fact]
     public async Task WhenGitIgnoreExists_ThenFiltersIgnoredMatches()
     {
-        var repositoryRoot = CreateRepositoryRoot();
-        var targetDirectory = Path.Combine(repositoryRoot, "src", "Sample");
-        var includedPath = Path.Combine(targetDirectory, "docs", "Guide.md");
-        var ignoredPath = Path.Combine(targetDirectory, "docs", "Ignored.md");
-
-        Directory.CreateDirectory(Path.GetDirectoryName(includedPath)!);
-        File.WriteAllText(Path.Combine(repositoryRoot, ".gitignore"), "src/Sample/docs/Ignored.md");
-        File.WriteAllText(includedPath, "# Guide");
-        File.WriteAllText(ignoredPath, "# Ignored");
-
-        try
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
         {
-            var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(repositoryRoot);
-            var discoverer = new WorkspaceFileDiscoverer(workspace);
+            ["/repo/.git/HEAD"] = new("ref: refs/heads/main"),
+            ["/repo/.gitignore"] = new("src/Sample/docs/Ignored.md"),
+            ["/repo/src/Sample/docs/Guide.md"] = new("# Guide"),
+            ["/repo/src/Sample/docs/Ignored.md"] = new("# Ignored")
+        }, "/repo");
+        var workspace = new RepositoryWorkspaceFactory(fileSystem).CreateFromWorkingDirectory("/repo");
+        var discoverer = new WorkspaceFileDiscoverer(workspace, fileSystem);
 
-            var files = await discoverer.GetAllowedFiles(
-                targetDirectory,
-                ["docs/**/*.md"],
-                TestContext.Current.CancellationToken);
+        var files = await discoverer.GetAllowedFiles(
+            "/repo/src/Sample",
+            ["docs/**/*.md"],
+            TestContext.Current.CancellationToken);
 
-            Assert.Collection(
-                files,
-                file =>
-                {
-                    Assert.Equal(includedPath, file.AbsolutePath);
-                    Assert.Equal("src/Sample/docs/Guide.md", file.RelativeFilePath);
-                });
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(repositoryRoot);
-        }
+        files.Should().ContainSingle();
+        files[0].AbsolutePath.Should().Be("/repo/src/Sample/docs/Guide.md");
+        files[0].RelativeFilePath.Should().Be("src/Sample/docs/Guide.md");
     }
 
     [Fact]
     public async Task WhenGitIgnoreIsMissing_ThenReturnsGlobMatches()
     {
-        var repositoryRoot = CreateRepositoryRoot();
-        var targetDirectory = Path.Combine(repositoryRoot, "src", "Sample");
-        var firstPath = Path.Combine(targetDirectory, "docs", "Guide.md");
-        var secondPath = Path.Combine(targetDirectory, "docs", "Reference.md");
-
-        Directory.CreateDirectory(Path.GetDirectoryName(firstPath)!);
-        File.WriteAllText(firstPath, "# Guide");
-        File.WriteAllText(secondPath, "# Reference");
-
-        try
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
         {
-            var workspace = RepositoryWorkspace.CreateFromWorkingDirectory(repositoryRoot);
-            var discoverer = new WorkspaceFileDiscoverer(workspace);
+            ["/repo/.git/HEAD"] = new("ref: refs/heads/main"),
+            ["/repo/src/Sample/docs/Guide.md"] = new("# Guide"),
+            ["/repo/src/Sample/docs/Reference.md"] = new("# Reference")
+        }, "/repo");
+        var workspace = new RepositoryWorkspaceFactory(fileSystem).CreateFromWorkingDirectory("/repo");
+        var discoverer = new WorkspaceFileDiscoverer(workspace, fileSystem);
 
-            var files = await discoverer.GetAllowedFiles(
-                targetDirectory,
-                ["docs/**/*.md"],
-                TestContext.Current.CancellationToken);
+        var files = await discoverer.GetAllowedFiles(
+            "/repo/src/Sample",
+            ["docs/**/*.md"],
+            TestContext.Current.CancellationToken);
 
-            Assert.Equal(2, files.Count);
-            Assert.Collection(
-                files,
-                file => Assert.Equal("src/Sample/docs/Guide.md", file.RelativeFilePath),
-                file => Assert.Equal("src/Sample/docs/Reference.md", file.RelativeFilePath));
-        }
-        finally
-        {
-            DeleteDirectoryIfExists(repositoryRoot);
-        }
-    }
-
-    private static string CreateRepositoryRoot()
-    {
-        var repositoryRoot = Path.Combine(Path.GetTempPath(), $"sharp-sense-file-discovery-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(Path.Combine(repositoryRoot, ".git"));
-        return repositoryRoot;
-    }
-
-    private static void DeleteDirectoryIfExists(string path)
-    {
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, recursive: true);
-        }
+        files.Should().HaveCount(2);
+        files.Select(static file => file.RelativeFilePath)
+            .Should()
+            .Equal("src/Sample/docs/Guide.md", "src/Sample/docs/Reference.md");
     }
 }

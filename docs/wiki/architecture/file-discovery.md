@@ -3,7 +3,7 @@ title: "File Discovery"
 type: architecture
 tags: [csharp, markdown, implemented]
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-04-28
 confidence: high
 ---
 
@@ -13,7 +13,7 @@ Indexing and incremental updates need one canonical way to discover allowed file
 
 ## The Approach
 
-SharpSense makes `IWorkspaceFileDiscoverer` the canonical discovery boundary. `DocumentDiscoverer` reads `IncludePaths` from `SharpSenseConfig`, resolves the Target directory through `IRepositoryWorkspace`, and asks `IWorkspaceFileDiscoverer` for the allowed files. `WorkspaceFileDiscoverer` normalizes the configured globs, matches them under the Target directory, converts each absolute match to a repository-relative path, applies `.gitignore` through the Ignore engine, and emits `DiscoveredFile` records. Downstream components such as [[extractors/markdown]] then index content by using `DiscoveredFile.RelativeFilePath` directly instead of recomputing paths.
+SharpSense makes `IWorkspaceFileDiscoverer` the canonical discovery boundary, and the whole flow now sits on the [[architecture/virtual-file-system]] seam. `DocumentDiscoverer` reads `IncludePaths` from `SharpSenseConfig`, resolves the Target directory through `IRepositoryWorkspace`, asks `IWorkspaceFileDiscoverer` for the allowed files, reads the resulting payloads through `IFileSystem`, and hands each Markdown document to `IMarkdownIndexer`. `WorkspaceFileDiscoverer` normalizes the configured globs, matches them under the Target directory, converts each absolute match to a repository-relative path, applies `.gitignore` through the Ignore engine, and emits `DiscoveredFile` records. Downstream components such as [[extractors/markdown]] then index content by using `DiscoveredFile.RelativeFilePath` directly instead of recomputing paths.
 
 ## Components Involved
 
@@ -21,15 +21,17 @@ SharpSense makes `IWorkspaceFileDiscoverer` the canonical discovery boundary. `D
 | --- | --- |
 | `SharpSenseConfig` | Supplies the `IncludePaths` globs for document discovery. |
 | `IRepositoryWorkspace` | Resolves the Target directory and converts absolute paths into repository-relative paths. |
+| `IFileSystem` | Supplies file reads, existence checks, and path normalization for discovery and document loading. |
 | `IWorkspaceFileDiscoverer` | Defines the allowed-file contract for discovery. |
 | `WorkspaceFileDiscoverer` | Applies glob matching, `.gitignore`, and separator normalization before returning `DiscoveredFile` records. |
 | `DiscoveredFile` | Carries the absolute file path plus the normalized repository-relative path for extractors. |
-| `DocumentDiscoverer` | Reuses the allowed-file set and streams markdown content into the indexer. |
+| `IMarkdownIndexer` | Converts raw Markdown text plus the canonical relative path into document nodes and edges. |
+| `DocumentDiscoverer` | Reuses the allowed-file set, reads files through `IFileSystem`, and streams Markdown content into the indexer. |
 
 ## Strict Rules
 
 1. Run file discovery through `IWorkspaceFileDiscoverer` so `.gitignore` and separator normalization stay centralized.
-2. Anchor include globs to the active Target directory, not to arbitrary process working directories.
-3. Treat `DiscoveredFile.RelativeFilePath` as the canonical repository-relative path; extractors must not recalculate it.
-4. Keep discovery scoped to C# and Markdown Targets, because those are the only indexed asset types.
-5. The current watch-mode directory-rename path still expands files with direct filesystem enumeration instead of `IWorkspaceFileDiscoverer`. Treat that as a compliance gap to fix, not as the intended pattern for [[architecture/incremental-watch]].
+2. Read discovered files through injected `IFileSystem`, not direct `System.IO` helpers.
+3. Anchor include globs to the active Target directory, not to arbitrary process working directories.
+4. Treat `DiscoveredFile.RelativeFilePath` as the canonical repository-relative path; extractors must not recalculate it.
+5. Keep discovery scoped to C# and Markdown Targets, because those are the only indexed asset types. Watch-mode directory renames may enumerate through `IFileSystem`, but they must preserve the same extension and ignore semantics described in [[architecture/incremental-watch]].

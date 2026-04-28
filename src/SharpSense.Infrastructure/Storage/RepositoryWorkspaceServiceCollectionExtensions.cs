@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.Storage;
 
@@ -12,8 +13,11 @@ public static class RepositoryWorkspaceServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
 
-        services.TryAddSingleton<IRepositoryWorkspace>(
-            RepositoryWorkspace.CreateFromWorkingDirectory(workingDirectory));
+        services.AddFileSystem();
+        services.TryAddSingleton<IRepositoryWorkspaceFactory, RepositoryWorkspaceFactory>();
+        services.TryAddSingleton<IRepositoryWorkspace>(ctx =>
+            ctx.GetRequiredService<IRepositoryWorkspaceFactory>()
+                .CreateFromWorkingDirectory(workingDirectory));
 
         return services;
     }

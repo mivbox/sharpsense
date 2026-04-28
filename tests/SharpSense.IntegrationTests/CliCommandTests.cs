@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.IO.Abstractions;
+using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json;
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -16,15 +18,17 @@ namespace SharpSense.IntegrationTests;
 
 public sealed class CliCommandTests
 {
+    private const string RepositoryRoot = "/repo";
+
     [Fact]
     public async Task WhenTraceCallerDirectionRuns_ThenOutputsUpstreamNodesAsJson()
     {
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
-        var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
+        var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["trace", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "caller"],
+            ["trace", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "caller", "--repo-root", RepositoryRoot],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -48,10 +52,10 @@ public sealed class CliCommandTests
     {
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
-        var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
+        var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["trace", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "callee", "--toon"],
+            ["trace", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "callee", "--toon", "--repo-root", RepositoryRoot],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -63,10 +67,10 @@ public sealed class CliCommandTests
     {
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
-        var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
+        var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["trace", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--toon"],
+            ["trace", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--toon", "--repo-root", RepositoryRoot],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -78,10 +82,10 @@ public sealed class CliCommandTests
     {
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
-        var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
+        var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["search", "MessageProvider", "--toon"],
+            ["search", "MessageProvider", "--toon", "--repo-root", RepositoryRoot],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -93,10 +97,10 @@ public sealed class CliCommandTests
     {
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
-        var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
+        var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["search", "Getting Started", "--toon"],
+            ["search", "Getting Started", "--toon", "--repo-root", RepositoryRoot],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -108,14 +112,33 @@ public sealed class CliCommandTests
     {
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
-        var app = Cli.Program.CreateCommandApp(console, database.ConfigureServices);
+        var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["trace", CliCommandTestDatabase.DocumentRootNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "callee", "--toon"],
+            ["trace", CliCommandTestDatabase.DocumentRootNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "callee", "--toon", "--repo-root", RepositoryRoot],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
         console.Output.Should().Be($"[D] `{CliCommandTestDatabase.LinkedDocumentRootNodeId}` Reference @ docs/Reference.md:1-1");
+    }
+
+    private static Spectre.Console.Cli.CommandApp CreateCommandApp(
+        TestConsole console,
+        CliCommandTestDatabase database)
+    {
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+        }, RepositoryRoot);
+
+        return Cli.Program.CreateCommandApp(
+            console,
+            services =>
+            {
+                services.AddSingleton<IFileSystem>(fileSystem);
+                database.ConfigureServices(services);
+            },
+            enableFileLogging: false);
     }
 
     private sealed class CliCommandTestDatabase(InMemoryContextFactory contextFactory) : IAsyncDisposable
@@ -144,11 +167,11 @@ public sealed class CliCommandTests
             return database;
         }
 
-        public Action<IServiceCollection> ConfigureServices => services =>
+        public void ConfigureServices(IServiceCollection services)
         {
             services.RemoveAll<IHostedService>();
             contextFactory.ConfigureServices<SharpSenseDbContext>(services);
-        };
+        }
 
         public async ValueTask DisposeAsync()
         {

@@ -3,7 +3,7 @@ title: "Incremental Watch"
 type: architecture
 tags: [incremental-watch, cqrs, implemented]
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-04-28
 confidence: high
 ---
 
@@ -13,7 +13,7 @@ Watch mode has to batch noisy filesystem events, preserve correct rename and del
 
 ## The Approach
 
-`AnalyzeCommand` always performs a full Target index first. When `--watch` is enabled, it resolves the repository root from `IOptions<SharpSenseCliOptions>` and hands control to `IWorkspaceWatcher`. `WorkspaceWatcher` wraps `FileSystemWatcher`, buffers relevant changes in a concurrent queue, and uses a semaphore plus a 250 ms debounce window to emit batches. Relevant events are reduced to `WorkspaceFileChange` records for C# and Markdown files only. The callback dispatches `UpdateWorkspaceFilesCommand`; if the batch handler fails, `AnalyzeCommand` runs a full reindex and continues inside the current watcher session. If the watcher itself reports a fatal error, `AnalyzeCommand` runs a full reindex and then restarts the outer watch loop. The incremental persistence side of this flow is documented in [[persistence/sqlite-schema]].
+`AnalyzeCommand` always performs a full Target index first. When `--watch` is enabled, it resolves the repository root from `IOptions<SharpSenseCliOptions>` and hands control to `IWorkspaceWatcher`. `WorkspaceWatcher` now lives on the [[architecture/virtual-file-system]] boundary: it receives `IFileSystem` and `IFileSystemWatcherFactory`, constructs the watcher through the factory, tracks known directories through the injected filesystem, and uses a semaphore plus a 250 ms debounce window to emit batches. Relevant events are reduced to `WorkspaceFileChange` records for C# and Markdown files only. The callback dispatches `UpdateWorkspaceFilesCommand`; if the batch handler fails, `AnalyzeCommand` runs a full reindex and continues inside the current watcher session. If the watcher itself reports a fatal error, `AnalyzeCommand` runs a full reindex and then restarts the outer watch loop. The incremental persistence side of this flow is documented in [[persistence/sqlite-schema]].
 
 ## Components Involved
 
@@ -21,7 +21,9 @@ Watch mode has to batch noisy filesystem events, preserve correct rename and del
 | --- | --- |
 | `AnalyzeCommand` | Owns watch-mode startup, recovery, and restart decisions. |
 | `IWorkspaceWatcher` | Application contract for debounced workspace change batches. |
-| `WorkspaceWatcher` | FileSystemWatcher-based implementation with queueing, debounce, and fatal-error signaling. |
+| `IFileSystemWatcherFactory` | Creates the concrete watcher at the infrastructure edge without hiding the dependency. |
+| `IFileSystem` | Supplies directory existence checks and directory-rename expansion without direct `System.IO` calls. |
+| `WorkspaceWatcher` | `FileSystemWatcher`-based implementation with queueing, debounce, and fatal-error signaling. |
 | `WorkspaceFileChange` | Captures added, modified, deleted, and renamed file events. |
 | `UpdateWorkspaceFilesCommand` | CQRS payload that carries the changed-file batch into the indexing pipeline. |
 | `KnowledgeGraphIndexing` | Persists the resulting incremental node and edge updates by repository-relative file path. |
@@ -29,7 +31,7 @@ Watch mode has to batch noisy filesystem events, preserve correct rename and del
 ## Strict Rules
 
 1. Emit change batches only for C# and Markdown paths, because those are the only indexed Target asset types.
-2. Keep recovery ownership in the CLI: `IWorkspaceWatcher` surfaces fatal infrastructure failures, while `AnalyzeCommand` decides when to reindex or restart.
-3. Persist incremental changes by repository-relative `RelativeFilePath`, not by whole-database resets, whenever a batch can be handled incrementally.
-4. Align rename and discovery semantics with [[architecture/file-discovery]] so watch mode respects the same allow-list and path-normalization rules as full indexing.
-5. The current directory-rename expansion still uses `Directory.EnumerateFiles()` plus a hard-coded ignore list rather than `IWorkspaceFileDiscoverer`. Treat that as a documented compliance gap to close.
+2. Construct watchers through `IFileSystemWatcherFactory`, not `new FileSystemWatcher()`.
+3. Keep recovery ownership in the CLI: `IWorkspaceWatcher` surfaces fatal infrastructure failures, while `AnalyzeCommand` decides when to reindex or restart.
+4. Persist incremental changes by repository-relative `RelativeFilePath`, not by whole-database resets, whenever a batch can be handled incrementally.
+5. Align rename and discovery semantics with [[architecture/file-discovery]]. Directory-rename expansion may enumerate through `IFileSystem`, but it must preserve the same extension and ignore behavior as full discovery.

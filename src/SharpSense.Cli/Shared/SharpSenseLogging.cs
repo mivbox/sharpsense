@@ -12,18 +12,25 @@ internal static class SharpSenseLogging
     public static ILogger CreateLogger(
         bool isVerbose,
         string? commandName,
-        bool enableConsoleLogging)
+        bool enableConsoleLogging,
+        bool enableFileLogging = true)
     {
         var configuration = new LoggerConfiguration();
-        ConfigureLogger(configuration, isVerbose, GetLogFilePath(commandName), enableConsoleLogging);
+        ConfigureLogger(
+            configuration,
+            isVerbose,
+            enableFileLogging ? GetLogFilePath(commandName) : null,
+            enableConsoleLogging,
+            enableFileLogging);
         return configuration.CreateLogger();
     }
 
     public static void UseGlobalLogger(
         bool isVerbose,
         string? commandName,
-        bool enableConsoleLogging)
-        => Log.Logger = CreateLogger(isVerbose, commandName, enableConsoleLogging);
+        bool enableConsoleLogging,
+        bool enableFileLogging = true)
+        => Log.Logger = CreateLogger(isVerbose, commandName, enableConsoleLogging, enableFileLogging);
 
     public static string GetLogFilePath(string? commandName)
     {
@@ -41,22 +48,27 @@ internal static class SharpSenseLogging
     public static void ConfigureLogger(
         LoggerConfiguration configuration,
         bool isVerbose,
-        string logFilePath,
-        bool enableConsoleLogging)
+        string? logFilePath,
+        bool enableConsoleLogging,
+        bool enableFileLogging = true)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        ArgumentException.ThrowIfNullOrWhiteSpace(logFilePath);
 
         configuration
             .MinimumLevel.Is(isVerbose ? LogEventLevel.Verbose : LogEventLevel.Information)
-            .Enrich.FromLogContext()
-            .WriteTo.File(
+            .Enrich.FromLogContext();
+
+        if (enableFileLogging)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(logFilePath);
+            configuration.WriteTo.File(
                 path: logFilePath,
                 fileSizeLimitBytes: 5_242_880L,
                 rollOnFileSizeLimit: true,
                 retainedFileCountLimit: 10,
                 shared: true,
                 outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {SourceContext}{NewLine}{Exception}");
+        }
 
         if (enableConsoleLogging)
         {

@@ -14,23 +14,23 @@ public partial class Program
 {
     public static CommandApp CreateCommandApp(
         IAnsiConsole? console = null,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        bool enableFileLogging = true)
     {
         var app = new CommandApp();
-        ConfigureCommandApp(app, console, configureServices);
+        ConfigureCommandApp(app, console, configureServices, enableFileLogging);
         return app;
     }
 
     private static void ConfigureCommandApp(
         ICommandApp app,
         IAnsiConsole? console,
-        Action<IServiceCollection>? configureServices)
+        Action<IServiceCollection>? configureServices,
+        bool enableFileLogging)
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        var executionContext = console is null && configureServices is null
-            ? null
-            : new CliCommandExecutionContext(console, configureServices);
+        var executionContext = CreateExecutionContext(console, configureServices, enableFileLogging);
 
         app.Configure(config =>
         {
@@ -72,6 +72,14 @@ public partial class Program
             AttachData(ui, executionContext);
         });
     }
+
+    internal static CliCommandExecutionContext? CreateExecutionContext(
+        IAnsiConsole? console,
+        Action<IServiceCollection>? configureServices,
+        bool enableFileLogging)
+        => console is null && configureServices is null && enableFileLogging
+            ? null
+            : new CliCommandExecutionContext(console, configureServices, enableFileLogging);
 
     private static void AttachData(
         ICommandConfigurator commandConfigurator,

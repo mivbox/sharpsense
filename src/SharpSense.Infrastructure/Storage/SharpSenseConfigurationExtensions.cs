@@ -1,7 +1,9 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using System.IO.Abstractions;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -21,18 +23,21 @@ public static class SharpSenseConfigurationExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(targetDirectory);
 
-        var normalizedTargetDirectory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(targetDirectory));
+        var normalizedPhysicalTargetDirectory = NormalizePhysicalTargetDirectory(targetDirectory);
 
+        services.AddFileSystem();
         services.AddOptions<SharpSenseConfig>()
-            .Configure(options =>
+            .Configure<IFileSystem>((options, fileSystem) =>
             {
-                var configPath = Path.Combine(normalizedTargetDirectory, "sharpsense.yaml");
-                if (!File.Exists(configPath))
+                var normalizedTargetDirectory = fileSystem.Path.TrimEndingDirectorySeparator(
+                    fileSystem.Path.GetFullPath(targetDirectory));
+                var configPath = fileSystem.Path.Combine(normalizedTargetDirectory, "sharpsense.yaml");
+                if (!fileSystem.File.Exists(configPath))
                 {
                     return;
                 }
 
-                using var configReader = File.OpenText(configPath);
+                using var configReader = fileSystem.File.OpenText(configPath);
                 var config = _yamlDeserializer.Deserialize<SharpSenseConfig>(configReader) ?? new SharpSenseConfig();
                 var includePaths = config.IncludePaths ?? [];
 
@@ -43,8 +48,8 @@ public static class SharpSenseConfigurationExtensions
                         .Select(static includePath => includePath.Trim())
                 ];
             });
-        services.AddSingleton<IOptionsChangeTokenSource<SharpSenseConfig>>(
-            _ => new SharpSenseConfigChangeTokenSource(normalizedTargetDirectory));
+        services.TryAddSingleton<IOptionsChangeTokenSource<SharpSenseConfig>>(
+            _ => new SharpSenseConfigChangeTokenSource(normalizedPhysicalTargetDirectory));
 
         return services;
     }
@@ -63,9 +68,12 @@ public static class SharpSenseConfigurationExtensions
             => _fileProvider.Dispose();
 
         private static PhysicalFileProvider CreateFileProvider(string targetDirectory)
-            => new(Path.TrimEndingDirectorySeparator(Path.GetFullPath(targetDirectory)))
+            => new(NormalizePhysicalTargetDirectory(targetDirectory))
             {
                 UsePollingFileWatcher = true
             };
     }
+
+    private static string NormalizePhysicalTargetDirectory(string targetDirectory)
+        => Path.TrimEndingDirectorySeparator(Path.GetFullPath(targetDirectory));
 }

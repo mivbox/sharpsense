@@ -5,6 +5,7 @@ using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 using SharpSense.Infrastructure.Indexing.CSharp;
 using SharpSense.Infrastructure.Indexing.Markdown;
 using SharpSense.Infrastructure.Indexing.Watching;
+using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Infrastructure.Indexing;
 
@@ -14,9 +15,16 @@ public static class IndexingInfrastructureServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        services.AddFileSystem();
         services.AddSingleton<IMsBuildWorkspaceFactory, MsBuildWorkspaceFactory>();
-        services.AddSingleton<IRoslynTargetAnalysisEngine, RoslynTargetAnalysisEngine>();
-        services.TryAddSingleton<MarkdownIndexer>();
+        services.TryAddSingleton<NodeExtractor>();
+        services.TryAddSingleton<EdgeExtractor>();
+        services.TryAddSingleton<IWorkspaceLoader, WorkspaceLoader>();
+        services.TryAddSingleton<ITargetAnalysisEngine>(serviceProvider => new RoslynTargetAnalysisEngine(
+            serviceProvider.GetRequiredService<NodeExtractor>(),
+            serviceProvider.GetRequiredService<EdgeExtractor>(),
+            serviceProvider.GetRequiredService<System.IO.Abstractions.IFileSystem>()));
+        services.TryAddSingleton<IMarkdownIndexer, MarkdownIndexer>();
         services.TryAddSingleton<IWorkspaceWatcher, WorkspaceWatcher>();
         services.TryAddSingleton<IWorkspaceFileDiscoverer, WorkspaceFileDiscoverer>();
         services.TryAddSingleton<IIndexingWorkspacePaths, IndexingWorkspacePaths>();

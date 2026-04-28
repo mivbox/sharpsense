@@ -4,6 +4,7 @@ using Serilog;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Indexing.Markdown;
+using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.Indexing.Watching;
 
@@ -21,19 +22,26 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         "node_modules",
         "TestResults"
     };
-    private readonly Func<string, FileSystemWatcher> _watcherFactory;
+
+    private readonly IFileSystem _fileSystem;
+    private readonly IFileSystemWatcherFactory _watcherFactory;
     private readonly TimeSpan _debounceDelay;
 
-    public WorkspaceWatcher()
-        : this(CreateWatcher, TimeSpan.FromMilliseconds(250))
+    public WorkspaceWatcher(
+        IFileSystem fileSystem,
+        IFileSystemWatcherFactory watcherFactory)
+        : this(fileSystem, watcherFactory, TimeSpan.FromMilliseconds(250))
     {
     }
 
     internal WorkspaceWatcher(
-        Func<string, FileSystemWatcher> watcherFactory,
+        IFileSystem fileSystem,
+        IFileSystemWatcherFactory watcherFactory,
         TimeSpan debounceDelay)
     {
+        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _watcherFactory = watcherFactory ?? throw new ArgumentNullException(nameof(watcherFactory));
+
         if (debounceDelay < TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(debounceDelay));
@@ -50,9 +58,10 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRoot);
         ArgumentNullException.ThrowIfNull(onBatchChanged);
 
-        var normalizedRepositoryRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(repositoryRoot));
+        var normalizedRepositoryRoot = _fileSystem.Path.TrimEndingDirectorySeparator(
+            _fileSystem.Path.GetFullPath(repositoryRoot));
         using var signal = new SemaphoreSlim(0, int.MaxValue);
-        using var watcher = _watcherFactory(normalizedRepositoryRoot);
+        using var watcher = CreateWatcher(normalizedRepositoryRoot);
         var knownDirectories = CreateKnownDirectories(normalizedRepositoryRoot);
         var pendingChanges = new ConcurrentQueue<WorkspaceFileChange>();
         var pendingChangeCount = 0;
@@ -100,7 +109,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
 
         void HandleChanged(string fullPath)
         {
-            if (Directory.Exists(fullPath))
+            if (_fileSystem.Directory.Exists(fullPath))
             {
                 AddKnownDirectoryTree(knownDirectories, fullPath);
                 return;
@@ -113,7 +122,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
 
         void HandleCreated(string fullPath)
         {
-            if (Directory.Exists(fullPath))
+            if (_fileSystem.Directory.Exists(fullPath))
             {
                 AddKnownDirectoryTree(knownDirectories, fullPath);
                 return;
@@ -147,7 +156,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
             string newFullPath)
         {
             var wasDirectory = RemoveKnownDirectoryTree(knownDirectories, oldFullPath);
-            if (Directory.Exists(newFullPath) || wasDirectory)
+            if (_fileSystem.Directory.Exists(newFullPath) || wasDirectory)
             {
                 AddKnownDirectoryTree(knownDirectories, newFullPath);
                 EnqueueChanges(CreateDirectoryRenameChanges(
@@ -226,18 +235,17 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         }
     }
 
-    private static FileSystemWatcher CreateWatcher(string repositoryRoot)
+    private IFileSystemWatcher CreateWatcher(string repositoryRoot)
     {
-        return new FileSystemWatcher(repositoryRoot)
-        {
-            IncludeSubdirectories = true,
-            InternalBufferSize = 64 * 1024,
-            NotifyFilter = NotifyFilters.CreationTime |
-                           NotifyFilters.DirectoryName |
-                           NotifyFilters.FileName |
-                           NotifyFilters.LastWrite |
-                           NotifyFilters.Size
-        };
+        var watcher = _watcherFactory.New(repositoryRoot);
+        watcher.IncludeSubdirectories = true;
+        watcher.InternalBufferSize = 64 * 1024;
+        watcher.NotifyFilter = NotifyFilters.CreationTime |
+                               NotifyFilters.DirectoryName |
+                               NotifyFilters.FileName |
+                               NotifyFilters.LastWrite |
+                               NotifyFilters.Size;
+        return watcher;
     }
 
     private static InvalidOperationException CreateFatalWatchException(Exception exception)
@@ -255,12 +263,12 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         return changedFiles;
     }
 
-    private static bool IsRelevantChange(
+    private bool IsRelevantChange(
         string repositoryRoot,
         WorkspaceFileChange changedFile)
         => changedFile.GetAffectedPaths().Any(path => IsRelevantPath(repositoryRoot, path));
 
-    private static bool IsRelevantPath(
+    private bool IsRelevantPath(
         string repositoryRoot,
         string path)
     {
@@ -286,7 +294,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         return segments.Any(_ignoredDirectoryNames.Contains);
     }
 
-    private static bool IsRelevantDirectoryPath(
+    private bool IsRelevantDirectoryPath(
         string repositoryRoot,
         string path)
     {
@@ -299,20 +307,20 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         return true;
     }
 
-    private static IEnumerable<WorkspaceFileChange> CreateDirectoryRenameChanges(
+    private IEnumerable<WorkspaceFileChange> CreateDirectoryRenameChanges(
         string repositoryRoot,
         string oldDirectoryPath,
         string newDirectoryPath)
     {
-        foreach (var newFilePath in Directory.EnumerateFiles(newDirectoryPath, "*", SearchOption.AllDirectories))
+        foreach (var newFilePath in _fileSystem.Directory.EnumerateFiles(newDirectoryPath, "*", SearchOption.AllDirectories))
         {
             if (!IsTargetPath(newFilePath))
             {
                 continue;
             }
 
-            var relativeChildPath = Path.GetRelativePath(newDirectoryPath, newFilePath);
-            var oldFilePath = Path.Combine(oldDirectoryPath, relativeChildPath);
+            var relativeChildPath = _fileSystem.Path.GetRelativePath(newDirectoryPath, newFilePath);
+            var oldFilePath = _fileSystem.Path.Combine(oldDirectoryPath, relativeChildPath);
 
             foreach (var changedFile in CreateRenameChanges(repositoryRoot, oldFilePath, newFilePath))
             {
@@ -321,7 +329,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         }
     }
 
-    private static IEnumerable<WorkspaceFileChange> CreateRenameChanges(
+    private IEnumerable<WorkspaceFileChange> CreateRenameChanges(
         string repositoryRoot,
         string oldPath,
         string newPath)
@@ -359,31 +367,31 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
                MarkdownIndexer.IsMarkdownDocumentPath(path);
     }
 
-    private static ConcurrentDictionary<string, byte> CreateKnownDirectories(string repositoryRoot)
+    private ConcurrentDictionary<string, byte> CreateKnownDirectories(string repositoryRoot)
     {
         var knownDirectories = new ConcurrentDictionary<string, byte>(GetPathComparer());
         AddKnownDirectoryTree(knownDirectories, repositoryRoot);
         return knownDirectories;
     }
 
-    private static void AddKnownDirectoryTree(
+    private void AddKnownDirectoryTree(
         ConcurrentDictionary<string, byte> knownDirectories,
         string directoryPath)
     {
-        if (!Directory.Exists(directoryPath))
+        if (!_fileSystem.Directory.Exists(directoryPath))
         {
             return;
         }
 
         knownDirectories.TryAdd(NormalizeDirectoryPath(directoryPath), 0);
 
-        foreach (var childDirectory in Directory.EnumerateDirectories(directoryPath, "*", SearchOption.AllDirectories))
+        foreach (var childDirectory in _fileSystem.Directory.EnumerateDirectories(directoryPath, "*", SearchOption.AllDirectories))
         {
             knownDirectories.TryAdd(NormalizeDirectoryPath(childDirectory), 0);
         }
     }
 
-    private static bool RemoveKnownDirectoryTree(
+    private bool RemoveKnownDirectoryTree(
         ConcurrentDictionary<string, byte> knownDirectories,
         string directoryPath)
     {
@@ -416,23 +424,23 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
                path.StartsWith(rootPathWithSeparator, comparison);
     }
 
-    private static string NormalizeDirectoryPath(string path)
-        => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+    private string NormalizeDirectoryPath(string path)
+        => _fileSystem.Path.TrimEndingDirectorySeparator(_fileSystem.Path.GetFullPath(path));
 
     private static StringComparer GetPathComparer()
         => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
-    private static bool TryGetRepositoryRelativePath(
+    private bool TryGetRepositoryRelativePath(
         string repositoryRoot,
         string path,
         out string relativePath)
     {
-        var absolutePath = Path.IsPathRooted(path)
-            ? Path.GetFullPath(path)
-            : Path.GetFullPath(path, repositoryRoot);
-        relativePath = Path.GetRelativePath(repositoryRoot, absolutePath);
+        var absolutePath = _fileSystem.Path.IsPathRooted(path)
+            ? _fileSystem.Path.GetFullPath(path)
+            : _fileSystem.Path.GetFullPath(_fileSystem.Path.Combine(repositoryRoot, path));
+        relativePath = _fileSystem.Path.GetRelativePath(repositoryRoot, absolutePath);
 
-        if (Path.IsPathRooted(relativePath))
+        if (_fileSystem.Path.IsPathRooted(relativePath))
         {
             return false;
         }
@@ -441,8 +449,19 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
 
-        return !string.Equals(relativePath, "..", comparison) &&
-               !relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", comparison) &&
-               !relativePath.StartsWith($"..{Path.AltDirectorySeparatorChar}", comparison);
+        if (string.Equals(relativePath, ".", comparison))
+        {
+            relativePath = string.Empty;
+            return true;
+        }
+
+        if (relativePath.StartsWith(".." + Path.DirectorySeparatorChar, comparison) ||
+            relativePath.StartsWith(".." + Path.AltDirectorySeparatorChar, comparison) ||
+            string.Equals(relativePath, "..", comparison))
+        {
+            return false;
+        }
+
+        return true;
     }
 }

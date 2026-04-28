@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using System.IO.Abstractions;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
@@ -11,7 +12,8 @@ public sealed class DocumentDiscoverer(
     IRepositoryWorkspace repositoryWorkspace,
     IOptionsMonitor<SharpSenseConfig> configMonitor,
     IWorkspaceFileDiscoverer fileDiscoverer,
-    MarkdownIndexer markdownIndexer)
+    IMarkdownIndexer markdownIndexer,
+    IFileSystem fileSystem)
 {
     public async Task<MarkdownIndexResult> Discover(
         string targetPath,
@@ -81,7 +83,7 @@ public sealed class DocumentDiscoverer(
         var orderedFiles = discoveredFiles
             .Where(static file => !string.IsNullOrWhiteSpace(file.AbsolutePath) &&
                                   !string.IsNullOrWhiteSpace(file.RelativeFilePath))
-            .Where(file => File.Exists(file.AbsolutePath))
+            .Where(file => fileSystem.File.Exists(file.AbsolutePath))
             .GroupBy(static file => file.RelativeFilePath, GetPathComparer())
             .Select(static group => group.First())
             .OrderBy(static file => file.RelativeFilePath, GetPathComparer())
@@ -91,7 +93,7 @@ public sealed class DocumentDiscoverer(
         {
             ct.ThrowIfCancellationRequested();
 
-            var rawText = await File.ReadAllTextAsync(discoveredFile.AbsolutePath, ct);
+            var rawText = await fileSystem.File.ReadAllTextAsync(discoveredFile.AbsolutePath, ct);
             var indexResult = markdownIndexer.Index(rawText, discoveredFile.RelativeFilePath);
             documentNodes.AddRange(indexResult.CodeNodes);
             documentEdges.AddRange(indexResult.Edges);
@@ -113,10 +115,10 @@ public sealed class DocumentDiscoverer(
     }
 
     private string ResolveAbsolutePath(string filePath)
-        => Path.GetFullPath(
-            Path.IsPathRooted(filePath)
+        => fileSystem.Path.GetFullPath(
+            fileSystem.Path.IsPathRooted(filePath)
                 ? filePath
-                : Path.Combine(repositoryWorkspace.RootPath, filePath));
+                : fileSystem.Path.Combine(repositoryWorkspace.RootPath, filePath));
 
     private string[] GetIncludePaths()
     {
