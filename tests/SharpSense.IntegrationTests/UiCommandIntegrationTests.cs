@@ -16,9 +16,12 @@ namespace SharpSense.IntegrationTests;
 public sealed class UiCommandIntegrationTests
 {
     private const string RepositoryRoot = "/repo";
+    private const string AppFolderPath = "src/Fixture.App";
+    private const string CoreFolderPath = "src/Fixture.Core";
+    private const string RootTreePath = "%2F";
 
     [Fact]
-    public async Task WhenUiCommandRuns_ThenEndpointsReturnSuccessAndGraphIsServedFromInMemoryContext()
+    public async Task WhenUiCommandRuns_ThenTreeAndScopedGraphEndpointsReturnAnalyzedData()
     {
         await using var database = await UiCommandTestDatabase.Create();
         var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
@@ -48,34 +51,88 @@ public sealed class UiCommandIntegrationTests
             };
 
             using var graphResponse = await httpClient.GetAsync($"{baseUrl}/api/graph", TestContext.Current.CancellationToken);
+            using var rootTreeResponse = await httpClient.GetAsync($"{baseUrl}/api/tree?path={RootTreePath}", TestContext.Current.CancellationToken);
+            using var srcTreeResponse = await httpClient.GetAsync($"{baseUrl}/api/tree?path=src", TestContext.Current.CancellationToken);
             using var rootResponse = await httpClient.GetAsync($"{baseUrl}/", TestContext.Current.CancellationToken);
+            using var scopedGraphResponse = await httpClient.GetAsync($"{baseUrl}/api/graph?paths={AppFolderPath}", TestContext.Current.CancellationToken);
 
             Assert.Equal(HttpStatusCode.OK, graphResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, rootTreeResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, srcTreeResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, scopedGraphResponse.StatusCode);
             Assert.Equal(HttpStatusCode.OK, rootResponse.StatusCode);
 
             await using var graphStream = await graphResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+            await using var rootTreeStream = await rootTreeResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+            await using var srcTreeStream = await srcTreeResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+            await using var scopedGraphStream = await scopedGraphResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
             using var jsonDocument = await JsonDocument.ParseAsync(graphStream, cancellationToken: TestContext.Current.CancellationToken);
+            using var rootTreeDocument = await JsonDocument.ParseAsync(rootTreeStream, cancellationToken: TestContext.Current.CancellationToken);
+            using var srcTreeDocument = await JsonDocument.ParseAsync(srcTreeStream, cancellationToken: TestContext.Current.CancellationToken);
+            using var scopedGraphDocument = await JsonDocument.ParseAsync(scopedGraphStream, cancellationToken: TestContext.Current.CancellationToken);
             var nodes = jsonDocument.RootElement.GetProperty("nodes");
             var edges = jsonDocument.RootElement.GetProperty("edges");
+            var rootTreeNodes = rootTreeDocument.RootElement.GetProperty("nodes");
+            var srcTreeNodes = srcTreeDocument.RootElement.GetProperty("nodes");
+            var scopedNodes = scopedGraphDocument.RootElement.GetProperty("nodes");
+            var scopedEdges = scopedGraphDocument.RootElement.GetProperty("edges");
+
+            Assert.Empty(nodes.EnumerateArray());
+            Assert.Empty(edges.EnumerateArray());
+            Assert.Contains(
+                rootTreeNodes.EnumerateArray(),
+                node =>
+                    node.GetProperty("path").GetString() == "src" &&
+                    node.GetProperty("kind").GetString() == "folder");
+            Assert.Contains(
+                srcTreeNodes.EnumerateArray(),
+                node =>
+                    node.GetProperty("path").GetString() == AppFolderPath &&
+                    node.GetProperty("kind").GetString() == "folder");
+            Assert.Contains(
+                srcTreeNodes.EnumerateArray(),
+                node =>
+                    node.GetProperty("path").GetString() == CoreFolderPath &&
+                    node.GetProperty("kind").GetString() == "folder");
 
             Assert.Contains(
-                nodes.EnumerateArray(),
+                scopedNodes.EnumerateArray(),
+                node =>
+                    node.GetProperty("id").GetString() == UiCommandTestDatabase.AppProjectId &&
+                    node.GetProperty("scope").GetString() == "selected");
+            Assert.Contains(
+                scopedNodes.EnumerateArray(),
                 node =>
                     node.GetProperty("id").GetString() == UiCommandTestDatabase.CallerCanonicalId &&
                     node.GetProperty("label").GetString() == "Fixture.App.HttpEndpoint.Handle()" &&
-                    node.GetProperty("type").GetString() == "method");
+                    node.GetProperty("type").GetString() == "method" &&
+                    node.GetProperty("scope").GetString() == "selected");
             Assert.Contains(
-                nodes.EnumerateArray(),
+                scopedNodes.EnumerateArray(),
+                node =>
+                    node.GetProperty("id").GetString() == UiCommandTestDatabase.CoreProjectId &&
+                    node.GetProperty("scope").GetString() == "external");
+            Assert.Contains(
+                scopedNodes.EnumerateArray(),
                 node =>
                     node.GetProperty("id").GetString() == UiCommandTestDatabase.CalleeCanonicalId &&
-                    node.GetProperty("label").GetString() == "Fixture.App.MessageProvider.GetMessage()" &&
-                    node.GetProperty("type").GetString() == "method");
+                    node.GetProperty("label").GetString() == "Fixture.Core.MessageProvider.GetMessage()" &&
+                    node.GetProperty("type").GetString() == "method" &&
+                    node.GetProperty("scope").GetString() == "external");
             Assert.Contains(
-                edges.EnumerateArray(),
+                scopedEdges.EnumerateArray(),
+                edge =>
+                    edge.GetProperty("source").GetString() == UiCommandTestDatabase.AppProjectId &&
+                    edge.GetProperty("target").GetString() == UiCommandTestDatabase.CoreProjectId &&
+                    edge.GetProperty("type").GetString() == "projectreference" &&
+                    edge.GetProperty("scope").GetString() == "boundary");
+            Assert.Contains(
+                scopedEdges.EnumerateArray(),
                 edge =>
                     edge.GetProperty("source").GetString() == UiCommandTestDatabase.CallerCanonicalId &&
                     edge.GetProperty("target").GetString() == UiCommandTestDatabase.CalleeCanonicalId &&
-                    edge.GetProperty("type").GetString() == "methodcall");
+                    edge.GetProperty("type").GetString() == "methodcall" &&
+                    edge.GetProperty("scope").GetString() == "boundary");
 
             shutdown.Cancel();
             Assert.Equal(0, await runTask);
@@ -137,9 +194,10 @@ public sealed class UiCommandIntegrationTests
 
     private sealed class UiCommandTestDatabase(InMemoryContextFactory contextFactory) : IAsyncDisposable
     {
-        public const string ProjectId = "project-app";
-        public const string CallerCanonicalId = "code:project-app:Fixture.App.HttpEndpoint.Handle()";
-        public const string CalleeCanonicalId = "code:project-app:Fixture.App.MessageProvider.GetMessage()";
+        public const string AppProjectId = "project:src/Fixture.App/Fixture.App.csproj";
+        public const string CoreProjectId = "project:src/Fixture.Core/Fixture.Core.csproj";
+        public const string CallerCanonicalId = "code:project:src/Fixture.App/Fixture.App.csproj:Fixture.App.HttpEndpoint.Handle()";
+        public const string CalleeCanonicalId = "code:project:src/Fixture.Core/Fixture.Core.csproj:Fixture.Core.MessageProvider.GetMessage()";
 
         public static async Task<UiCommandTestDatabase> Create()
         {
@@ -164,10 +222,17 @@ public sealed class UiCommandIntegrationTests
 
             dbContext.ProjectNodes.Add(new ProjectNode
             {
-                Id = ProjectId,
+                Id = AppProjectId,
                 Name = "Fixture.App",
-                RelativeFilePath = "src/Fixture.App/Fixture.App.csproj",
+                RelativeFilePath = $"{AppFolderPath}/Fixture.App.csproj",
                 ContentHash = "project-hash"
+            });
+            dbContext.ProjectNodes.Add(new ProjectNode
+            {
+                Id = CoreProjectId,
+                Name = "Fixture.Core",
+                RelativeFilePath = $"{CoreFolderPath}/Fixture.Core.csproj",
+                ContentHash = "project-core-hash"
             });
 
             dbContext.CodeNodes.AddRange(
@@ -175,11 +240,11 @@ public sealed class UiCommandIntegrationTests
                 {
                     Id = 1,
                     CanonicalId = CallerCanonicalId,
-                    ProjectId = ProjectId,
+                    ProjectId = AppProjectId,
                     FullyQualifiedName = "Fixture.App.HttpEndpoint.Handle()",
                     DisplayName = "HttpEndpoint.Handle()",
                     NodeType = NodeType.Method,
-                    RelativeFilePath = "src/Fixture.App/HttpEndpoint.cs",
+                    RelativeFilePath = $"{AppFolderPath}/HttpEndpoint.cs",
                     StartLine = 5,
                     EndLine = 12,
                     Summary = "Handles the HTTP endpoint."
@@ -188,11 +253,11 @@ public sealed class UiCommandIntegrationTests
                 {
                     Id = 2,
                     CanonicalId = CalleeCanonicalId,
-                    ProjectId = ProjectId,
-                    FullyQualifiedName = "Fixture.App.MessageProvider.GetMessage()",
+                    ProjectId = CoreProjectId,
+                    FullyQualifiedName = "Fixture.Core.MessageProvider.GetMessage()",
                     DisplayName = "MessageProvider.GetMessage()",
                     NodeType = NodeType.Method,
-                    RelativeFilePath = "src/Fixture.App/MessageProvider.cs",
+                    RelativeFilePath = $"{CoreFolderPath}/MessageProvider.cs",
                     StartLine = 7,
                     EndLine = 11,
                     Summary = "Gets a message."
@@ -200,10 +265,85 @@ public sealed class UiCommandIntegrationTests
 
             dbContext.DependencyEdges.Add(new DependencyEdge
             {
+                CallerId = AppProjectId,
+                CalleeId = CoreProjectId,
+                EdgeType = EdgeType.ProjectReference
+            });
+            dbContext.DependencyEdges.Add(new DependencyEdge
+            {
                 CallerId = CallerCanonicalId,
                 CalleeId = CalleeCanonicalId,
                 EdgeType = EdgeType.MethodCall
             });
+            dbContext.WorkspaceTreeNodes.AddRange(
+                new WorkspaceTreeNode
+                {
+                    Id = "src",
+                    Path = "src",
+                    Label = "src",
+                    Kind = WorkspaceTreeNodeKind.Folder,
+                    HasChildren = true,
+                    ChildCount = 2,
+                    IsSelectable = true
+                },
+                new WorkspaceTreeNode
+                {
+                    Id = AppFolderPath,
+                    ParentId = "src",
+                    Path = AppFolderPath,
+                    Label = "Fixture.App",
+                    Kind = WorkspaceTreeNodeKind.Folder,
+                    HasChildren = true,
+                    ChildCount = 2,
+                    IsSelectable = true
+                },
+                new WorkspaceTreeNode
+                {
+                    Id = $"{AppFolderPath}/Fixture.App.csproj",
+                    ParentId = AppFolderPath,
+                    Path = $"{AppFolderPath}/Fixture.App.csproj",
+                    Label = "Fixture.App",
+                    Kind = WorkspaceTreeNodeKind.Project,
+                    IsSelectable = true
+                },
+                new WorkspaceTreeNode
+                {
+                    Id = $"{AppFolderPath}/HttpEndpoint.cs",
+                    ParentId = AppFolderPath,
+                    Path = $"{AppFolderPath}/HttpEndpoint.cs",
+                    Label = "HttpEndpoint.cs",
+                    Kind = WorkspaceTreeNodeKind.File,
+                    IsSelectable = true
+                },
+                new WorkspaceTreeNode
+                {
+                    Id = CoreFolderPath,
+                    ParentId = "src",
+                    Path = CoreFolderPath,
+                    Label = "Fixture.Core",
+                    Kind = WorkspaceTreeNodeKind.Folder,
+                    HasChildren = true,
+                    ChildCount = 2,
+                    IsSelectable = true
+                },
+                new WorkspaceTreeNode
+                {
+                    Id = $"{CoreFolderPath}/Fixture.Core.csproj",
+                    ParentId = CoreFolderPath,
+                    Path = $"{CoreFolderPath}/Fixture.Core.csproj",
+                    Label = "Fixture.Core",
+                    Kind = WorkspaceTreeNodeKind.Project,
+                    IsSelectable = true
+                },
+                new WorkspaceTreeNode
+                {
+                    Id = $"{CoreFolderPath}/MessageProvider.cs",
+                    ParentId = CoreFolderPath,
+                    Path = $"{CoreFolderPath}/MessageProvider.cs",
+                    Label = "MessageProvider.cs",
+                    Kind = WorkspaceTreeNodeKind.File,
+                    IsSelectable = true
+                });
 
             await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
         }

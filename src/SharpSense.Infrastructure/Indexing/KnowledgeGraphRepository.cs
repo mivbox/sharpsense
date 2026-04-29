@@ -35,6 +35,7 @@ public sealed class KnowledgeGraphRepository(
             .ThenBy(static edge => edge.EdgeType)
             .Select(ToDependencyEdge)
             .ToArray();
+        var workspaceTreeNodes = BuildWorkspaceTreeNodes(projectNodes, codeNodes);
         var documentNodeCount = codeNodes.Count(static codeNode => codeNode.NodeType == NodeType.Document);
 
         using var trace = SharpSenseTraceSpan.Start("index.persist");
@@ -42,6 +43,7 @@ public sealed class KnowledgeGraphRepository(
         trace.AddTag("index.code_node.count", codeNodes.Length);
         trace.AddTag("index.document_node.count", documentNodeCount);
         trace.AddTag("index.dependency.count", dependencyEdges.Length);
+        trace.AddTag("index.tree_node.count", workspaceTreeNodes.Length);
         trace.AddTag("index.diagnostic.count", extractedNodes.Diagnostics.Count);
 
         try
@@ -52,12 +54,14 @@ public sealed class KnowledgeGraphRepository(
             await AssignPersistedCodeNodeIds(context, codeNodes, ct);
 
             await context.DependencyEdges.ExecuteDeleteAsync(ct);
+            await context.WorkspaceTreeNodes.ExecuteDeleteAsync(ct);
             await context.CodeNodes.ExecuteDeleteAsync(ct);
             await context.ProjectNodes.ExecuteDeleteAsync(ct);
             context.ChangeTracker.Clear();
 
             await context.ProjectNodes.AddRangeAsync(projectNodes, ct);
             await context.CodeNodes.AddRangeAsync(codeNodes, ct);
+            await context.WorkspaceTreeNodes.AddRangeAsync(workspaceTreeNodes, ct);
             await context.DependencyEdges.AddRangeAsync(dependencyEdges, ct);
             await context.SaveChangesAsync(ct);
 
@@ -172,6 +176,27 @@ public sealed class KnowledgeGraphRepository(
 
             await context.SaveChangesAsync(ct);
 
+            var persistedProjectNodes = await context.ProjectNodes
+                .AsNoTracking()
+                .OrderBy(static projectNode => projectNode.Name)
+                .ThenBy(static projectNode => projectNode.Id)
+                .ToArrayAsync(ct);
+            var persistedCodeNodes = await context.CodeNodes
+                .AsNoTracking()
+                .OrderBy(static codeNode => codeNode.FullyQualifiedName)
+                .ThenBy(static codeNode => codeNode.Id)
+                .ToArrayAsync(ct);
+            var workspaceTreeNodes = BuildWorkspaceTreeNodes(persistedProjectNodes, persistedCodeNodes);
+
+            await context.WorkspaceTreeNodes.ExecuteDeleteAsync(ct);
+            context.ChangeTracker.Clear();
+
+            if (workspaceTreeNodes.Length > 0)
+            {
+                await context.WorkspaceTreeNodes.AddRangeAsync(workspaceTreeNodes, ct);
+                await context.SaveChangesAsync(ct);
+            }
+
             foreach (var codeNode in codeNodes)
             {
                 await context.Database.ExecuteSqlInterpolatedAsync(
@@ -227,6 +252,144 @@ public sealed class KnowledgeGraphRepository(
             CalleeId = dependency.CalleeId,
             EdgeType = dependency.EdgeType
         };
+    }
+
+    private static WorkspaceTreeNode[] BuildWorkspaceTreeNodes(
+        IReadOnlyCollection<ProjectNode> projectNodes,
+        IReadOnlyCollection<CodeNode> codeNodes)
+    {
+        var pathComparer = GetPathComparer();
+        var nodesByPath = new Dictionary<string, WorkspaceTreeNode>(pathComparer);
+
+        foreach (var projectNode in projectNodes)
+        {
+            AddTreeLeaf(
+                nodesByPath,
+                projectNode.RelativeFilePath,
+                projectNode.Name,
+                WorkspaceTreeNodeKind.Project,
+                projectNode.Id);
+        }
+
+        foreach (var codeNodeGroup in codeNodes
+                     .Where(static codeNode => !string.IsNullOrWhiteSpace(codeNode.RelativeFilePath))
+                     .GroupBy(static codeNode => codeNode.RelativeFilePath, pathComparer)
+                     .OrderBy(static group => group.Key, pathComparer))
+        {
+            var path = codeNodeGroup.Key;
+            var projectId = codeNodeGroup
+                .Select(static codeNode => codeNode.ProjectId)
+                .FirstOrDefault(static candidate => !string.IsNullOrWhiteSpace(candidate));
+            AddTreeLeaf(
+                nodesByPath,
+                path,
+                GetLastPathSegment(path),
+                WorkspaceTreeNodeKind.File,
+                projectId);
+        }
+
+        var childCountsByParentId = nodesByPath.Values
+            .Where(static node => node.ParentId is not null)
+            .GroupBy(node => node.ParentId!, pathComparer)
+            .ToDictionary(static group => group.Key, static group => group.Count(), pathComparer);
+
+        foreach (var node in nodesByPath.Values)
+        {
+            if (childCountsByParentId.TryGetValue(node.Id, out var childCount))
+            {
+                node.ChildCount = childCount;
+                node.HasChildren = childCount > 0;
+            }
+            else
+            {
+                node.ChildCount = null;
+                node.HasChildren = false;
+            }
+
+            node.IsSelectable = true;
+        }
+
+        return [.. nodesByPath.Values.OrderBy(static node => node.Path, pathComparer)];
+    }
+
+    private static void AddTreeLeaf(
+        IDictionary<string, WorkspaceTreeNode> nodesByPath,
+        string path,
+        string label,
+        WorkspaceTreeNodeKind kind,
+        string? projectId)
+    {
+        ArgumentNullException.ThrowIfNull(nodesByPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+
+        EnsureAncestorFolders(nodesByPath, path);
+
+        nodesByPath[path] = new WorkspaceTreeNode
+        {
+            Id = path,
+            ParentId = GetParentPath(path),
+            Path = path,
+            Label = label,
+            Kind = kind,
+            ProjectId = projectId
+        };
+    }
+
+    private static void EnsureAncestorFolders(
+        IDictionary<string, WorkspaceTreeNode> nodesByPath,
+        string path)
+    {
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length < 2)
+        {
+            return;
+        }
+
+        var currentPath = string.Empty;
+        string? parentId = null;
+
+        for (var index = 0; index < segments.Length - 1; index++)
+        {
+            currentPath = string.IsNullOrEmpty(currentPath)
+                ? segments[index]
+                : $"{currentPath}/{segments[index]}";
+            if (!nodesByPath.ContainsKey(currentPath))
+            {
+                nodesByPath[currentPath] = new WorkspaceTreeNode
+                {
+                    Id = currentPath,
+                    ParentId = parentId,
+                    Path = currentPath,
+                    Label = segments[index],
+                    Kind = WorkspaceTreeNodeKind.Folder
+                };
+            }
+
+            parentId = currentPath;
+        }
+    }
+
+    private static string? GetParentPath(string path)
+    {
+        var separatorIndex = path.LastIndexOf('/');
+        if (separatorIndex < 0)
+        {
+            return null;
+        }
+
+        return path[..separatorIndex];
+    }
+
+    private static string GetLastPathSegment(string path)
+    {
+        var separatorIndex = path.LastIndexOf('/');
+        if (separatorIndex < 0)
+        {
+            return path;
+        }
+
+        return path[(separatorIndex + 1)..];
     }
 
     private static async Task RefreshSearchIndex(
@@ -285,6 +448,9 @@ public sealed class KnowledgeGraphRepository(
             }
         }
     }
+
+    private static StringComparer GetPathComparer()
+        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
     private sealed record PersistedCodeNodeIdentity(int Id, string CanonicalId);
 }

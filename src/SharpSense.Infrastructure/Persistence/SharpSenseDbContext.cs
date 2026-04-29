@@ -11,6 +11,8 @@ public sealed class SharpSenseDbContext(DbContextOptions<SharpSenseDbContext> op
 
     public DbSet<CodeNode> CodeNodes => Set<CodeNode>();
 
+    public DbSet<WorkspaceTreeNode> WorkspaceTreeNodes => Set<WorkspaceTreeNode>();
+
     public DbSet<DependencyEdge> DependencyEdges => Set<DependencyEdge>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

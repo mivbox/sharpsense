@@ -50,6 +50,10 @@ public sealed class KnowledgeGraphIndexingTests
             .OrderBy(edge => edge.CallerId)
             .ThenBy(edge => edge.CalleeId)
             .ToArrayAsync(TestContext.Current.CancellationToken);
+        var workspaceTreeNodes = await context.WorkspaceTreeNodes
+            .AsNoTracking()
+            .OrderBy(node => node.Path)
+            .ToArrayAsync(TestContext.Current.CancellationToken);
 
         documentNodes.Should().HaveCount(2);
         documentNodes.Select(static node => node.CanonicalId)
@@ -66,6 +70,9 @@ public sealed class KnowledgeGraphIndexingTests
         documentEdges[0].CallerId.Should().Be("code:doc:docs/Guide.md#document-root");
         documentEdges[0].CalleeId.Should().Be("code:doc:docs/Reference.md#document-root");
         documentEdges[0].EdgeType.Should().Be(EdgeType.DocumentLink);
+        workspaceTreeNodes.Should().Contain(node => node.Path == "docs" && node.Kind == WorkspaceTreeNodeKind.Folder);
+        workspaceTreeNodes.Should().Contain(node => node.Path == "docs/Guide.md" && node.Kind == WorkspaceTreeNodeKind.File);
+        workspaceTreeNodes.Should().Contain(node => node.Path == "docs/Reference.md" && node.Kind == WorkspaceTreeNodeKind.File);
     }
 
     [Fact]
@@ -230,6 +237,7 @@ public sealed class KnowledgeGraphIndexingTests
 
         deletedNodeCount.Should().Be(0);
         searchCount.Should().Be(0);
+        context.WorkspaceTreeNodes.Should().NotContain(node => node.Path == "docs/DocB.md");
     }
 
     private static ExtractedNodes CreateGuideAndReferenceDocuments()

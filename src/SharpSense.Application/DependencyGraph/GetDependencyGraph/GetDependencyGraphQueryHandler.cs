@@ -10,6 +10,8 @@ namespace SharpSense.Application.DependencyGraph.GetDependencyGraph;
 public sealed class GetDependencyGraphQueryHandler(IDependencyGraphRepository dependencyGraphRepository)
     : IQueryHandler<GetDependencyGraphQuery, GraphResult>
 {
-    public Task<GraphResult> Handle(GetDependencyGraphQuery query, CancellationToken ct)
-        => dependencyGraphRepository.GetGraph(ct);
+    public Task<GraphResult> Handle(
+        GetDependencyGraphQuery query,
+        CancellationToken ct)
+        => dependencyGraphRepository.GetGraph(query.Paths, query.IncludeBoundaryNodes, ct);
 }

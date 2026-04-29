@@ -8,11 +8,15 @@ using Serilog;
 using SharpSense.Application.DependencyGraph;
 using SharpSense.Application.DependencyGraph.Models;
 using SharpSense.Application.DependencyGraph.GetDependencyGraph.Models;
+using SharpSense.Application.WorkspaceExplorer;
+using SharpSense.Application.WorkspaceExplorer.GetWorkspaceTree.Models;
+using SharpSense.Application.WorkspaceExplorer.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.DependencyGraph;
 using SharpSense.Infrastructure.Persistence;
+using SharpSense.Infrastructure.WorkspaceExplorer;
 using SharpSense.Infrastructure.Storage;
 using Spectre.Console.Cli;
 
@@ -46,6 +50,8 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
 
         services.AddDependencyGraph();
         services.AddDependencyGraphInfrastructure();
+        services.AddWorkspaceExplorer();
+        services.AddWorkspaceExplorerInfrastructure();
         services.AddPersistence();
     }
 
@@ -61,11 +67,21 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
         var fileProvider = new ManifestEmbeddedFileProvider(typeof(UiCommand).Assembly, _namespace);
 
         app.MapGet(
+            "/api/tree",
+            static async Task<WorkspaceTreeResult> (
+                string? path,
+                IQueryHandler<GetWorkspaceTreeQuery, WorkspaceTreeResult> handler,
+                CancellationToken ct) =>
+                await handler.Handle(new GetWorkspaceTreeQuery(string.IsNullOrWhiteSpace(path) ? "/" : path), ct))
+            .AllowAnonymous();
+
+        app.MapGet(
             "/api/graph",
             static async Task<GraphResult> (
+                string[]? paths,
                 IQueryHandler<GetDependencyGraphQuery, GraphResult> handler,
                 CancellationToken ct) =>
-                await handler.Handle(new GetDependencyGraphQuery(), ct))
+                await handler.Handle(new GetDependencyGraphQuery(paths ?? []), ct))
             .AllowAnonymous();
 
         app.UseDefaultFiles(new DefaultFilesOptions

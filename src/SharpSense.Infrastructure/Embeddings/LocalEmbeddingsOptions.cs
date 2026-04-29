@@ -6,6 +6,7 @@ public sealed class LocalEmbeddingsOptions : IValidatableObject
 {
     public const int DefaultDimensions = 384;
     public const int DefaultMaximumTokens = 512;
+    public const int DefaultBatchSize = 32;
 
     [Required]
     public string ModelPath { get; set; } = string.Empty;
@@ -20,6 +21,10 @@ public sealed class LocalEmbeddingsOptions : IValidatableObject
     [Required]
     [Range(1, int.MaxValue)]
     public int MaximumTokens { get; set; }
+
+    [Required]
+    [Range(1, int.MaxValue)]
+    public int BatchSize { get; set; } = DefaultBatchSize;
 
     public bool CaseSensitive { get; set; }
 
