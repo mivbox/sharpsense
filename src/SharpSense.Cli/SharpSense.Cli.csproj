@@ -24,45 +24,66 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App"/>
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="README.md" Pack="true" PackagePath="\" />
+    <None Include="README.md" Pack="true" PackagePath="\"/>
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\SharpSense.Application\SharpSense.Application.csproj" />
-    <ProjectReference Include="..\SharpSense.Infrastructure\SharpSense.Infrastructure.csproj" />
+    <ProjectReference Include="..\SharpSense.Application\SharpSense.Application.csproj"/>
+    <ProjectReference Include="..\SharpSense.Infrastructure\SharpSense.Infrastructure.csproj"/>
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="JetBrains.Annotations" Version="2025.2.4" />
-    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.6" />
-    <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
-    <PackageReference Include="OpenTelemetry" Version="1.15.3" />
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
-    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
-    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
-    <PackageReference Include="Serilog" Version="4.3.1" />
-    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
-    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
-    <PackageReference Include="Spectre.Console.Cli" Version="0.55.0" />
+    <PackageReference Include="JetBrains.Annotations" Version="2025.2.4"/>
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.6"/>
+    <PackageReference Include="ModelContextProtocol" Version="1.2.0"/>
+    <PackageReference Include="OpenTelemetry" Version="1.15.3"/>
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3"/>
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3"/>
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2"/>
+    <PackageReference Include="Serilog" Version="4.3.1"/>
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0"/>
+    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0"/>
+    <PackageReference Include="Spectre.Console.Cli" Version="0.55.0"/>
   </ItemGroup>
 
   <Target Name="BuildFrontend" BeforeTargets="BeforeBuild" Condition="'$(DesignTimeBuild)' != 'true' and '$(FrontendBuildCompleted)' != 'true'">
-    <Exec Command="bun install" WorkingDirectory="$(FrontendProjectDir)" />
-    <Exec Command="bun run build" WorkingDirectory="$(FrontendProjectDir)" />
+    <Exec Command="bun install" WorkingDirectory="$(FrontendProjectDir)"/>
+    <Exec Command="bun run build" WorkingDirectory="$(FrontendProjectDir)"/>
     <ItemGroup>
-      <FrontendDistFile Include="$(FrontendProjectDir)/dist/**/*.*" />
+      <FrontendDistFile Include="$(FrontendProjectDir)/dist/**/*.*"/>
       <FrontendDistFile Update="@(FrontendDistFile)">
         <TargetPath>SharpSense.UI/%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
       </FrontendDistFile>
-      <EmbeddedResource Include="@(FrontendDistFile)" />
+      <EmbeddedResource Include="@(FrontendDistFile)"/>
     </ItemGroup>
     <PropertyGroup>
       <FrontendBuildCompleted>true</FrontendBuildCompleted>
     </PropertyGroup>
+  </Target>
+
+  <Target Name="PreventExoticRuntimesFromPublishing" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="$([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)').StartsWith('android'))" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="$([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)').StartsWith('ios'))" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="$([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)').StartsWith('maccatalyst'))" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="$([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)').StartsWith('browser'))" />
+
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="$([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)').StartsWith('linux-mips'))" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="$([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)').StartsWith('linux-musl'))" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="$([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)').StartsWith('linux-ppc'))" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="$([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)').StartsWith('linux-riscv'))" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="$([System.String]::Copy('%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)').StartsWith('linux-s390'))" />
+
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)' == 'win-x86'" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)' == 'win-arm'" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)' == 'linux-x86'" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)' == 'linux-arm'" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)' == 'linux-armel'" />
+    </ItemGroup>
   </Target>
 
 </Project>

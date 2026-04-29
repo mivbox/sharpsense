@@ -7,10 +7,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
-using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Domain.KnowledgeGraph.Enums;
-using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.Persistence;
+using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Testkit;
 using Spectre.Console.Testing;
 
@@ -183,103 +182,289 @@ public sealed class CliCommandTests
             await using var dbContext = await contextFactory.GetContext<SharpSenseDbContext>(
                 ct: TestContext.Current.CancellationToken);
 
-            dbContext.CodeNodes.AddRange(
-                new CodeNode
+            dbContext.Directories.AddRange(
+                new DirectoryRecord
+                {
+                    Id = 1,
+                    Path = string.Empty,
+                    Name = "/"
+                },
+                new DirectoryRecord
+                {
+                    Id = 2,
+                    ParentId = 1,
+                    Path = "src",
+                    Name = "src"
+                },
+                new DirectoryRecord
+                {
+                    Id = 3,
+                    ParentId = 2,
+                    Path = "src/Fixture.App",
+                    Name = "Fixture.App"
+                },
+                new DirectoryRecord
+                {
+                    Id = 4,
+                    ParentId = 1,
+                    Path = "docs",
+                    Name = "docs"
+                });
+            dbContext.DirectoryClosures.AddRange(
+                new DirectoryClosureRecord
+                {
+                    AncestorDirectoryId = 1,
+                    DescendantDirectoryId = 1,
+                    Depth = 0
+                },
+                new DirectoryClosureRecord
+                {
+                    AncestorDirectoryId = 2,
+                    DescendantDirectoryId = 2,
+                    Depth = 0
+                },
+                new DirectoryClosureRecord
+                {
+                    AncestorDirectoryId = 3,
+                    DescendantDirectoryId = 3,
+                    Depth = 0
+                },
+                new DirectoryClosureRecord
+                {
+                    AncestorDirectoryId = 4,
+                    DescendantDirectoryId = 4,
+                    Depth = 0
+                },
+                new DirectoryClosureRecord
+                {
+                    AncestorDirectoryId = 1,
+                    DescendantDirectoryId = 2,
+                    Depth = 1
+                },
+                new DirectoryClosureRecord
+                {
+                    AncestorDirectoryId = 1,
+                    DescendantDirectoryId = 3,
+                    Depth = 2
+                },
+                new DirectoryClosureRecord
+                {
+                    AncestorDirectoryId = 1,
+                    DescendantDirectoryId = 4,
+                    Depth = 1
+                },
+                new DirectoryClosureRecord
+                {
+                    AncestorDirectoryId = 2,
+                    DescendantDirectoryId = 3,
+                    Depth = 1
+                });
+            dbContext.Documents.AddRange(
+                new DocumentRecord
+                {
+                    Id = 10,
+                    DirectoryId = 3,
+                    FileName = "Fixture.App.csproj",
+                    Extension = ".csproj",
+                    RelativePath = "src/Fixture.App/Fixture.App.csproj",
+                    Kind = DocumentKind.ProjectFile
+                },
+                new DocumentRecord
+                {
+                    Id = 11,
+                    DirectoryId = 3,
+                    FileName = "MessageConsumer.cs",
+                    Extension = ".cs",
+                    RelativePath = "src/Fixture.App/MessageConsumer.cs",
+                    Kind = DocumentKind.Source
+                },
+                new DocumentRecord
+                {
+                    Id = 12,
+                    DirectoryId = 3,
+                    FileName = "HttpEndpoint.cs",
+                    Extension = ".cs",
+                    RelativePath = "src/Fixture.App/HttpEndpoint.cs",
+                    Kind = DocumentKind.Source
+                },
+                new DocumentRecord
+                {
+                    Id = 13,
+                    DirectoryId = 3,
+                    FileName = "MessageProvider.cs",
+                    Extension = ".cs",
+                    RelativePath = "src/Fixture.App/MessageProvider.cs",
+                    Kind = DocumentKind.Source
+                },
+                new DocumentRecord
+                {
+                    Id = 14,
+                    DirectoryId = 4,
+                    FileName = "DocA.md",
+                    Extension = ".md",
+                    RelativePath = "docs/DocA.md",
+                    Kind = DocumentKind.Markdown
+                },
+                new DocumentRecord
+                {
+                    Id = 15,
+                    DirectoryId = 4,
+                    FileName = "Reference.md",
+                    Extension = ".md",
+                    RelativePath = "docs/Reference.md",
+                    Kind = DocumentKind.Markdown
+                },
+                new DocumentRecord
+                {
+                    Id = 16,
+                    DirectoryId = 4,
+                    FileName = "Guide.md",
+                    Extension = ".md",
+                    RelativePath = "docs/Guide.md",
+                    Kind = DocumentKind.Markdown
+                });
+            dbContext.GraphNodes.AddRange(
+                new GraphNodeRecord
+                {
+                    Id = 100,
+                    CanonicalId = ProjectId,
+                    Kind = GraphNodeKind.Project
+                },
+                new GraphNodeRecord
                 {
                     Id = SeedNodeId,
                     CanonicalId = SeedCanonicalId,
-                    ProjectId = ProjectId,
+                    Kind = GraphNodeKind.Code
+                },
+                new GraphNodeRecord
+                {
+                    Id = CallerNodeId,
+                    CanonicalId = CallerCanonicalId,
+                    Kind = GraphNodeKind.Code
+                },
+                new GraphNodeRecord
+                {
+                    Id = CalleeNodeId,
+                    CanonicalId = CalleeCanonicalId,
+                    Kind = GraphNodeKind.Code
+                },
+                new GraphNodeRecord
+                {
+                    Id = DocumentRootNodeId,
+                    CanonicalId = DocumentRootCanonicalId,
+                    Kind = GraphNodeKind.Code
+                },
+                new GraphNodeRecord
+                {
+                    Id = LinkedDocumentRootNodeId,
+                    CanonicalId = LinkedDocumentRootCanonicalId,
+                    Kind = GraphNodeKind.Code
+                },
+                new GraphNodeRecord
+                {
+                    Id = DocumentNodeId,
+                    CanonicalId = DocumentNodeCanonicalId,
+                    Kind = GraphNodeKind.Code
+                });
+            dbContext.ProjectNodes.Add(
+                new ProjectNodeRecord
+                {
+                    Id = 100,
+                    Name = "Fixture.App",
+                    ProjectDocumentId = 10,
+                    ContentHash = "fixture-app"
+                });
+            dbContext.CodeNodes.AddRange(
+                new CodeNodeRecord
+                {
+                    Id = SeedNodeId,
+                    ProjectNodeId = 100,
+                    DocumentId = 11,
                     FullyQualifiedName = "Fixture.App.MessageConsumer.Render()",
                     DisplayName = "MessageConsumer.Render()",
                     NodeType = NodeType.Method,
-                    RelativeFilePath = "src/Fixture.App/MessageConsumer.cs",
                     StartLine = 20,
                     EndLine = 28,
                     Summary = "Renders the message."
                 },
-                new CodeNode
+                new CodeNodeRecord
                 {
                     Id = CallerNodeId,
-                    CanonicalId = CallerCanonicalId,
-                    ProjectId = ProjectId,
+                    ProjectNodeId = 100,
+                    DocumentId = 12,
                     FullyQualifiedName = "Fixture.App.HttpEndpoint.Handle()",
                     DisplayName = "HttpEndpoint.Handle()",
                     NodeType = NodeType.Method,
-                    RelativeFilePath = "src/Fixture.App/HttpEndpoint.cs",
                     StartLine = 5,
                     EndLine = 12,
                     Summary = "Handles the HTTP endpoint."
                 },
-                new CodeNode
+                new CodeNodeRecord
                 {
                     Id = CalleeNodeId,
-                    CanonicalId = CalleeCanonicalId,
-                    ProjectId = ProjectId,
+                    ProjectNodeId = 100,
+                    DocumentId = 13,
                     FullyQualifiedName = "Fixture.App.MessageProvider.GetMessage()",
                     DisplayName = "MessageProvider.GetMessage()",
                     NodeType = NodeType.Method,
-                    RelativeFilePath = "src/Fixture.App/MessageProvider.cs",
                     StartLine = 7,
                     EndLine = 11,
                     Summary = "Gets a message."
                 },
-                new CodeNode
+                new CodeNodeRecord
                 {
                     Id = DocumentRootNodeId,
-                    CanonicalId = DocumentRootCanonicalId,
-                    ProjectId = null,
+                    ProjectNodeId = null,
+                    DocumentId = 14,
                     FullyQualifiedName = "docs/DocA.md#document-root",
                     DisplayName = "DocA",
                     NodeType = NodeType.Document,
-                    RelativeFilePath = "docs/DocA.md",
                     StartLine = 1,
                     EndLine = 1,
                     Summary = "See [Reference](./Reference.md)."
                 },
-                new CodeNode
+                new CodeNodeRecord
                 {
                     Id = LinkedDocumentRootNodeId,
-                    CanonicalId = LinkedDocumentRootCanonicalId,
-                    ProjectId = null,
+                    ProjectNodeId = null,
+                    DocumentId = 15,
                     FullyQualifiedName = "docs/Reference.md#document-root",
                     DisplayName = "Reference",
                     NodeType = NodeType.Document,
-                    RelativeFilePath = "docs/Reference.md",
                     StartLine = 1,
                     EndLine = 1,
                     Summary = "Reference document."
                 },
-                new CodeNode
+                new CodeNodeRecord
                 {
                     Id = DocumentNodeId,
-                    CanonicalId = DocumentNodeCanonicalId,
-                    ProjectId = null,
+                    ProjectNodeId = null,
+                    DocumentId = 16,
                     FullyQualifiedName = "docs/Guide.md#getting-started",
                     DisplayName = "Guide#getting-started",
                     NodeType = NodeType.Document,
-                    RelativeFilePath = "docs/Guide.md",
                     StartLine = 1,
                     EndLine = 3,
                     Summary = "Getting Started guide."
                 });
 
             dbContext.DependencyEdges.AddRange(
-                new DependencyEdge
+                new DependencyEdgeRecord
                 {
-                    CallerId = CallerCanonicalId,
-                    CalleeId = SeedCanonicalId,
+                    CallerNodeId = CallerNodeId,
+                    CalleeNodeId = SeedNodeId,
                     EdgeType = EdgeType.MethodCall
                 },
-                new DependencyEdge
+                new DependencyEdgeRecord
                 {
-                    CallerId = SeedCanonicalId,
-                    CalleeId = CalleeCanonicalId,
+                    CallerNodeId = SeedNodeId,
+                    CalleeNodeId = CalleeNodeId,
                     EdgeType = EdgeType.MethodCall
                 },
-                new DependencyEdge
+                new DependencyEdgeRecord
                 {
-                    CallerId = DocumentRootCanonicalId,
-                    CalleeId = LinkedDocumentRootCanonicalId,
+                    CallerNodeId = DocumentRootNodeId,
+                    CalleeNodeId = LinkedDocumentRootNodeId,
                     EdgeType = EdgeType.DocumentLink
                 });
 
@@ -288,8 +473,10 @@ public sealed class CliCommandTests
                 """
                 DELETE FROM CodeNodeSearch;
                 INSERT INTO CodeNodeSearch (Id, CanonicalId, DisplayName, FullyQualifiedName, Summary, RelativeFilePath)
-                SELECT Id, CanonicalId, DisplayName, FullyQualifiedName, Summary, RelativeFilePath
-                FROM CodeNodes;
+                SELECT codeNode.Id, graphNode.CanonicalId, codeNode.DisplayName, codeNode.FullyQualifiedName, codeNode.Summary, document.RelativePath
+                FROM CodeNodes AS codeNode
+                INNER JOIN GraphNodes AS graphNode ON graphNode.Id = codeNode.Id
+                INNER JOIN Documents AS document ON document.Id = codeNode.DocumentId;
                 """,
                 TestContext.Current.CancellationToken);
         }

@@ -34,6 +34,11 @@ public sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstracti
             throw new ArgumentOutOfRangeException(nameof(options), "MaximumTokens must be greater than zero.");
         }
 
+        if (_options.BatchSize <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "BatchSize must be greater than zero.");
+        }
+
         if (_options.Dimensions <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(options), "Dimensions must be greater than zero.");
@@ -67,21 +72,34 @@ public sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstracti
             return Array.Empty<TextEmbedding>();
         }
 
-        progress?.Report(new EmbeddingGenerationProgress("Generating embeddings...", 0, normalizedTexts.Length));
-
         var embeddings = new List<TextEmbedding>(normalizedTexts.Length);
         var completedItems = 0;
-        var generatedEmbeddings = await _embeddingGenerator.Value
-            .GenerateAndZipAsync(normalizedTexts, cancellationToken: ct)
-            ;
+        var batches = normalizedTexts.Chunk(_options.BatchSize).ToArray();
 
-        foreach (var (text, embedding) in generatedEmbeddings)
+        for (var batchIndex = 0; batchIndex < batches.Length; batchIndex++)
         {
             ct.ThrowIfCancellationRequested();
 
-            embeddings.Add(new TextEmbedding(text, embedding.Vector.ToArray()));
-            completedItems++;
-            progress?.Report(new EmbeddingGenerationProgress("Generating embeddings...", completedItems, normalizedTexts.Length));
+            var batch = batches[batchIndex];
+            progress?.Report(
+                new EmbeddingGenerationProgress(
+                    BuildProgressMessage(completedItems, normalizedTexts.Length, batchIndex, batches.Length),
+                    completedItems,
+                    normalizedTexts.Length));
+            var generatedEmbeddings = await _embeddingGenerator.Value.GenerateAndZipAsync(batch, cancellationToken: ct);
+
+            foreach (var (text, embedding) in generatedEmbeddings)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                embeddings.Add(new TextEmbedding(text, embedding.Vector.ToArray()));
+                completedItems++;
+                progress?.Report(
+                    new EmbeddingGenerationProgress(
+                        BuildProgressMessage(completedItems, normalizedTexts.Length, batchIndex, batches.Length),
+                        completedItems,
+                        normalizedTexts.Length));
+            }
         }
 
         return embeddings;
@@ -145,4 +163,13 @@ public sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstracti
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
         return text;
     }
+
+    private static string BuildProgressMessage(
+        int completedItems,
+        int totalItems,
+        int batchIndex,
+        int batchCount)
+        => batchCount <= 1
+            ? $"Generating embeddings {completedItems}/{totalItems}..."
+            : $"Generating embeddings {completedItems}/{totalItems} (batch {batchIndex + 1}/{batchCount})...";
 }

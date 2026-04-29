@@ -16,44 +16,18 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.6");
 
-            modelBuilder.Entity("SharpSense.Domain.KnowledgeGraph.Edges.DependencyEdge", b =>
-                {
-                    b.Property<string>("CallerId")
-                        .HasMaxLength(2048)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("CalleeId")
-                        .HasMaxLength(2048)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("EdgeType")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("CallerId", "CalleeId", "EdgeType");
-
-                    b.HasIndex("CalleeId");
-
-                    b.HasIndex("CallerId");
-
-                    b.ToTable("DependencyEdges", (string)null);
-                });
-
-            modelBuilder.Entity("SharpSense.Domain.KnowledgeGraph.Nodes.CodeNode", b =>
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.CodeNodeRecord", b =>
                 {
                     b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
-
-                    b.Property<string>("CanonicalId")
-                        .IsRequired()
-                        .HasMaxLength(2048)
-                        .HasColumnType("TEXT");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(2048)
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("EndLine")
                         .HasColumnType("INTEGER");
@@ -68,14 +42,8 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("ProjectId")
-                        .HasMaxLength(2048)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("RelativeFilePath")
-                        .IsRequired()
-                        .HasMaxLength(2048)
-                        .HasColumnType("TEXT");
+                    b.Property<int?>("ProjectNodeId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int>("StartLine")
                         .HasColumnType("INTEGER");
@@ -89,23 +57,161 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CanonicalId")
-                        .IsUnique();
+                    b.HasIndex("DocumentId");
 
                     b.HasIndex("FullyQualifiedName");
 
-                    b.HasIndex("ProjectId");
-
-                    b.HasIndex("RelativeFilePath");
+                    b.HasIndex("ProjectNodeId");
 
                     b.ToTable("CodeNodes", (string)null);
                 });
 
-            modelBuilder.Entity("SharpSense.Domain.KnowledgeGraph.Nodes.ProjectNode", b =>
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.DependencyEdgeRecord", b =>
                 {
-                    b.Property<string>("Id")
+                    b.Property<int>("CallerNodeId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CalleeNodeId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EdgeType")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("CallerNodeId", "CalleeNodeId", "EdgeType");
+
+                    b.HasIndex("CalleeNodeId");
+
+                    b.HasIndex("CallerNodeId");
+
+                    b.ToTable("DependencyEdges", (string)null);
+                });
+
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.DirectoryClosureRecord", b =>
+                {
+                    b.Property<int>("AncestorDirectoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DescendantDirectoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Depth")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("AncestorDirectoryId", "DescendantDirectoryId");
+
+                    b.HasIndex("DescendantDirectoryId", "AncestorDirectoryId");
+
+                    b.ToTable("DirectoryClosures", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DirectoryClosures_Depth", "Depth >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.DirectoryRecord", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ParentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
                         .HasMaxLength(2048)
                         .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ParentId");
+
+                    b.HasIndex("Path")
+                        .IsUnique();
+
+                    b.HasIndex("ParentId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Directories", (string)null);
+                });
+
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.DocumentRecord", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DirectoryId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Extension")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RelativePath")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DirectoryId");
+
+                    b.HasIndex("RelativePath")
+                        .IsUnique();
+
+                    b.HasIndex("DirectoryId", "FileName")
+                        .IsUnique();
+
+                    b.ToTable("Documents", (string)null);
+                });
+
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.GraphNodeRecord", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CanonicalId")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CanonicalId")
+                        .IsUnique();
+
+                    b.HasIndex("Kind");
+
+                    b.ToTable("GraphNodes", (string)null);
+                });
+
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.ProjectNodeRecord", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("ContentHash")
                         .IsRequired()
@@ -117,17 +223,97 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("RelativeFilePath")
-                        .IsRequired()
-                        .HasMaxLength(2048)
-                        .HasColumnType("TEXT");
+                    b.Property<int>("ProjectDocumentId")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RelativeFilePath")
+                    b.HasIndex("ProjectDocumentId")
                         .IsUnique();
 
                     b.ToTable("ProjectNodes", (string)null);
+                });
+
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.CodeNodeRecord", b =>
+                {
+                    b.HasOne("SharpSense.Infrastructure.Persistence.Records.DocumentRecord", null)
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SharpSense.Infrastructure.Persistence.Records.GraphNodeRecord", null)
+                        .WithOne()
+                        .HasForeignKey("SharpSense.Infrastructure.Persistence.Records.CodeNodeRecord", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SharpSense.Infrastructure.Persistence.Records.ProjectNodeRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectNodeId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.DependencyEdgeRecord", b =>
+                {
+                    b.HasOne("SharpSense.Infrastructure.Persistence.Records.GraphNodeRecord", null)
+                        .WithMany()
+                        .HasForeignKey("CalleeNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SharpSense.Infrastructure.Persistence.Records.GraphNodeRecord", null)
+                        .WithMany()
+                        .HasForeignKey("CallerNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.DirectoryClosureRecord", b =>
+                {
+                    b.HasOne("SharpSense.Infrastructure.Persistence.Records.DirectoryRecord", null)
+                        .WithMany()
+                        .HasForeignKey("AncestorDirectoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SharpSense.Infrastructure.Persistence.Records.DirectoryRecord", null)
+                        .WithMany()
+                        .HasForeignKey("DescendantDirectoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.DirectoryRecord", b =>
+                {
+                    b.HasOne("SharpSense.Infrastructure.Persistence.Records.DirectoryRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.Cascade);
+                });
+
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.DocumentRecord", b =>
+                {
+                    b.HasOne("SharpSense.Infrastructure.Persistence.Records.DirectoryRecord", null)
+                        .WithMany()
+                        .HasForeignKey("DirectoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.ProjectNodeRecord", b =>
+                {
+                    b.HasOne("SharpSense.Infrastructure.Persistence.Records.GraphNodeRecord", null)
+                        .WithOne()
+                        .HasForeignKey("SharpSense.Infrastructure.Persistence.Records.ProjectNodeRecord", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("SharpSense.Infrastructure.Persistence.Records.DocumentRecord", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectDocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

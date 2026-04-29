@@ -20,16 +20,16 @@ public sealed class GetDependencyGraphQueryHandlerTests
     [Fact]
     public async Task WhenHandleWithValidQuery_ThenInvokesRepository()
     {
-        var query = new GetDependencyGraphQuery();
+        var query = new GetDependencyGraphQuery([42]);
         var expected = new GraphResult([], []);
         var repository = new Mock<IDependencyGraphRepository>(MockBehavior.Strict);
-        repository.Setup(candidate => candidate.GetGraph(CancellationToken.None))
+        repository.Setup(candidate => candidate.GetGraph(query.DirectoryIds, query.IncludeBoundaryNodes, CancellationToken.None))
             .ReturnsAsync(expected);
         var handler = new GetDependencyGraphQueryHandler(repository.Object);
 
         var result = await handler.Handle(query, CancellationToken.None);
 
         Assert.Same(expected, result);
-        repository.Verify(candidate => candidate.GetGraph(CancellationToken.None), Times.Once);
+        repository.Verify(candidate => candidate.GetGraph(query.DirectoryIds, query.IncludeBoundaryNodes, CancellationToken.None), Times.Once);
     }
 }

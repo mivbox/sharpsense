@@ -27,6 +27,7 @@ raw sources, provides architectural directives, and directs queries. The human n
 * [[architecture/incremental-watch]] - Debounced watch-mode batching, recovery rules, and incremental dispatch flow.
 * [[architecture/virtual-file-system]] - The Infrastructure-owned `IFileSystem` boundary, allowed physical-edge exceptions, and stateless test rules.
 * [[architecture/vertical-slice-application]] - The canonical Application-layer Vertical Slice layout, boundaries, and handler locality rules.
+* [[architecture/workspace-tree]] - The persisted workspace-tree read model that powers lazy explorer expansion and opt-in graph scope.
 
 ### CLI
 
@@ -34,7 +35,7 @@ raw sources, provides architectural directives, and directs queries. The human n
 * [[cli/search-command]] - The `search` route, hybrid-search query flow, and TOON output switch.
 * [[cli/trace-command]] - The `trace` route, caller/callee dispatch, and output shaping.
 * [[cli/mcp-command]] - The `mcp` route and stdio MCP host composition.
-* [[cli/ui-command]] - The `ui` route, embedded asset host, and dependency graph API.
+* [[cli/ui-command]] - The `ui` route, embedded asset host, workspace-tree API, and opt-in dependency graph API.
 
 ### Extractors
 
@@ -43,7 +44,7 @@ raw sources, provides architectural directives, and directs queries. The human n
 
 ### Persistence
 
-* [[persistence/sqlite-schema]] - The SQLite tables, search structures, embeddings storage, and RelativeFilePath overwrite flow.
+* [[persistence/sqlite-schema]] - The SQLite tables, workspace-tree read model, search structures, embeddings storage, and RelativeFilePath overwrite flow.
 
 ## File Naming
 
