@@ -24,8 +24,8 @@ public sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbCont
 
         var calleeIds = await context.DependencyEdges
             .AsNoTracking()
-            .Where(edge => edge.CallerId == rootNode.CanonicalId)
-            .Select(static edge => edge.CalleeId)
+            .Where(edge => edge.CallerNodeId == rootNode.Id)
+            .Select(static edge => edge.CalleeNodeId)
             .Distinct()
             .ToArrayAsync(ct);
         if (calleeIds.Length == 0)
@@ -34,9 +34,10 @@ public sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbCont
         }
 
         return await CodeNodeNavigationQueries.ProjectCodeNodeResults(
+                context,
                 context.CodeNodes
                     .AsNoTracking()
-                    .Where(codeNode => calleeIds.Contains(codeNode.CanonicalId))
+                    .Where(codeNode => calleeIds.Contains(codeNode.Id))
                     .OrderBy(static codeNode => codeNode.FullyQualifiedName)
                     .ThenBy(static codeNode => codeNode.Id))
             .ToArrayAsync(ct);

@@ -14,6 +14,8 @@ using SharpSense.Application.Shared.Options;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Persistence;
+using SharpSense.Infrastructure.Persistence.Records;
+using SharpSense.Infrastructure.Shared;
 using SharpSense.Testkit;
 
 namespace SharpSense.Infrastructure.Tests.Indexing;
@@ -39,20 +41,28 @@ public sealed class KnowledgeGraphIndexingTests
             TestContext.Current.CancellationToken);
         context.ChangeTracker.Clear();
 
-        var documentNodes = await context.CodeNodes
+        var documentNodeRecords = context.CodeNodes
             .AsNoTracking()
             .Where(codeNode => codeNode.NodeType == NodeType.Document)
+            .OrderBy(codeNode => codeNode.Id);
+        var documentNodes = await CodeNodeNavigationQueries.ProjectCodeNodes(context, documentNodeRecords)
             .OrderBy(codeNode => codeNode.CanonicalId)
             .ToArrayAsync(TestContext.Current.CancellationToken);
-        var documentEdges = await context.DependencyEdges
-            .AsNoTracking()
-            .Where(edge => edge.EdgeType == EdgeType.DocumentLink)
-            .OrderBy(edge => edge.CallerId)
-            .ThenBy(edge => edge.CalleeId)
+        var documentEdges = await CodeNodeNavigationQueries.ProjectDependencyEdges(
+                context,
+                context.DependencyEdges
+                    .AsNoTracking()
+                    .Where(edge => edge.EdgeType == EdgeType.DocumentLink)
+                    .OrderBy(edge => edge.CallerNodeId)
+                    .ThenBy(edge => edge.CalleeNodeId))
             .ToArrayAsync(TestContext.Current.CancellationToken);
-        var workspaceTreeNodes = await context.WorkspaceTreeNodes
+        var directories = await context.Directories
             .AsNoTracking()
-            .OrderBy(node => node.Path)
+            .Select(static directory => directory.Path)
+            .ToArrayAsync(TestContext.Current.CancellationToken);
+        var documents = await context.Documents
+            .AsNoTracking()
+            .Select(static document => document.RelativePath)
             .ToArrayAsync(TestContext.Current.CancellationToken);
 
         documentNodes.Should().HaveCount(2);
@@ -70,9 +80,9 @@ public sealed class KnowledgeGraphIndexingTests
         documentEdges[0].CallerId.Should().Be("code:doc:docs/Guide.md#document-root");
         documentEdges[0].CalleeId.Should().Be("code:doc:docs/Reference.md#document-root");
         documentEdges[0].EdgeType.Should().Be(EdgeType.DocumentLink);
-        workspaceTreeNodes.Should().Contain(node => node.Path == "docs" && node.Kind == WorkspaceTreeNodeKind.Folder);
-        workspaceTreeNodes.Should().Contain(node => node.Path == "docs/Guide.md" && node.Kind == WorkspaceTreeNodeKind.File);
-        workspaceTreeNodes.Should().Contain(node => node.Path == "docs/Reference.md" && node.Kind == WorkspaceTreeNodeKind.File);
+        directories.Should().Contain("docs");
+        documents.Should().Contain("docs/Guide.md");
+        documents.Should().Contain("docs/Reference.md");
     }
 
     [Fact]
@@ -92,10 +102,15 @@ public sealed class KnowledgeGraphIndexingTests
         await indexing.Index(new IndexTargetCommand(), TestContext.Current.CancellationToken);
         var persistedIds = await context.CodeNodes
             .AsNoTracking()
-            .OrderBy(codeNode => codeNode.CanonicalId)
-            .ToDictionaryAsync(
-                codeNode => codeNode.CanonicalId,
+            .Join(
+                context.GraphNodes.AsNoTracking(),
                 codeNode => codeNode.Id,
+                graphNode => graphNode.Id,
+                (codeNode, graphNode) => new { codeNode.Id, graphNode.CanonicalId })
+            .OrderBy(candidate => candidate.CanonicalId)
+            .ToDictionaryAsync(
+                candidate => candidate.CanonicalId,
+                candidate => candidate.Id,
                 TestContext.Current.CancellationToken);
 
         await indexing.Index(new IndexTargetCommand(), TestContext.Current.CancellationToken);
@@ -103,10 +118,15 @@ public sealed class KnowledgeGraphIndexingTests
 
         var reindexedIds = await context.CodeNodes
             .AsNoTracking()
-            .OrderBy(codeNode => codeNode.CanonicalId)
-            .ToDictionaryAsync(
-                codeNode => codeNode.CanonicalId,
+            .Join(
+                context.GraphNodes.AsNoTracking(),
                 codeNode => codeNode.Id,
+                graphNode => graphNode.Id,
+                (codeNode, graphNode) => new { codeNode.Id, graphNode.CanonicalId })
+            .OrderBy(candidate => candidate.CanonicalId)
+            .ToDictionaryAsync(
+                candidate => candidate.CanonicalId,
+                candidate => candidate.Id,
                 TestContext.Current.CancellationToken);
 
         reindexedIds.Should().BeEquivalentTo(persistedIds);
@@ -138,9 +158,12 @@ public sealed class KnowledgeGraphIndexingTests
             TestContext.Current.CancellationToken);
         context.ChangeTracker.Clear();
 
-        var guideNodes = await context.CodeNodes
-            .AsNoTracking()
-            .Where(codeNode => codeNode.RelativeFilePath == "docs/Guide.md")
+        var guideNodesQuery =
+            from codeNode in context.CodeNodes.AsNoTracking()
+            join document in context.Documents.AsNoTracking() on codeNode.DocumentId equals document.Id
+            where document.RelativePath == "docs/Guide.md"
+            select codeNode;
+        var guideNodes = await CodeNodeNavigationQueries.ProjectCodeNodes(context, guideNodesQuery)
             .OrderBy(codeNode => codeNode.CanonicalId)
             .ToArrayAsync(TestContext.Current.CancellationToken);
         var oldSearchCount = await context.Database
@@ -188,11 +211,21 @@ public sealed class KnowledgeGraphIndexingTests
 
         var inboundEdgeCount = await context.DependencyEdges
             .AsNoTracking()
+            .Join(
+                context.GraphNodes.AsNoTracking(),
+                edge => edge.CallerNodeId,
+                graphNode => graphNode.Id,
+                (edge, callerNode) => new { edge, callerNode })
+            .Join(
+                context.GraphNodes.AsNoTracking(),
+                candidate => candidate.edge.CalleeNodeId,
+                graphNode => graphNode.Id,
+                (candidate, calleeNode) => new { candidate.edge, candidate.callerNode, calleeNode })
             .CountAsync(
-                edge =>
-                    edge.CallerId == "code:doc:docs/DocA.md#document-root" &&
-                    edge.CalleeId == "code:doc:docs/DocB.md#document-root" &&
-                    edge.EdgeType == EdgeType.DocumentLink,
+                candidate =>
+                    candidate.callerNode.CanonicalId == "code:doc:docs/DocA.md#document-root" &&
+                    candidate.calleeNode.CanonicalId == "code:doc:docs/DocB.md#document-root" &&
+                    candidate.edge.EdgeType == EdgeType.DocumentLink,
                 TestContext.Current.CancellationToken);
 
         inboundEdgeCount.Should().Be(1);
@@ -226,8 +259,13 @@ public sealed class KnowledgeGraphIndexingTests
 
         var deletedNodeCount = await context.CodeNodes
             .AsNoTracking()
+            .Join(
+                context.Documents.AsNoTracking(),
+                codeNode => codeNode.DocumentId,
+                document => document.Id,
+                (codeNode, document) => new { codeNode, document })
             .CountAsync(
-                codeNode => codeNode.RelativeFilePath == "docs/DocB.md",
+                candidate => candidate.document.RelativePath == "docs/DocB.md",
                 TestContext.Current.CancellationToken);
         var searchCount = await context.Database
             .SqlQueryRaw<int>(
@@ -237,7 +275,7 @@ public sealed class KnowledgeGraphIndexingTests
 
         deletedNodeCount.Should().Be(0);
         searchCount.Should().Be(0);
-        context.WorkspaceTreeNodes.Should().NotContain(node => node.Path == "docs/DocB.md");
+        context.Documents.Should().NotContain(document => document.RelativePath == "docs/DocB.md");
     }
 
     private static ExtractedNodes CreateGuideAndReferenceDocuments()

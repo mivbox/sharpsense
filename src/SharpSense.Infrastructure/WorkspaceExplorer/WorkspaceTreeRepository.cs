@@ -2,8 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.WorkspaceExplorer.Abstractions;
 using SharpSense.Application.WorkspaceExplorer.Models;
 using SharpSense.Infrastructure.Persistence;
-using SharpSense.Domain.KnowledgeGraph.Enums;
-using PersistedWorkspaceTreeNode = SharpSense.Domain.KnowledgeGraph.Nodes.WorkspaceTreeNode;
+using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.WorkspaceExplorer;
 
@@ -19,41 +18,87 @@ public sealed class WorkspaceTreeRepository(SharpSenseDbContext context)
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
         var normalizedPath = NormalizePath(path);
-        var nodes = await GetChildNodes(normalizedPath)
+        var parentDirectory = await ResolveParentDirectory(normalizedPath, ct);
+        if (parentDirectory is null)
+        {
+            return new WorkspaceTreeResult(normalizedPath, []);
+        }
+
+        var directoryChildren = await context.Directories
             .AsNoTracking()
+            .Where(directory => directory.ParentId == parentDirectory.Id)
+            .OrderBy(directory => directory.Name)
+            .ThenBy(directory => directory.Path)
+            .Select(
+                directory => new WorkspaceTreeNode(
+                    directory.Id,
+                    directory.ParentId,
+                    ToWorkspacePath(directory.Path),
+                    directory.Name,
+                    "folder",
+                    context.Directories.Any(child => child.ParentId == directory.Id) ||
+                    context.Documents.Any(document => document.DirectoryId == directory.Id),
+                    context.Directories.Count(child => child.ParentId == directory.Id) +
+                    context.Documents.Count(document => document.DirectoryId == directory.Id),
+                    true))
+            .ToArrayAsync(ct);
+        var documentChildren = await (
+                from document in context.Documents.AsNoTracking()
+                where document.DirectoryId == parentDirectory.Id
+                join projectNode in context.ProjectNodes.AsNoTracking() on document.Id equals projectNode.ProjectDocumentId into projectNodes
+                from projectNode in projectNodes.DefaultIfEmpty()
+                orderby projectNode != null ? 0 : 1, projectNode != null ? projectNode.Name : document.FileName, document.RelativePath
+                select new WorkspaceTreeNode(
+                    document.Id,
+                    parentDirectory.Id,
+                    document.RelativePath,
+                    projectNode != null ? projectNode.Name : document.FileName,
+                    projectNode != null ? "project" : "file",
+                    false,
+                    null,
+                    false))
+            .ToArrayAsync(ct);
+        var nodes = directoryChildren
+            .Concat(documentChildren)
             .OrderBy(
-                node => node.Kind == WorkspaceTreeNodeKind.Folder
+                node => node.Kind == "folder"
                     ? 0
-                    : node.Kind == WorkspaceTreeNodeKind.Project
+                    : node.Kind == "project"
                         ? 1
                         : 2)
             .ThenBy(node => node.Label)
             .ThenBy(node => node.Path)
-            .Select(
-                node => new WorkspaceTreeNode(
-                    node.Id,
-                    node.ParentId,
-                    node.Path,
-                    node.Label,
-                    node.Kind.ToString().ToLowerInvariant(),
-                    node.HasChildren,
-                    node.ChildCount,
-                    node.IsSelectable))
-            .ToArrayAsync(ct);
+            .ToArray();
 
         return new WorkspaceTreeResult(normalizedPath, nodes);
     }
 
-    private IQueryable<PersistedWorkspaceTreeNode> GetChildNodes(string path)
+    private async Task<DirectoryRecord?> ResolveParentDirectory(
+        string normalizedPath,
+        CancellationToken ct)
     {
-        if (string.Equals(path, RootPath, StringComparison.Ordinal))
-        {
-            return context.WorkspaceTreeNodes.Where(node => node.ParentId == null);
-        }
+        var persistedPath = string.Equals(normalizedPath, RootPath, StringComparison.Ordinal)
+            ? string.Empty
+            : normalizedPath;
 
-        return context.WorkspaceTreeNodes.Where(node => node.ParentId == path);
+        return await context.Directories
+            .AsNoTracking()
+            .FirstOrDefaultAsync(directory => directory.Path == persistedPath, ct);
     }
 
     private static string NormalizePath(string path)
-        => path.Trim();
+    {
+        var trimmedPath = path.Trim().Replace('\\', '/');
+        if (string.Equals(trimmedPath, RootPath, StringComparison.Ordinal))
+        {
+            return RootPath;
+        }
+
+        return trimmedPath.Trim('/');
+    }
+
+    private static string ToWorkspacePath(string path)
+        => string.IsNullOrEmpty(path)
+            ? RootPath
+            : path;
 }

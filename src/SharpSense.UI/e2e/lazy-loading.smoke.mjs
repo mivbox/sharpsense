@@ -70,23 +70,7 @@ try {
     "Expected expanding the tree to trigger a lazy child fetch."
   );
 
-  const firstCheckboxPathHandle = await page.waitForFunction(
-    (expandedPath) => {
-      const childRow = [...document.querySelectorAll("[data-tree-path]")].find((element) => {
-        const path = element.getAttribute("data-tree-path");
-
-        return path !== null && path.startsWith(`${expandedPath}/`);
-      });
-
-      return childRow?.getAttribute("data-tree-path") ?? null;
-    },
-    { timeout: timeoutMs },
-    expandablePath
-  );
-  const firstCheckboxPath = await firstCheckboxPathHandle.jsonValue();
-  assert(firstCheckboxPath, "Expected at least one selectable tree checkbox.");
-
-  await page.click(`[data-tree-checkbox-trigger="${cssEscape(firstCheckboxPath)}"]`);
+  await page.click(`[data-tree-checkbox-trigger="${cssEscape(expandablePath)}"]`);
   await waitForCondition(
     () => requests.some((url) => url.includes("/api/graph?")),
     timeoutMs,

@@ -7,6 +7,8 @@ using SharpSense.Application.HybridSearch.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.Persistence;
+using SharpSense.Infrastructure.Persistence.Records;
+using SharpSense.Infrastructure.Shared;
 
 namespace SharpSense.Infrastructure.HybridSearch;
 
@@ -55,13 +57,27 @@ public sealed class HybridSearcher(
         var codeNodesQuery = context.CodeNodes.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(query.ProjectId))
         {
-            codeNodesQuery = codeNodesQuery.Where(codeNode => codeNode.ProjectId == query.ProjectId);
+            var projectNodeId = await context.GraphNodes
+                .AsNoTracking()
+                .Where(graphNode =>
+                    graphNode.Kind == GraphNodeKind.Project &&
+                    graphNode.CanonicalId == query.ProjectId)
+                .Select(static graphNode => (int?)graphNode.Id)
+                .FirstOrDefaultAsync(ct);
+            if (projectNodeId is null)
+            {
+                return new HybridSearchResult(query.SearchText, []);
+            }
+
+            codeNodesQuery = codeNodesQuery.Where(codeNode => codeNode.ProjectNodeId == projectNodeId);
         }
 
         if (query.IncludedNodeTypes is { Length: > 0 })
         {
             codeNodesQuery = codeNodesQuery.Where(codeNode => query.IncludedNodeTypes.Contains(codeNode.NodeType));
         }
+
+        var projectedCodeNodesQuery = CodeNodeNavigationQueries.ProjectCodeNodes(context, codeNodesQuery);
 
         var candidateLimit = GetCandidateLimit(query.Limit);
         var candidateIds = await LoadKeywordCandidateIds(
@@ -72,11 +88,11 @@ public sealed class HybridSearcher(
             ;
 
         var codeNodes = candidateIds.Length > 0
-            ? await codeNodesQuery
+            ? await projectedCodeNodesQuery
                 .Where(codeNode => candidateIds.Contains(codeNode.Id))
                 .ToArrayAsync(ct)
                 .ConfigureAwait(false)
-            : await codeNodesQuery
+            : await projectedCodeNodesQuery
                 .Where(codeNode =>
                     codeNode.DisplayName.Contains(query.SearchText) ||
                     codeNode.FullyQualifiedName.Contains(query.SearchText) ||

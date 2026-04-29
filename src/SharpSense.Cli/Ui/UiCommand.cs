@@ -78,10 +78,10 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
         app.MapGet(
             "/api/graph",
             static async Task<GraphResult> (
-                string[]? paths,
+                int[]? directoryIds,
                 IQueryHandler<GetDependencyGraphQuery, GraphResult> handler,
                 CancellationToken ct) =>
-                await handler.Handle(new GetDependencyGraphQuery(paths ?? []), ct))
+                await handler.Handle(new GetDependencyGraphQuery(directoryIds ?? []), ct))
             .AllowAnonymous();
 
         app.UseDefaultFiles(new DefaultFilesOptions

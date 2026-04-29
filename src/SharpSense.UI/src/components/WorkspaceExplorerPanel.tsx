@@ -66,7 +66,7 @@ export function WorkspaceExplorerPanel({
         <Stack spacing={0.5}>
           <Typography variant="h6">Workspace Explorer</Typography>
           <Typography variant="body2" color="text.secondary">
-            Select analyzed folders or files to opt into graph scope. The canvas starts empty.
+            Select analyzed folders to opt into graph scope. The canvas starts empty.
           </Typography>
         </Stack>
 

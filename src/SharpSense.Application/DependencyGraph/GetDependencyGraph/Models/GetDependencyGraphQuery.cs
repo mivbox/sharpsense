@@ -1,5 +1,5 @@
 namespace SharpSense.Application.DependencyGraph.GetDependencyGraph.Models;
 
 public sealed record GetDependencyGraphQuery(
-    IReadOnlyList<string> Paths,
+    IReadOnlyList<int> DirectoryIds,
     bool IncludeBoundaryNodes = true);

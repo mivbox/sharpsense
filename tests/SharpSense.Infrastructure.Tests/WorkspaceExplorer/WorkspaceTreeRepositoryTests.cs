@@ -1,7 +1,6 @@
 using AwesomeAssertions;
-using SharpSense.Domain.KnowledgeGraph.Enums;
-using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.Persistence;
+using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Infrastructure.WorkspaceExplorer;
 using SharpSense.Testkit;
 
@@ -59,60 +58,109 @@ public sealed class WorkspaceTreeRepositoryTests
 
     private static async Task SeedTree(SharpSenseDbContext context)
     {
-        context.WorkspaceTreeNodes.AddRange(
-            new WorkspaceTreeNode
+        context.Directories.AddRange(
+            new DirectoryRecord
             {
-                Id = "docs",
+                Id = 1,
+                Path = string.Empty,
+                Name = "/"
+            },
+            new DirectoryRecord
+            {
+                Id = 2,
+                ParentId = 1,
                 Path = "docs",
-                Label = "docs",
-                Kind = WorkspaceTreeNodeKind.Folder,
-                HasChildren = true,
-                ChildCount = 1,
-                IsSelectable = true
+                Name = "docs"
             },
-            new WorkspaceTreeNode
+            new DirectoryRecord
             {
-                Id = "SharpSense.App.csproj",
-                Path = "SharpSense.App.csproj",
-                Label = "SharpSense.App",
-                Kind = WorkspaceTreeNodeKind.Project,
-                IsSelectable = true
-            },
-            new WorkspaceTreeNode
-            {
-                Id = "root",
+                Id = 3,
+                ParentId = 1,
                 Path = "root",
-                Label = "root",
-                Kind = WorkspaceTreeNodeKind.Folder,
-                HasChildren = true,
-                ChildCount = 1,
-                IsSelectable = true
-            },
-            new WorkspaceTreeNode
+                Name = "root"
+            });
+        context.DirectoryClosures.AddRange(
+            new DirectoryClosureRecord
             {
-                Id = "README.md",
-                Path = "README.md",
-                Label = "README.md",
-                Kind = WorkspaceTreeNodeKind.File,
-                IsSelectable = true
+                AncestorDirectoryId = 1,
+                DescendantDirectoryId = 1,
+                Depth = 0
             },
-            new WorkspaceTreeNode
+            new DirectoryClosureRecord
             {
-                Id = "docs/Guide.md",
-                ParentId = "docs",
-                Path = "docs/Guide.md",
-                Label = "Guide.md",
-                Kind = WorkspaceTreeNodeKind.File,
-                IsSelectable = true
+                AncestorDirectoryId = 2,
+                DescendantDirectoryId = 2,
+                Depth = 0
             },
-            new WorkspaceTreeNode
+            new DirectoryClosureRecord
             {
-                Id = "root/child.txt",
-                ParentId = "root",
-                Path = "root/child.txt",
-                Label = "child.txt",
-                Kind = WorkspaceTreeNodeKind.File,
-                IsSelectable = true
+                AncestorDirectoryId = 3,
+                DescendantDirectoryId = 3,
+                Depth = 0
+            },
+            new DirectoryClosureRecord
+            {
+                AncestorDirectoryId = 1,
+                DescendantDirectoryId = 2,
+                Depth = 1
+            },
+            new DirectoryClosureRecord
+            {
+                AncestorDirectoryId = 1,
+                DescendantDirectoryId = 3,
+                Depth = 1
+            });
+        context.Documents.AddRange(
+            new DocumentRecord
+            {
+                Id = 10,
+                DirectoryId = 1,
+                FileName = "SharpSense.App.csproj",
+                Extension = ".csproj",
+                RelativePath = "SharpSense.App.csproj",
+                Kind = DocumentKind.ProjectFile
+            },
+            new DocumentRecord
+            {
+                Id = 11,
+                DirectoryId = 1,
+                FileName = "README.md",
+                Extension = ".md",
+                RelativePath = "README.md",
+                Kind = DocumentKind.Markdown
+            },
+            new DocumentRecord
+            {
+                Id = 12,
+                DirectoryId = 2,
+                FileName = "Guide.md",
+                Extension = ".md",
+                RelativePath = "docs/Guide.md",
+                Kind = DocumentKind.Markdown
+            },
+            new DocumentRecord
+            {
+                Id = 13,
+                DirectoryId = 3,
+                FileName = "child.txt",
+                Extension = ".txt",
+                RelativePath = "root/child.txt",
+                Kind = DocumentKind.Other
+            });
+        context.GraphNodes.Add(
+            new GraphNodeRecord
+            {
+                Id = 100,
+                CanonicalId = "project:SharpSense.App.csproj",
+                Kind = GraphNodeKind.Project
+            });
+        context.ProjectNodes.Add(
+            new ProjectNodeRecord
+            {
+                Id = 100,
+                Name = "SharpSense.App",
+                ProjectDocumentId = 10,
+                ContentHash = "project-root"
             });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

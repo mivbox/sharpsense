@@ -12,6 +12,7 @@ type UseWorkspaceTreeResult = {
   errorMessage: string | null;
   hasRootNodes: boolean;
   isRootLoading: boolean;
+  nodesByPath: Record<string, WorkspaceTreeNode>;
   rows: WorkspaceTreeRow[];
 };
 
@@ -99,6 +100,7 @@ export function useWorkspaceTree(expandedPaths: Set<string>): UseWorkspaceTreeRe
     hasRootNodes: (nodesByParentPath[ROOT_TREE_PATH] ?? []).length > 0,
     isRootLoading:
       loadingPaths.has(ROOT_TREE_PATH) && (nodesByParentPath[ROOT_TREE_PATH] ?? []).length === 0,
+    nodesByPath,
     rows
   };
 }

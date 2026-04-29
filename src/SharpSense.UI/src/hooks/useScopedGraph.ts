@@ -1,27 +1,36 @@
 import { useQuery } from "@tanstack/react-query";
 import { EMPTY_GRAPH, type GraphApiResponse } from "../types/graph";
+import type { WorkspaceTreeNode } from "../types/workspaceTree";
 
 const GRAPH_ENDPOINT = "/api/graph";
 
-export function useScopedGraph(selectedPaths: string[]) {
+export function useScopedGraph(
+  selectedPaths: string[],
+  nodesByPath: Record<string, WorkspaceTreeNode>
+) {
   const normalizedSelectedPaths = normalizeSelectedPaths(selectedPaths);
+  const selectedDirectoryIds = normalizedSelectedPaths
+    .map((path) => nodesByPath[path])
+    .filter((node): node is WorkspaceTreeNode => Boolean(node?.isSelectable))
+    .map((node) => node.id);
   const query = useQuery({
-    queryKey: ["graph", normalizedSelectedPaths],
-    queryFn: async () => fetchGraph(normalizedSelectedPaths),
-    enabled: normalizedSelectedPaths.length > 0
+    queryKey: ["graph", selectedDirectoryIds],
+    queryFn: async () => fetchGraph(selectedDirectoryIds),
+    enabled: selectedDirectoryIds.length > 0
   });
 
   return {
     ...query,
     data: query.data ?? EMPTY_GRAPH,
+    selectedDirectoryIds,
     normalizedSelectedPaths
   };
 }
 
-async function fetchGraph(paths: string[]): Promise<GraphApiResponse> {
+async function fetchGraph(directoryIds: number[]): Promise<GraphApiResponse> {
   const searchParams = new URLSearchParams();
-  paths.forEach((path) => {
-    searchParams.append("paths", path);
+  directoryIds.forEach((directoryId) => {
+    searchParams.append("directoryIds", String(directoryId));
   });
 
   const response = await fetch(`${GRAPH_ENDPOINT}?${searchParams.toString()}`);

@@ -9,14 +9,14 @@ namespace SharpSense.Application.DependencyGraph.Abstractions;
 public interface IDependencyGraphRepository
 {
     /// <summary>
-    /// Returns the graph owned by the supplied selection paths plus optional boundary nodes and edges that cross from
+    /// Returns the graph owned by the supplied selected directories plus optional boundary nodes and edges that cross from
     /// selected scope to external scope.
     /// </summary>
-    /// <param name="paths">Repository-relative tree paths selected in the explorer.</param>
+    /// <param name="directoryIds">Workspace directory ids selected in the explorer.</param>
     /// <param name="includeBoundaryNodes"><c>true</c> to include one-hop external endpoints as ghost nodes.</param>
     /// <param name="ct"><see cref="CancellationToken" /> for the current request.</param>
     Task<GraphResult> GetGraph(
-        IReadOnlyList<string> paths,
+        IReadOnlyList<int> directoryIds,
         bool includeBoundaryNodes,
         CancellationToken ct);
 }

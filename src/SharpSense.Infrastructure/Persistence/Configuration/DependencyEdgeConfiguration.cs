@@ -1,36 +1,43 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using SharpSense.Domain.KnowledgeGraph.Edges;
+using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.Persistence.Configuration;
 
-public sealed class DependencyEdgeConfiguration : IEntityTypeConfiguration<DependencyEdge>
+public sealed class DependencyEdgeConfiguration : IEntityTypeConfiguration<DependencyEdgeRecord>
 {
-    public void Configure(EntityTypeBuilder<DependencyEdge> builder)
+    public void Configure(EntityTypeBuilder<DependencyEdgeRecord> builder)
     {
         builder.ToTable("DependencyEdges");
 
         builder.HasKey(dependencyEdge => new
         {
-            dependencyEdge.CallerId,
-            dependencyEdge.CalleeId,
+            dependencyEdge.CallerNodeId,
+            dependencyEdge.CalleeNodeId,
             dependencyEdge.EdgeType
         });
 
-        builder.Property(dependencyEdge => dependencyEdge.CallerId)
-            .IsRequired()
-            .HasMaxLength(2048);
+        builder.Property(dependencyEdge => dependencyEdge.CallerNodeId)
+            .IsRequired();
 
-        builder.Property(dependencyEdge => dependencyEdge.CalleeId)
-            .IsRequired()
-            .HasMaxLength(2048);
+        builder.Property(dependencyEdge => dependencyEdge.CalleeNodeId)
+            .IsRequired();
 
         builder.Property(dependencyEdge => dependencyEdge.EdgeType)
             .IsRequired()
             .HasConversion<string>()
             .HasMaxLength(64);
 
-        builder.HasIndex(dependencyEdge => dependencyEdge.CallerId);
-        builder.HasIndex(dependencyEdge => dependencyEdge.CalleeId);
+        builder.HasOne<GraphNodeRecord>()
+            .WithMany()
+            .HasForeignKey(dependencyEdge => dependencyEdge.CallerNodeId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<GraphNodeRecord>()
+            .WithMany()
+            .HasForeignKey(dependencyEdge => dependencyEdge.CalleeNodeId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(dependencyEdge => dependencyEdge.CallerNodeId);
+        builder.HasIndex(dependencyEdge => dependencyEdge.CalleeNodeId);
     }
 }

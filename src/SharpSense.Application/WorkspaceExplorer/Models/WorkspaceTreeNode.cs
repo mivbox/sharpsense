@@ -1,8 +1,8 @@
 namespace SharpSense.Application.WorkspaceExplorer.Models;
 
 public sealed record WorkspaceTreeNode(
-    string Id,
-    string? ParentId,
+    int Id,
+    int? ParentId,
     string Path,
     string Label,
     string Kind,

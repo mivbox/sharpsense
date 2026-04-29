@@ -1,8 +1,8 @@
 export type WorkspaceTreeNodeKind = "project" | "folder" | "file";
 
 export type WorkspaceTreeNode = {
-  id: string;
-  parentId: string | null;
+  id: number;
+  parentId: number | null;
   path: string;
   label: string;
   kind: WorkspaceTreeNodeKind;
