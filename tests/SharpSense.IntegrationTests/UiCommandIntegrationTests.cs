@@ -49,40 +49,50 @@ public sealed class UiCommandIntegrationTests
                 Timeout = TimeSpan.FromSeconds(5)
             };
 
-            using var graphResponse = await httpClient.GetAsync($"{baseUrl}/api/graph", TestContext.Current.CancellationToken);
+            using var graphNodesResponse = await httpClient.GetAsync($"{baseUrl}/api/graph/nodes", TestContext.Current.CancellationToken);
+            using var graphEdgesResponse = await httpClient.GetAsync($"{baseUrl}/api/graph/edges", TestContext.Current.CancellationToken);
             using var rootTreeResponse = await httpClient.GetAsync($"{baseUrl}/api/tree?path={RootTreePath}", TestContext.Current.CancellationToken);
             using var srcTreeResponse = await httpClient.GetAsync($"{baseUrl}/api/tree?path=src", TestContext.Current.CancellationToken);
             using var rootResponse = await httpClient.GetAsync($"{baseUrl}/", TestContext.Current.CancellationToken);
-            Assert.Equal(HttpStatusCode.OK, graphResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, graphNodesResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, graphEdgesResponse.StatusCode);
             Assert.Equal(HttpStatusCode.OK, rootTreeResponse.StatusCode);
             Assert.Equal(HttpStatusCode.OK, srcTreeResponse.StatusCode);
             Assert.Equal(HttpStatusCode.OK, rootResponse.StatusCode);
 
-            await using var graphStream = await graphResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+            await using var graphNodesStream = await graphNodesResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+            await using var graphEdgesStream = await graphEdgesResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
             await using var rootTreeStream = await rootTreeResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
             await using var srcTreeStream = await srcTreeResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
-            using var jsonDocument = await JsonDocument.ParseAsync(graphStream, cancellationToken: TestContext.Current.CancellationToken);
+            using var graphNodesDocument = await JsonDocument.ParseAsync(graphNodesStream, cancellationToken: TestContext.Current.CancellationToken);
+            using var graphEdgesDocument = await JsonDocument.ParseAsync(graphEdgesStream, cancellationToken: TestContext.Current.CancellationToken);
             using var rootTreeDocument = await JsonDocument.ParseAsync(rootTreeStream, cancellationToken: TestContext.Current.CancellationToken);
             using var srcTreeDocument = await JsonDocument.ParseAsync(srcTreeStream, cancellationToken: TestContext.Current.CancellationToken);
-            var nodes = jsonDocument.RootElement.GetProperty("nodes");
-            var edges = jsonDocument.RootElement.GetProperty("edges");
+            var nodes = graphNodesDocument.RootElement;
+            var edges = graphEdgesDocument.RootElement;
             var rootTreeNodes = rootTreeDocument.RootElement.GetProperty("nodes");
             var srcTreeNodes = srcTreeDocument.RootElement.GetProperty("nodes");
             var appDirectoryId = srcTreeNodes.EnumerateArray()
                 .First(
                     node =>
                         node.GetProperty("path").GetString() == AppFolderPath &&
-                        node.GetProperty("kind").GetString() == "folder")
+                    node.GetProperty("kind").GetString() == "folder")
                 .GetProperty("id")
                 .GetInt32();
-            using var scopedGraphResponse = await httpClient.GetAsync(
-                $"{baseUrl}/api/graph?directoryIds={appDirectoryId}",
+            using var scopedGraphNodesResponse = await httpClient.GetAsync(
+                $"{baseUrl}/api/graph/nodes?directoryIds={appDirectoryId}",
                 TestContext.Current.CancellationToken);
-            Assert.Equal(HttpStatusCode.OK, scopedGraphResponse.StatusCode);
-            await using var scopedGraphStream = await scopedGraphResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
-            using var scopedGraphDocument = await JsonDocument.ParseAsync(scopedGraphStream, cancellationToken: TestContext.Current.CancellationToken);
-            var scopedNodes = scopedGraphDocument.RootElement.GetProperty("nodes");
-            var scopedEdges = scopedGraphDocument.RootElement.GetProperty("edges");
+            using var scopedGraphEdgesResponse = await httpClient.GetAsync(
+                $"{baseUrl}/api/graph/edges?directoryIds={appDirectoryId}",
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, scopedGraphNodesResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.OK, scopedGraphEdgesResponse.StatusCode);
+            await using var scopedGraphNodesStream = await scopedGraphNodesResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+            await using var scopedGraphEdgesStream = await scopedGraphEdgesResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+            using var scopedGraphNodesDocument = await JsonDocument.ParseAsync(scopedGraphNodesStream, cancellationToken: TestContext.Current.CancellationToken);
+            using var scopedGraphEdgesDocument = await JsonDocument.ParseAsync(scopedGraphEdgesStream, cancellationToken: TestContext.Current.CancellationToken);
+            var scopedNodes = scopedGraphNodesDocument.RootElement;
+            var scopedEdges = scopedGraphEdgesDocument.RootElement;
 
             Assert.Empty(nodes.EnumerateArray());
             Assert.Empty(edges.EnumerateArray());

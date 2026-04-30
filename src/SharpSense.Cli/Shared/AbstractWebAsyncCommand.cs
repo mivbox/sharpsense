@@ -27,7 +27,11 @@ public abstract class AbstractWebAsyncCommand<TSettings> : AsyncCommand<TSetting
         var executionContext = CommandOutput.GetExecutionContext(context);
         var enableFileLogging = executionContext?.EnableFileLogging ?? true;
         var previousLogger = Log.Logger;
-        SharpSenseLogging.UseGlobalLogger(settings.IsVerbose, context.Name, enableConsoleLogging: true, enableFileLogging);
+        SharpSenseLogging.UseGlobalLogger(
+            settings.IsVerbose,
+            context.Name,
+            enableConsoleLogging: true,
+            enableFileLogging);
 
         var builder = WebApplication.CreateBuilder();
         var logFilePath = enableFileLogging ? SharpSenseLogging.GetLogFilePath(context.Name) : null;

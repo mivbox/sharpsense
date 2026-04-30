@@ -12,6 +12,14 @@ const cliProjectPath = path.resolve(process.cwd(), "../SharpSense.Cli/SharpSense
 const targetPath =
   process.env.SHARPSENSE_E2E_TARGET_PATH ?? path.resolve(repoRoot, "SharpSense.sln");
 const timeoutMs = Number.parseInt(process.env.SHARPSENSE_E2E_TIMEOUT_MS ?? "30000", 10);
+const preferredExpandablePaths = ["src", "tests", "docs"];
+const preferredSelectionPaths = [
+  "src/SharpSense.Domain",
+  "src/SharpSense.Cli",
+  "src/SharpSense.Application",
+  "tests/SharpSense.Application.Tests",
+  "tests/SharpSense.Infrastructure.Tests"
+];
 
 let serverProcess;
 let browser;
@@ -21,25 +29,55 @@ try {
   serverProcess = startUiHost();
   await waitForServer(baseUrl, timeoutMs);
 
+  const browserConsoleMessages = [];
+  const pageErrors = [];
   const requests = [];
-  const graphResponses = [];
+  const graphNodeRequests = [];
+  const graphEdgeRequests = [];
+  const graphNodeResponses = [];
+  const graphEdgeResponses = [];
   browser = await puppeteer.launch({
     headless: true,
     executablePath: resolveExecutablePath()
   });
   const page = await browser.newPage();
+  page.on("console", (message) => {
+    browserConsoleMessages.push(`${message.type()}: ${message.text()}`);
+  });
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.stack ?? error.message);
+  });
   page.on("request", (request) => {
-    requests.push(request.url());
+    const url = request.url();
+    requests.push(url);
+
+    if (url.includes("/api/graph/nodes?")) {
+      graphNodeRequests.push(url);
+    }
+
+    if (url.includes("/api/graph/edges?")) {
+      graphEdgeRequests.push(url);
+    }
   });
   page.on("response", async (response) => {
-    if (!response.url().includes("/api/graph?")) {
+    const url = response.url();
+
+    if (url.includes("/api/graph/nodes?")) {
+      try {
+        graphNodeResponses.push(await response.json());
+      } catch {
+        // Ignore non-JSON responses from failed requests; later assertions catch behavior regressions.
+      }
+
       return;
     }
 
-    try {
-      graphResponses.push(await response.json());
-    } catch {
-      // Ignore non-JSON responses from failed requests; later assertions catch behavior regressions.
+    if (url.includes("/api/graph/edges?")) {
+      try {
+        graphEdgeResponses.push(await response.json());
+      } catch {
+        // Ignore non-JSON responses from failed requests; later assertions catch behavior regressions.
+      }
     }
   });
 
@@ -58,8 +96,16 @@ try {
   );
 
   const initialTreeRequests = requests.filter((url) => url.includes("/api/tree?")).length;
-  const expandablePath = await page.$eval("[data-expand-path]", (element) =>
-    element.getAttribute("data-expand-path")
+  const expandablePath = await page.$$eval(
+    "[data-expand-path]",
+    (elements, preferredPaths) => {
+      const paths = elements
+        .map((element) => element.getAttribute("data-expand-path"))
+        .filter((path) => typeof path === "string");
+
+      return preferredPaths.find((path) => paths.includes(path)) ?? paths[0] ?? null;
+    },
+    preferredExpandablePaths
   );
   assert(expandablePath, "Expected at least one expandable tree row.");
 
@@ -70,25 +116,87 @@ try {
     "Expected expanding the tree to trigger a lazy child fetch."
   );
 
-  await page.click(`[data-tree-checkbox-trigger="${cssEscape(expandablePath)}"]`);
+  const preferredChildPath =
+    preferredSelectionPaths.find((path) => path.startsWith(`${expandablePath}/`)) ?? null;
+  if (preferredChildPath) {
+    await page.waitForSelector(
+      `[data-tree-checkbox-trigger="${cssEscape(preferredChildPath)}"]`,
+      { timeout: timeoutMs }
+    );
+  } else {
+    await page.waitForFunction(
+      (parentPath) =>
+        Array.from(document.querySelectorAll("[data-tree-checkbox-trigger]")).some((element) => {
+          const candidatePath = element.getAttribute("data-tree-checkbox-trigger");
+          return Boolean(candidatePath && candidatePath.startsWith(`${parentPath}/`));
+        }),
+      { timeout: timeoutMs },
+      expandablePath
+    );
+  }
+
+  const selectionPath =
+    preferredChildPath ??
+    (await page.$$eval(
+      "[data-tree-checkbox-trigger]",
+      (elements, parentPath) => {
+        const paths = elements
+          .map((element) => element.getAttribute("data-tree-checkbox-trigger"))
+          .filter((path) => typeof path === "string");
+
+        return paths.find((path) => path.startsWith(`${parentPath}/`)) ?? null;
+      },
+      expandablePath
+    ));
+  assert(selectionPath, "Expected at least one selectable tree path.");
+
+  const graphNodeRequestCountBeforeSelection = graphNodeRequests.length;
+  const graphEdgeRequestCountBeforeSelection = graphEdgeRequests.length;
+  await page.click(`[data-tree-checkbox-trigger="${cssEscape(selectionPath)}"]`);
   await waitForCondition(
-    () => requests.some((url) => url.includes("/api/graph?")),
+    () => graphNodeRequests.length > graphNodeRequestCountBeforeSelection,
     timeoutMs,
-    "Expected selecting a tree path to trigger a scoped graph request."
+    "Expected selecting a tree path to trigger a scoped graph node request."
   );
-  await page.waitForFunction(
-    () =>
-      document.querySelector("canvas") !== null ||
-      document.querySelector('[data-testid="graph-no-results-state"]') !== null,
-    { timeout: timeoutMs }
+  assert(
+    graphEdgeRequests.length === graphEdgeRequestCountBeforeSelection,
+    "Expected selecting a tree path to defer graph edge loading until the user opts in."
+  );
+  try {
+    await page.waitForSelector('[data-testid="toggle-edges-checkbox"]', { timeout: timeoutMs });
+  } catch (error) {
+    const debugState = await capturePageState(page);
+    throw new Error(
+      [
+        `Expected the edge toggle to appear after selecting ${selectionPath}.`,
+        `Latest node request: ${graphNodeRequests.at(-1) ?? "none"}`,
+        `Latest edge request: ${graphEdgeRequests.at(-1) ?? "none"}`,
+        `Page errors: ${pageErrors.join(" | ") || "none"}`,
+        `Browser console: ${browserConsoleMessages.join(" | ") || "none"}`,
+        `Visible state: ${JSON.stringify(debugState)}`
+      ].join("\n"),
+      { cause: error }
+    );
+  }
+
+  const graphEdgeRequestCountBeforeToggle = graphEdgeRequests.length;
+  await page.click('[data-testid="toggle-edges-checkbox"]');
+  await waitForCondition(
+    () => graphEdgeRequests.length > graphEdgeRequestCountBeforeToggle,
+    timeoutMs,
+    "Expected enabling edges to trigger a scoped graph edge request."
   );
 
-  const externalNodeCount = graphResponses
-    .flatMap((response) => response?.nodes ?? [])
+  const externalNodeCount = graphNodeResponses
+    .flatMap((response) => response ?? [])
     .filter((node) => node?.scope === "external").length;
 
   if (externalNodeCount === 0) {
     console.warn("Smoke warning: selected scope did not expose any ghost nodes in this dataset.");
+  }
+
+  if (graphEdgeResponses.length === 0) {
+    console.warn("Smoke warning: edge request fired but no edge payloads were captured.");
   }
 
   console.log("Lazy-loading smoke passed.");
@@ -117,7 +225,7 @@ function startUiHost() {
         ...process.env,
         DOTNET_CLI_TELEMETRY_OPTOUT: "1"
       },
-      stdio: ["ignore", "pipe", "pipe"]
+      stdio: "ignore"
     }
   );
 }
@@ -233,4 +341,15 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+async function capturePageState(page) {
+  return await page.evaluate(() => ({
+    canvasVisible: document.querySelector("canvas") !== null,
+    emptyStateVisible: document.querySelector('[data-testid="graph-empty-state"]') !== null,
+    loadingStateVisible: document.querySelector('[data-testid="graph-loading-state"]') !== null,
+    noResultsStateVisible: document.querySelector('[data-testid="graph-no-results-state"]') !== null,
+    toggleVisible: document.querySelector('[data-testid="toggle-edges-checkbox"]') !== null,
+    text: document.body.innerText.slice(0, 2000)
+  }));
 }

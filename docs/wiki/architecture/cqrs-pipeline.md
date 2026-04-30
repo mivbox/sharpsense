@@ -3,7 +3,7 @@ title: "CQRS Pipeline"
 type: architecture
 tags: [cqrs, spectre, implemented]
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-04-30
 confidence: high
 ---
 
@@ -18,7 +18,7 @@ SharpSense binds long-lived command configuration once during [[architecture/hos
 * `IndexTargetCommand` carries only full-index runtime signals (`Progress` and `EmbeddingProgress`).
 * `UpdateWorkspaceFilesCommand` carries only incremental runtime signals (`ChangedFiles` and `Progress`).
 * `HybridSearchQuery` carries only the search text and optional query filters.
-* `TraceQuery`, `ImpactAnalysisQuery`, and `GetDependencyGraphQuery` carry only the traversal request data needed for the current call.
+* `TraceQuery`, `ImpactAnalysisQuery`, `GetDependencyGraphNodesQuery`, and `GetDependencyGraphEdgesQuery` carry only the traversal or hydration request data needed for the current call.
 
 `ICommandHandler<TCommand>` and `IQueryHandler<TQuery, TResult>` implementations stay thin and delegate to feature orchestrators such as `IKnowledgeGraphIndexing`, `IHybridSearcher`, `ITraceNavigator`, `IImpactAnalyzer`, and `IDependencyGraphRepository`. That keeps the public routes in [[cli/analyze-command]], [[cli/search-command]], [[cli/trace-command]], and [[cli/ui-command]] stable even as the underlying infrastructure changes.
 
@@ -30,7 +30,7 @@ SharpSense binds long-lived command configuration once during [[architecture/hos
 | `ICommandHandler<TCommand>` | Minimal command-side abstraction used for mutation flows such as full and incremental indexing. |
 | `IQueryHandler<TQuery, TResult>` | Minimal query-side abstraction used for read flows such as search, trace, impact analysis, and dependency graph retrieval. |
 | `IndexTargetCommand` / `UpdateWorkspaceFilesCommand` | Write-side records that carry only progress and changed-file event data. |
-| `HybridSearchQuery` / `TraceQuery` / `ImpactAnalysisQuery` / `GetDependencyGraphQuery` | Read-side records that carry only the request data for the current lookup. |
+| `HybridSearchQuery` / `TraceQuery` / `ImpactAnalysisQuery` / `GetDependencyGraphNodesQuery` / `GetDependencyGraphEdgesQuery` | Read-side records that carry only the request data for the current lookup. |
 | `IndexTargetCommandHandler`, `UpdateWorkspaceFilesCommandHandler`, and the query handlers | Thin adapters that forward records to the relevant feature orchestrator. |
 | `KnowledgeGraphIndexing` | Scoped orchestration component that consumes extractors, persistence, repository workspace, embeddings, and `IOptions<SharpSenseCliOptions>`. |
 
@@ -41,3 +41,4 @@ SharpSense binds long-lived command configuration once during [[architecture/hos
 3. Keep query payloads limited to the current request data such as search text, identifiers, depth limits, and optional filters.
 4. Keep handlers thin and register them through modular `Add*` extension methods instead of duplicating orchestration logic in the route or handler body.
 5. Use "Target" or "Workspace" terminology when documenting indexed boundaries.
+6. Split large read models into multiple query records when transport cost differs by shape; in the UI graph flow, node hydration and edge hydration must stay independently addressable.
