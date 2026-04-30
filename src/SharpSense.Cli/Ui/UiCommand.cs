@@ -6,8 +6,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Serilog;
 using SharpSense.Application.DependencyGraph;
+using SharpSense.Application.DependencyGraph.GetDependencyGraphEdges.Models;
+using SharpSense.Application.DependencyGraph.GetDependencyGraphNodes.Models;
 using SharpSense.Application.DependencyGraph.Models;
-using SharpSense.Application.DependencyGraph.GetDependencyGraph.Models;
 using SharpSense.Application.WorkspaceExplorer;
 using SharpSense.Application.WorkspaceExplorer.GetWorkspaceTree.Models;
 using SharpSense.Application.WorkspaceExplorer.Models;
@@ -76,12 +77,21 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
             .AllowAnonymous();
 
         app.MapGet(
-            "/api/graph",
-            static async Task<GraphResult> (
+            "/api/graph/nodes",
+            static async Task<IAsyncEnumerable<GraphNode>> (
                 int[]? directoryIds,
-                IQueryHandler<GetDependencyGraphQuery, GraphResult> handler,
+                IQueryHandler<GetDependencyGraphNodesQuery, IAsyncEnumerable<GraphNode>> handler,
                 CancellationToken ct) =>
-                await handler.Handle(new GetDependencyGraphQuery(directoryIds ?? []), ct))
+                await handler.Handle(new GetDependencyGraphNodesQuery(directoryIds ?? []), ct))
+            .AllowAnonymous();
+
+        app.MapGet(
+            "/api/graph/edges",
+            static async Task<IAsyncEnumerable<GraphEdge>> (
+                int[]? directoryIds,
+                IQueryHandler<GetDependencyGraphEdgesQuery, IAsyncEnumerable<GraphEdge>> handler,
+                CancellationToken ct) =>
+                await handler.Handle(new GetDependencyGraphEdgesQuery(directoryIds ?? []), ct))
             .AllowAnonymous();
 
         app.UseDefaultFiles(new DefaultFilesOptions
@@ -121,9 +131,11 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
 
     private static FileExtensionContentTypeProvider CreateContentTypeProvider()
     {
-        var contentTypeProvider = new FileExtensionContentTypeProvider();
-        contentTypeProvider.Mappings[".map"] = "application/json";
-        contentTypeProvider.Mappings[".mjs"] = "text/javascript";
+        var contentTypeProvider = new FileExtensionContentTypeProvider { Mappings =
+            {
+                [".map"] = "application/json", [".mjs"] = "text/javascript"
+            }
+        };
         return contentTypeProvider;
     }
 }

@@ -1,6 +1,7 @@
 using ModelContextProtocol.Server;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
+using SharpSense.Application.Inheritors.GetInheritors.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
 using SharpSense.Application.Shared.Abstractions;
@@ -102,6 +103,33 @@ internal sealed class SharpSenseMcpTools
 
             activity.AddTag("trace.node.count", nodes.Length);
             return _toonOutputFormatter.Format(nodes);
+        }
+        catch (Exception ex)
+        {
+            activity.RecordExceptionAndErrorStatus(ex);
+            throw;
+        }
+    }
+
+    [McpServerTool, Description("Find direct derived classes or interface implementers for a persisted node ID.")]
+    public static async Task<string> get_inheritors(
+        IQueryHandler<GetInheritorsQuery, CodeNodeResult[]> inheritorsHandler,
+        [Description("The integer ID of the target base class, abstract class, or interface.")] int nodeId,
+        CancellationToken ct = default)
+    {
+        using var activity = SharpSenseTraceSpan.Start("mcp.tool.get_inheritors");
+        activity.AddTag("mcp.tool", "get_inheritors");
+        activity.AddTag("inheritors.node_id", nodeId);
+
+        try
+        {
+            var result = await inheritorsHandler
+                .Handle(
+                    new GetInheritorsQuery(nodeId),
+                    ct);
+
+            activity.AddTag("inheritors.result.count", result.Length);
+            return _toonOutputFormatter.Format(result);
         }
         catch (Exception ex)
         {

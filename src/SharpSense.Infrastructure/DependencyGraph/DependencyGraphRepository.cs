@@ -4,6 +4,7 @@ using SharpSense.Application.DependencyGraph.Models;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Infrastructure.Shared;
+using System.Runtime.CompilerServices;
 
 namespace SharpSense.Infrastructure.DependencyGraph;
 
@@ -11,23 +12,166 @@ public sealed class DependencyGraphRepository(
     SharpSenseDbContext context)
     : IDependencyGraphRepository
 {
-    public async Task<GraphResult> GetGraph(
+    public IAsyncEnumerable<GraphNode> GetGraphNodes(
+        IReadOnlyList<int> directoryIds,
+        CancellationToken ct)
+        => GetGraphNodes(directoryIds, includeBoundaryNodes: true, ct);
+
+    public IAsyncEnumerable<GraphEdge> GetGraphEdges(
+        IReadOnlyList<int> directoryIds,
+        CancellationToken ct)
+        => GetGraphEdges(directoryIds, includeBoundaryNodes: true, ct);
+
+    private async IAsyncEnumerable<GraphNode> GetGraphNodes(
         IReadOnlyList<int> directoryIds,
         bool includeBoundaryNodes,
-        CancellationToken ct)
+        [EnumeratorCancellation] CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(directoryIds);
 
-        var selectedDirectoryIds = directoryIds
+        var selectedDirectoryIds = GetSelectedDirectoryIds(directoryIds);
+        if (selectedDirectoryIds.Length == 0)
+        {
+            yield break;
+        }
+
+        var scopedNodeIds = CreateScopedNodeIds(selectedDirectoryIds);
+
+        await foreach (var projectNode in CodeNodeNavigationQueries.ProjectProjectNodes(
+                context,
+                context.ProjectNodes
+                    .AsNoTracking()
+                    .Where(projectNode => scopedNodeIds.SelectedProjectNodeIds.Contains(projectNode.Id))
+                    .OrderBy(projectNode => projectNode.Name)
+                    .ThenBy(projectNode => projectNode.Id))
+            .AsAsyncEnumerable()
+            .WithCancellation(ct))
+        {
+            yield return DependencyGraphMapper.ToSelectedGraphNode(projectNode);
+        }
+
+        await foreach (var codeNode in CodeNodeNavigationQueries.ProjectCodeNodes(
+                context,
+                context.CodeNodes
+                    .AsNoTracking()
+                    .Where(codeNode => scopedNodeIds.SelectedCodeNodeIds.Contains(codeNode.Id))
+                    .OrderBy(codeNode => codeNode.FullyQualifiedName)
+                    .ThenBy(codeNode => codeNode.Id))
+            .AsAsyncEnumerable()
+            .WithCancellation(ct))
+        {
+            yield return DependencyGraphMapper.ToSelectedGraphNode(codeNode);
+        }
+
+        if (!includeBoundaryNodes)
+        {
+            yield break;
+        }
+
+        var externalNodeIds = GetExternalNodeIds(scopedNodeIds.SelectedNodeIds);
+
+        await foreach (var projectNode in CodeNodeNavigationQueries.ProjectProjectNodes(
+                context,
+                context.ProjectNodes
+                    .AsNoTracking()
+                    .Where(projectNode => externalNodeIds.Contains(projectNode.Id))
+                    .OrderBy(projectNode => projectNode.Name)
+                    .ThenBy(projectNode => projectNode.Id))
+            .AsAsyncEnumerable()
+            .WithCancellation(ct))
+        {
+            yield return DependencyGraphMapper.ToExternalGraphNode(projectNode);
+        }
+
+        await foreach (var codeNode in CodeNodeNavigationQueries.ProjectCodeNodes(
+                context,
+                context.CodeNodes
+                    .AsNoTracking()
+                    .Where(codeNode => externalNodeIds.Contains(codeNode.Id))
+                    .OrderBy(codeNode => codeNode.FullyQualifiedName)
+                    .ThenBy(codeNode => codeNode.Id))
+            .AsAsyncEnumerable()
+            .WithCancellation(ct))
+        {
+            yield return DependencyGraphMapper.ToExternalGraphNode(codeNode);
+        }
+    }
+
+    private async IAsyncEnumerable<GraphEdge> GetGraphEdges(
+        IReadOnlyList<int> directoryIds,
+        bool includeBoundaryNodes,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(directoryIds);
+
+        var selectedDirectoryIds = GetSelectedDirectoryIds(directoryIds);
+        if (selectedDirectoryIds.Length == 0)
+        {
+            yield break;
+        }
+
+        var scopedNodeIds = CreateScopedNodeIds(selectedDirectoryIds);
+
+        await foreach (var edge in CodeNodeNavigationQueries.ProjectDependencyEdges(
+                context,
+                context.DependencyEdges
+                    .AsNoTracking()
+                    .Where(edge =>
+                        scopedNodeIds.SelectedNodeIds.Contains(edge.CallerNodeId) &&
+                        scopedNodeIds.SelectedNodeIds.Contains(edge.CalleeNodeId))
+                    .OrderBy(edge => edge.CallerNodeId)
+                    .ThenBy(edge => edge.CalleeNodeId)
+                    .ThenBy(edge => edge.EdgeType))
+            .AsAsyncEnumerable()
+            .WithCancellation(ct))
+        {
+            yield return DependencyGraphMapper.ToInternalGraphEdge(edge);
+        }
+
+        if (!includeBoundaryNodes)
+        {
+            yield break;
+        }
+
+        var externalNodeIds = GetExternalNodeIds(scopedNodeIds.SelectedNodeIds);
+        var validBoundaryNodeIds = scopedNodeIds.SelectedNodeIds
+            .Concat(
+                context.ProjectNodes
+                    .AsNoTracking()
+                    .Where(projectNode => externalNodeIds.Contains(projectNode.Id))
+                    .Select(static projectNode => projectNode.Id))
+            .Concat(
+                context.CodeNodes
+                    .AsNoTracking()
+                    .Where(codeNode => externalNodeIds.Contains(codeNode.Id))
+                    .Select(static codeNode => codeNode.Id))
+            .Distinct();
+
+        await foreach (var edge in CodeNodeNavigationQueries.ProjectDependencyEdges(
+                context,
+                GetBoundaryEdges(scopedNodeIds.SelectedNodeIds)
+                    .Where(edge =>
+                        validBoundaryNodeIds.Contains(edge.CallerNodeId) &&
+                        validBoundaryNodeIds.Contains(edge.CalleeNodeId))
+                    .OrderBy(edge => edge.CallerNodeId)
+                    .ThenBy(edge => edge.CalleeNodeId)
+                    .ThenBy(edge => edge.EdgeType))
+            .AsAsyncEnumerable()
+            .WithCancellation(ct))
+        {
+            yield return DependencyGraphMapper.ToBoundaryGraphEdge(edge);
+        }
+    }
+
+    private static int[] GetSelectedDirectoryIds(IReadOnlyList<int> directoryIds)
+        => directoryIds
             .Where(static directoryId => directoryId > 0)
             .Distinct()
             .OrderBy(static directoryId => directoryId)
             .ToArray();
-        if (selectedDirectoryIds.Length == 0)
-        {
-            return new GraphResult([], []);
-        }
 
+    private ScopedNodeIds CreateScopedNodeIds(IReadOnlyList<int> selectedDirectoryIds)
+    {
         var normalizedDirectoryIds = GetNormalizedSelectedDirectoryIds(selectedDirectoryIds);
         var selectedDescendantDirectoryIds = context.DirectoryClosures
             .AsNoTracking()
@@ -38,7 +182,6 @@ public sealed class DependencyGraphRepository(
             .AsNoTracking()
             .Where(document => selectedDescendantDirectoryIds.Contains(document.DirectoryId))
             .Select(static document => document.Id);
-
         var selectedProjectNodeIds = context.ProjectNodes
             .AsNoTracking()
             .Where(projectNode => selectedDocumentIds.Contains(projectNode.ProjectDocumentId))
@@ -47,90 +190,11 @@ public sealed class DependencyGraphRepository(
             .AsNoTracking()
             .Where(codeNode => selectedDocumentIds.Contains(codeNode.DocumentId))
             .Select(static codeNode => codeNode.Id);
-        var selectedNodeIds = selectedProjectNodeIds
-            .Concat(selectedCodeNodeIds)
-            .Distinct();
 
-        var selectedProjectNodes = await CodeNodeNavigationQueries.ProjectProjectNodes(
-                context,
-                context.ProjectNodes
-                    .AsNoTracking()
-                    .Where(projectNode => selectedProjectNodeIds.Contains(projectNode.Id))
-                    .OrderBy(projectNode => projectNode.Name)
-                    .ThenBy(projectNode => projectNode.Id))
-            .ToArrayAsync(ct);
-        var selectedCodeNodes = await CodeNodeNavigationQueries.ProjectCodeNodes(
-                context,
-                context.CodeNodes
-                    .AsNoTracking()
-                    .Where(codeNode => selectedCodeNodeIds.Contains(codeNode.Id))
-                    .OrderBy(codeNode => codeNode.FullyQualifiedName)
-                    .ThenBy(codeNode => codeNode.Id))
-            .ToArrayAsync(ct);
-        var internalEdges = await CodeNodeNavigationQueries.ProjectDependencyEdges(
-                context,
-                context.DependencyEdges
-                    .AsNoTracking()
-                    .Where(edge =>
-                        selectedNodeIds.Contains(edge.CallerNodeId) &&
-                        selectedNodeIds.Contains(edge.CalleeNodeId))
-                    .OrderBy(edge => edge.CallerNodeId)
-                    .ThenBy(edge => edge.CalleeNodeId)
-                    .ThenBy(edge => edge.EdgeType))
-            .ToArrayAsync(ct);
-        var boundaryEdges = includeBoundaryNodes
-            ? await CodeNodeNavigationQueries.ProjectDependencyEdges(
-                    context,
-                    GetBoundaryEdges(selectedNodeIds)
-                        .OrderBy(edge => edge.CallerNodeId)
-                        .ThenBy(edge => edge.CalleeNodeId)
-                        .ThenBy(edge => edge.EdgeType))
-                .ToArrayAsync(ct)
-            : [];
-        var externalNodeIds = includeBoundaryNodes
-            ? GetExternalNodeIds(selectedNodeIds)
-            : null;
-        var externalProjectNodes = externalNodeIds is null
-            ? []
-            : await CodeNodeNavigationQueries.ProjectProjectNodes(
-                    context,
-                    context.ProjectNodes
-                        .AsNoTracking()
-                        .Where(projectNode => externalNodeIds.Contains(projectNode.Id))
-                        .OrderBy(projectNode => projectNode.Name)
-                        .ThenBy(projectNode => projectNode.Id))
-                .ToArrayAsync(ct);
-        var externalCodeNodes = externalNodeIds is null
-            ? []
-            : await CodeNodeNavigationQueries.ProjectCodeNodes(
-                    context,
-                    context.CodeNodes
-                        .AsNoTracking()
-                        .Where(codeNode => externalNodeIds.Contains(codeNode.Id))
-                        .OrderBy(codeNode => codeNode.FullyQualifiedName)
-                        .ThenBy(codeNode => codeNode.Id))
-                .ToArrayAsync(ct);
-        GraphNode[] nodes =
-        [
-            .. selectedProjectNodes.Select(DependencyGraphMapper.ToSelectedGraphNode),
-            .. selectedCodeNodes.Select(DependencyGraphMapper.ToSelectedGraphNode),
-            .. externalProjectNodes.Select(DependencyGraphMapper.ToExternalGraphNode),
-            .. externalCodeNodes.Select(DependencyGraphMapper.ToExternalGraphNode)
-        ];
-        var nodeIds = nodes
-            .Select(static node => node.Id)
-            .ToHashSet(StringComparer.Ordinal);
-        GraphEdge[] edges =
-        [
-            .. internalEdges
-                .Where(edge => nodeIds.Contains(edge.CallerId) && nodeIds.Contains(edge.CalleeId))
-                .Select(DependencyGraphMapper.ToInternalGraphEdge),
-            .. boundaryEdges
-                .Where(edge => nodeIds.Contains(edge.CallerId) && nodeIds.Contains(edge.CalleeId))
-                .Select(DependencyGraphMapper.ToBoundaryGraphEdge)
-        ];
-
-        return new GraphResult(nodes, edges);
+        return new ScopedNodeIds(
+            selectedProjectNodeIds,
+            selectedCodeNodeIds,
+            selectedProjectNodeIds.Concat(selectedCodeNodeIds).Distinct());
     }
 
     private IQueryable<int> GetNormalizedSelectedDirectoryIds(IReadOnlyList<int> selectedDirectoryIds)
@@ -176,4 +240,9 @@ public sealed class DependencyGraphRepository(
             .Select(static edge => edge.CalleeNodeId)
             .Concat(GetInboundBoundaryEdges(selectedNodeIds).Select(static edge => edge.CallerNodeId))
             .Distinct();
+
+    private sealed record ScopedNodeIds(
+        IQueryable<int> SelectedProjectNodeIds,
+        IQueryable<int> SelectedCodeNodeIds,
+        IQueryable<int> SelectedNodeIds);
 }

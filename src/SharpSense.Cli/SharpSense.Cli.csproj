@@ -32,6 +32,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedSkillFile Include="../../.agents/skills/sharpsense/SKILL.md">
+      <TargetPath>SharpSense.Skills/sharpsense/SKILL.md</TargetPath>
+    </EmbeddedSkillFile>
+    <EmbeddedResource Include="@(EmbeddedSkillFile)"/>
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\SharpSense.Application\SharpSense.Application.csproj"/>
     <ProjectReference Include="..\SharpSense.Infrastructure\SharpSense.Infrastructure.csproj"/>
   </ItemGroup>

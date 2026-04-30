@@ -26,7 +26,9 @@ type GraphViewportProps = {
   graphData: GraphApiResponse;
   hasSelection: boolean;
   isLoading: boolean;
+  onToggleShowEdges: (showEdges: boolean) => void;
   searchText: string;
+  showEdges: boolean;
 };
 
 type GraphNodeDatum = GraphApiNode & {
@@ -83,7 +85,6 @@ const BOUNDARY_EDGE_ALPHA = 0.38;
 const EDGE_GHOST_ALPHA = 0.05;
 const BOUNDARY_EDGE_GHOST_ALPHA = 0.08;
 const NODE_REL_SIZE = 2.6;
-const EDGE_RENDER_AUTO_HIDE_THRESHOLD = 20000;
 const MACRO_ARCHITECTURE_NODE_TYPES = new Set(["project", "class", "interface"]);
 const NODE_TYPE_ORDER = ["project", "class", "interface", "method", "property", "field"];
 
@@ -92,7 +93,9 @@ export function GraphViewport({
   graphData,
   hasSelection,
   isLoading,
-  searchText
+  onToggleShowEdges,
+  searchText,
+  showEdges
 }: GraphViewportProps) {
   const graphRef = useRef<ForceGraphMethods<GraphNodeDatum, GraphLinkDatum> | undefined>(
     undefined
@@ -103,15 +106,9 @@ export function GraphViewport({
   const preparedGraph = useMemo(() => buildPreparedGraph(graphData), [graphData]);
   const knownNodeTypesRef = useRef<Set<string>>(new Set(preparedGraph.nodeTypes));
   const normalizedSearchText = normalizeText(searchText);
-  const shouldAutoHideEdges = graphData.edges.length > EDGE_RENDER_AUTO_HIDE_THRESHOLD;
   const [visibleTypes, setVisibleTypes] = useState<Set<string>>(() =>
     getDefaultVisibleTypes(preparedGraph.nodeTypes)
   );
-  const [showEdges, setShowEdges] = useState(() => !shouldAutoHideEdges);
-
-  useEffect(() => {
-    setShowEdges(!shouldAutoHideEdges);
-  }, [shouldAutoHideEdges]);
 
   useEffect(() => {
     setVisibleTypes((current) => {
@@ -471,9 +468,10 @@ export function GraphViewport({
               <FormControlLabel
                 control={
                   <Checkbox
+                    data-testid="toggle-edges-checkbox"
                     checked={showEdges}
                     onChange={(event) => {
-                      setShowEdges(event.target.checked);
+                      onToggleShowEdges(event.target.checked);
                     }}
                   />
                 }
@@ -495,10 +493,9 @@ export function GraphViewport({
                 }
               />
 
-              {!showEdges && shouldAutoHideEdges && (
-                <Typography variant="caption" color="warning.main">
-                  Edges start hidden on graphs over{" "}
-                  {EDGE_RENDER_AUTO_HIDE_THRESHOLD.toLocaleString()} links.
+              {!showEdges && (
+                <Typography variant="caption" color="text.secondary">
+                  Edges load on demand so the node view stays responsive in large workspaces.
                 </Typography>
               )}
 

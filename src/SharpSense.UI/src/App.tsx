@@ -15,8 +15,9 @@ export default function App() {
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set());
   const [searchText, setSearchText] = useState("");
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
+  const [showEdges, setShowEdges] = useState(false);
   const tree = useWorkspaceTree(expandedPaths);
-  const graphQuery = useScopedGraph(selectedPaths, tree.nodesByPath);
+  const graphQuery = useScopedGraph(selectedPaths, tree.nodesByPath, showEdges);
 
   const handleToggleExpandedPath = useCallback((path: string) => {
     setExpandedPaths((current) => {
@@ -76,8 +77,10 @@ export default function App() {
         errorMessage={getErrorMessage(graphQuery.error)}
         graphData={graphQuery.data}
         hasSelection={graphQuery.selectedDirectoryIds.length > 0}
-        isLoading={graphQuery.isLoading || graphQuery.isFetching}
+        isLoading={graphQuery.isLoading}
         searchText={searchText}
+        showEdges={showEdges}
+        onToggleShowEdges={setShowEdges}
       />
     </Box>
   );
