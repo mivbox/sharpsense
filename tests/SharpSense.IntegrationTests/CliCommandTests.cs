@@ -121,6 +121,39 @@ public sealed class CliCommandTests
         console.Output.Should().Be($"[D] `{CliCommandTestDatabase.LinkedDocumentRootNodeId}` Reference @ docs/Reference.md:1-1");
     }
 
+    [Fact]
+    public async Task WhenInheritorsRunsForClassNodeWithToon_ThenOutputsDerivedClassesInToonFormat()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+
+        var exitCode = await app.RunAsync(
+            ["inheritors", CliCommandTestDatabase.BaseClassNodeId.ToString(CultureInfo.InvariantCulture), "--toon", "--repo-root", RepositoryRoot],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Be($"[C] `{CliCommandTestDatabase.DerivedClassNodeId}` FancyRenderer @ src/Fixture.App/FancyRenderer.cs:3-18");
+    }
+
+    [Fact]
+    public async Task WhenInheritorsRunsForInterfaceNodeWithToon_ThenOutputsImplementingClassesInToonFormat()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+
+        var exitCode = await app.RunAsync(
+            ["inheritors", CliCommandTestDatabase.InterfaceNodeId.ToString(CultureInfo.InvariantCulture), "--toon", "--repo-root", RepositoryRoot],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Be(
+            $"[C] `{CliCommandTestDatabase.HtmlRendererNodeId}` HtmlRenderer @ src/Fixture.App/HtmlRenderer.cs:3-16" +
+            Environment.NewLine +
+            $"[C] `{CliCommandTestDatabase.TerminalRendererNodeId}` TerminalRenderer @ src/Fixture.App/TerminalRenderer.cs:3-15");
+    }
+
     private static Spectre.Console.Cli.CommandApp CreateCommandApp(
         TestConsole console,
         CliCommandTestDatabase database)
@@ -149,12 +182,22 @@ public sealed class CliCommandTests
         public const int DocumentRootNodeId = 4;
         public const int LinkedDocumentRootNodeId = 5;
         public const int DocumentNodeId = 6;
+        public const int InterfaceNodeId = 7;
+        public const int HtmlRendererNodeId = 8;
+        public const int TerminalRendererNodeId = 9;
+        public const int BaseClassNodeId = 10;
+        public const int DerivedClassNodeId = 11;
         public const string SeedCanonicalId = "code:project-app:Fixture.App.MessageConsumer.Render()";
         public const string CallerCanonicalId = "code:project-app:Fixture.App.HttpEndpoint.Handle()";
         public const string CalleeCanonicalId = "code:project-app:Fixture.App.MessageProvider.GetMessage()";
         public const string DocumentRootCanonicalId = "code:doc:docs/DocA.md#document-root";
         public const string LinkedDocumentRootCanonicalId = "code:doc:docs/Reference.md#document-root";
         public const string DocumentNodeCanonicalId = "code:doc:docs/Guide.md#getting-started";
+        public const string InterfaceCanonicalId = "code:project-app:Fixture.App.IMessageRenderer";
+        public const string HtmlRendererCanonicalId = "code:project-app:Fixture.App.HtmlRenderer";
+        public const string TerminalRendererCanonicalId = "code:project-app:Fixture.App.TerminalRenderer";
+        public const string BaseClassCanonicalId = "code:project-app:Fixture.App.BaseRenderer";
+        public const string DerivedClassCanonicalId = "code:project-app:Fixture.App.FancyRenderer";
 
         public static async Task<CliCommandTestDatabase> Create()
         {
@@ -322,6 +365,51 @@ public sealed class CliCommandTests
                     Extension = ".md",
                     RelativePath = "docs/Guide.md",
                     Kind = DocumentKind.Markdown
+                },
+                new DocumentRecord
+                {
+                    Id = 17,
+                    DirectoryId = 3,
+                    FileName = "IMessageRenderer.cs",
+                    Extension = ".cs",
+                    RelativePath = "src/Fixture.App/IMessageRenderer.cs",
+                    Kind = DocumentKind.Source
+                },
+                new DocumentRecord
+                {
+                    Id = 18,
+                    DirectoryId = 3,
+                    FileName = "HtmlRenderer.cs",
+                    Extension = ".cs",
+                    RelativePath = "src/Fixture.App/HtmlRenderer.cs",
+                    Kind = DocumentKind.Source
+                },
+                new DocumentRecord
+                {
+                    Id = 19,
+                    DirectoryId = 3,
+                    FileName = "TerminalRenderer.cs",
+                    Extension = ".cs",
+                    RelativePath = "src/Fixture.App/TerminalRenderer.cs",
+                    Kind = DocumentKind.Source
+                },
+                new DocumentRecord
+                {
+                    Id = 20,
+                    DirectoryId = 3,
+                    FileName = "BaseRenderer.cs",
+                    Extension = ".cs",
+                    RelativePath = "src/Fixture.App/BaseRenderer.cs",
+                    Kind = DocumentKind.Source
+                },
+                new DocumentRecord
+                {
+                    Id = 21,
+                    DirectoryId = 3,
+                    FileName = "FancyRenderer.cs",
+                    Extension = ".cs",
+                    RelativePath = "src/Fixture.App/FancyRenderer.cs",
+                    Kind = DocumentKind.Source
                 });
             dbContext.GraphNodes.AddRange(
                 new GraphNodeRecord
@@ -364,6 +452,36 @@ public sealed class CliCommandTests
                 {
                     Id = DocumentNodeId,
                     CanonicalId = DocumentNodeCanonicalId,
+                    Kind = GraphNodeKind.Code
+                },
+                new GraphNodeRecord
+                {
+                    Id = InterfaceNodeId,
+                    CanonicalId = InterfaceCanonicalId,
+                    Kind = GraphNodeKind.Code
+                },
+                new GraphNodeRecord
+                {
+                    Id = HtmlRendererNodeId,
+                    CanonicalId = HtmlRendererCanonicalId,
+                    Kind = GraphNodeKind.Code
+                },
+                new GraphNodeRecord
+                {
+                    Id = TerminalRendererNodeId,
+                    CanonicalId = TerminalRendererCanonicalId,
+                    Kind = GraphNodeKind.Code
+                },
+                new GraphNodeRecord
+                {
+                    Id = BaseClassNodeId,
+                    CanonicalId = BaseClassCanonicalId,
+                    Kind = GraphNodeKind.Code
+                },
+                new GraphNodeRecord
+                {
+                    Id = DerivedClassNodeId,
+                    CanonicalId = DerivedClassCanonicalId,
                     Kind = GraphNodeKind.Code
                 });
             dbContext.ProjectNodes.Add(
@@ -446,6 +564,66 @@ public sealed class CliCommandTests
                     StartLine = 1,
                     EndLine = 3,
                     Summary = "Getting Started guide."
+                },
+                new CodeNodeRecord
+                {
+                    Id = InterfaceNodeId,
+                    ProjectNodeId = 100,
+                    DocumentId = 17,
+                    FullyQualifiedName = "Fixture.App.IMessageRenderer",
+                    DisplayName = "IMessageRenderer",
+                    NodeType = NodeType.Interface,
+                    StartLine = 3,
+                    EndLine = 8,
+                    Summary = "Renderer contract."
+                },
+                new CodeNodeRecord
+                {
+                    Id = HtmlRendererNodeId,
+                    ProjectNodeId = 100,
+                    DocumentId = 18,
+                    FullyQualifiedName = "Fixture.App.HtmlRenderer",
+                    DisplayName = "HtmlRenderer",
+                    NodeType = NodeType.Class,
+                    StartLine = 3,
+                    EndLine = 16,
+                    Summary = "HTML renderer."
+                },
+                new CodeNodeRecord
+                {
+                    Id = TerminalRendererNodeId,
+                    ProjectNodeId = 100,
+                    DocumentId = 19,
+                    FullyQualifiedName = "Fixture.App.TerminalRenderer",
+                    DisplayName = "TerminalRenderer",
+                    NodeType = NodeType.Class,
+                    StartLine = 3,
+                    EndLine = 15,
+                    Summary = "Terminal renderer."
+                },
+                new CodeNodeRecord
+                {
+                    Id = BaseClassNodeId,
+                    ProjectNodeId = 100,
+                    DocumentId = 20,
+                    FullyQualifiedName = "Fixture.App.BaseRenderer",
+                    DisplayName = "BaseRenderer",
+                    NodeType = NodeType.Class,
+                    StartLine = 3,
+                    EndLine = 14,
+                    Summary = "Base renderer."
+                },
+                new CodeNodeRecord
+                {
+                    Id = DerivedClassNodeId,
+                    ProjectNodeId = 100,
+                    DocumentId = 21,
+                    FullyQualifiedName = "Fixture.App.FancyRenderer",
+                    DisplayName = "FancyRenderer",
+                    NodeType = NodeType.Class,
+                    StartLine = 3,
+                    EndLine = 18,
+                    Summary = "Fancy renderer."
                 });
 
             dbContext.DependencyEdges.AddRange(
@@ -466,6 +644,24 @@ public sealed class CliCommandTests
                     CallerNodeId = DocumentRootNodeId,
                     CalleeNodeId = LinkedDocumentRootNodeId,
                     EdgeType = EdgeType.DocumentLink
+                },
+                new DependencyEdgeRecord
+                {
+                    CallerNodeId = HtmlRendererNodeId,
+                    CalleeNodeId = InterfaceNodeId,
+                    EdgeType = EdgeType.Implements
+                },
+                new DependencyEdgeRecord
+                {
+                    CallerNodeId = TerminalRendererNodeId,
+                    CalleeNodeId = InterfaceNodeId,
+                    EdgeType = EdgeType.Implements
+                },
+                new DependencyEdgeRecord
+                {
+                    CallerNodeId = DerivedClassNodeId,
+                    CalleeNodeId = BaseClassNodeId,
+                    EdgeType = EdgeType.Implements
                 });
 
             await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);

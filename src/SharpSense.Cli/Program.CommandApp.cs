@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using SharpSense.Cli.Analyze;
+using SharpSense.Cli.Inheritors;
 using SharpSense.Cli.Mcp;
 using SharpSense.Cli.Search;
 using SharpSense.Cli.Shared;
@@ -50,6 +51,11 @@ public partial class Program
                 .AddCommand<AnalyzeCommand>("analyze")
                 .WithDescription("Analyze and index a target.");
             AttachData(analyze, executionContext);
+
+            var inheritors = config
+                .AddCommand<InheritorsCommand>("inheritors")
+                .WithDescription("List direct inheritors or interface implementers for a node ID.");
+            AttachData(inheritors, executionContext);
 
             var mcp = config
                 .AddCommand<McpCommand>("mcp")
