@@ -122,6 +122,49 @@ public sealed class CliCommandTests
     }
 
     [Fact]
+    public async Task WhenSkillsRunsWithoutPath_ThenItInstallsEmbeddedSkillsUnderCurrentRoot()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+        }, RepositoryRoot);
+        var app = CreateCommandApp(console, database, fileSystem);
+
+        var exitCode = await app.RunAsync(
+            ["skills"],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        fileSystem.FileExists("/repo/.agents/skills/sharpsense/SKILL.md").Should().BeTrue();
+        fileSystem.GetFile("/repo/.agents/skills/sharpsense/SKILL.md").TextContents.Should().Contain("name: sharpsense-architect");
+        console.Output.Should().Contain("/repo/.agents/skills");
+        console.Output.Should().Contain("sharpsense/SKILL.md");
+    }
+
+    [Fact]
+    public async Task WhenSkillsRunsWithCustomPath_ThenItInstallsEmbeddedSkillsUnderChosenRoot()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+        }, RepositoryRoot);
+        var app = CreateCommandApp(console, database, fileSystem);
+
+        var exitCode = await app.RunAsync(
+            ["skills", "/exported-skills"],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        fileSystem.FileExists("/exported-skills/.agents/skills/sharpsense/SKILL.md").Should().BeTrue();
+        fileSystem.GetFile("/exported-skills/.agents/skills/sharpsense/SKILL.md").TextContents.Should().Contain("name: sharpsense-architect");
+        console.Output.Should().Contain("/exported-skills/.agents/skills");
+    }
+
+    [Fact]
     public async Task WhenInheritorsRunsForClassNodeWithToon_ThenOutputsDerivedClassesInToonFormat()
     {
         await using var database = await CliCommandTestDatabase.Create();
@@ -156,9 +199,10 @@ public sealed class CliCommandTests
 
     private static Spectre.Console.Cli.CommandApp CreateCommandApp(
         TestConsole console,
-        CliCommandTestDatabase database)
+        CliCommandTestDatabase database,
+        MockFileSystem? fileSystem = null)
     {
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        fileSystem ??= new MockFileSystem(new Dictionary<string, MockFileData>
         {
             ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
         }, RepositoryRoot);

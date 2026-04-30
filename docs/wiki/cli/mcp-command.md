@@ -36,4 +36,4 @@ confidence: high
 4. The command adds the MCP server with stdio transport and registers `SharpSenseMcpTools` as the tool surface.
 5. Tool serialization adds a `JsonStringEnumConverter<TraceDirection>` so trace directions stay stable across the protocol boundary.
 6. `get_inheritors` resolves `GetInheritorsQuery` through the `IInheritorFinder` read slice and formats direct class inheritors or interface implementers with the shared TOON output formatter.
-7. `Execute()` does not dispatch a one-shot CQRS payload; it waits for the stdio host to shut down while the registered tools resolve queries on demand.
+7. `Execute()` waits for the stdio host to shut down while the registered tools resolve queries on demand.

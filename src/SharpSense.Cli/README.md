@@ -17,6 +17,7 @@ sharpsense --help
 sharpsense analyze path/to/YourSolution.sln
 sharpsense search "WorkspaceLoader"
 sharpsense trace 42 -d callee
+sharpsense skills
 ```
 
 ## Commands
@@ -25,8 +26,10 @@ sharpsense trace 42 -d callee
 |-------------------------|---------------------------------------|--------------------------------------------------------------------|
 | `analyze <target-path>` | `sharpsense analyze SharpSense.sln`   | Build or refresh the local index for a `.sln` or `.csproj` target. |
 | `index <target-path>`   | `sharpsense index SharpSense.sln`     | Legacy alias for `analyze`.                                        |
+| `inheritors <node-id>`  | `sharpsense inheritors 232 --toon`    | List direct class inheritors or interface implementers.            |
 | `search <query>`        | `sharpsense search "WorkspaceLoader"` | Search the persisted index for matching code nodes.                |
 | `trace <identifier>`    | `sharpsense trace 42 -d caller`       | Trace callers or callees for an indexed node.                      |
+| `skills [install-root]` | `sharpsense skills /repo`             | Write the embedded SharpSense skills into `.agents/skills`.        |
 | `mcp`                   | `sharpsense mcp --repo-root /repo`    | Start the SharpSense MCP server over stdio.                        |
 | `ui`                    | `sharpsense ui --repo-root /repo`     | Start the embedded web UI and dependency graph API.                |
 
@@ -73,6 +76,26 @@ Watch mode:
 
 This is the command to leave running while you edit code locally.
 
+## Skills
+
+Install the embedded SharpSense skills into `.agents/skills` under the current working directory:
+
+```bash
+sharpsense skills
+```
+
+Install into a custom root instead:
+
+```bash
+sharpsense skills /tmp/sharpsense-agent-workspace
+```
+
+The current CLI package explicitly embeds `sharpsense/SKILL.md`, and the command writes that skill under:
+
+```text
+<install-root>/.agents/skills
+```
+
 ## MCP is separate from indexing
 
 `mcp` does **not** build the index. It exposes SharpSense tools over stdio for an MCP client to call.
@@ -89,6 +112,14 @@ sharpsense mcp --repo-root /Users/me/src/sharpsense
 ```
 
 If you want live updates while an MCP client is connected, run `analyze --watch` and `mcp` as separate processes.
+
+## Inheritors
+
+List direct derived classes for a class node or direct implementing classes for an interface node:
+
+```bash
+sharpsense inheritors 232 --toon
+```
 
 ## Search
 

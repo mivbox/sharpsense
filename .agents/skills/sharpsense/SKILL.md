@@ -1,6 +1,9 @@
 ---
 name: sharpsense-architect
-description: "Expert AI architectural assistant for querying repository context, executing impact analysis, and tracing execution flows. Use when exploring the codebase, understanding Markdown documentation, or planning code changes. Enforces strict architectural rules via the internal docs wiki."
+description: "Expert AI architectural assistant for querying repository context, executing impact analysis,
+ tracing execution flows, and resolving inheritors or interface implementers.  Use when exploring the codebase,
+ understanding Markdown documentation, or planning code changes. Enforces strict architectural rules via the
+ internal docs."
 ---
 
 # SharpSense Codebase Navigation
@@ -10,13 +13,16 @@ description: "Expert AI architectural assistant for querying repository context,
 - "How does X work?" or "Where is the billing logic?" (Exploration)
 - "What calls this method?" (Blast Radius / Upstream Impact)
 - "What does this service depend on?" (Execution Path / Downstream Dependencies)
+- "Who inherits from this class?" (Direct Class Inheritors)
+- "Who implements this interface?" (Direct Interface Implementers)
 - Understanding architectural boundaries, navigating the project's LLM Wiki (`docs/wiki/`), and finding Markdown
   documentation.
 
-## Workflow (The 1-2 Punch)
+## Workflow (The 1-2-3 Punch)
 
-1. `semantic_search({query: "<what you want to find>"})` → Discover the exact TOON `NodeId`.
-2. `trace_node({nodeId: "<NodeId>", direction: "<caller|callee>"})` → Traverse the graph.
+1. `semantic_search({query: "<what you want to find>"})` → Discover the exact persisted TOON `Id`.
+2. For caller/callee questions: `trace_node({nodeId: "<Id>", direction: "<caller|callee>"})` → Traverse the graph.
+3. For inheritance questions: `get_inheritors({nodeId: <Id>})`
 
 ## Checklist
 
@@ -24,12 +30,17 @@ description: "Expert AI architectural assistant for querying repository context,
   do we handle CLI options?"), run `semantic_search` targeting wiki concepts first to find the project rules before
   exploring raw code.
 - [ ] Read the user's prompt to determine the core concept.
-- [ ] Run `semantic_search` to locate the relevant nodes and extract the exact `NodeId` string from the backticks (
+- [ ] Run `semantic_search` to locate the relevant nodes and extract the exact persisted `Id` from the backticks (
   `` ` ``).
 - [ ] **Query Iteration:** If `semantic_search` returns 0 results, do NOT give up. Try 2-3 different synonyms or broader
   terms.
 - [ ] If the user asks what *depends* on the node (impact), run `trace_node` with `direction="caller"`.
 - [ ] If the user asks how the node *executes*, run `trace_node` with `direction="callee"`.
+- [ ] If the user asks who inherits from a class or who implements an interface, use the discovered `Id` with
+  `get_inheritors`.
+- [ ] **Inheritance Scope:** Treat class and interface targets as valid inheritor lookups. The current persisted graph
+  uses
+  `Implements` edges for both class inheritance and interface implementation.
 - [ ] **Trace Filtering:** If `trace_node` returns an overwhelming number of connections, summarize the primary
   groupings. Do not attempt to read 50+ files at once.
 - [ ] **READ THE CODE/DOCS:** If the user asks *how* something is implemented or needs the actual text of a Markdown
@@ -42,23 +53,36 @@ description: "Expert AI architectural assistant for querying repository context,
 
 **semantic_search** — Find codebase coordinates:
 
-* Pass a descriptive query (e.g., "user authentication", "AST parsing", "database architecture").
-* Returns TOON format. **Crucial:** Extract the exact string inside the backticks (`` ` ``) for the next step.
+* Pass a descriptive query (e.g. "user authentication", "AST parsing", "database architecture").
+* Returns TOON format. **Crucial:** Extract the exact persisted `Id` inside the backticks (`` ` ``) for the next step.
 
 **trace_node** — Traverse the knowledge graph:
 
-* Requires the exact `NodeId` discovered from `semantic_search`.
+* Requires the exact `Id` discovered from `semantic_search`.
 * `direction="caller"`: Finds upstream dependencies (who uses this).
 * `direction="callee"`: Finds downstream dependencies (what this uses).
 
-## Example: "What happens when we update a user?"
+**get_inheritors** / `sharp-sense inheritors` — Resolve direct inheritors:
 
-1. `semantic_search({query: "update user profile"})`
-   → Returns `[M] \`code:project:src/App/UserService.cs:M:UpdateUser\` @ src/App/UserService.cs:10-25`
-2. `trace_node({nodeId: "code:project:src/App/UserService.cs:M:UpdateUser", direction: "callee"})`
-   → Returns `[M] \`code:project:src/App/UserRepository.cs:M:Save\` ...`
-3. Read the source file citations (`src/App/UserService.cs` lines 10-25) using your native tools for implementation
-   details, and explain the flow.
+* Use for both class and interface targets.
+* The result set is class-only: derived classes for class targets, implementing classes for interface targets.
+
+## Example: "Who implements `IQueryHandler<TQuery, TResult>`?"
+
+1. `semantic_search({query: "IQueryHandler interface"})`
+   → Returns `[I] \`232\` IQueryHandler<TQuery, TResult> @
+   src/SharpSense.Application/Shared/Abstractions/IQueryHandler.cs:3-4`
+2. `get_inheritors({nodeId: 232})`
+   → Returns `[C] \`200\` HybridSearchQueryHandler ...`
+3. Read the returned file citations with your native tools for implementation details and explain the hierarchy.
+
+## Example: "What does this method call?"
+
+1. `semantic_search({query: "message consumer render"})`
+   → Returns `[M] \`1\` MessageConsumer.Render() @ src/Fixture.App/MessageConsumer.cs:20-28`
+2. `trace_node({nodeId: "1", direction: "callee"})`
+   → Returns `[M] \`3\` MessageProvider.GetMessage() ...`
+3. Read the source file citations using your native tools for implementation details and explain the flow.
 
 # STRICT DIRECTIVES (CRITICAL)
 
@@ -70,5 +94,7 @@ description: "Expert AI architectural assistant for querying repository context,
 3. **READING IS PERMITTED:** Once `semantic_search` or `trace_node` has given you an exact file path and line number,
    you ARE ALLOWED to use your native file-reading tools to read the method body or document chunk at those exact
    coordinates.
-4. **NEVER HALLUCINATE IDs:** You must execute `semantic_search` first to discover a Node ID before ever calling
-   `trace_node`. Do not guess Node IDs.
+4. **NEVER HALLUCINATE IDs:** You must execute `semantic_search` first to discover an exact persisted `Id` before ever
+   calling `trace_node`, `get_inheritors`. Do not guess ids.
+5. **CLASS + INTERFACE TARGETS ARE VALID:** For inheritor lookups, do not reject interface targets. The current graph
+   intentionally supports both direct class inheritance and direct interface implementation through the same read path.

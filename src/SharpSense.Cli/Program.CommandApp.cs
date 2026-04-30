@@ -4,6 +4,7 @@ using SharpSense.Cli.Inheritors;
 using SharpSense.Cli.Mcp;
 using SharpSense.Cli.Search;
 using SharpSense.Cli.Shared;
+using SharpSense.Cli.Skills;
 using SharpSense.Cli.Trace;
 using SharpSense.Cli.Ui;
 using Spectre.Console;
@@ -61,6 +62,11 @@ public partial class Program
                 .AddCommand<McpCommand>("mcp")
                 .WithDescription("Start the MCP server over stdio.");
             AttachData(mcp, executionContext);
+
+            var skills = config
+                .AddCommand<SkillsCommand>("skills")
+                .WithDescription("Write the embedded SharpSense skills into .agents/skills.");
+            AttachData(skills, executionContext);
 
             var search = config
                 .AddCommand<SearchCommand>("search")

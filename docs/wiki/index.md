@@ -33,6 +33,7 @@ raw sources, provides architectural directives, and directs queries. The human n
 
 * [[cli/analyze-command]] - The `analyze` and `index` routes, option binding, host composition, and watch/update flow.
 * [[cli/inheritors-command]] - The `inheritors` route for direct class inheritors and interface implementers.
+* [[cli/skills-command]] - The `skills` route and embedded `.agents/skills` export flow.
 * [[cli/search-command]] - The `search` route, hybrid-search query flow, and TOON output switch.
 * [[cli/trace-command]] - The `trace` route, caller/callee dispatch, and output shaping.
 * [[cli/mcp-command]] - The `mcp` route and stdio MCP host composition.
