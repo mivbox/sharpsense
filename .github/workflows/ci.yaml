@@ -1,0 +1,40 @@
+name: SharpSense CI
+
+# Cancels previous runs for the same PR if you push new commits,
+# saving GitHub Actions minutes. Merges to main use run_id and won't cancel.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 'latest'
+
+      - name: Build
+        run: dotnet build ./src/SharpSense.Cli/SharpSense.Cli.csproj -c Release
+
+      - name: Test
+        run: dotnet test -c Release
