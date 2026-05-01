@@ -13,8 +13,9 @@ public sealed class ContextServiceTests
     [Fact]
     public async Task WhenGetNodeContextHasRelatedMethods_ThenItSanitizesRelatedNodeNames()
     {
+        var ct = TestContext.Current.CancellationToken;
         var lookup = new Mock<IContextLookup>(MockBehavior.Strict);
-        lookup.Setup(candidate => candidate.GetNodeContext(42, 10, CancellationToken.None))
+        lookup.Setup(candidate => candidate.GetNodeContext(42, 10, ct))
             .ReturnsAsync(
                 new Context360LookupResult(
                     new CodeNodeResult(
@@ -82,13 +83,13 @@ public sealed class ContextServiceTests
                     ]));
         var service = new ContextService(lookup.Object);
 
-        var result = await service.GetNodeContext(42, 10, TestContext.Current.CancellationToken);
+        var result = await service.GetNodeContext(42, 10, ct);
 
         result.TargetNode.Name.Should().Be("PaymentProcessor.ProcessPayment(string, int)");
         result.Callers.Should().ContainSingle().Which.Name.Should().Be("HttpEndpoint.Handle");
         result.Implementers.Should().ContainSingle().Which.Name.Should().Be("PaymentProcessorBase");
         result.Callees.Should().ContainSingle().Which.Name.Should().Be("ReceiptWriter.WriteReceipt");
         result.Inherits.Should().ContainSingle().Which.Name.Should().Be("IPaymentProcessor");
-        lookup.Verify(candidate => candidate.GetNodeContext(42, 10, CancellationToken.None), Times.Once);
+        lookup.Verify(candidate => candidate.GetNodeContext(42, 10, ct), Times.Once);
     }
 }

@@ -114,7 +114,7 @@ public static class TokenObjectNotation
         return builder.ToString();
     }
 
-    internal static string FormatLineSpan(int startLine, int endLine)
+    private static string FormatLineSpan(int startLine, int endLine)
         => startLine == endLine
             ? $"L{startLine}"
             : $"L{startLine}-{endLine}";
@@ -131,7 +131,7 @@ public static class TokenObjectNotation
             _ => throw new InvalidOperationException($"Unsupported node type '{nodeType}'.")
         };
 
-    internal static string SanitizeDisplayName(NodeType nodeType, string displayName)
+    private static string SanitizeDisplayName(NodeType nodeType, string displayName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
 
