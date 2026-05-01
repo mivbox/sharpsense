@@ -39,16 +39,7 @@ internal sealed class SharpSenseMcpTools
                 ;
 
             activity.AddTag("search.result.count", result.Hits.Length);
-
-            return string.Join(
-                Environment.NewLine,
-                result.Hits.Select(static hit => ToonOutputFormatter.FormatNode(
-                    hit.NodeType,
-                    hit.Id,
-                    hit.DisplayName,
-                    hit.RelativeFilePath,
-                    hit.StartLine,
-                    hit.EndLine)));
+            return TokenObjectNotation.SerializeSemanticSearch(result.Hits);
         }
         catch (Exception ex)
         {

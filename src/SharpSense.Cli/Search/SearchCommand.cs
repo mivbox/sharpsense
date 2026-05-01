@@ -5,7 +5,6 @@ using SharpSense.Application.HybridSearch;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.Shared.Abstractions;
-using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Embeddings;
@@ -66,23 +65,12 @@ internal sealed class SearchCommand : AbstractAsyncCommand<SearchCommand.Setting
         var result = await handler.Handle(
             new HybridSearchQuery(settings.Query),
             ct);
-        var formatter = OutputFormatterFactory.Create(settings.UseToonFormat);
+        var output = settings.UseToonFormat
+            ? TokenObjectNotation.SerializeSemanticSearch(result.Hits)
+            : OutputFormatterFactory.Create(false).Format(HybridSearchHitMapper.Map(result.Hits));
 
-        CommandOutput.Write(context, formatter.Format(MapHits(result.Hits)));
+        CommandOutput.Write(context, output);
 
         return 0;
     }
-
-    private static CodeNodeResult[] MapHits(IEnumerable<HybridSearchHit> hits)
-        => [.. hits.Select(static hit => new CodeNodeResult(
-            hit.Id,
-            hit.CanonicalId,
-            hit.ProjectId,
-            hit.FullyQualifiedName,
-            hit.DisplayName,
-            hit.NodeType,
-            hit.RelativeFilePath,
-            hit.StartLine,
-            hit.EndLine,
-            hit.Summary))];
 }

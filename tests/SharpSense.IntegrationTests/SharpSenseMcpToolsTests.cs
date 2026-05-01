@@ -1,5 +1,7 @@
 using AwesomeAssertions;
 using Moq;
+using SharpSense.Application.HybridSearch.HybridSearch.Models;
+using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.Inheritors.GetInheritors.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
@@ -13,6 +15,68 @@ namespace SharpSense.IntegrationTests;
 
 public sealed class SharpSenseMcpToolsTests
 {
+    [Fact]
+    public async Task WhenSemanticSearchHasMatches_ThenItFormatsHierarchicalToonOutput()
+    {
+        var searchHandler = new Mock<IQueryHandler<HybridSearchQuery, HybridSearchResult>>(MockBehavior.Strict);
+        searchHandler.Setup(candidate => candidate.Handle(new HybridSearchQuery("graph node", 3), CancellationToken.None))
+            .ReturnsAsync(
+                new HybridSearchResult(
+                    "graph node",
+                    [
+                        new HybridSearchHit(
+                            553,
+                            "node-dependency-graph-to-external",
+                            "project-app",
+                            "Fixture.DependencyGraphMapper.ToExternalGraphNode(ProjectNode, GraphNode)",
+                            "ToExternalGraphNode(ProjectNode, GraphNode)",
+                            NodeType.Method,
+                            "src/SharpSense.Infrastructure/DependencyGraph/DependencyGraphMapper.cs",
+                            20,
+                            21,
+                            "Maps a project node."),
+                        new HybridSearchHit(
+                            556,
+                            "node-dependency-graph-to-graph",
+                            "project-app",
+                            "Fixture.DependencyGraphMapper.ToGraphNode(GraphNode)",
+                            "ToGraphNode(GraphNode)",
+                            NodeType.Method,
+                            "src/SharpSense.Infrastructure/DependencyGraph/DependencyGraphMapper.cs",
+                            32,
+                            47,
+                            "Maps a graph node."),
+                        new HybridSearchHit(
+                            373,
+                            "node-project-id",
+                            "project-app",
+                            "Fixture.ProjectNode.Id",
+                            "Id",
+                            NodeType.Property,
+                            "src/SharpSense.Domain/KnowledgeGraph/Nodes/ProjectNode.cs",
+                            5,
+                            5,
+                            "Project identifier.")
+                    ]));
+
+        var result = await SharpSenseMcpTools.semantic_search(
+            searchHandler.Object,
+            "graph node",
+            3,
+            CancellationToken.None);
+
+        result.Should().Be(
+            "src/SharpSense.Infrastructure/DependencyGraph/:" + Environment.NewLine +
+            "  DependencyGraphMapper.cs:" + Environment.NewLine +
+            "    - [M] `553` ToExternalGraphNode L20-21" + Environment.NewLine +
+            "    - [M] `556` ToGraphNode L32-47" + Environment.NewLine +
+            Environment.NewLine +
+            "src/SharpSense.Domain/KnowledgeGraph/Nodes/:" + Environment.NewLine +
+            "  ProjectNode.cs:" + Environment.NewLine +
+            "    - [P] `373` Id L5");
+        searchHandler.Verify(candidate => candidate.Handle(new HybridSearchQuery("graph node", 3), CancellationToken.None), Times.Once);
+    }
+
     [Fact]
     public async Task WhenGetInheritorsHasMatches_ThenItFormatsDerivedClassesAsToonOutput()
     {

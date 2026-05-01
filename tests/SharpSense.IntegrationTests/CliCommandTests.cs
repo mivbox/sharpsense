@@ -77,7 +77,7 @@ public sealed class CliCommandTests
     }
 
     [Fact]
-    public async Task WhenSearchRunsWithToon_ThenOutputsMatchingNodesInToonFormat()
+    public async Task WhenSearchRunsWithToon_ThenOutputsMatchingNodesInHierarchicalToonFormat()
     {
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
@@ -88,11 +88,14 @@ public sealed class CliCommandTests
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        console.Output.Should().Be($"[M] `{CliCommandTestDatabase.CalleeNodeId}` MessageProvider.GetMessage() @ src/Fixture.App/MessageProvider.cs:7-11");
+        console.Output.Should().Be(
+            "src/Fixture.App/:" + Environment.NewLine +
+            "  MessageProvider.cs:" + Environment.NewLine +
+            $"    - [M] `{CliCommandTestDatabase.CalleeNodeId}` MessageProvider.GetMessage L7-11");
     }
 
     [Fact]
-    public async Task WhenSearchRunsWithToonForDocumentNode_ThenOutputsDocumentNodesInToonFormat()
+    public async Task WhenSearchRunsWithToonForDocumentNode_ThenOutputsDocumentNodesInHierarchicalToonFormat()
     {
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
@@ -103,7 +106,10 @@ public sealed class CliCommandTests
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        console.Output.Should().Be($"[D] `{CliCommandTestDatabase.DocumentNodeId}` Guide#getting-started @ docs/Guide.md:1-3");
+        console.Output.Should().Be(
+            "docs/:" + Environment.NewLine +
+            "  Guide.md:" + Environment.NewLine +
+            $"    - [D] `{CliCommandTestDatabase.DocumentNodeId}` Guide#getting-started L1-3");
     }
 
     [Fact]
