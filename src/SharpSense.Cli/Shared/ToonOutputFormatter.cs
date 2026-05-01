@@ -31,18 +31,6 @@ internal sealed class ToonOutputFormatter : IOutputFormatter
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
         ArgumentException.ThrowIfNullOrWhiteSpace(relativeFilePath);
 
-        return $"[{GetNodeTypeShorthand(nodeType)}] `{nodeId}` {displayName} @ {relativeFilePath}:{startLine}-{endLine}";
+        return $"[{TokenObjectNotation.GetNodeTypeShorthand(nodeType)}] `{nodeId}` {displayName} @ {relativeFilePath}:{startLine}-{endLine}";
     }
-
-    private static string GetNodeTypeShorthand(NodeType nodeType) =>
-        nodeType switch
-        {
-            NodeType.Method => "M",
-            NodeType.Class => "C",
-            NodeType.Interface => "I",
-            NodeType.Property => "P",
-            NodeType.Field => "F",
-            NodeType.Document => "D",
-            _ => throw new InvalidOperationException($"Unsupported node type '{nodeType}'.")
-        };
 }

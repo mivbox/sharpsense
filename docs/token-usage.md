@@ -34,8 +34,8 @@ repository using two custom tools backed by a local SQLite knowledge graph:
 2. **trace_node**: Traverses the directed dependency graph to find upstream callers or downstream callees.
 
 **Context Payload**: The MCP tools do not return raw source code. They return data in a Token-Optimized Output Network
-(TOON) format—highly dense, single-line strings containing node types, precise IDs, and exact file/line coordinates
-(e.g., [M] \NodeId` @ path/to/file.cs:10-20`).
+(TOON) format—highly dense, hierarchical directory/file blocks containing node types, precise IDs, and exact
+file/line coordinates (e.g., `src/Feature/:` → `  File.cs:` → `    - [M] \`NodeId\` MethodName L10-20`).
 
 ## Prompt
 
@@ -231,5 +231,5 @@ Token Efficiency (Quantitative Analysis)
 Copilot search relies on brute-force file reads, loading the entirety of McpCommand.cs and every subsequently
 referenced file (e.g. HybridSearchExtensions.cs, Program.cs) into the LLM's context window. This includes unneeded
 elements like using directives, whitespace, and irrelevant methods. By utilising the MCP tools, the system queried the
-SQLite semantic index and returned highly dense, TOON-formatted strings containing only the specific nodes requested,
+SQLite semantic index and returned highly dense, hierarchical TOON blocks containing only the specific nodes requested,
 radically reducing payload size.

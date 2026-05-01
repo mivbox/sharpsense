@@ -24,7 +24,7 @@ confidence: high
 
 | Tool | Backing query | Purpose |
 | --- | --- | --- |
-| `semantic_search` | `HybridSearchQuery` | Hybrid BM25 + vector search over indexed code nodes. |
+| `semantic_search` | `HybridSearchQuery` | Hybrid BM25 + vector search over indexed code nodes, formatted as hierarchical directory/file TOON blocks for token-efficient handoff. |
 | `trace_node` | `TraceQuery` / `ImpactAnalysisQuery` | Downstream callees or upstream caller blast radius for a known node id. |
 | `get_inheritors` | `GetInheritorsQuery` | Direct derived classes or interface implementers for a persisted node id. |
 
@@ -35,5 +35,6 @@ confidence: high
 3. `Configure()` resolves the repository root and registers repository workspace, `SharpSenseConfig`, hybrid search, embeddings, inheritors, impact analysis, trace, and persistence.
 4. The command adds the MCP server with stdio transport and registers `SharpSenseMcpTools` as the tool surface.
 5. Tool serialization adds a `JsonStringEnumConverter<TraceDirection>` so trace directions stay stable across the protocol boundary.
-6. `get_inheritors` resolves `GetInheritorsQuery` through the `IInheritorFinder` read slice and formats direct class inheritors or interface implementers with the shared TOON output formatter.
-7. `Execute()` waits for the stdio host to shut down while the registered tools resolve queries on demand.
+6. `semantic_search` resolves `HybridSearchQuery` and serializes hits through `TokenObjectNotation.SerializeSemanticSearch()`, the shared hierarchical TOON serializer used by `sharp-sense search --toon`.
+7. `get_inheritors` resolves `GetInheritorsQuery` through the `IInheritorFinder` read slice and formats direct class inheritors or interface implementers with the shared flat TOON output formatter.
+8. `Execute()` waits for the stdio host to shut down while the registered tools resolve queries on demand.

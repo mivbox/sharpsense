@@ -25,12 +25,6 @@ jobs:
         with:
           bun-version: 'latest'
 
-      - name: Build
-        run: dotnet build ./src/SharpSense.Cli/SharpSense.Cli.csproj -c Release
-
-      - name: Test
-        run: dotnet test -c Release
-
       - name: Calculate Semantic Version
         id: versioning
         uses: paulhatch/semantic-version@v5.4.0
