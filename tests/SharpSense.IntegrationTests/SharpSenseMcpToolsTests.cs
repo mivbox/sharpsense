@@ -1,5 +1,7 @@
 using AwesomeAssertions;
 using Moq;
+using SharpSense.Application.Context360.Abstractions;
+using SharpSense.Application.Context360.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.Inheritors.GetInheritors.Models;
@@ -15,6 +17,55 @@ namespace SharpSense.IntegrationTests;
 
 public sealed class SharpSenseMcpToolsTests
 {
+    [Fact]
+    public async Task WhenContextHasMatches_ThenItFormatsCompressedToonOutput()
+    {
+        var contextService = new Mock<IContextService>(MockBehavior.Strict);
+        contextService.Setup(candidate => candidate.GetNodeContext(42, 10, CancellationToken.None))
+            .ReturnsAsync(
+                new Context360Result(
+                    new Context360Node(
+                        42,
+                        "PaymentProcessor.ProcessPayment(string, int)",
+                        NodeType.Method,
+                        "src/Fixture.App/PaymentProcessor.cs",
+                        12,
+                        30),
+                    [
+                        new Context360RelatedNode(7, "HttpEndpoint.Handle")
+                    ],
+                    [
+                        new Context360RelatedNode(8, "PaymentProcessorBase")
+                    ],
+                    [
+                        new Context360RelatedNode(9, "ReceiptWriter.WriteReceipt")
+                    ],
+                    [
+                        new Context360RelatedNode(10, "IPaymentProcessor")
+                    ]));
+
+        var result = await SharpSenseMcpTools.context(
+            contextService.Object,
+            42,
+            CancellationToken.None);
+
+        result.Should().Be(
+            "node:" + Environment.NewLine +
+            "  id: 42" + Environment.NewLine +
+            "  name: PaymentProcessor.ProcessPayment(string, int)" + Environment.NewLine +
+            "  kind: M" + Environment.NewLine +
+            "  file: src/Fixture.App/PaymentProcessor.cs:12-30" + Environment.NewLine +
+            Environment.NewLine +
+            "incoming:" + Environment.NewLine +
+            "  callers: [HttpEndpoint.Handle (Id:7)]" + Environment.NewLine +
+            "  implementers: [PaymentProcessorBase (Id:8)]" + Environment.NewLine +
+            Environment.NewLine +
+            "outgoing:" + Environment.NewLine +
+            "  callees: [ReceiptWriter.WriteReceipt (Id:9)]" + Environment.NewLine +
+            "  inherits: [IPaymentProcessor (Id:10)]");
+        contextService.Verify(candidate => candidate.GetNodeContext(42, 10, CancellationToken.None), Times.Once);
+    }
+
     [Fact]
     public async Task WhenSemanticSearchHasMatches_ThenItFormatsHierarchicalToonOutput()
     {

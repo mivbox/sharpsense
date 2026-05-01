@@ -32,8 +32,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedSkillFile Include="../../.agents/skills/sharpsense/SKILL.md">
-      <TargetPath>SharpSense.Skills/sharpsense/SKILL.md</TargetPath>
+    <EmbeddedSkillFile Include="../../.agents/skills/**/SKILL.md" Exclude="../../.agents/skills/terse/**">
+      <TargetPath>SharpSense.Skills/%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
     </EmbeddedSkillFile>
     <EmbeddedResource Include="@(EmbeddedSkillFile)"/>
   </ItemGroup>

@@ -113,6 +113,90 @@ public sealed class CliCommandTests
     }
 
     [Fact]
+    public async Task WhenContextRunsForMethodNode_ThenItOutputsImmediateCallersAndCalleesAsToon()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+
+        var exitCode = await app.RunAsync(
+            ["context", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Be(
+            "node:" + Environment.NewLine +
+            $"  id: {CliCommandTestDatabase.SeedNodeId}" + Environment.NewLine +
+            "  name: MessageConsumer.Render()" + Environment.NewLine +
+            "  kind: M" + Environment.NewLine +
+            "  file: src/Fixture.App/MessageConsumer.cs:20-28" + Environment.NewLine +
+            Environment.NewLine +
+            "incoming:" + Environment.NewLine +
+            $"  callers: [HttpEndpoint.Handle (Id:{CliCommandTestDatabase.CallerNodeId})]" + Environment.NewLine +
+            "  implementers: []" + Environment.NewLine +
+            Environment.NewLine +
+            "outgoing:" + Environment.NewLine +
+            $"  callees: [MessageProvider.GetMessage (Id:{CliCommandTestDatabase.CalleeNodeId})]" + Environment.NewLine +
+            "  inherits: []");
+    }
+
+    [Fact]
+    public async Task WhenContextRunsForInterfaceNode_ThenItOutputsIncomingImplementersAsToon()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+
+        var exitCode = await app.RunAsync(
+            ["context", "--node-id", CliCommandTestDatabase.InterfaceNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Be(
+            "node:" + Environment.NewLine +
+            $"  id: {CliCommandTestDatabase.InterfaceNodeId}" + Environment.NewLine +
+            "  name: IMessageRenderer" + Environment.NewLine +
+            "  kind: I" + Environment.NewLine +
+            "  file: src/Fixture.App/IMessageRenderer.cs:3-8" + Environment.NewLine +
+            Environment.NewLine +
+            "incoming:" + Environment.NewLine +
+            "  callers: []" + Environment.NewLine +
+            $"  implementers: [HtmlRenderer (Id:{CliCommandTestDatabase.HtmlRendererNodeId}), TerminalRenderer (Id:{CliCommandTestDatabase.TerminalRendererNodeId})]" + Environment.NewLine +
+            Environment.NewLine +
+            "outgoing:" + Environment.NewLine +
+            "  callees: []" + Environment.NewLine +
+            "  inherits: []");
+    }
+
+    [Fact]
+    public async Task WhenContextRunsForDerivedClassNode_ThenItOutputsOutgoingInheritanceAsToon()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+
+        var exitCode = await app.RunAsync(
+            ["context", "--node-id", CliCommandTestDatabase.DerivedClassNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Be(
+            "node:" + Environment.NewLine +
+            $"  id: {CliCommandTestDatabase.DerivedClassNodeId}" + Environment.NewLine +
+            "  name: FancyRenderer" + Environment.NewLine +
+            "  kind: C" + Environment.NewLine +
+            "  file: src/Fixture.App/FancyRenderer.cs:3-18" + Environment.NewLine +
+            Environment.NewLine +
+            "incoming:" + Environment.NewLine +
+            "  callers: []" + Environment.NewLine +
+            "  implementers: []" + Environment.NewLine +
+            Environment.NewLine +
+            "outgoing:" + Environment.NewLine +
+            "  callees: []" + Environment.NewLine +
+            $"  inherits: [BaseRenderer (Id:{CliCommandTestDatabase.BaseClassNodeId})]");
+    }
+
+    [Fact]
     public async Task WhenTraceCalleeDirectionRunsForDocumentRoot_ThenOutputsDownstreamDocumentNodesInToonFormat()
     {
         await using var database = await CliCommandTestDatabase.Create();
@@ -143,10 +227,15 @@ public sealed class CliCommandTests
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        fileSystem.FileExists("/repo/.agents/skills/sharpsense/SKILL.md").Should().BeTrue();
-        fileSystem.GetFile("/repo/.agents/skills/sharpsense/SKILL.md").TextContents.Should().Contain("name: sharpsense-architect");
+        fileSystem.FileExists("/repo/.agents/skills/sharpsense/SKILL.md").Should().BeFalse();
+        fileSystem.FileExists("/repo/.agents/skills/sharpsense-exploring/SKILL.md").Should().BeTrue();
+        fileSystem.FileExists("/repo/.agents/skills/sharpsense-impact-analysis/SKILL.md").Should().BeTrue();
+        fileSystem.GetFile("/repo/.agents/skills/sharpsense-exploring/SKILL.md").TextContents.Should().Contain("name: sharpsense-exploring");
+        fileSystem.GetFile("/repo/.agents/skills/sharpsense-impact-analysis/SKILL.md").TextContents.Should().Contain("name: sharpsense-impact-analysis");
         console.Output.Should().Contain("/repo/.agents/skills");
-        console.Output.Should().Contain("sharpsense/SKILL.md");
+        console.Output.Should().NotContain("sharpsense/SKILL.md");
+        console.Output.Should().Contain("sharpsense-exploring/SKILL.md");
+        console.Output.Should().Contain("sharpsense-impact-analysis/SKILL.md");
     }
 
     [Fact]
@@ -165,9 +254,15 @@ public sealed class CliCommandTests
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        fileSystem.FileExists("/exported-skills/.agents/skills/sharpsense/SKILL.md").Should().BeTrue();
-        fileSystem.GetFile("/exported-skills/.agents/skills/sharpsense/SKILL.md").TextContents.Should().Contain("name: sharpsense-architect");
+        fileSystem.FileExists("/exported-skills/.agents/skills/sharpsense/SKILL.md").Should().BeFalse();
+        fileSystem.FileExists("/exported-skills/.agents/skills/sharpsense-exploring/SKILL.md").Should().BeTrue();
+        fileSystem.FileExists("/exported-skills/.agents/skills/sharpsense-impact-analysis/SKILL.md").Should().BeTrue();
+        fileSystem.GetFile("/exported-skills/.agents/skills/sharpsense-exploring/SKILL.md").TextContents.Should().Contain("name: sharpsense-exploring");
+        fileSystem.GetFile("/exported-skills/.agents/skills/sharpsense-impact-analysis/SKILL.md").TextContents.Should().Contain("name: sharpsense-impact-analysis");
         console.Output.Should().Contain("/exported-skills/.agents/skills");
+        console.Output.Should().NotContain("sharpsense/SKILL.md");
+        console.Output.Should().Contain("sharpsense-exploring/SKILL.md");
+        console.Output.Should().Contain("sharpsense-impact-analysis/SKILL.md");
     }
 
     [Fact]

@@ -32,6 +32,7 @@ raw sources, provides architectural directives, and directs queries. The human n
 ### CLI
 
 * [[cli/analyze-command]] - The `analyze` and `index` routes, option binding, host composition, and watch/update flow.
+* [[cli/context-command]] - The `context` route for immediate callers, callees, and hierarchy breadth around a node id.
 * [[cli/inheritors-command]] - The `inheritors` route for direct class inheritors and interface implementers.
 * [[cli/skills-command]] - The `skills` route and embedded `.agents/skills` export flow.
 * [[cli/search-command]] - The `search` route, hybrid-search query flow, and TOON output switch.

@@ -1,3 +1,4 @@
+using SharpSense.Application.Context360.Models;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using System.Text;
@@ -79,7 +80,41 @@ public static class TokenObjectNotation
         return builder.ToString();
     }
 
-    internal static string FormatLineSpan(int startLine, int endLine)
+    public static string SerializeContext360(Context360Result result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(result.TargetNode);
+        ArgumentNullException.ThrowIfNull(result.Callers);
+        ArgumentNullException.ThrowIfNull(result.Implementers);
+        ArgumentNullException.ThrowIfNull(result.Callees);
+        ArgumentNullException.ThrowIfNull(result.Inherits);
+        ArgumentException.ThrowIfNullOrWhiteSpace(result.TargetNode.Name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(result.TargetNode.RelativeFilePath);
+
+        var builder = new StringBuilder();
+        builder.AppendLine("node:");
+        builder.Append("  id: ").Append(result.TargetNode.Id).AppendLine();
+        builder.Append("  name: ").Append(result.TargetNode.Name).AppendLine();
+        builder.Append("  kind: ").Append(GetNodeTypeShorthand(result.TargetNode.Kind)).AppendLine();
+        builder.Append("  file: ")
+            .Append(result.TargetNode.RelativeFilePath)
+            .Append(':')
+            .Append(result.TargetNode.StartLine)
+            .Append('-')
+            .Append(result.TargetNode.EndLine)
+            .AppendLine();
+        builder.AppendLine();
+        builder.AppendLine("incoming:");
+        builder.Append("  callers: ").Append(FormatContext360RelatedNodes(result.Callers)).AppendLine();
+        builder.Append("  implementers: ").Append(FormatContext360RelatedNodes(result.Implementers)).AppendLine();
+        builder.AppendLine();
+        builder.AppendLine("outgoing:");
+        builder.Append("  callees: ").Append(FormatContext360RelatedNodes(result.Callees)).AppendLine();
+        builder.Append("  inherits: ").Append(FormatContext360RelatedNodes(result.Inherits));
+        return builder.ToString();
+    }
+
+    private static string FormatLineSpan(int startLine, int endLine)
         => startLine == endLine
             ? $"L{startLine}"
             : $"L{startLine}-{endLine}";
@@ -96,7 +131,7 @@ public static class TokenObjectNotation
             _ => throw new InvalidOperationException($"Unsupported node type '{nodeType}'.")
         };
 
-    internal static string SanitizeDisplayName(NodeType nodeType, string displayName)
+    private static string SanitizeDisplayName(NodeType nodeType, string displayName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
 
@@ -123,6 +158,35 @@ public static class TokenObjectNotation
         => path
             .Replace(Path.DirectorySeparatorChar, '/')
             .Replace(Path.AltDirectorySeparatorChar, '/');
+
+    private static string FormatContext360RelatedNodes(IReadOnlyList<Context360RelatedNode> nodes)
+    {
+        if (nodes.Count == 0)
+        {
+            return "[]";
+        }
+
+        var builder = new StringBuilder("[");
+
+        for (var index = 0; index < nodes.Count; index++)
+        {
+            var node = nodes[index];
+            ArgumentException.ThrowIfNullOrWhiteSpace(node.Name);
+
+            if (index > 0)
+            {
+                builder.Append(", ");
+            }
+
+            builder.Append(node.Name)
+                .Append(" (Id:")
+                .Append(node.Id)
+                .Append(')');
+        }
+
+        builder.Append(']');
+        return builder.ToString();
+    }
 
     private sealed class DirectoryGroup
     {

@@ -3,7 +3,7 @@ title: "Skills Command"
 type: cli
 tags: [spectre, implemented]
 created: 2026-05-01
-updated: 2026-05-01
+updated: 2026-05-02
 confidence: high
 ---
 
@@ -30,4 +30,7 @@ confidence: high
 6. The installer writes `.agents/skills/<skill-name>/SKILL.md` under the chosen root and returns the installed relative paths.
 7. `SkillsCommand` prints a compact summary plus the relative installed file list so shell automation can confirm what was exported.
 
-The current CLI package explicitly embeds `sharpsense/SKILL.md`, so the installed tree currently contains `./.agents/skills/sharpsense/SKILL.md`.
+The current CLI package explicitly embeds the exported SharpSense skill pack, so the installed tree currently contains:
+
+- `./.agents/skills/sharpsense-exploring/SKILL.md`
+- `./.agents/skills/sharpsense-impact-analysis/SKILL.md`
