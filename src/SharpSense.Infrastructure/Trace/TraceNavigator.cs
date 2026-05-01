@@ -10,6 +10,27 @@ namespace SharpSense.Infrastructure.Trace;
 public sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
     : ITraceNavigator
 {
+    public async Task<CodeNodeResult?> GetRootNode(string identifier, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(identifier);
+
+        await using var context = await dbContextFactory.CreateDbContextAsync(ct);
+        var rootNode = await CodeNodeNavigationQueries.FindRootNode(context, identifier, ct);
+        return rootNode is null
+            ? null
+            : new CodeNodeResult(
+                rootNode.Id,
+                rootNode.CanonicalId,
+                rootNode.ProjectId,
+                rootNode.FullyQualifiedName,
+                rootNode.DisplayName,
+                rootNode.NodeType,
+                rootNode.RelativeFilePath,
+                rootNode.StartLine,
+                rootNode.EndLine,
+                rootNode.Summary);
+    }
+
     public async Task<CodeNodeResult[]> GetCallees(TraceQuery query, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(query);

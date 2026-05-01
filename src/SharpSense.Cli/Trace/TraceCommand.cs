@@ -8,6 +8,7 @@ using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Application.Trace;
+using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.ImpactAnalysis;
@@ -16,6 +17,7 @@ using SharpSense.Infrastructure.Storage;
 using SharpSense.Infrastructure.Trace;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using System.Text.Json;
 
 namespace SharpSense.Cli.Trace;
 
@@ -72,19 +74,23 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
     {
         await using var scope = host.Services.CreateAsyncScope();
         var services = scope.ServiceProvider;
-        var formatter = OutputFormatterFactory.Create(settings.UseToonFormat);
+        var traceNavigator = services.GetRequiredService<ITraceNavigator>();
         var direction = NormalizeDirection(settings.Direction)
                         ?? throw new InvalidOperationException("Direction validation should have prevented invalid values.");
+        var rootNode = settings.UseToonFormat
+            ? await traceNavigator.GetRootNode(settings.Identifier, ct)
+            : null;
         CodeNodeResult[] nodes;
+        ImpactAnalysisResult? impactResult = null;
         switch (direction)
         {
             case "caller":
             {
-                var result = await services
+                impactResult = await services
                     .GetRequiredService<IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult>>()
                     .Handle(new ImpactAnalysisQuery(settings.Identifier, MaxDepth: 1, IncludeTransitive: false), ct);
 
-                nodes = MapImpactedNodes(result.ImpactedNodes);
+                nodes = MapImpactedNodes(impactResult.ImpactedNodes);
                 break;
             }
             case "callee":
@@ -96,7 +102,15 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
                 throw new InvalidOperationException($"Unsupported direction '{direction}'.");
         }
 
-        CommandOutput.Write(context, formatter.Format(nodes));
+        var output = settings.UseToonFormat
+            ? rootNode is null
+                ? string.Empty
+                : direction == "caller"
+                    ? TokenObjectNotation.SerializeCallerTrace(rootNode, nodes, impactResult?.Dependencies ?? [])
+                    : TokenObjectNotation.SerializeCalleeTrace(rootNode, nodes)
+            : JsonSerializer.Serialize(nodes, TokenObjectNotation.JsonOptions);
+
+        CommandOutput.Write(context, output);
         return 0;
     }
 

@@ -3,9 +3,9 @@ using SharpSense.Domain.KnowledgeGraph.Enums;
 
 namespace SharpSense.Cli.Shared;
 
-internal sealed class ToonOutputFormatter : IOutputFormatter
+internal static class ToonOutputFormatter
 {
-    public string Format(IEnumerable<CodeNodeResult> nodes)
+    public static string Format(IEnumerable<CodeNodeResult> nodes)
     {
         ArgumentNullException.ThrowIfNull(nodes);
 

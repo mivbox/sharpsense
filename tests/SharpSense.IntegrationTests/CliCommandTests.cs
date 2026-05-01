@@ -58,7 +58,9 @@ public sealed class CliCommandTests
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        console.Output.Should().Be($"[M] `{CliCommandTestDatabase.CalleeNodeId}` MessageProvider.GetMessage() @ src/Fixture.App/MessageProvider.cs:7-11");
+        console.Output.Should().Be(
+            $"- [M] `{CliCommandTestDatabase.SeedNodeId}` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28" + Environment.NewLine +
+            $"  -> [M] `{CliCommandTestDatabase.CalleeNodeId}` MessageProvider.GetMessage @ src/Fixture.App/MessageProvider.cs:L7-11");
     }
 
     [Fact]
@@ -73,7 +75,26 @@ public sealed class CliCommandTests
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        console.Output.Should().Be($"[M] `{CliCommandTestDatabase.CalleeNodeId}` MessageProvider.GetMessage() @ src/Fixture.App/MessageProvider.cs:7-11");
+        console.Output.Should().Be(
+            $"- [M] `{CliCommandTestDatabase.SeedNodeId}` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28" + Environment.NewLine +
+            $"  -> [M] `{CliCommandTestDatabase.CalleeNodeId}` MessageProvider.GetMessage @ src/Fixture.App/MessageProvider.cs:L7-11");
+    }
+
+    [Fact]
+    public async Task WhenTraceCallerDirectionRunsWithToon_ThenOutputsUpstreamChainToTarget()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+
+        var exitCode = await app.RunAsync(
+            ["trace", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "caller", "--toon", "--repo-root", RepositoryRoot],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Be(
+            $"- [M] `{CliCommandTestDatabase.CallerNodeId}` HttpEndpoint.Handle @ src/Fixture.App/HttpEndpoint.cs:L5-12" + Environment.NewLine +
+            $"  -> [M] `{CliCommandTestDatabase.SeedNodeId}` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28");
     }
 
     [Fact]
@@ -208,7 +229,9 @@ public sealed class CliCommandTests
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        console.Output.Should().Be($"[D] `{CliCommandTestDatabase.LinkedDocumentRootNodeId}` Reference @ docs/Reference.md:1-1");
+        console.Output.Should().Be(
+            $"- [D] `{CliCommandTestDatabase.DocumentRootNodeId}` DocA @ docs/DocA.md:L1" + Environment.NewLine +
+            $"  -> [D] `{CliCommandTestDatabase.LinkedDocumentRootNodeId}` Reference @ docs/Reference.md:L1");
     }
 
     [Fact]
