@@ -16,6 +16,7 @@ sharpsense --help
 ```bash
 sharpsense analyze path/to/YourSolution.sln
 sharpsense search "WorkspaceLoader"
+sharpsense context --node-id 42
 sharpsense trace 42 -d callee
 sharpsense skills
 ```
@@ -25,6 +26,7 @@ sharpsense skills
 | Command                 | Example                               | Purpose                                                            |
 |-------------------------|---------------------------------------|--------------------------------------------------------------------|
 | `analyze <target-path>` | `sharpsense analyze SharpSense.sln`   | Build or refresh the local index for a `.sln` or `.csproj` target. |
+| `context`               | `sharpsense context --node-id 42`     | Show the immediate callers, callees, and hierarchy breadth for a node. |
 | `index <target-path>`   | `sharpsense index SharpSense.sln`     | Legacy alias for `analyze`.                                        |
 | `inheritors <node-id>`  | `sharpsense inheritors 232 --toon`    | List direct class inheritors or interface implementers.            |
 | `search <query>`        | `sharpsense search "WorkspaceLoader"` | Search the persisted index for matching code nodes.                |
@@ -76,6 +78,54 @@ Watch mode:
 
 This is the command to leave running while you edit code locally.
 
+## `sharpsense.yaml`
+
+SharpSense reads an optional `sharpsense.yaml` file for Markdown discovery configuration.
+
+Today the supported setting is:
+
+```yaml
+includePaths:
+  - docs/**/*.md
+  - README.md
+```
+
+How it is resolved:
+
+- `analyze <target-path>` loads `sharpsense.yaml` from the directory that contains the target you passed.
+- Read-side commands such as `search`, `trace`, `inheritors`, `context`, `mcp`, and `ui` load `sharpsense.yaml` from the resolved repository root (`--repo-root` or the current working directory).
+
+Examples:
+
+```text
+repo/
+├── SharpSense.sln
+├── sharpsense.yaml
+└── docs/
+```
+
+If you index a solution in the repo root:
+
+```bash
+sharpsense analyze SharpSense.sln
+```
+
+place `sharpsense.yaml` next to `SharpSense.sln`.
+
+If you index a single project:
+
+```bash
+sharpsense analyze src/SharpSense.Cli/SharpSense.Cli.csproj
+```
+
+place `sharpsense.yaml` in `src/SharpSense.Cli/`.
+
+Notes:
+
+- `includePaths` values are trimmed and empty entries are ignored.
+- The globs are used to discover Markdown files that should be indexed alongside C#.
+- After changing `sharpsense.yaml`, rerun a full `analyze` so the persisted index reflects the new include set.
+
 ## Skills
 
 Install the embedded SharpSense skills into `.agents/skills` under the current working directory:
@@ -90,7 +140,12 @@ Install into a custom root instead:
 sharpsense skills /tmp/sharpsense-agent-workspace
 ```
 
-The current CLI package explicitly embeds `sharpsense/SKILL.md`, and the command writes that skill under:
+The current CLI package embeds the exported SharpSense skill pack:
+
+- `sharpsense-exploring/SKILL.md`
+- `sharpsense-impact-analysis/SKILL.md`
+
+The command writes those skills under:
 
 ```text
 <install-root>/.agents/skills
@@ -112,6 +167,91 @@ sharpsense mcp --repo-root /Users/me/src/sharpsense
 ```
 
 If you want live updates while an MCP client is connected, run `analyze --watch` and `mcp` as separate processes.
+
+## MCP tool outputs
+
+The current MCP host exposes four read tools:
+
+- `semantic_search`
+- `context`
+- `trace_node`
+- `get_inheritors`
+
+The examples below use real fixture outputs and rough token estimates based on output length (`~characters / 4`), so expect some tokenizer/model variance.
+
+### `semantic_search`
+
+Use this when you need a compact shortlist of likely matching nodes grouped by directory and file.
+
+Example output (`~60` tokens for this sample):
+
+```text
+src/SharpSense.Infrastructure/DependencyGraph/:
+  DependencyGraphMapper.cs:
+    - [M] `553` ToExternalGraphNode L20-21
+    - [M] `556` ToGraphNode L32-47
+
+src/SharpSense.Domain/KnowledgeGraph/Nodes/:
+  ProjectNode.cs:
+    - [P] `373` Id L5
+```
+
+### `context`
+
+Use this when you already know the node id and want an immediate callers/callees/implements/inherits snapshot.
+
+Example output (`~80` tokens for this sample):
+
+```text
+node:
+  id: 42
+  name: PaymentProcessor.ProcessPayment(string, int)
+  kind: M
+  file: src/Fixture.App/PaymentProcessor.cs:12-30
+
+incoming:
+  callers: [HttpEndpoint.Handle (Id:7)]
+  implementers: [PaymentProcessorBase (Id:8)]
+
+outgoing:
+  callees: [ReceiptWriter.WriteReceipt (Id:9)]
+  inherits: [IPaymentProcessor (Id:10)]
+```
+
+### `trace_node`
+
+Use this when you want a caller or callee chain for a known node id.
+
+Example output (`~20` tokens for this sample):
+
+```text
+[M] `1` MessageProvider.GetMessage() @ src/Fixture.App/MessageProvider.cs:7-11
+```
+
+### `get_inheritors`
+
+Use this when you need direct derived classes or interface implementers for a known node id.
+
+Example output (`~30` tokens for this sample):
+
+```text
+[C] `7` DerivedAlpha @ src/Fixture.App/DerivedAlpha.cs:3-16
+[C] `8` DerivedBeta @ src/Fixture.App/DerivedBeta.cs:3-17
+```
+
+## Context
+
+Show the immediate architectural breadth for a persisted node:
+
+```bash
+sharpsense context --node-id 42
+```
+
+The output is compressed TOON with:
+
+- the target node metadata,
+- incoming `callers` and `implementers`,
+- outgoing `callees` and `inherits`.
 
 ## Inheritors
 

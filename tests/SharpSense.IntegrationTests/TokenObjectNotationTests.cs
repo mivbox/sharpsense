@@ -1,3 +1,4 @@
+using SharpSense.Application.Context360.Models;
 using AwesomeAssertions;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Cli.Shared;
@@ -7,6 +8,45 @@ namespace SharpSense.IntegrationTests;
 
 public sealed class TokenObjectNotationTests
 {
+    [Fact]
+    public void WhenSerializeContext360HasMixedBreadth_ThenItFormatsCompressedToonOutput()
+    {
+        var result = new Context360Result(
+            new Context360Node(
+                1,
+                "MessageConsumer.Render()",
+                NodeType.Method,
+                "src/Fixture.App/MessageConsumer.cs",
+                20,
+                28),
+            [
+                new Context360RelatedNode(2, "HttpEndpoint.Handle"),
+                new Context360RelatedNode(12, "PaymentHook.Execute")
+            ],
+            [],
+            [
+                new Context360RelatedNode(3, "MessageProvider.GetMessage")
+            ],
+            []);
+
+        var output = TokenObjectNotation.SerializeContext360(result);
+
+        output.Should().Be(
+            "node:" + Environment.NewLine +
+            "  id: 1" + Environment.NewLine +
+            "  name: MessageConsumer.Render()" + Environment.NewLine +
+            "  kind: M" + Environment.NewLine +
+            "  file: src/Fixture.App/MessageConsumer.cs:20-28" + Environment.NewLine +
+            Environment.NewLine +
+            "incoming:" + Environment.NewLine +
+            "  callers: [HttpEndpoint.Handle (Id:2), PaymentHook.Execute (Id:12)]" + Environment.NewLine +
+            "  implementers: []" + Environment.NewLine +
+            Environment.NewLine +
+            "outgoing:" + Environment.NewLine +
+            "  callees: [MessageProvider.GetMessage (Id:3)]" + Environment.NewLine +
+            "  inherits: []");
+    }
+
     [Fact]
     public void WhenSerializeSemanticSearchHasMultipleDirectoriesAndFiles_ThenItFormatsHierarchicalToonOutput()
     {

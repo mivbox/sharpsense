@@ -1,4 +1,5 @@
 using ModelContextProtocol.Server;
+using SharpSense.Application.Context360.Abstractions;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.Inheritors.GetInheritors.Models;
@@ -10,10 +11,12 @@ using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Shared;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 
 namespace SharpSense.Cli.Mcp;
 
 [McpServerToolType]
+[SuppressMessage("ReSharper", "InconsistentNaming")]
 internal sealed class SharpSenseMcpTools
 {
     private static readonly ToonOutputFormatter _toonOutputFormatter = new();
@@ -40,6 +43,36 @@ internal sealed class SharpSenseMcpTools
 
             activity.AddTag("search.result.count", result.Hits.Length);
             return TokenObjectNotation.SerializeSemanticSearch(result.Hits);
+        }
+        catch (Exception ex)
+        {
+            activity.RecordExceptionAndErrorStatus(ex);
+            throw;
+        }
+    }
+
+    [McpServerTool, Description("Return the immediate callers, callees, and inheritance breadth for a persisted node ID.")]
+    public static async Task<string> context(
+        IContextService contextService,
+        [Description("The persisted integer ID of the target node.")] int nodeId,
+        CancellationToken ct = default)
+    {
+        using var activity = SharpSenseTraceSpan.Start("mcp.tool.context");
+        activity.AddTag("mcp.tool", "context");
+        activity.AddTag("context.node_id", nodeId);
+
+        try
+        {
+            var result = await contextService.GetNodeContext(
+                nodeId,
+                10,
+                ct);
+
+            activity.AddTag("context.callers.count", result.Callers.Length);
+            activity.AddTag("context.callees.count", result.Callees.Length);
+            activity.AddTag("context.implementers.count", result.Implementers.Length);
+            activity.AddTag("context.inherits.count", result.Inherits.Length);
+            return TokenObjectNotation.SerializeContext360(result);
         }
         catch (Exception ex)
         {
