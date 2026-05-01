@@ -33,8 +33,5 @@ jobs:
         with:
           bun-version: 'latest'
 
-      - name: Build
-        run: dotnet build ./src/SharpSense.Cli/SharpSense.Cli.csproj -c Release
-
-      - name: Test
+      - name: Build & Test
         run: dotnet test -c Release
