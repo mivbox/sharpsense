@@ -25,7 +25,7 @@ confidence: high
 | Tool | Backing query | Purpose |
 | --- | --- | --- |
 | `semantic_search` | `HybridSearchQuery` | Hybrid BM25 + vector search over indexed code nodes, formatted as hierarchical directory/file TOON blocks for token-efficient handoff. |
-| `trace_node` | `TraceQuery` / `ImpactAnalysisQuery` | Downstream callees or upstream caller blast radius for a known node id. |
+| `trace_node` | `TraceQuery` / `ImpactAnalysisQuery` | Downstream callees or upstream caller blast radius for a known node id, formatted as arrow-chain TOON. |
 | `get_inheritors` | `GetInheritorsQuery` | Direct derived classes or interface implementers for a persisted node id. |
 | `context` | `IContextService` | Immediate callers, callees, and inheritance breadth for a persisted node id as compressed TOON. |
 
@@ -70,10 +70,11 @@ outgoing:
 
 ### `trace_node`
 
-Approximate output size for this sample: `~20` tokens.
+Approximate output size for this sample: `~40` tokens.
 
 ```text
-[M] `1` MessageProvider.GetMessage() @ src/Fixture.App/MessageProvider.cs:7-11
+- [M] `1` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28
+  -> [M] `3` MessageProvider.GetMessage @ src/Fixture.App/MessageProvider.cs:L7-11
 ```
 
 ### `get_inheritors`
@@ -93,6 +94,7 @@ Approximate output size for this sample: `~30` tokens.
 4. The command adds the MCP server with stdio transport and registers `SharpSenseMcpTools` as the tool surface.
 5. Tool serialization adds a `JsonStringEnumConverter<TraceDirection>` so trace directions stay stable across the protocol boundary.
 6. `semantic_search` resolves `HybridSearchQuery` and serializes hits through `TokenObjectNotation.SerializeSemanticSearch()`, the shared hierarchical TOON serializer used by `sharp-sense search --toon`.
-7. `context` resolves `IContextService` directly and renders the shared `Context360Result` through `TokenObjectNotation.SerializeContext360()`.
-8. `get_inheritors` resolves `GetInheritorsQuery` through the `IInheritorFinder` read slice and formats direct class inheritors or interface implementers with the shared flat TOON output formatter.
-9. `Execute()` waits for the stdio host to shut down while the registered tools resolve queries on demand.
+7. `trace_node` resolves the root node through `ITraceNavigator`, then formats either direct callees or caller chains through the dedicated trace serializers in `TokenObjectNotation`.
+8. `context` resolves `IContextService` directly and renders the shared `Context360Result` through `TokenObjectNotation.SerializeContext360()`.
+9. `get_inheritors` resolves `GetInheritorsQuery` through the `IInheritorFinder` read slice and formats direct class inheritors or interface implementers with the shared flat TOON output formatter.
+10. `Execute()` waits for the stdio host to shut down while the registered tools resolve queries on demand.

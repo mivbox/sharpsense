@@ -13,6 +13,7 @@ using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using System.Text.Json;
 
 namespace SharpSense.Cli.Search;
 
@@ -67,7 +68,7 @@ internal sealed class SearchCommand : AbstractAsyncCommand<SearchCommand.Setting
             ct);
         var output = settings.UseToonFormat
             ? TokenObjectNotation.SerializeSemanticSearch(result.Hits)
-            : OutputFormatterFactory.Create(false).Format(HybridSearchHitMapper.Map(result.Hits));
+            : JsonSerializer.Serialize(HybridSearchHitMapper.Map(result.Hits), TokenObjectNotation.JsonOptions);
 
         CommandOutput.Write(context, output);
 

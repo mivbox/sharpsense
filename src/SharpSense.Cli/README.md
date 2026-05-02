@@ -222,10 +222,11 @@ outgoing:
 
 Use this when you want a caller or callee chain for a known node id.
 
-Example output (`~20` tokens for this sample):
+Example output (`~40` tokens for this sample):
 
 ```text
-[M] `1` MessageProvider.GetMessage() @ src/Fixture.App/MessageProvider.cs:7-11
+- [M] `1` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28
+  -> [M] `3` MessageProvider.GetMessage @ src/Fixture.App/MessageProvider.cs:L7-11
 ```
 
 ### `get_inheritors`

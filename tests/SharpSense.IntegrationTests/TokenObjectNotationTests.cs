@@ -1,6 +1,8 @@
 using SharpSense.Application.Context360.Models;
 using AwesomeAssertions;
 using SharpSense.Application.HybridSearch.Models;
+using SharpSense.Application.ImpactAnalysis.Models;
+using SharpSense.Application.Shared.Models;
 using SharpSense.Cli.Shared;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 
@@ -126,5 +128,90 @@ public sealed class TokenObjectNotationTests
             "src/SharpSense.Domain/KnowledgeGraph/Nodes/:" + Environment.NewLine +
             "  ProjectNode.cs:" + Environment.NewLine +
             "    - [P] `373` Id L5");
+    }
+
+    [Fact]
+    public void WhenSerializeCalleeTraceHasRootAndChild_ThenItFormatsArrowChainOutput()
+    {
+        var output = TokenObjectNotation.SerializeCalleeTrace(
+            new CodeNodeResult(
+                1,
+                "node-root",
+                "project-app",
+                "Fixture.App.MessageConsumer.Render()",
+                "MessageConsumer.Render()",
+                NodeType.Method,
+                "src/Fixture.App/MessageConsumer.cs",
+                20,
+                28,
+                "Renders a message."),
+            [
+                new CodeNodeResult(
+                    7,
+                    "node-message-provider",
+                    "project-app",
+                    "Fixture.App.MessageProvider.GetMessage()",
+                    "MessageProvider.GetMessage()",
+                    NodeType.Method,
+                    "src/Fixture.App/MessageProvider.cs",
+                    7,
+                    11,
+                    "Gets a message.")
+            ]);
+
+        output.Should().Be(
+            "- [M] `1` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28" + Environment.NewLine +
+            "  -> [M] `7` MessageProvider.GetMessage @ src/Fixture.App/MessageProvider.cs:L7-11");
+    }
+
+    [Fact]
+    public void WhenSerializeCallerTraceHasDependencyChain_ThenItFormatsLeafToTargetOutput()
+    {
+        var rootNode = new CodeNodeResult(
+            1,
+            "node-root",
+            "project-app",
+            "Fixture.App.MessageConsumer.Render()",
+            "MessageConsumer.Render()",
+            NodeType.Method,
+            "src/Fixture.App/MessageConsumer.cs",
+            20,
+            28,
+            "Renders a message.");
+        var output = TokenObjectNotation.SerializeCallerTrace(
+            rootNode,
+            [
+                new CodeNodeResult(
+                    2,
+                    "node-caller",
+                    "project-app",
+                    "Fixture.App.HttpEndpoint.Handle()",
+                    "HttpEndpoint.Handle()",
+                    NodeType.Method,
+                    "src/Fixture.App/HttpEndpoint.cs",
+                    5,
+                    12,
+                    "Handles a request."),
+                new CodeNodeResult(
+                    3,
+                    "node-upstream",
+                    "project-app",
+                    "Fixture.App.ApiGateway.Dispatch()",
+                    "ApiGateway.Dispatch()",
+                    NodeType.Method,
+                    "src/Fixture.App/ApiGateway.cs",
+                    2,
+                    9,
+                    "Dispatches the endpoint.")
+            ],
+            [
+                new ImpactedDependencyEdge("node-caller", "node-root", EdgeType.MethodCall),
+                new ImpactedDependencyEdge("node-upstream", "node-caller", EdgeType.MethodCall)
+            ]);
+
+        output.Should().Be(
+            "- [M] `3` ApiGateway.Dispatch @ src/Fixture.App/ApiGateway.cs:L2-9" + Environment.NewLine +
+            "  -> [M] `2` HttpEndpoint.Handle @ src/Fixture.App/HttpEndpoint.cs:L5-12" + Environment.NewLine +
+            "    -> [M] `1` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28");
     }
 }

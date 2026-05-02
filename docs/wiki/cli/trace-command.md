@@ -3,7 +3,7 @@ title: "Trace Command"
 type: cli
 tags: [spectre, cqrs, implemented]
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-02
 confidence: high
 ---
 
@@ -33,4 +33,4 @@ confidence: high
 6. `caller` dispatches `ImpactAnalysisQuery` with `MaxDepth: 1` and `IncludeTransitive: false`; `callee` dispatches `TraceQuery`.
 7. Root-node lookup first tries integer `Id`, then exact `CanonicalId` / fully qualified name, then a case-insensitive fully qualified-name fallback backed by [[persistence/sqlite-schema]].
 8. The result nodes are mapped into `CodeNodeResult` records and written as structured output or TOON.
-9. TOON uses the same compact formatter as [[cli/search-command]]: backticked integer ids plus `DisplayName` and source span, while dependency traversal still follows canonical string identities under the hood.
+9. TOON routes trace results through the dedicated trace serializers in `TokenObjectNotation`, which include the resolved root node, strip method parameter lists from rendered method names, and emit arrow chains such as `- [M] \`42\` WorkspaceLoader.Load @ src/File.cs:L10-20` followed by indented `->` steps for each downstream or upstream hop.

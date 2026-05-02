@@ -8,6 +8,7 @@ using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Application.Shared.Models;
+using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Shared;
 using System.ComponentModel;
@@ -19,8 +20,6 @@ namespace SharpSense.Cli.Mcp;
 [SuppressMessage("ReSharper", "InconsistentNaming")]
 internal sealed class SharpSenseMcpTools
 {
-    private static readonly ToonOutputFormatter _toonOutputFormatter = new();
-
     [McpServerTool, Description("Run hybrid BM25 and semantic search against the indexed repository.")]
     public static async Task<string> semantic_search(
         IQueryHandler<HybridSearchQuery, HybridSearchResult> searchHandler,
@@ -85,6 +84,7 @@ internal sealed class SharpSenseMcpTools
     public static async Task<string> trace_node(
         IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult> impactHandler,
         IQueryHandler<TraceQuery, CodeNodeResult[]> traceHandler,
+        ITraceNavigator traceNavigator,
         [Description("The exact Node ID to trace.")] string nodeId,
         [Description("Direction of the trace: 'caller' (upstream) or 'callee' (downstream).")] TraceDirection direction = TraceDirection.Callee,
         CancellationToken ct = default)
@@ -96,20 +96,26 @@ internal sealed class SharpSenseMcpTools
         try
         {
             activity.AddTag("trace.direction", direction);
+            var rootNode = await traceNavigator.GetRootNode(nodeId, ct);
+            if (rootNode is null)
+            {
+                return string.Empty;
+            }
 
             CodeNodeResult[] nodes;
+            ImpactAnalysisResult? impactResult = null;
 
             switch (direction)
             {
                 case TraceDirection.Caller:
                 {
-                    var result = await impactHandler
+                    impactResult = await impactHandler
                         .Handle(
                             new ImpactAnalysisQuery(nodeId),
                             ct);
 
-                    activity.AddTag("trace.edge.count", result.Dependencies.Length);
-                    nodes = MapImpactedNodes(result.ImpactedNodes);
+                    activity.AddTag("trace.edge.count", impactResult.Dependencies.Length);
+                    nodes = MapImpactedNodes(impactResult.ImpactedNodes);
                     break;
                 }
                 case TraceDirection.Callee:
@@ -126,7 +132,12 @@ internal sealed class SharpSenseMcpTools
             }
 
             activity.AddTag("trace.node.count", nodes.Length);
-            return _toonOutputFormatter.Format(nodes);
+            return direction switch
+            {
+                TraceDirection.Caller => TokenObjectNotation.SerializeCallerTrace(rootNode, nodes, impactResult?.Dependencies ?? []),
+                TraceDirection.Callee => TokenObjectNotation.SerializeCalleeTrace(rootNode, nodes),
+                _ => throw new ArgumentOutOfRangeException(nameof(direction), direction, null)
+            };
         }
         catch (Exception ex)
         {
@@ -153,7 +164,7 @@ internal sealed class SharpSenseMcpTools
                     ct);
 
             activity.AddTag("inheritors.result.count", result.Length);
-            return _toonOutputFormatter.Format(result);
+            return ToonOutputFormatter.Format(result);
         }
         catch (Exception ex)
         {

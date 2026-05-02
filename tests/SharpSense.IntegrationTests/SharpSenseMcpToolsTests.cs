@@ -9,6 +9,7 @@ using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
+using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Mcp;
 using SharpSense.Domain.KnowledgeGraph.Enums;
@@ -175,6 +176,20 @@ public sealed class SharpSenseMcpToolsTests
     {
         var impactHandler = new Mock<IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult>>(MockBehavior.Strict);
         var traceHandler = new Mock<IQueryHandler<TraceQuery, CodeNodeResult[]>>(MockBehavior.Strict);
+        var traceNavigator = new Mock<ITraceNavigator>(MockBehavior.Strict);
+        traceNavigator.Setup(candidate => candidate.GetRootNode("node-root", CancellationToken.None))
+            .ReturnsAsync(
+                new CodeNodeResult(
+                    42,
+                    "node-root",
+                    "project-app",
+                    "Fixture.App.MessageConsumer.Render()",
+                    "MessageConsumer.Render()",
+                    NodeType.Method,
+                    "src/Fixture.App/MessageConsumer.cs",
+                    20,
+                    28,
+                    "Renders a message."));
         traceHandler.Setup(candidate => candidate.Handle(new TraceQuery("node-root"), CancellationToken.None))
             .ReturnsAsync(
             [
@@ -194,10 +209,14 @@ public sealed class SharpSenseMcpToolsTests
         var result = await SharpSenseMcpTools.trace_node(
             impactHandler.Object,
             traceHandler.Object,
+            traceNavigator.Object,
             "node-root",
             ct: CancellationToken.None);
 
-        result.Should().Be("[M] `1` MessageProvider.GetMessage() @ src/Fixture.App/MessageProvider.cs:7-11");
+        result.Should().Be(
+            "- [M] `42` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28" + Environment.NewLine +
+            "  -> [M] `1` MessageProvider.GetMessage @ src/Fixture.App/MessageProvider.cs:L7-11");
+        traceNavigator.Verify(candidate => candidate.GetRootNode("node-root", CancellationToken.None), Times.Once);
         traceHandler.Verify(candidate => candidate.Handle(new TraceQuery("node-root"), CancellationToken.None), Times.Once);
         impactHandler.VerifyNoOtherCalls();
     }

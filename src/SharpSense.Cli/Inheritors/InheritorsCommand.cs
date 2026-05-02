@@ -12,6 +12,7 @@ using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using System.Text.Json;
 
 namespace SharpSense.Cli.Inheritors;
 
@@ -61,12 +62,15 @@ internal sealed class InheritorsCommand : AbstractAsyncCommand<InheritorsCommand
     {
         await using var scope = host.Services.CreateAsyncScope();
         var handler = scope.ServiceProvider.GetRequiredService<IQueryHandler<GetInheritorsQuery, CodeNodeResult[]>>();
-        var formatter = OutputFormatterFactory.Create(settings.UseToonFormat);
         var result = await handler.Handle(
             new GetInheritorsQuery(settings.NodeId),
             ct);
 
-        CommandOutput.Write(context, formatter.Format(result));
+        var output = settings.UseToonFormat
+            ? ToonOutputFormatter.Format(result)
+            : JsonSerializer.Serialize(result, TokenObjectNotation.JsonOptions);
+
+        CommandOutput.Write(context, output);
         return 0;
     }
 }
