@@ -5,6 +5,7 @@ using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.Inheritors.GetInheritors.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
+using SharpSense.Application.Refactoring.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Application.Shared.Models;
@@ -50,7 +51,8 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool, Description("Return the immediate callers, callees, and inheritance breadth for a persisted node ID.")]
+    [McpServerTool]
+    [Description("Gets an instant 360-degree architectural snapshot of a node. Returns immediate callers, callees, and inheritance hierarchy for a persisted node ID. Use this to understand a node's immediate context and blast radius before deep tracing.")]
     public static async Task<string> context(
         IContextService contextService,
         [Description("The persisted integer ID of the target node.")] int nodeId,
@@ -146,6 +148,35 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
+    [McpServerTool, Description("Replace the source for a persisted node id. Writes the Roslyn edit to disk and relies on the watcher pipeline to refresh indexing asynchronously.")]
+    public static async Task<string> refactor_node(
+        INodeRefactorer nodeRefactorer,
+        [Description("The persisted integer ID of the node to replace.")] int nodeId,
+        [Description("The raw C# source text that should replace the current node.")] string newCode,
+        CancellationToken ct = default)
+    {
+        using var activity = SharpSenseTraceSpan.Start("mcp.tool.refactor_node");
+        activity.AddTag("mcp.tool", "refactor_node");
+        activity.AddTag("refactor.node_id", nodeId);
+
+        try
+        {
+            var result = await nodeRefactorer.RefactorNode(
+                nodeId,
+                newCode,
+                ct: ct);
+
+            activity.AddTag("refactor.success", result.Success);
+            activity.AddTag("refactor.modified_file.count", result.ModifiedFilePaths.Length);
+            return TokenObjectNotation.SerializeRefactorResult(result);
+        }
+        catch (Exception ex)
+        {
+            activity.RecordExceptionAndErrorStatus(ex);
+            throw;
+        }
+    }
+
     [McpServerTool, Description("Find direct derived classes or interface implementers for a persisted node ID.")]
     public static async Task<string> get_inheritors(
         IQueryHandler<GetInheritorsQuery, CodeNodeResult[]> inheritorsHandler,
@@ -170,8 +201,8 @@ internal sealed class SharpSenseMcpTools
         {
             activity.RecordExceptionAndErrorStatus(ex);
             throw;
-        }
     }
+}
 
     private static CodeNodeResult[] MapImpactedNodes(IEnumerable<ImpactedCodeNode> impactedNodes)
         => [.. impactedNodes.Select(static node => new CodeNodeResult(

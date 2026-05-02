@@ -18,6 +18,7 @@ sharpsense analyze path/to/YourSolution.sln
 sharpsense search "WorkspaceLoader"
 sharpsense context --node-id 42
 sharpsense trace 42 -d callee
+sharpsense refactor --node-id 42 --file replacement.cs
 sharpsense skills
 ```
 
@@ -29,6 +30,7 @@ sharpsense skills
 | `context`               | `sharpsense context --node-id 42`     | Show the immediate callers, callees, and hierarchy breadth for a node. |
 | `index <target-path>`   | `sharpsense index SharpSense.sln`     | Legacy alias for `analyze`.                                        |
 | `inheritors <node-id>`  | `sharpsense inheritors 232 --toon`    | List direct class inheritors or interface implementers.            |
+| `refactor`              | `sharpsense refactor --node-id 42 --file replacement.cs` | Replace the indexed source span for a node through Roslyn. |
 | `search <query>`        | `sharpsense search "WorkspaceLoader"` | Search the persisted index for matching code nodes.                |
 | `trace <identifier>`    | `sharpsense trace 42 -d caller`       | Trace callers or callees for an indexed node.                      |
 | `skills [install-root]` | `sharpsense skills /repo`             | Write the embedded SharpSense skills into `.agents/skills`.        |
@@ -142,6 +144,7 @@ sharpsense skills /tmp/sharpsense-agent-workspace
 
 The current CLI package embeds the exported SharpSense skill pack:
 
+- `sharpsense-refactoring/SKILL.md`
 - `sharpsense-exploring/SKILL.md`
 - `sharpsense-impact-analysis/SKILL.md`
 
@@ -170,12 +173,13 @@ If you want live updates while an MCP client is connected, run `analyze --watch`
 
 ## MCP tool outputs
 
-The current MCP host exposes four read tools:
+The current MCP host exposes five tools:
 
 - `semantic_search`
 - `context`
 - `trace_node`
 - `get_inheritors`
+- `refactor_node`
 
 The examples below use real fixture outputs and rough token estimates based on output length (`~characters / 4`), so expect some tokenizer/model variance.
 
@@ -240,6 +244,18 @@ Example output (`~30` tokens for this sample):
 [C] `8` DerivedBeta @ src/Fixture.App/DerivedBeta.cs:3-17
 ```
 
+### `refactor_node`
+
+Use this when you already know the persisted node id and want to replace that node's source span.
+
+Example output (`~20` tokens for this sample):
+
+```text
+refactor_success: true
+modified_files:
+  - src/Fixture.App/PaymentProcessor.cs
+```
+
 ## Context
 
 Show the immediate architectural breadth for a persisted node:
@@ -261,6 +277,33 @@ List direct derived classes for a class node or direct implementing classes for 
 ```bash
 sharpsense inheritors 232 --toon
 ```
+
+## Refactor
+
+Replace the source span for an indexed node:
+
+```bash
+sharpsense refactor --node-id 352 --file replacement.cs
+```
+
+Pipe replacement code over stdin instead:
+
+```bash
+cat replacement.cs | sharpsense refactor --node-id 352
+```
+
+Options:
+
+- `--node-id <NODE_ID>`
+- `--file <path>`: optional `.cs` or `.txt` file containing the replacement source.
+- `--target <path>`: optional explicit `.sln` or `.csproj` target.
+- `--repo-root <path>`
+
+Notes:
+
+- `refactor` replaces the full persisted line span for the node.
+- If `--target` is omitted, SharpSense discovers a single `.sln` or `.csproj` from the resolved repo root and fails if discovery is ambiguous.
+- Keep `sharpsense analyze --watch` running if you want the graph and vector index to refresh automatically after the write.
 
 ## Search
 

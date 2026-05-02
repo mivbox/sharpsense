@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using SharpSense.Application.Indexing.Models;
+using Microsoft.CodeAnalysis.Text;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
@@ -34,6 +35,21 @@ public interface IWorkspaceLoader : IDisposable
         string targetPath,
         IReadOnlyList<WorkspaceFileChange> changedFiles,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Applies a text mutation to every workspace document that maps to the supplied physical file path while holding the
+    /// cached workspace gate, then persists the Roslyn changes through the backing workspace.
+    /// </summary>
+    /// <param name="targetPath">The target path whose workspace should be mutated.</param>
+    /// <param name="documentPath">The physical file path of the document to mutate.</param>
+    /// <param name="changeText">The callback that produces the updated text from the current source text.</param>
+    /// <param name="ct"><see cref="CancellationToken"/> for the current mutation.</param>
+    /// <returns>The result of the text mutation.</returns>
+    Task<WorkspaceTextUpdateResult> ChangeDocumentText(
+        string targetPath,
+        string documentPath,
+        Func<SourceText, WorkspaceTextChange> changeText,
+        CancellationToken ct = default);
 }
 
 public sealed class WorkspaceLoadResult
@@ -55,4 +71,54 @@ public sealed class WorkspaceLoadResult
         .. Solution.Projects
             .OrderBy(static project => project.FilePath ?? project.Name, StringComparer.Ordinal)
     ];
+}
+
+public sealed class WorkspaceTextChange
+{
+    private WorkspaceTextChange(
+        bool success,
+        SourceText? updatedText,
+        string errorMessage)
+    {
+        Success = success;
+        UpdatedText = updatedText;
+        ErrorMessage = errorMessage ?? throw new ArgumentNullException(nameof(errorMessage));
+    }
+
+    public bool Success { get; }
+
+    public SourceText? UpdatedText { get; }
+
+    public string ErrorMessage { get; }
+
+    public static WorkspaceTextChange SuccessChange(SourceText updatedText)
+        => new(
+            true,
+            updatedText ?? throw new ArgumentNullException(nameof(updatedText)),
+            string.Empty);
+
+    public static WorkspaceTextChange Failure(string errorMessage)
+        => new(
+            false,
+            null,
+            errorMessage);
+}
+
+public sealed class WorkspaceTextUpdateResult
+{
+    public WorkspaceTextUpdateResult(
+        bool success,
+        IReadOnlyList<string> diagnostics,
+        string errorMessage)
+    {
+        Success = success;
+        Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
+        ErrorMessage = errorMessage ?? throw new ArgumentNullException(nameof(errorMessage));
+    }
+
+    public bool Success { get; }
+
+    public IReadOnlyList<string> Diagnostics { get; }
+
+    public string ErrorMessage { get; }
 }

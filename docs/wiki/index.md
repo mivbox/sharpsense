@@ -37,6 +37,7 @@ raw sources, provides architectural directives, and directs queries. The human n
 * [[cli/skills-command]] - The `skills` route and embedded `.agents/skills` export flow.
 * [[cli/search-command]] - The `search` route, hybrid-search query flow, and TOON output switch.
 * [[cli/trace-command]] - The `trace` route, caller/callee dispatch, and output shaping.
+* [[cli/refactor-command]] - The `refactor` route, shared Application write boundary, and watcher-backed index refresh contract.
 * [[cli/mcp-command]] - The `mcp` route and stdio MCP host composition.
 * [[cli/ui-command]] - The `ui` route, embedded asset host, workspace-tree API, and opt-in dependency graph API.
 

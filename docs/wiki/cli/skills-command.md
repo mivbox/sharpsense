@@ -32,5 +32,6 @@ confidence: high
 
 The current CLI package explicitly embeds the exported SharpSense skill pack, so the installed tree currently contains:
 
+- `./.agents/skills/sharpsense-refactoring/SKILL.md`
 - `./.agents/skills/sharpsense-exploring/SKILL.md`
 - `./.agents/skills/sharpsense-impact-analysis/SKILL.md`

@@ -7,6 +7,8 @@ using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.Inheritors.GetInheritors.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
+using SharpSense.Application.Refactoring.Abstractions;
+using SharpSense.Application.Refactoring.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Trace.Abstractions;
@@ -169,6 +171,37 @@ public sealed class SharpSenseMcpToolsTests
             "[C] `7` DerivedAlpha @ src/Fixture.App/DerivedAlpha.cs:3-16" + Environment.NewLine +
             "[C] `8` DerivedBeta @ src/Fixture.App/DerivedBeta.cs:3-17");
         inheritorsHandler.Verify(candidate => candidate.Handle(new GetInheritorsQuery(42), CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
+    public async Task WhenRefactorNodeSucceeds_ThenItFormatsCompressedToonOutput()
+    {
+        var nodeRefactorer = new Mock<INodeRefactorer>(MockBehavior.Strict);
+        nodeRefactorer.Setup(candidate => candidate.RefactorNode(
+                42,
+                "public string Updated() { return \"updated\"; }",
+                null,
+                CancellationToken.None))
+            .ReturnsAsync(new RefactorResult(
+                true,
+                ["src/Fixture.App/MessageProvider.cs"],
+                string.Empty));
+
+        var result = await SharpSenseMcpTools.refactor_node(
+            nodeRefactorer.Object,
+            42,
+            "public string Updated() { return \"updated\"; }",
+            CancellationToken.None);
+
+        result.Should().Be(
+            "refactor_success: true" + Environment.NewLine +
+            "modified_files:" + Environment.NewLine +
+            "  - src/Fixture.App/MessageProvider.cs");
+        nodeRefactorer.Verify(candidate => candidate.RefactorNode(
+            42,
+            "public string Updated() { return \"updated\"; }",
+            null,
+            CancellationToken.None), Times.Once);
     }
 
     [Fact]

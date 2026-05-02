@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json;
@@ -7,6 +8,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Moq;
+using SharpSense.Application.Refactoring.Abstractions;
+using SharpSense.Application.Refactoring.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
@@ -251,12 +255,15 @@ public sealed class CliCommandTests
 
         exitCode.Should().Be(0);
         fileSystem.FileExists("/repo/.agents/skills/sharpsense/SKILL.md").Should().BeFalse();
+        fileSystem.FileExists("/repo/.agents/skills/sharpsense-refactoring/SKILL.md").Should().BeTrue();
         fileSystem.FileExists("/repo/.agents/skills/sharpsense-exploring/SKILL.md").Should().BeTrue();
         fileSystem.FileExists("/repo/.agents/skills/sharpsense-impact-analysis/SKILL.md").Should().BeTrue();
+        fileSystem.GetFile("/repo/.agents/skills/sharpsense-refactoring/SKILL.md").TextContents.Should().Contain("name: sharpsense-refactoring");
         fileSystem.GetFile("/repo/.agents/skills/sharpsense-exploring/SKILL.md").TextContents.Should().Contain("name: sharpsense-exploring");
         fileSystem.GetFile("/repo/.agents/skills/sharpsense-impact-analysis/SKILL.md").TextContents.Should().Contain("name: sharpsense-impact-analysis");
         console.Output.Should().Contain("/repo/.agents/skills");
         console.Output.Should().NotContain("sharpsense/SKILL.md");
+        console.Output.Should().Contain("sharpsense-refactoring/SKILL.md");
         console.Output.Should().Contain("sharpsense-exploring/SKILL.md");
         console.Output.Should().Contain("sharpsense-impact-analysis/SKILL.md");
     }
@@ -278,12 +285,15 @@ public sealed class CliCommandTests
 
         exitCode.Should().Be(0);
         fileSystem.FileExists("/exported-skills/.agents/skills/sharpsense/SKILL.md").Should().BeFalse();
+        fileSystem.FileExists("/exported-skills/.agents/skills/sharpsense-refactoring/SKILL.md").Should().BeTrue();
         fileSystem.FileExists("/exported-skills/.agents/skills/sharpsense-exploring/SKILL.md").Should().BeTrue();
         fileSystem.FileExists("/exported-skills/.agents/skills/sharpsense-impact-analysis/SKILL.md").Should().BeTrue();
+        fileSystem.GetFile("/exported-skills/.agents/skills/sharpsense-refactoring/SKILL.md").TextContents.Should().Contain("name: sharpsense-refactoring");
         fileSystem.GetFile("/exported-skills/.agents/skills/sharpsense-exploring/SKILL.md").TextContents.Should().Contain("name: sharpsense-exploring");
         fileSystem.GetFile("/exported-skills/.agents/skills/sharpsense-impact-analysis/SKILL.md").TextContents.Should().Contain("name: sharpsense-impact-analysis");
         console.Output.Should().Contain("/exported-skills/.agents/skills");
         console.Output.Should().NotContain("sharpsense/SKILL.md");
+        console.Output.Should().Contain("sharpsense-refactoring/SKILL.md");
         console.Output.Should().Contain("sharpsense-exploring/SKILL.md");
         console.Output.Should().Contain("sharpsense-impact-analysis/SKILL.md");
     }
@@ -321,10 +331,111 @@ public sealed class CliCommandTests
             $"[C] `{CliCommandTestDatabase.TerminalRendererNodeId}` TerminalRenderer @ src/Fixture.App/TerminalRenderer.cs:3-15");
     }
 
+    [Fact]
+    public async Task WhenRefactorRunsWithFileInput_ThenItFormatsToonOutput()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            ["/repo/.git/HEAD"] = new("ref: refs/heads/main"),
+            ["/repo/replacement.cs"] = new("public string Updated() { return \"updated\"; }")
+        }, RepositoryRoot);
+        var ct = TestContext.Current.CancellationToken;
+        var nodeRefactorer = new Mock<INodeRefactorer>(MockBehavior.Strict);
+        nodeRefactorer.Setup(candidate => candidate.RefactorNode(
+                42,
+                "public string Updated() { return \"updated\"; }",
+                null,
+                ct))
+            .ReturnsAsync(new RefactorResult(
+                true,
+                ["src/Fixture.App/MessageConsumer.cs"],
+                string.Empty));
+        var app = CreateCommandApp(
+            console,
+            database,
+            fileSystem,
+            services =>
+            {
+                services.RemoveAll<INodeRefactorer>();
+                services.AddScoped<INodeRefactorer>(_ => nodeRefactorer.Object);
+            });
+
+        var exitCode = await app.RunAsync(
+            ["refactor", "--node-id", "42", "--file", "replacement.cs", "--repo-root", RepositoryRoot],
+            ct);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Be(
+            "refactor_success: true" + Environment.NewLine +
+            "modified_files:" + Environment.NewLine +
+            "  - src/Fixture.App/MessageConsumer.cs");
+        nodeRefactorer.Verify(candidate => candidate.RefactorNode(
+            42,
+            "public string Updated() { return \"updated\"; }",
+            null,
+            ct), Times.Once);
+    }
+
+    [Fact]
+    public async Task WhenRefactorRunsWithoutFile_ThenItReadsReplacementCodeFromStandardInput()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var replacementCode = "public string UpdatedFromStdIn() { return \"stdin\"; }";
+        var ct = TestContext.Current.CancellationToken;
+        var nodeRefactorer = new Mock<INodeRefactorer>(MockBehavior.Strict);
+        nodeRefactorer.Setup(candidate => candidate.RefactorNode(
+                42,
+                replacementCode,
+                null,
+                ct))
+            .ReturnsAsync(new RefactorResult(
+                true,
+                ["src/Fixture.App/MessageProvider.cs"],
+                string.Empty));
+        var app = CreateCommandApp(
+            console,
+            database,
+            configureServices: services =>
+            {
+                services.RemoveAll<INodeRefactorer>();
+                services.AddScoped<INodeRefactorer>(_ => nodeRefactorer.Object);
+            });
+        var originalInput = Console.In;
+
+        try
+        {
+            Console.SetIn(new StringReader(replacementCode));
+
+            var exitCode = await app.RunAsync(
+                ["refactor", "--node-id", "42", "--repo-root", RepositoryRoot],
+                ct);
+
+            exitCode.Should().Be(0);
+            console.Output.Should().Be(
+                "refactor_success: true" + Environment.NewLine +
+                "modified_files:" + Environment.NewLine +
+                "  - src/Fixture.App/MessageProvider.cs");
+        }
+        finally
+        {
+            Console.SetIn(originalInput);
+        }
+
+        nodeRefactorer.Verify(candidate => candidate.RefactorNode(
+            42,
+            replacementCode,
+            null,
+            ct), Times.Once);
+    }
+
     private static Spectre.Console.Cli.CommandApp CreateCommandApp(
         TestConsole console,
         CliCommandTestDatabase database,
-        MockFileSystem? fileSystem = null)
+        MockFileSystem? fileSystem = null,
+        Action<IServiceCollection>? configureServices = null)
     {
         fileSystem ??= new MockFileSystem(new Dictionary<string, MockFileData>
         {
@@ -337,6 +448,7 @@ public sealed class CliCommandTests
             {
                 services.AddSingleton<IFileSystem>(fileSystem);
                 database.ConfigureServices(services);
+                configureServices?.Invoke(services);
             },
             enableFileLogging: false);
     }

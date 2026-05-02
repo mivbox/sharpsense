@@ -3,6 +3,7 @@ using SharpSense.Cli.Analyze;
 using SharpSense.Cli.Context;
 using SharpSense.Cli.Inheritors;
 using SharpSense.Cli.Mcp;
+using SharpSense.Cli.Refactor;
 using SharpSense.Cli.Search;
 using SharpSense.Cli.Shared;
 using SharpSense.Cli.Skills;
@@ -68,6 +69,11 @@ public partial class Program
                 .AddCommand<McpCommand>("mcp")
                 .WithDescription("Start the MCP server over stdio.");
             AttachData(mcp, executionContext);
+
+            var refactor = config
+                .AddCommand<RefactorCommand>("refactor")
+                .WithDescription("Replace the source for a persisted node ID.");
+            AttachData(refactor, executionContext);
 
             var skills = config
                 .AddCommand<SkillsCommand>("skills")
