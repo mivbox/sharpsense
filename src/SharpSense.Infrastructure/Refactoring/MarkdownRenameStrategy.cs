@@ -64,31 +64,23 @@ internal sealed partial class MarkdownRenameStrategy(
             string.Empty);
     }
 
-    private static string RenameHeadingText(
-        string currentText,
-        string newName)
+    private static string RenameHeadingText(string currentText, string newName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(newName);
 
-        var normalizedLineEndings = currentText.ReplaceLineEndings("\n");
-        var lines = normalizedLineEndings.Split('\n');
-
-        for (var index = 0; index < lines.Length; index++)
+        var match = MarkdownHeadingPattern().Match(currentText);
+        if (!match.Success)
         {
-            var match = MarkdownHeadingPattern().Match(lines[index]);
-            if (!match.Success)
-            {
-                continue;
-            }
-
-            lines[index] = string.Concat(
-                match.Groups["prefix"].Value,
-                newName,
-                match.Groups["suffix"].Value);
-            return string.Join('\n', lines);
+            return currentText;
         }
 
-        return currentText;
+        var nameGroup = match.Groups["name"];
+
+        return string.Concat(
+            currentText.AsSpan(0, nameGroup.Index),
+            newName,
+            currentText.AsSpan(nameGroup.Index + nameGroup.Length)
+        );
     }
 
     private static RefactorResult Failure(string errorMessage)
@@ -97,6 +89,6 @@ internal sealed partial class MarkdownRenameStrategy(
             [],
             errorMessage);
 
-    [GeneratedRegex(@"^(?<prefix>\s*#{1,6}\s+)(?<name>.*?)(?<suffix>\s*)$")]
+    [GeneratedRegex(@"^(?<prefix>\s*#{1,6}\s+)(?<name>.*?)(?<suffix>\s*)$", RegexOptions.Multiline)]
     private static partial Regex MarkdownHeadingPattern();
 }

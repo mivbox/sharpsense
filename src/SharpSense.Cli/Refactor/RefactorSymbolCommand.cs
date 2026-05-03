@@ -11,6 +11,7 @@ using SharpSense.Infrastructure.Refactoring;
 using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using System.Text.Json;
 
 namespace SharpSense.Cli.Refactor;
 
@@ -31,6 +32,9 @@ internal sealed class RefactorSymbolCommand : AbstractAsyncCommand<RefactorSymbo
 
         [CommandOption("--repo-root <path>")]
         public string? RepositoryRoot { get; init; }
+
+        [CommandOption("--toon")]
+        public bool UseToonFormat { get; init; }
 
         public override ValidationResult Validate()
             => NodeId <= 0
@@ -73,7 +77,13 @@ internal sealed class RefactorSymbolCommand : AbstractAsyncCommand<RefactorSymbo
                 settings.TargetPath,
                 ct);
 
-        CommandOutput.Write(context, TokenObjectNotation.SerializeRefactorResult(result));
+
+
+        CommandOutput.Write(context,
+            settings.UseToonFormat
+                ? TokenObjectNotation.SerializeRefactorResult(result)
+                : JsonSerializer.Serialize(result));
+
         return result.Success ? 0 : 1;
     }
 }
