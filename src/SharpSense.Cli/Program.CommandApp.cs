@@ -71,8 +71,8 @@ public partial class Program
             AttachData(mcp, executionContext);
 
             var refactor = config
-                .AddCommand<RefactorCommand>("refactor")
-                .WithDescription("Replace the source for a persisted node ID.");
+                .AddCommand<RefactorSymbolCommand>("refactor")
+                .WithDescription("Semantically rename a persisted symbol and update references.");
             AttachData(refactor, executionContext);
 
             var skills = config

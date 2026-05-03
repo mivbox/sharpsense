@@ -14,7 +14,9 @@ public static class RefactoringInfrastructureServiceCollectionExtensions
         services.AddFileSystem();
         services.TryAddSingleton<WorkspaceTargetResolver>();
         services.TryAddScoped<IRefactorTargetLookup, RefactorTargetLookup>();
-        services.TryAddScoped<IWorkspaceRefactorer, RoslynWorkspaceRefactorer>();
+        services.TryAddScoped<IWorkspaceRenamer, WorkspaceRenamer>();
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IRenameStrategy, RoslynSymbolRenameStrategy>());
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<IRenameStrategy, MarkdownRenameStrategy>());
         return services;
     }
 }

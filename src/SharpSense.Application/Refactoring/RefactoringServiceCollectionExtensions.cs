@@ -10,7 +10,7 @@ public static class RefactoringServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.TryAddScoped<INodeRefactorer, NodeRefactorer>();
+        services.TryAddScoped<IRefactorSymbolService, RefactorSymbolService>();
         return services;
     }
 }

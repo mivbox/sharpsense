@@ -301,6 +301,12 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
 
     private static string GetWatchPath(IHost host)
     {
+        var repositoryWorkspace = host.Services.GetService<IRepositoryWorkspace>();
+        if (repositoryWorkspace is not null)
+        {
+            return repositoryWorkspace.RootPath;
+        }
+
         var options = host.Services.GetRequiredService<IOptions<SharpSenseCliOptions>>().Value;
         return string.IsNullOrWhiteSpace(options.RepositoryRoot)
             ? throw new InvalidOperationException("A repository root must be configured before watch mode can start.")

@@ -174,12 +174,12 @@ public sealed class SharpSenseMcpToolsTests
     }
 
     [Fact]
-    public async Task WhenRefactorNodeSucceeds_ThenItFormatsCompressedToonOutput()
+    public async Task WhenRefactorSymbolSucceeds_ThenItFormatsCompressedToonOutput()
     {
-        var nodeRefactorer = new Mock<INodeRefactorer>(MockBehavior.Strict);
-        nodeRefactorer.Setup(candidate => candidate.RefactorNode(
+        var refactorSymbolService = new Mock<IRefactorSymbolService>(MockBehavior.Strict);
+        refactorSymbolService.Setup(candidate => candidate.RenameSymbol(
                 42,
-                "public string Updated() { return \"updated\"; }",
+                "Updated",
                 null,
                 CancellationToken.None))
             .ReturnsAsync(new RefactorResult(
@@ -187,19 +187,19 @@ public sealed class SharpSenseMcpToolsTests
                 ["src/Fixture.App/MessageProvider.cs"],
                 string.Empty));
 
-        var result = await SharpSenseMcpTools.refactor_node(
-            nodeRefactorer.Object,
+        var result = await SharpSenseMcpTools.refactor_symbol(
+            refactorSymbolService.Object,
             42,
-            "public string Updated() { return \"updated\"; }",
+            "Updated",
             CancellationToken.None);
 
         result.Should().Be(
             "refactor_success: true" + Environment.NewLine +
             "modified_files:" + Environment.NewLine +
             "  - src/Fixture.App/MessageProvider.cs");
-        nodeRefactorer.Verify(candidate => candidate.RefactorNode(
+        refactorSymbolService.Verify(candidate => candidate.RenameSymbol(
             42,
-            "public string Updated() { return \"updated\"; }",
+            "Updated",
             null,
             CancellationToken.None), Times.Once);
     }

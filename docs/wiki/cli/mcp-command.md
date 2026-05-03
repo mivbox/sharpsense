@@ -9,7 +9,7 @@ confidence: high
 
 ## Command
 
-`sharp-sense mcp` starts the stdio MCP host for SharpSense tools. It exposes the same indexed read surfaces as [[cli/search-command]], [[cli/trace-command]], [[cli/inheritors-command]], and [[cli/context-command]], plus the write-capable `refactor_node` surface shared with [[cli/refactor-command]]. MCP caller tracing still uses the broader `ImpactAnalysisQuery` defaults instead of the CLI trace command's direct-caller shortcut. Shared bootstrapping still follows [[architecture/host-composition]].
+`sharp-sense mcp` starts the stdio MCP host for SharpSense tools. It exposes the same indexed read surfaces as [[cli/search-command]], [[cli/trace-command]], [[cli/inheritors-command]], and [[cli/context-command]], plus the write-capable `refactor_symbol` surface shared with [[cli/refactor-command]]. MCP caller tracing still uses the broader `ImpactAnalysisQuery` defaults instead of the CLI trace command's direct-caller shortcut. Shared bootstrapping still follows [[architecture/host-composition]].
 
 ## Options
 
@@ -28,7 +28,7 @@ confidence: high
 | `trace_node` | `TraceQuery` / `ImpactAnalysisQuery` | Downstream callees or upstream caller blast radius for a known node id, formatted as arrow-chain TOON. |
 | `get_inheritors` | `GetInheritorsQuery` | Direct derived classes or interface implementers for a persisted node id. |
 | `context` | `IContextService` | Immediate callers, callees, and inheritance breadth for a persisted node id as compressed TOON. |
-| `refactor_node` | `INodeRefactorer` | Replace a persisted node span through the shared Application refactor boundary and return compact TOON write results. |
+| `refactor_symbol` | `IRefactorSymbolService` | Semantically rename a persisted symbol, update Roslyn references when applicable, and return compact TOON write results. |
 
 ## Example Outputs and Rough Token Cost
 
@@ -87,7 +87,7 @@ Approximate output size for this sample: `~30` tokens.
 [C] `8` DerivedBeta @ src/Fixture.App/DerivedBeta.cs:3-17
 ```
 
-### `refactor_node`
+### `refactor_symbol`
 
 Approximate output size for this sample: `~20` tokens.
 
@@ -95,6 +95,7 @@ Approximate output size for this sample: `~20` tokens.
 refactor_success: true
 modified_files:
   - src/Fixture.App/PaymentProcessor.cs
+  - src/Fixture.App/CheckoutController.cs
 ```
 
 ## Execution Flow
@@ -108,5 +109,5 @@ modified_files:
 7. `trace_node` resolves the root node through `ITraceNavigator`, then formats either direct callees or caller chains through the dedicated trace serializers in `TokenObjectNotation`.
 8. `context` resolves `IContextService` directly and renders the shared `Context360Result` through `TokenObjectNotation.SerializeContext360()`.
 9. `get_inheritors` resolves `GetInheritorsQuery` through the `IInheritorFinder` read slice and formats direct class inheritors or interface implementers with the shared flat TOON output formatter.
-10. `refactor_node` resolves `INodeRefactorer`, writes the Roslyn edit to disk, and returns `TokenObjectNotation.SerializeRefactorResult()` without waiting for downstream index refresh.
+10. `refactor_symbol` resolves `IRefactorSymbolService`, performs a semantic rename against either the Roslyn workspace or the Markdown strategy, and returns `TokenObjectNotation.SerializeRefactorResult()` without waiting for downstream index refresh.
 11. `Execute()` waits for the stdio host to shut down while the registered tools resolve queries on demand.

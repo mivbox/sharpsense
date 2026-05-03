@@ -148,22 +148,22 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool, Description("Replace the source for a persisted node id. Writes the Roslyn edit to disk and relies on the watcher pipeline to refresh indexing asynchronously.")]
-    public static async Task<string> refactor_node(
-        INodeRefactorer nodeRefactorer,
-        [Description("The persisted integer ID of the node to replace.")] int nodeId,
-        [Description("The raw C# source text that should replace the current node.")] string newCode,
+    [McpServerTool, Description("Acts like Ctrl+R, R in JetBrains Rider. Use this to semantically rename a method, class, or property. It automatically updates all callers and references across the entire codebase. Provide ONLY the new identifier name (e.g., 'ProcessPaymentAsync'), not a full signature.")]
+    public static async Task<string> refactor_symbol(
+        IRefactorSymbolService refactorSymbolService,
+        [Description("The persisted integer ID of the symbol to rename.")] int nodeId,
+        [Description("The new identifier name only, such as 'ProcessPaymentAsync'. Do not provide a signature or code block.")] string newName,
         CancellationToken ct = default)
     {
-        using var activity = SharpSenseTraceSpan.Start("mcp.tool.refactor_node");
-        activity.AddTag("mcp.tool", "refactor_node");
+        using var activity = SharpSenseTraceSpan.Start("mcp.tool.refactor_symbol");
+        activity.AddTag("mcp.tool", "refactor_symbol");
         activity.AddTag("refactor.node_id", nodeId);
 
         try
         {
-            var result = await nodeRefactorer.RefactorNode(
+            var result = await refactorSymbolService.RenameSymbol(
                 nodeId,
-                newCode,
+                newName,
                 ct: ct);
 
             activity.AddTag("refactor.success", result.Success);

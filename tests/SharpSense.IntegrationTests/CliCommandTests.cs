@@ -16,6 +16,7 @@ using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Testkit;
 using Spectre.Console.Testing;
+using PersistedDocumentKind = SharpSense.Infrastructure.Persistence.Records.DocumentKind;
 
 namespace SharpSense.IntegrationTests;
 
@@ -332,20 +333,16 @@ public sealed class CliCommandTests
     }
 
     [Fact]
-    public async Task WhenRefactorRunsWithFileInput_ThenItFormatsToonOutput()
+    public async Task WhenRefactorRuns_ThenItUsesTheNewNameOptionAndFormatsToonOutput()
     {
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/.git/HEAD"] = new("ref: refs/heads/main"),
-            ["/repo/replacement.cs"] = new("public string Updated() { return \"updated\"; }")
-        }, RepositoryRoot);
+        const string newName = "Updated";
         var ct = TestContext.Current.CancellationToken;
-        var nodeRefactorer = new Mock<INodeRefactorer>(MockBehavior.Strict);
-        nodeRefactorer.Setup(candidate => candidate.RefactorNode(
+        var refactorSymbolService = new Mock<IRefactorSymbolService>(MockBehavior.Strict);
+        refactorSymbolService.Setup(candidate => candidate.RenameSymbol(
                 42,
-                "public string Updated() { return \"updated\"; }",
+                newName,
                 null,
                 ct))
             .ReturnsAsync(new RefactorResult(
@@ -355,15 +352,14 @@ public sealed class CliCommandTests
         var app = CreateCommandApp(
             console,
             database,
-            fileSystem,
-            services =>
+            configureServices: services =>
             {
-                services.RemoveAll<INodeRefactorer>();
-                services.AddScoped<INodeRefactorer>(_ => nodeRefactorer.Object);
+                services.RemoveAll<IRefactorSymbolService>();
+                services.AddScoped<IRefactorSymbolService>(_ => refactorSymbolService.Object);
             });
 
         var exitCode = await app.RunAsync(
-            ["refactor", "--node-id", "42", "--file", "replacement.cs", "--repo-root", RepositoryRoot],
+            ["refactor", "--node-id", "42", "--new-name", newName, "--repo-root", RepositoryRoot],
             ct);
 
         exitCode.Should().Be(0);
@@ -371,25 +367,26 @@ public sealed class CliCommandTests
             "refactor_success: true" + Environment.NewLine +
             "modified_files:" + Environment.NewLine +
             "  - src/Fixture.App/MessageConsumer.cs");
-        nodeRefactorer.Verify(candidate => candidate.RefactorNode(
+
+        refactorSymbolService.Verify(candidate => candidate.RenameSymbol(
             42,
-            "public string Updated() { return \"updated\"; }",
+            newName,
             null,
             ct), Times.Once);
     }
 
     [Fact]
-    public async Task WhenRefactorRunsWithoutFile_ThenItReadsReplacementCodeFromStandardInput()
+    public async Task WhenRefactorRunsWithTargetOverride_ThenItPassesTheOverrideToTheRefactorSymbolService()
     {
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
-        var replacementCode = "public string UpdatedFromStdIn() { return \"stdin\"; }";
+        const string newName = "UpdatedName";
         var ct = TestContext.Current.CancellationToken;
-        var nodeRefactorer = new Mock<INodeRefactorer>(MockBehavior.Strict);
-        nodeRefactorer.Setup(candidate => candidate.RefactorNode(
+        var refactorSymbolService = new Mock<IRefactorSymbolService>(MockBehavior.Strict);
+        refactorSymbolService.Setup(candidate => candidate.RenameSymbol(
                 42,
-                replacementCode,
-                null,
+                newName,
+                "src/Fixture.App/Fixture.App.csproj",
                 ct))
             .ReturnsAsync(new RefactorResult(
                 true,
@@ -400,34 +397,24 @@ public sealed class CliCommandTests
             database,
             configureServices: services =>
             {
-                services.RemoveAll<INodeRefactorer>();
-                services.AddScoped<INodeRefactorer>(_ => nodeRefactorer.Object);
+                services.RemoveAll<IRefactorSymbolService>();
+                services.AddScoped<IRefactorSymbolService>(_ => refactorSymbolService.Object);
             });
-        var originalInput = Console.In;
 
-        try
-        {
-            Console.SetIn(new StringReader(replacementCode));
+        var exitCode = await app.RunAsync(
+            ["refactor", "--node-id", "42", "--new-name", newName, "--target", "src/Fixture.App/Fixture.App.csproj", "--repo-root", RepositoryRoot],
+            ct);
 
-            var exitCode = await app.RunAsync(
-                ["refactor", "--node-id", "42", "--repo-root", RepositoryRoot],
-                ct);
+        exitCode.Should().Be(0);
+        console.Output.Should().Be(
+            "refactor_success: true" + Environment.NewLine +
+            "modified_files:" + Environment.NewLine +
+            "  - src/Fixture.App/MessageProvider.cs");
 
-            exitCode.Should().Be(0);
-            console.Output.Should().Be(
-                "refactor_success: true" + Environment.NewLine +
-                "modified_files:" + Environment.NewLine +
-                "  - src/Fixture.App/MessageProvider.cs");
-        }
-        finally
-        {
-            Console.SetIn(originalInput);
-        }
-
-        nodeRefactorer.Verify(candidate => candidate.RefactorNode(
+        refactorSymbolService.Verify(candidate => candidate.RenameSymbol(
             42,
-            replacementCode,
-            null,
+            newName,
+            "src/Fixture.App/Fixture.App.csproj",
             ct), Times.Once);
     }
 
@@ -590,7 +577,7 @@ public sealed class CliCommandTests
                     FileName = "Fixture.App.csproj",
                     Extension = ".csproj",
                     RelativePath = "src/Fixture.App/Fixture.App.csproj",
-                    Kind = DocumentKind.ProjectFile
+                    Kind = PersistedDocumentKind.ProjectFile
                 },
                 new DocumentRecord
                 {
@@ -599,7 +586,7 @@ public sealed class CliCommandTests
                     FileName = "MessageConsumer.cs",
                     Extension = ".cs",
                     RelativePath = "src/Fixture.App/MessageConsumer.cs",
-                    Kind = DocumentKind.Source
+                    Kind = PersistedDocumentKind.Source
                 },
                 new DocumentRecord
                 {
@@ -608,7 +595,7 @@ public sealed class CliCommandTests
                     FileName = "HttpEndpoint.cs",
                     Extension = ".cs",
                     RelativePath = "src/Fixture.App/HttpEndpoint.cs",
-                    Kind = DocumentKind.Source
+                    Kind = PersistedDocumentKind.Source
                 },
                 new DocumentRecord
                 {
@@ -617,7 +604,7 @@ public sealed class CliCommandTests
                     FileName = "MessageProvider.cs",
                     Extension = ".cs",
                     RelativePath = "src/Fixture.App/MessageProvider.cs",
-                    Kind = DocumentKind.Source
+                    Kind = PersistedDocumentKind.Source
                 },
                 new DocumentRecord
                 {
@@ -626,7 +613,7 @@ public sealed class CliCommandTests
                     FileName = "DocA.md",
                     Extension = ".md",
                     RelativePath = "docs/DocA.md",
-                    Kind = DocumentKind.Markdown
+                    Kind = PersistedDocumentKind.Markdown
                 },
                 new DocumentRecord
                 {
@@ -635,7 +622,7 @@ public sealed class CliCommandTests
                     FileName = "Reference.md",
                     Extension = ".md",
                     RelativePath = "docs/Reference.md",
-                    Kind = DocumentKind.Markdown
+                    Kind = PersistedDocumentKind.Markdown
                 },
                 new DocumentRecord
                 {
@@ -644,7 +631,7 @@ public sealed class CliCommandTests
                     FileName = "Guide.md",
                     Extension = ".md",
                     RelativePath = "docs/Guide.md",
-                    Kind = DocumentKind.Markdown
+                    Kind = PersistedDocumentKind.Markdown
                 },
                 new DocumentRecord
                 {
@@ -653,7 +640,7 @@ public sealed class CliCommandTests
                     FileName = "IMessageRenderer.cs",
                     Extension = ".cs",
                     RelativePath = "src/Fixture.App/IMessageRenderer.cs",
-                    Kind = DocumentKind.Source
+                    Kind = PersistedDocumentKind.Source
                 },
                 new DocumentRecord
                 {
@@ -662,7 +649,7 @@ public sealed class CliCommandTests
                     FileName = "HtmlRenderer.cs",
                     Extension = ".cs",
                     RelativePath = "src/Fixture.App/HtmlRenderer.cs",
-                    Kind = DocumentKind.Source
+                    Kind = PersistedDocumentKind.Source
                 },
                 new DocumentRecord
                 {
@@ -671,7 +658,7 @@ public sealed class CliCommandTests
                     FileName = "TerminalRenderer.cs",
                     Extension = ".cs",
                     RelativePath = "src/Fixture.App/TerminalRenderer.cs",
-                    Kind = DocumentKind.Source
+                    Kind = PersistedDocumentKind.Source
                 },
                 new DocumentRecord
                 {
@@ -680,7 +667,7 @@ public sealed class CliCommandTests
                     FileName = "BaseRenderer.cs",
                     Extension = ".cs",
                     RelativePath = "src/Fixture.App/BaseRenderer.cs",
-                    Kind = DocumentKind.Source
+                    Kind = PersistedDocumentKind.Source
                 },
                 new DocumentRecord
                 {
@@ -689,7 +676,7 @@ public sealed class CliCommandTests
                     FileName = "FancyRenderer.cs",
                     Extension = ".cs",
                     RelativePath = "src/Fixture.App/FancyRenderer.cs",
-                    Kind = DocumentKind.Source
+                    Kind = PersistedDocumentKind.Source
                 });
             dbContext.GraphNodes.AddRange(
                 new GraphNodeRecord

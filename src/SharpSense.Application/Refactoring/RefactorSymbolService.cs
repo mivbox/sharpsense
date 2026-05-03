@@ -3,22 +3,27 @@ using SharpSense.Application.Refactoring.Models;
 
 namespace SharpSense.Application.Refactoring;
 
-public sealed class NodeRefactorer(
+public sealed class RefactorSymbolService(
     IRefactorTargetLookup targetLookup,
-    IWorkspaceRefactorer workspaceRefactorer)
-    : INodeRefactorer
+    IWorkspaceRenamer workspaceRenamer)
+    : IRefactorSymbolService
 {
-    public async Task<RefactorResult> RefactorNode(
+    public async Task<RefactorResult> RenameSymbol(
         int nodeId,
-        string newSourceCode,
+        string newName,
         string? targetPath = null,
         CancellationToken ct = default)
     {
-        ArgumentNullException.ThrowIfNull(newSourceCode);
+        ArgumentNullException.ThrowIfNull(newName);
 
         if (nodeId <= 0)
         {
             return Failure("Node id must be greater than zero.");
+        }
+
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            return Failure("New name must not be empty.");
         }
 
         var target = await targetLookup.GetTarget(nodeId, ct);
@@ -27,9 +32,9 @@ public sealed class NodeRefactorer(
             return Failure($"No persisted node exists for id {nodeId}.");
         }
 
-        return await workspaceRefactorer.RefactorNode(
+        return await workspaceRenamer.RenameSymbol(
             target,
-            newSourceCode,
+            newName,
             targetPath,
             ct);
     }
