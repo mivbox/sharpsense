@@ -18,6 +18,7 @@ sharpsense analyze path/to/YourSolution.sln
 sharpsense search "WorkspaceLoader"
 sharpsense context --node-id 42
 sharpsense trace 42 -d callee
+sharpsense refactor --node-id 42 --new-name Updated
 sharpsense skills
 ```
 
@@ -29,6 +30,7 @@ sharpsense skills
 | `context`               | `sharpsense context --node-id 42`     | Show the immediate callers, callees, and hierarchy breadth for a node. |
 | `index <target-path>`   | `sharpsense index SharpSense.sln`     | Legacy alias for `analyze`.                                        |
 | `inheritors <node-id>`  | `sharpsense inheritors 232 --toon`    | List direct class inheritors or interface implementers.            |
+| `refactor`              | `sharpsense refactor --node-id 42 --new-name Updated` | Semantically rename an indexed symbol through Roslyn. |
 | `search <query>`        | `sharpsense search "WorkspaceLoader"` | Search the persisted index for matching code nodes.                |
 | `trace <identifier>`    | `sharpsense trace 42 -d caller`       | Trace callers or callees for an indexed node.                      |
 | `skills [install-root]` | `sharpsense skills /repo`             | Write the embedded SharpSense skills into `.agents/skills`.        |
@@ -77,6 +79,22 @@ Watch mode:
 - keeps using the same local repository index.
 
 This is the command to leave running while you edit code locally.
+
+## Refactor command input model
+
+`refactor` takes the persisted node id plus the new identifier name:
+
+```bash
+sharpsense refactor --node-id 42 --new-name Updated
+```
+
+Notes:
+
+- The CLI contract mirrors MCP `refactor_symbol(nodeId, newName)`.
+- `newName` must be the identifier only, not a signature or code block.
+- The persisted node already resolves the target document path and owning project path from the SQLite index.
+- C# nodes use Roslyn semantic rename across the loaded workspace. Markdown nodes use a targeted local heading rename inside the persisted Markdown span.
+- `--target <path>` is only an override for source-backed renames when you want to force a different `.sln` or `.csproj`.
 
 ## `sharpsense.yaml`
 
@@ -142,6 +160,7 @@ sharpsense skills /tmp/sharpsense-agent-workspace
 
 The current CLI package embeds the exported SharpSense skill pack:
 
+- `sharpsense-refactoring/SKILL.md`
 - `sharpsense-exploring/SKILL.md`
 - `sharpsense-impact-analysis/SKILL.md`
 
@@ -170,12 +189,13 @@ If you want live updates while an MCP client is connected, run `analyze --watch`
 
 ## MCP tool outputs
 
-The current MCP host exposes four read tools:
+The current MCP host exposes five tools:
 
 - `semantic_search`
 - `context`
 - `trace_node`
 - `get_inheritors`
+- `refactor_symbol`
 
 The examples below use real fixture outputs and rough token estimates based on output length (`~characters / 4`), so expect some tokenizer/model variance.
 
@@ -240,6 +260,18 @@ Example output (`~30` tokens for this sample):
 [C] `8` DerivedBeta @ src/Fixture.App/DerivedBeta.cs:3-17
 ```
 
+### `refactor_symbol`
+
+Use this when you already know the persisted node id and want to semantically rename that declared symbol.
+
+Example output (`~20` tokens for this sample):
+
+```text
+refactor_success: true
+modified_files:
+  - src/Fixture.App/PaymentProcessor.cs
+```
+
 ## Context
 
 Show the immediate architectural breadth for a persisted node:
@@ -261,6 +293,27 @@ List direct derived classes for a class node or direct implementing classes for 
 ```bash
 sharpsense inheritors 232 --toon
 ```
+
+## Refactor
+
+Semantically rename an indexed symbol:
+
+```bash
+sharpsense refactor --node-id 352 --new-name RenderMessage
+```
+
+Options:
+
+- `--node-id <NODE_ID>`
+- `--new-name <NEW_NAME>`: the new identifier only.
+- `--target <path>`: optional explicit `.sln` or `.csproj` target.
+- `--repo-root <path>`
+
+Notes:
+
+- `refactor` behaves like Rider `Ctrl+R, R` or Visual Studio `F2` for indexed symbols.
+- If `--target` is omitted, SharpSense prefers repo-root workspace discovery and falls back to the persisted owning project when needed.
+- Keep `sharpsense analyze --watch` running if you want the graph and vector index to refresh automatically after the write.
 
 ## Search
 

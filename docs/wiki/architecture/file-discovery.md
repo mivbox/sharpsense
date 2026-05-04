@@ -3,7 +3,7 @@ title: "File Discovery"
 type: architecture
 tags: [csharp, markdown, implemented]
 created: 2026-04-26
-updated: 2026-04-28
+updated: 2026-05-04
 confidence: high
 ---
 
@@ -13,7 +13,7 @@ Indexing and incremental updates need one canonical way to discover allowed file
 
 ## The Approach
 
-SharpSense makes `IWorkspaceFileDiscoverer` the canonical discovery boundary, and the whole flow now sits on the [[architecture/virtual-file-system]] seam. `DocumentDiscoverer` reads `IncludePaths` from `SharpSenseConfig`, resolves the Target directory through `IRepositoryWorkspace`, asks `IWorkspaceFileDiscoverer` for the allowed files, reads the resulting payloads through `IFileSystem`, and hands each Markdown document to `IMarkdownIndexer`. `WorkspaceFileDiscoverer` normalizes the configured globs, matches them under the Target directory, converts each absolute match to a repository-relative path, applies `.gitignore` through the Ignore engine, and emits `DiscoveredFile` records. Downstream components such as [[extractors/markdown]] then index content by using `DiscoveredFile.RelativeFilePath` directly instead of recomputing paths.
+SharpSense makes `IWorkspaceFileDiscoverer` the canonical discovery boundary, and the whole flow now sits on the [[architecture/virtual-file-system]] seam. `DocumentDiscoverer` reads `IncludePaths` from `SharpSenseConfig`, resolves the Target directory through `IRepositoryWorkspace`, asks `IWorkspaceFileDiscoverer` for the allowed files, reads the resulting payloads through `IFileSystem`, and hands each Markdown document to `IMarkdownIndexer`. `WorkspaceFileDiscoverer` normalizes the configured globs, matches them under the Target directory, converts each absolute match to a repository-relative path, applies `.gitignore` through the Ignore engine, and emits `DiscoveredFile` records. Downstream components such as [[extractors/markdown]] then index content by using `DiscoveredFile.RelativeFilePath` directly instead of recomputing paths. Watch-mode directory renames now reuse this same boundary: `UpdateWorkspaceFilesCommandHandler` asks `IWorkspaceFileDiscoverer` for `**/*.cs` plus Markdown matches under the renamed directory, then combines the discovered `RelativeFilePath` values with persisted old paths to expand directory actions into file-level incremental replacements.
 
 ## Components Involved
 
@@ -34,4 +34,4 @@ SharpSense makes `IWorkspaceFileDiscoverer` the canonical discovery boundary, an
 2. Read discovered files through injected `IFileSystem`, not direct `System.IO` helpers.
 3. Anchor include globs to the active Target directory, not to arbitrary process working directories.
 4. Treat `DiscoveredFile.RelativeFilePath` as the canonical repository-relative path; extractors must not recalculate it.
-5. Keep discovery scoped to C# and Markdown Targets, because those are the only indexed asset types. Watch-mode directory renames may enumerate through `IFileSystem`, but they must preserve the same extension and ignore semantics described in [[architecture/incremental-watch]].
+5. Keep discovery scoped to C# and Markdown Targets, because those are the only indexed asset types. Watch-mode directory rename expansion must use `IWorkspaceFileDiscoverer` for the new-side file view so extension filtering, `.gitignore`, and relative-path semantics stay aligned with [[architecture/incremental-watch]].

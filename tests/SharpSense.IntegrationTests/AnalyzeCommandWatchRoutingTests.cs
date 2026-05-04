@@ -10,6 +10,7 @@ using SharpSense.Application.Indexing.IndexTarget.Models;
 using SharpSense.Application.Indexing.UpdateWorkspaceFiles;
 using SharpSense.Application.Indexing.UpdateWorkspaceFiles.Models;
 using SharpSense.Application.Shared.Abstractions;
+using SharpSense.Infrastructure.Storage;
 using Spectre.Console.Testing;
 
 namespace SharpSense.IntegrationTests;
@@ -144,6 +145,54 @@ public sealed class AnalyzeCommandWatchRoutingTests
         indexCommands.Should().HaveCount(2);
         updateCommands.Should().ContainSingle();
         repositoryRoots.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task WhenAnalyzeRunsInWatchModeWithCanonicalWorkspaceRoot_ThenWatcherUsesWorkspaceRootPath()
+    {
+        var configuredRepositoryRoot = "/tmp/sharpsense-fixture";
+        var canonicalRepositoryRoot = "/private/tmp/sharpsense-fixture";
+        using var console = new TestConsole();
+        var watchedRoots = new List<string>();
+        var indexHandler = new Mock<ICommandHandler<IndexTargetCommand>>(MockBehavior.Strict);
+        indexHandler.Setup(handler => handler.Handle(It.IsAny<IndexTargetCommand>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var updateHandler = new Mock<ICommandHandler<UpdateWorkspaceFilesCommand>>(MockBehavior.Strict);
+        updateHandler.Setup(handler => handler.Handle(It.IsAny<UpdateWorkspaceFilesCommand>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var workspaceWatcher = new Mock<IWorkspaceWatcher>(MockBehavior.Strict);
+        workspaceWatcher.Setup(watcher => watcher.Watch(
+                It.IsAny<string>(),
+                It.IsAny<Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns<string, Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task>, CancellationToken>(
+                (repositoryRoot, _, _) =>
+                {
+                    watchedRoots.Add(repositoryRoot);
+                    return Task.CompletedTask;
+                });
+        var repositoryWorkspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);
+        repositoryWorkspace.SetupGet(candidate => candidate.RootPath)
+            .Returns(canonicalRepositoryRoot);
+        var app = Cli.Program.CreateCommandApp(console, services =>
+        {
+            services.RemoveAll<IHostedService>();
+            services.RemoveAll<ICommandHandler<IndexTargetCommand>>();
+            services.RemoveAll<ICommandHandler<UpdateWorkspaceFilesCommand>>();
+            services.RemoveAll<IWorkspaceWatcher>();
+            services.RemoveAll<IRepositoryWorkspace>();
+            services.AddSingleton<ICommandHandler<IndexTargetCommand>>(indexHandler.Object);
+            services.AddSingleton<ICommandHandler<UpdateWorkspaceFilesCommand>>(updateHandler.Object);
+            services.AddSingleton<IWorkspaceWatcher>(workspaceWatcher.Object);
+            services.AddSingleton<IRepositoryWorkspace>(repositoryWorkspace.Object);
+        });
+
+        var exitCode = await app.RunAsync(
+            ["analyze", "SharpSense.sln", "--watch", "--repo-root", configuredRepositoryRoot, "--no-embeddings"],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        watchedRoots.Should().ContainSingle().Which.Should().Be(canonicalRepositoryRoot);
     }
 
     private static string GetRepositoryRoot()

@@ -1,5 +1,6 @@
 using SharpSense.Application.Context360.Models;
 using SharpSense.Application.HybridSearch.Models;
+using SharpSense.Application.Refactoring.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
@@ -150,6 +151,43 @@ public static class TokenObjectNotation
         builder.AppendLine("outgoing:");
         builder.Append("  callees: ").Append(FormatContext360RelatedNodes(result.Callees)).AppendLine();
         builder.Append("  inherits: ").Append(FormatContext360RelatedNodes(result.Inherits));
+        return builder.ToString();
+    }
+
+    public static string SerializeRefactorResult(RefactorResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(result.ModifiedFilePaths);
+
+        var builder = new StringBuilder();
+        builder.Append("refactor_success: ")
+            .Append(result.Success ? "true" : "false");
+
+        if (!result.Success)
+        {
+            builder.AppendLine();
+            builder.Append("error_message: ").Append(result.ErrorMessage);
+            return builder.ToString();
+        }
+
+        builder.AppendLine();
+
+        if (result.ModifiedFilePaths.Length == 0)
+        {
+            builder.Append("modified_files: []");
+            return builder.ToString();
+        }
+
+        builder.AppendLine("modified_files:");
+
+        foreach (var modifiedFilePath in result.ModifiedFilePaths)
+        {
+            builder.Append("  - ")
+                .Append(modifiedFilePath)
+                .AppendLine();
+        }
+
+        builder.Length -= Environment.NewLine.Length;
         return builder.ToString();
     }
 

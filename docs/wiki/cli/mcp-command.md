@@ -9,7 +9,7 @@ confidence: high
 
 ## Command
 
-`sharp-sense mcp` starts the stdio MCP host for SharpSense tools. It exposes the same indexed read surfaces as [[cli/search-command]], [[cli/trace-command]], [[cli/inheritors-command]], and [[cli/context-command]], and packages those reads behind MCP tools instead of CLI output. MCP caller tracing still uses the broader `ImpactAnalysisQuery` defaults instead of the CLI trace command's direct-caller shortcut. Shared bootstrapping still follows [[architecture/host-composition]].
+`sharp-sense mcp` starts the stdio MCP host for SharpSense tools. It exposes the same indexed read surfaces as [[cli/search-command]], [[cli/trace-command]], [[cli/inheritors-command]], and [[cli/context-command]], plus the write-capable `refactor_symbol` surface shared with [[cli/refactor-command]]. MCP caller tracing still uses the broader `ImpactAnalysisQuery` defaults instead of the CLI trace command's direct-caller shortcut. Shared bootstrapping still follows [[architecture/host-composition]].
 
 ## Options
 
@@ -18,7 +18,7 @@ confidence: high
 | `RepositoryRoot` | `--repo-root <path>` | Resolves the repository workspace used by the MCP tools. |
 | `IsVerbose` | `-v\|--verbose` | Enables verbose host logging for the long-lived stdio process. |
 
-`McpCommand.Configure()` writes `RepositoryRoot` into `IOptions<SharpSenseCliOptions>`, loads `SharpSenseConfig`, and composes the read-side feature modules needed by the MCP tool surface.
+`McpCommand.Configure()` writes `RepositoryRoot` into `IOptions<SharpSenseCliOptions>`, loads `SharpSenseConfig`, and composes the feature modules needed by the MCP tool surface.
 
 ## Tool Surface
 
@@ -28,6 +28,7 @@ confidence: high
 | `trace_node` | `TraceQuery` / `ImpactAnalysisQuery` | Downstream callees or upstream caller blast radius for a known node id, formatted as arrow-chain TOON. |
 | `get_inheritors` | `GetInheritorsQuery` | Direct derived classes or interface implementers for a persisted node id. |
 | `context` | `IContextService` | Immediate callers, callees, and inheritance breadth for a persisted node id as compressed TOON. |
+| `refactor_symbol` | `IRefactorSymbolService` | Semantically rename a persisted symbol, update Roslyn references when applicable, and return compact TOON write results. |
 
 ## Example Outputs and Rough Token Cost
 
@@ -86,15 +87,27 @@ Approximate output size for this sample: `~30` tokens.
 [C] `8` DerivedBeta @ src/Fixture.App/DerivedBeta.cs:3-17
 ```
 
+### `refactor_symbol`
+
+Approximate output size for this sample: `~20` tokens.
+
+```text
+refactor_success: true
+modified_files:
+  - src/Fixture.App/PaymentProcessor.cs
+  - src/Fixture.App/CheckoutController.cs
+```
+
 ## Execution Flow
 
 1. `Program.CommandApp.cs` routes `mcp` to `McpCommand`.
 2. `AbstractAsyncCommand<TSettings>` builds the host using the shared rules in [[architecture/host-composition]].
-3. `Configure()` resolves the repository root and registers repository workspace, `SharpSenseConfig`, Context360, hybrid search, embeddings, inheritors, impact analysis, trace, and persistence.
+3. `Configure()` resolves the repository root and registers repository workspace, `SharpSenseConfig`, Context360, hybrid search, refactoring, indexing infrastructure, embeddings, inheritors, impact analysis, trace, and persistence.
 4. The command adds the MCP server with stdio transport and registers `SharpSenseMcpTools` as the tool surface.
 5. Tool serialization adds a `JsonStringEnumConverter<TraceDirection>` so trace directions stay stable across the protocol boundary.
 6. `semantic_search` resolves `HybridSearchQuery` and serializes hits through `TokenObjectNotation.SerializeSemanticSearch()`, the shared hierarchical TOON serializer used by `sharp-sense search --toon`.
 7. `trace_node` resolves the root node through `ITraceNavigator`, then formats either direct callees or caller chains through the dedicated trace serializers in `TokenObjectNotation`.
 8. `context` resolves `IContextService` directly and renders the shared `Context360Result` through `TokenObjectNotation.SerializeContext360()`.
 9. `get_inheritors` resolves `GetInheritorsQuery` through the `IInheritorFinder` read slice and formats direct class inheritors or interface implementers with the shared flat TOON output formatter.
-10. `Execute()` waits for the stdio host to shut down while the registered tools resolve queries on demand.
+10. `refactor_symbol` resolves `IRefactorSymbolService`, performs a semantic rename against either the Roslyn workspace or the Markdown strategy, and returns `TokenObjectNotation.SerializeRefactorResult()` without waiting for downstream index refresh.
+11. `Execute()` waits for the stdio host to shut down while the registered tools resolve queries on demand.

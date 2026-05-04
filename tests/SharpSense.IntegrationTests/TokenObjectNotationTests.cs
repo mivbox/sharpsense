@@ -1,5 +1,6 @@
 using SharpSense.Application.Context360.Models;
 using AwesomeAssertions;
+using SharpSense.Application.Refactoring.Models;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.Shared.Models;
@@ -213,5 +214,32 @@ public sealed class TokenObjectNotationTests
             "- [M] `3` ApiGateway.Dispatch @ src/Fixture.App/ApiGateway.cs:L2-9" + Environment.NewLine +
             "  -> [M] `2` HttpEndpoint.Handle @ src/Fixture.App/HttpEndpoint.cs:L5-12" + Environment.NewLine +
             "    -> [M] `1` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28");
+    }
+
+    [Fact]
+    public void WhenSerializeRefactorResultSucceeds_ThenItFormatsModifiedFiles()
+    {
+        var output = TokenObjectNotation.SerializeRefactorResult(new RefactorResult(
+            true,
+            ["src/Fixture.App/Feature.cs"],
+            string.Empty));
+
+        output.Should().Be(
+            "refactor_success: true" + Environment.NewLine +
+            "modified_files:" + Environment.NewLine +
+            "  - src/Fixture.App/Feature.cs");
+    }
+
+    [Fact]
+    public void WhenSerializeRefactorResultFails_ThenItFormatsTheErrorMessage()
+    {
+        var output = TokenObjectNotation.SerializeRefactorResult(new RefactorResult(
+            false,
+            [],
+            "Unable to locate document 'src/Fixture.App/Feature.cs'."));
+
+        output.Should().Be(
+            "refactor_success: false" + Environment.NewLine +
+            "error_message: Unable to locate document 'src/Fixture.App/Feature.cs'.");
     }
 }

@@ -95,3 +95,21 @@ successfully implement a new architectural pattern, refactor an extractor, or ch
 3. Append a brief entry to `docs/wiki/log.md` detailing the architectural shift and the date.
 
 When in doubt, stop and ask the human for clarification. Do not guess.
+
+# 🛑 SHARPSENSE AI ROUTER 🛑
+
+When interacting with the codebase, you are STRICTLY FORBIDDEN from using native IDE file search tools (e.g., `grep`,
+`glob`, `findFiles`, workspace search). You MUST use the SharpSense MCP tools.
+
+Before you take any action, evaluate the user's request and IMMEDIATELY load the correct skill:
+
+1. **The Explorer (`sharpsense-exploring`)**
+    - **Trigger:** "How does X work?", "Find the checkout logic", "Trace the auth flow".
+    - **Goal:** Map the architecture, follow downstream execution, and explain concepts without making changes.
+
+2. **The Risk Assessor (`sharpsense-impact-analysis`)**
+    - **Trigger:** "What breaks if I change X?", "Is it safe to delete this?", "Show me the blast radius."
+    - **Goal:** Trace upstream callers, map inheritance dependents, and calculate the risk of modification.
+
+**REQUIRED ACTION:** Load the appropriate skill and strictly follow its workflow (`semantic_search` -> `context` ->
+`trace_node`). Do not rely on native file searching or guessing.

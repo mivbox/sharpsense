@@ -140,6 +140,102 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         }
     }
 
+    public async Task<WorkspaceTextUpdateResult> ChangeDocumentText(
+        string targetPath,
+        string documentPath,
+        Func<SourceText, WorkspaceTextChange> changeText,
+        CancellationToken ct = default)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(documentPath);
+        ArgumentNullException.ThrowIfNull(changeText);
+
+        var loadedWorkspace = await Load(
+            targetPath,
+            ct: ct);
+        var diagnostics = new ConcurrentQueue<string>(loadedWorkspace.Diagnostics);
+        var normalizedTargetPath = _fileSystem.Path.GetFullPath(targetPath);
+        var absoluteDocumentPath = _fileSystem.Path.GetFullPath(documentPath);
+        var activeWorkspace = _activeWorkspaces[normalizedTargetPath];
+
+        await activeWorkspace.Gate.WaitAsync(ct);
+
+        try
+        {
+            var documentIds = FindDocumentIds(
+                activeWorkspace.ActiveSolution,
+                absoluteDocumentPath);
+            if (documentIds.Count == 0)
+            {
+                return new WorkspaceTextUpdateResult(
+                    false,
+                    diagnostics.ToArray(),
+                    $"Unable to locate document '{absoluteDocumentPath}' in workspace '{normalizedTargetPath}'.");
+            }
+
+            var primaryDocument = activeWorkspace.ActiveSolution.GetDocument(documentIds[0]);
+            if (primaryDocument is null)
+            {
+                return new WorkspaceTextUpdateResult(
+                    false,
+                    diagnostics.ToArray(),
+                    $"Unable to load document '{absoluteDocumentPath}' from workspace '{normalizedTargetPath}'.");
+            }
+
+            var sourceText = await primaryDocument.GetTextAsync(ct);
+            var requestedChange = changeText(sourceText);
+            ArgumentNullException.ThrowIfNull(requestedChange);
+
+            if (!requestedChange.Success)
+            {
+                return new WorkspaceTextUpdateResult(
+                    false,
+                    diagnostics.ToArray(),
+                    requestedChange.ErrorMessage);
+            }
+
+            var updatedText = requestedChange.UpdatedText
+                              ?? throw new InvalidOperationException("Successful workspace text changes must supply updated text.");
+            if (!activeWorkspace.Workspace.CanApplyChange(ApplyChangesKind.ChangeDocument))
+            {
+                return new WorkspaceTextUpdateResult(
+                    false,
+                    diagnostics.ToArray(),
+                    $"Workspace '{normalizedTargetPath}' does not support document text changes.");
+            }
+
+            var updatedSolution = activeWorkspace.ActiveSolution;
+
+            foreach (var documentId in documentIds)
+            {
+                updatedSolution = updatedSolution.WithDocumentText(
+                    documentId,
+                    updatedText,
+                    PreservationMode.PreserveIdentity);
+            }
+
+            if (!activeWorkspace.Workspace.TryApplyChanges(updatedSolution))
+            {
+                return new WorkspaceTextUpdateResult(
+                    false,
+                    diagnostics.ToArray(),
+                    $"Roslyn could not apply changes to document '{absoluteDocumentPath}'.");
+            }
+
+            activeWorkspace.UpdateActiveSolution(activeWorkspace.Workspace.CurrentSolution);
+
+            return new WorkspaceTextUpdateResult(
+                true,
+                diagnostics.ToArray(),
+                string.Empty);
+        }
+        finally
+        {
+            activeWorkspace.Gate.Release();
+        }
+    }
+
     private async Task<MSBuildWorkspace> OpenWorkspace(
         string absoluteTargetPath,
         ConcurrentQueue<string> diagnostics,

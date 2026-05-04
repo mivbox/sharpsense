@@ -5,6 +5,7 @@ using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.Inheritors.GetInheritors.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
+using SharpSense.Application.Refactoring.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Application.Shared.Models;
@@ -50,7 +51,8 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool, Description("Return the immediate callers, callees, and inheritance breadth for a persisted node ID.")]
+    [McpServerTool]
+    [Description("Gets an instant 360-degree architectural snapshot of a node. Returns immediate callers, callees, and inheritance hierarchy for a persisted node ID. Use this to understand a node's immediate context and blast radius before deep tracing.")]
     public static async Task<string> context(
         IContextService contextService,
         [Description("The persisted integer ID of the target node.")] int nodeId,
@@ -146,6 +148,35 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
+    [McpServerTool, Description("Acts like Ctrl+R, R in JetBrains Rider. Use this to semantically rename a method, class, or property. It automatically updates all callers and references across the entire codebase. Provide ONLY the new identifier name (e.g., 'ProcessPaymentAsync'), not a full signature.")]
+    public static async Task<string> refactor_symbol(
+        IRefactorSymbolService refactorSymbolService,
+        [Description("The persisted integer ID of the symbol to rename.")] int nodeId,
+        [Description("The new identifier name only, such as 'ProcessPaymentAsync'. Do not provide a signature or code block.")] string newName,
+        CancellationToken ct = default)
+    {
+        using var activity = SharpSenseTraceSpan.Start("mcp.tool.refactor_symbol");
+        activity.AddTag("mcp.tool", "refactor_symbol");
+        activity.AddTag("refactor.node_id", nodeId);
+
+        try
+        {
+            var result = await refactorSymbolService.RenameSymbol(
+                nodeId,
+                newName,
+                ct: ct);
+
+            activity.AddTag("refactor.success", result.Success);
+            activity.AddTag("refactor.modified_file.count", result.ModifiedFilePaths.Length);
+            return TokenObjectNotation.SerializeRefactorResult(result);
+        }
+        catch (Exception ex)
+        {
+            activity.RecordExceptionAndErrorStatus(ex);
+            throw;
+        }
+    }
+
     [McpServerTool, Description("Find direct derived classes or interface implementers for a persisted node ID.")]
     public static async Task<string> get_inheritors(
         IQueryHandler<GetInheritorsQuery, CodeNodeResult[]> inheritorsHandler,
@@ -170,8 +201,8 @@ internal sealed class SharpSenseMcpTools
         {
             activity.RecordExceptionAndErrorStatus(ex);
             throw;
-        }
     }
+}
 
     private static CodeNodeResult[] MapImpactedNodes(IEnumerable<ImpactedCodeNode> impactedNodes)
         => [.. impactedNodes.Select(static node => new CodeNodeResult(

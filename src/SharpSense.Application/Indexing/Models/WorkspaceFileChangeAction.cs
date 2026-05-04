@@ -5,5 +5,7 @@ public enum WorkspaceFileChangeAction
     Added,
     Modified,
     Deleted,
-    Renamed
+    Renamed,
+    DirectoryDeleted,
+    DirectoryRenamed
 }
