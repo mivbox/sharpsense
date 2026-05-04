@@ -12,17 +12,6 @@ namespace SharpSense.Infrastructure.Indexing.Watching;
 public sealed class WorkspaceWatcher : IWorkspaceWatcher
 {
     private static readonly ILogger _logger = Log.ForContext<WorkspaceWatcher>();
-    private static readonly HashSet<string> _ignoredDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".git",
-        "bin",
-        "obj",
-        ".vs",
-        ".idea",
-        "node_modules",
-        "TestResults"
-    };
-
     private readonly IFileSystem _fileSystem;
     private readonly IFileSystemWatcherFactory _watcherFactory;
     private readonly TimeSpan _debounceDelay;
@@ -61,18 +50,26 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         var normalizedRepositoryRoot = _fileSystem.Path.TrimEndingDirectorySeparator(
             _fileSystem.Path.GetFullPath(repositoryRoot));
         using var signal = new SemaphoreSlim(0, int.MaxValue);
-        using var watcher = CreateWatcher(normalizedRepositoryRoot);
+        var watchers = CreateWatchers(normalizedRepositoryRoot);
+        using var fileWatcher = watchers.FileWatcher;
+        using var directoryWatcher = watchers.DirectoryWatcher;
         var knownDirectories = CreateKnownDirectories(normalizedRepositoryRoot);
         var pendingChanges = new ConcurrentQueue<WorkspaceFileChange>();
         var pendingChangeCount = 0;
         Exception? fatalWatchException = null;
 
-        watcher.Changed += (_, args) => HandleChanged(args.FullPath);
-        watcher.Created += (_, args) => HandleCreated(args.FullPath);
-        watcher.Deleted += (_, args) => HandleDeleted(args.FullPath);
-        watcher.Renamed += (_, args) => HandleRenamed(args.OldFullPath, args.FullPath);
-        watcher.Error += (_, args) => RequestFatalError(args.GetException());
-        watcher.EnableRaisingEvents = true;
+        fileWatcher.Changed += (_, args) => HandleChanged(args.FullPath);
+        fileWatcher.Created += (_, args) => HandleCreated(args.FullPath);
+        fileWatcher.Deleted += (_, args) => HandleDeleted(args.FullPath);
+        fileWatcher.Renamed += (_, args) => HandleRenamed(args.OldFullPath, args.FullPath);
+        fileWatcher.Error += (_, args) => RequestFatalError(args.GetException());
+        directoryWatcher.Changed += (_, args) => HandleChanged(args.FullPath);
+        directoryWatcher.Created += (_, args) => HandleCreated(args.FullPath);
+        directoryWatcher.Deleted += (_, args) => HandleDeleted(args.FullPath);
+        directoryWatcher.Renamed += (_, args) => HandleRenamed(args.OldFullPath, args.FullPath);
+        directoryWatcher.Error += (_, args) => RequestFatalError(args.GetException());
+        fileWatcher.EnableRaisingEvents = true;
+        directoryWatcher.EnableRaisingEvents = true;
 
         while (!ct.IsCancellationRequested)
         {
@@ -107,11 +104,17 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
 
         return;
 
+        bool IsFastPathIgnored(string path)
+        {
+            var sep = _fileSystem.Path.DirectorySeparatorChar;
+            return path.Contains($"{sep}.git{sep}", StringComparison.OrdinalIgnoreCase) ||
+                   path.EndsWith($"{sep}.git", StringComparison.OrdinalIgnoreCase);
+        }
+
         void HandleChanged(string fullPath)
         {
-            if (_fileSystem.Directory.Exists(fullPath))
+            if (IsFastPathIgnored(fullPath) || _fileSystem.Directory.Exists(fullPath))
             {
-                AddKnownDirectoryTree(knownDirectories, fullPath);
                 return;
             }
 
@@ -122,6 +125,11 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
 
         void HandleCreated(string fullPath)
         {
+            if (IsFastPathIgnored(fullPath))
+            {
+                return;
+            }
+
             if (_fileSystem.Directory.Exists(fullPath))
             {
                 AddKnownDirectoryTree(knownDirectories, fullPath);
@@ -135,32 +143,43 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
 
         void HandleDeleted(string fullPath)
         {
-            if (RemoveKnownDirectoryTree(knownDirectories, fullPath))
+            if (IsFastPathIgnored(fullPath))
             {
-                if (IsRelevantDirectoryPath(normalizedRepositoryRoot, fullPath))
-                {
-                    RequestFatalError(new InvalidOperationException(
-                        "Workspace watcher detected a directory deletion that requires a full reindex."));
-                }
-
                 return;
             }
 
-            EnqueueChange(new WorkspaceFileChange(
-                WorkspaceFileChangeAction.Deleted,
-                OldPath: fullPath));
+            if (RemoveKnownDirectoryTree(knownDirectories, fullPath))
+            {
+                EnqueueChange(new WorkspaceFileChange(
+                    WorkspaceFileChangeAction.DirectoryDeleted,
+                    OldPath: fullPath));
+            }
+            else
+            {
+                EnqueueChange(new WorkspaceFileChange(
+                    WorkspaceFileChangeAction.Deleted,
+                    OldPath: fullPath));
+            }
         }
 
         void HandleRenamed(
             string oldFullPath,
             string newFullPath)
         {
-            var wasDirectory = RemoveKnownDirectoryTree(knownDirectories, oldFullPath);
-            if (_fileSystem.Directory.Exists(newFullPath) || wasDirectory)
+            var oldFastPathIgnored = IsFastPathIgnored(oldFullPath);
+            var newFastPathIgnored = IsFastPathIgnored(newFullPath);
+
+            if (oldFastPathIgnored && newFastPathIgnored)
+            {
+                return;
+            }
+
+            if (RemoveKnownDirectoryTree(knownDirectories, oldFullPath) ||
+                _fileSystem.Directory.Exists(newFullPath))
             {
                 AddKnownDirectoryTree(knownDirectories, newFullPath);
-                EnqueueChanges(CreateDirectoryRenameChanges(
-                    normalizedRepositoryRoot,
+                EnqueueChange(new WorkspaceFileChange(
+                    WorkspaceFileChangeAction.DirectoryRenamed,
                     oldFullPath,
                     newFullPath));
                 return;
@@ -235,17 +254,31 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         }
     }
 
-    private IFileSystemWatcher CreateWatcher(string repositoryRoot)
+    private (IFileSystemWatcher FileWatcher, IFileSystemWatcher DirectoryWatcher) CreateWatchers(string repositoryRoot)
     {
-        var watcher = _watcherFactory.New(repositoryRoot);
-        watcher.IncludeSubdirectories = true;
-        watcher.InternalBufferSize = 64 * 1024;
-        watcher.NotifyFilter = NotifyFilters.CreationTime |
-                               NotifyFilters.DirectoryName |
-                               NotifyFilters.FileName |
-                               NotifyFilters.LastWrite |
-                               NotifyFilters.Size;
-        return watcher;
+        var fileWatcher = _watcherFactory.New(repositoryRoot);
+        fileWatcher.IncludeSubdirectories = true;
+        fileWatcher.InternalBufferSize = 64 * 1024;
+        fileWatcher.NotifyFilter = NotifyFilters.CreationTime |
+                                   NotifyFilters.FileName |
+                                   NotifyFilters.LastWrite |
+                                   NotifyFilters.Size;
+        fileWatcher.Filters.Add("*.cs");
+        fileWatcher.Filters.Add("*.ts");
+        fileWatcher.Filters.Add("*.tsx");
+        fileWatcher.Filters.Add("*.md");
+        fileWatcher.Filters.Add("*.markdown");
+        fileWatcher.Filters.Add("*.mdown");
+        fileWatcher.Filters.Add("*.mkd");
+        fileWatcher.Filters.Add("*.yaml");
+        fileWatcher.Filters.Add("*.yml");
+
+        var directoryWatcher = _watcherFactory.New(repositoryRoot);
+        directoryWatcher.IncludeSubdirectories = true;
+        directoryWatcher.InternalBufferSize = 16 * 1024;
+        directoryWatcher.NotifyFilter = NotifyFilters.DirectoryName;
+
+        return (fileWatcher, directoryWatcher);
     }
 
     private static InvalidOperationException CreateFatalWatchException(Exception exception)
@@ -266,7 +299,12 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
     private bool IsRelevantChange(
         string repositoryRoot,
         WorkspaceFileChange changedFile)
-        => changedFile.GetAffectedPaths().Any(path => IsRelevantPath(repositoryRoot, path));
+        => changedFile.ActionType switch
+        {
+            WorkspaceFileChangeAction.DirectoryDeleted or WorkspaceFileChangeAction.DirectoryRenamed
+                => changedFile.GetAffectedPaths().Any(path => IsRelevantDirectoryPath(repositoryRoot, path)),
+            _ => changedFile.GetAffectedPaths().Any(path => IsRelevantPath(repositoryRoot, path))
+        };
 
     private bool IsRelevantPath(
         string repositoryRoot,
@@ -286,13 +324,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
     }
 
     private static bool IsIgnoredPath(string relativePath)
-    {
-        var segments = relativePath.Split(
-            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
-            StringSplitOptions.RemoveEmptyEntries);
-
-        return segments.Any(_ignoredDirectoryNames.Contains);
-    }
+        => WorkspaceIndexingPathRules.IsIgnoredPath(relativePath);
 
     private bool IsRelevantDirectoryPath(
         string repositoryRoot,
@@ -307,26 +339,10 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         return true;
     }
 
-    private IEnumerable<WorkspaceFileChange> CreateDirectoryRenameChanges(
-        string repositoryRoot,
-        string oldDirectoryPath,
-        string newDirectoryPath)
+    private static bool IsTargetPath(string path)
     {
-        foreach (var newFilePath in _fileSystem.Directory.EnumerateFiles(newDirectoryPath, "*", SearchOption.AllDirectories))
-        {
-            if (!IsTargetPath(newFilePath))
-            {
-                continue;
-            }
-
-            var relativeChildPath = _fileSystem.Path.GetRelativePath(newDirectoryPath, newFilePath);
-            var oldFilePath = _fileSystem.Path.Combine(oldDirectoryPath, relativeChildPath);
-
-            foreach (var changedFile in CreateRenameChanges(repositoryRoot, oldFilePath, newFilePath))
-            {
-                yield return changedFile;
-            }
-        }
+        return string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase) ||
+               MarkdownIndexer.IsMarkdownDocumentPath(path);
     }
 
     private IEnumerable<WorkspaceFileChange> CreateRenameChanges(
@@ -359,12 +375,6 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
                 WorkspaceFileChangeAction.Added,
                 NewPath: newPath);
         }
-    }
-
-    private static bool IsTargetPath(string path)
-    {
-        return string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase) ||
-               MarkdownIndexer.IsMarkdownDocumentPath(path);
     }
 
     private ConcurrentDictionary<string, byte> CreateKnownDirectories(string repositoryRoot)

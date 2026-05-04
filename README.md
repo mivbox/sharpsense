@@ -60,7 +60,7 @@ dotnet run --project src/SharpSense.Cli -- analyze src/SharpSense/SharpSense.sln
 ## Watch mode behaviour
 
 - `analyze --watch` performs an initial full index, then applies incremental updates for changed files.
-- Incremental updates currently track C# and Markdown file changes only.
-- Supported file actions are add, modify, delete, and rename.
+- Incremental updates track C# and Markdown file changes plus directory deletes and renames that affect those files.
+- Supported watcher actions are add, modify, delete, rename, directory delete, and directory rename.
 - `sharpsense.yaml`, `.sln`, and `.csproj` changes do not trigger incremental reconfiguration; rerun a full index after changing those files.
 - Watch mode refreshes changed nodes and the outgoing dependency edges owned by the changed files. After broader API or symbol refactors, a full reindex is still the safest way to refresh the entire graph.

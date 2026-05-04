@@ -29,4 +29,16 @@ public interface IKnowledgeGraphRepository
         IReadOnlyList<string> relativeFilePaths,
         ExtractedNodes extractedNodes,
         CancellationToken ct);
+
+    /// <summary>
+    /// Returns the normalized repository-relative persisted document paths beneath the supplied repository-relative
+    /// directory path. This allows incremental directory events to be expanded into file-level replacements without
+    /// coupling the Application layer to persistence tables or SQL shape.
+    /// </summary>
+    /// <param name="relativeDirectoryPath">The repository-relative directory whose persisted document paths should be returned.</param>
+    /// <param name="ct"><see cref="CancellationToken"/> for the current read operation.</param>
+    /// <returns>The persisted repository-relative document paths beneath the directory.</returns>
+    Task<IReadOnlyList<string>> GetPersistedDocumentPathsUnderDirectory(
+        string relativeDirectoryPath,
+        CancellationToken ct);
 }

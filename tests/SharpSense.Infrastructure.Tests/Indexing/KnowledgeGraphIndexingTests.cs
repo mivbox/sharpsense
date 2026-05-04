@@ -278,6 +278,103 @@ public sealed class KnowledgeGraphIndexingTests
         context.Documents.Should().NotContain(document => document.RelativePath == "docs/DocB.md");
     }
 
+    [Fact]
+    public async Task WhenUpdatingWorkspaceFilesForDeletedDirectory_ThenRemovesContainedDocumentNodes()
+    {
+        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
+            UseMigrations: true,
+            LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(
+            ct: TestContext.Current.CancellationToken);
+        var indexing = CreateIndexing(
+            inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
+            fullMarkdownNodes: CreateNestedDirectoryDocuments(),
+            incrementalMarkdownNodes: EmptyNodes(),
+            workspacePaths: CreateWorkspacePaths());
+
+        await indexing.Index(new IndexTargetCommand(), TestContext.Current.CancellationToken);
+
+        await indexing.UpdateIncremental(
+            new UpdateWorkspaceFilesCommand(
+                [
+                    new WorkspaceFileChange(
+                        WorkspaceFileChangeAction.DirectoryDeleted,
+                        OldPath: "/repo/docs/Legacy")
+                ]),
+            TestContext.Current.CancellationToken);
+        context.ChangeTracker.Clear();
+
+        var deletedNodeCount = await context.CodeNodes
+            .AsNoTracking()
+            .Join(
+                context.Documents.AsNoTracking(),
+                codeNode => codeNode.DocumentId,
+                document => document.Id,
+                (codeNode, document) => new { codeNode, document })
+            .CountAsync(
+                candidate => candidate.document.RelativePath.StartsWith("docs/Legacy/"),
+                TestContext.Current.CancellationToken);
+        var documentPaths = await context.Documents
+            .AsNoTracking()
+            .Select(static document => document.RelativePath)
+            .ToArrayAsync(TestContext.Current.CancellationToken);
+
+        deletedNodeCount.Should().Be(0);
+        documentPaths.Should().NotContain(path => path.StartsWith("docs/Legacy/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task WhenUpdatingWorkspaceFilesForRenamedDirectory_ThenReplacesContainedDocumentPaths()
+    {
+        var expectedDiscoveryGlobs = new[] { "**/*.cs", "**/*.md", "**/*.markdown", "**/*.mdown", "**/*.mkd" };
+        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
+            UseMigrations: true,
+            LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(
+            ct: TestContext.Current.CancellationToken);
+        var workspaceFileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
+        workspaceFileDiscoverer.Setup(candidate => candidate.GetAllowedFiles(
+                "/repo/docs/Current",
+                It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(expectedDiscoveryGlobs)),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+            [
+                new DiscoveredFile(
+                    "/repo/docs/Current/Guide.md",
+                    "docs/Current/Guide.md"),
+                new DiscoveredFile(
+                    "/repo/docs/Current/node_modules/Generated.md",
+                    "docs/Current/node_modules/Generated.md")
+            ]);
+        var indexing = CreateIndexing(
+            inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
+            fullMarkdownNodes: CreateLegacyGuideDocuments(),
+            incrementalMarkdownNodes: CreateCurrentGuideDocuments(),
+            workspacePaths: CreateWorkspacePaths(),
+            workspaceFileDiscoverer: workspaceFileDiscoverer.Object);
+
+        await indexing.Index(new IndexTargetCommand(), TestContext.Current.CancellationToken);
+
+        await indexing.UpdateIncremental(
+            new UpdateWorkspaceFilesCommand(
+                [
+                    new WorkspaceFileChange(
+                        WorkspaceFileChangeAction.DirectoryRenamed,
+                        OldPath: "/repo/docs/Legacy",
+                        NewPath: "/repo/docs/Current")
+                ]),
+            TestContext.Current.CancellationToken);
+        context.ChangeTracker.Clear();
+        var documentPaths = await context.Documents
+            .AsNoTracking()
+            .Select(static document => document.RelativePath)
+            .ToArrayAsync(TestContext.Current.CancellationToken);
+
+        documentPaths.Should().Contain("docs/Current/Guide.md");
+        documentPaths.Should().NotContain("docs/Legacy/Guide.md");
+        workspaceFileDiscoverer.VerifyAll();
+    }
+
     private static ExtractedNodes CreateGuideAndReferenceDocuments()
         => new(
             [],
@@ -398,6 +495,60 @@ public sealed class KnowledgeGraphIndexingTests
             [],
             []);
 
+    private static ExtractedNodes CreateNestedDirectoryDocuments()
+        => new(
+            [],
+            [
+                new IndexedCodeNode(
+                    "code:doc:docs/Legacy/Guide.md#document-root",
+                    null,
+                    "docs/Legacy/Guide.md#document-root",
+                    "Guide",
+                    NodeType.Document,
+                    "docs/Legacy/Guide.md",
+                    1,
+                    1,
+                    "Legacy guide.")
+            ],
+            [],
+            []);
+
+    private static ExtractedNodes CreateLegacyGuideDocuments()
+        => new(
+            [],
+            [
+                new IndexedCodeNode(
+                    "code:doc:docs/Legacy/Guide.md#document-root",
+                    null,
+                    "docs/Legacy/Guide.md#document-root",
+                    "Guide",
+                    NodeType.Document,
+                    "docs/Legacy/Guide.md",
+                    1,
+                    1,
+                    "Legacy guide.")
+            ],
+            [],
+            []);
+
+    private static ExtractedNodes CreateCurrentGuideDocuments()
+        => new(
+            [],
+            [
+                new IndexedCodeNode(
+                    "code:doc:docs/Current/Guide.md#document-root",
+                    null,
+                    "docs/Current/Guide.md#document-root",
+                    "Guide",
+                    NodeType.Document,
+                    "docs/Current/Guide.md",
+                    1,
+                    1,
+                    "Current guide.")
+            ],
+            [],
+            []);
+
     private static ExtractedNodes EmptyNodes()
         => new([], [], [], []);
 
@@ -436,7 +587,8 @@ public sealed class KnowledgeGraphIndexingTests
         IDbContextFactory<SharpSenseDbContext> dbContextFactory,
         ExtractedNodes fullMarkdownNodes,
         ExtractedNodes incrementalMarkdownNodes,
-        Mock<IIndexingWorkspacePaths> workspacePaths)
+        Mock<IIndexingWorkspacePaths> workspacePaths,
+        IWorkspaceFileDiscoverer? workspaceFileDiscoverer = null)
     {
         var markdownExtractor = new Mock<ILanguageExtractor>(MockBehavior.Strict);
         markdownExtractor.SetupGet(candidate => candidate.ExtractorName)
@@ -467,6 +619,7 @@ public sealed class KnowledgeGraphIndexingTests
             new NoOpEmbeddingGenerator(),
             new KnowledgeGraphRepository(dbContextFactory),
             workspacePaths.Object,
+            workspaceFileDiscoverer ?? new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict).Object,
             Options.Create(new SharpSenseCliOptions
             {
                 RepositoryRoot = "/repo",
@@ -492,6 +645,7 @@ public sealed class KnowledgeGraphIndexingTests
         IEmbeddingGenerator embeddingGenerator,
         IKnowledgeGraphRepository knowledgeGraphRepository,
         IIndexingWorkspacePaths workspacePaths,
+        IWorkspaceFileDiscoverer workspaceFileDiscoverer,
         IOptions<SharpSenseCliOptions> options)
     {
         private readonly IndexTargetCommandHandler _indexTargetHandler = new(
@@ -505,6 +659,7 @@ public sealed class KnowledgeGraphIndexingTests
             extractors,
             knowledgeGraphRepository,
             workspacePaths,
+            workspaceFileDiscoverer,
             options);
 
         public Task Index(

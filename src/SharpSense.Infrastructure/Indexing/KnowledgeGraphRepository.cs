@@ -79,6 +79,30 @@ public sealed class KnowledgeGraphRepository(
         }
     }
 
+    public async Task<IReadOnlyList<string>> GetPersistedDocumentPathsUnderDirectory(
+        string relativeDirectoryPath,
+        CancellationToken ct)
+    {
+        var normalizedDirectoryPath = NormalizeDirectoryPath(relativeDirectoryPath);
+        await using var context = await dbContextFactory.CreateDbContextAsync(ct);
+        var documentQuery = context.Documents
+            .AsNoTracking()
+            .Select(static document => document.RelativePath);
+
+        if (!string.IsNullOrEmpty(normalizedDirectoryPath))
+        {
+            var directoryPrefix = normalizedDirectoryPath + "/";
+            documentQuery = documentQuery.Where(relativePath => relativePath.StartsWith(directoryPrefix));
+        }
+
+        return
+        [
+            .. await documentQuery
+                .OrderBy(static relativePath => relativePath)
+                .ToArrayAsync(ct)
+        ];
+    }
+
     private static async Task<ExtractedNodes> LoadCurrentSnapshot(
         SharpSenseDbContext context,
         CancellationToken ct)
@@ -583,6 +607,9 @@ public sealed class KnowledgeGraphRepository(
 
     private static string NormalizeRelativePath(string path)
         => path.Trim().Replace('\\', '/').Trim('/');
+
+    private static string NormalizeDirectoryPath(string path)
+        => string.IsNullOrWhiteSpace(path) ? string.Empty : NormalizeRelativePath(path);
 
     private static string GetDirectoryPath(string relativePath)
     {

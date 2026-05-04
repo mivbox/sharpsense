@@ -31,7 +31,7 @@ public sealed record WorkspaceFileChange(
     {
         return ActionType switch
         {
-            WorkspaceFileChangeAction.Deleted => null,
+            WorkspaceFileChangeAction.Deleted or WorkspaceFileChangeAction.DirectoryDeleted => null,
             _ => !string.IsNullOrWhiteSpace(NewPath) ? NewPath : OldPath
         };
     }
