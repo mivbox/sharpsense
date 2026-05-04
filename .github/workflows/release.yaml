@@ -34,6 +34,11 @@ jobs:
           version_format: "${major}.${minor}.${patch}"
           bump_each_commit: false
 
+      - name: Build Project
+        run: >
+          dotnet build ./src/SharpSense.Cli/SharpSense.Cli.csproj
+          -c Release
+
       - name: Pack NuGet Tool
         run: >
           dotnet pack ./src/SharpSense.Cli/SharpSense.Cli.csproj

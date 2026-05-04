@@ -8,6 +8,8 @@ COPILOT_FLAGS=(
   "--allow-tool" "shell(git:status,git:diff,git:add,git:commit)"
   "--allow-tool" "sharpsense(semantic_search),sharpsense(trace_node)"
   "--deny-tool" "shell(git:push,rm)"
+  "--deny-tool" "shell(grep,find,rg,ag)"
+  "--deny-tool" "search_files"
 )
 
 if [[ -f "mcp-config.json" ]]; then
