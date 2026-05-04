@@ -359,7 +359,7 @@ public sealed class CliCommandTests
             });
 
         var exitCode = await app.RunAsync(
-            ["refactor", "--node-id", "42", "--new-name", newName, "--repo-root", RepositoryRoot],
+            ["refactor", "--node-id", "42", "--new-name", newName, "--repo-root", RepositoryRoot, "--toon"],
             ct);
 
         exitCode.Should().Be(0);
@@ -402,7 +402,7 @@ public sealed class CliCommandTests
             });
 
         var exitCode = await app.RunAsync(
-            ["refactor", "--node-id", "42", "--new-name", newName, "--target", "src/Fixture.App/Fixture.App.csproj", "--repo-root", RepositoryRoot],
+            ["refactor", "--node-id", "42", "--new-name", newName, "--target", "src/Fixture.App/Fixture.App.csproj", "--repo-root", RepositoryRoot, "--toon"],
             ct);
 
         exitCode.Should().Be(0);
