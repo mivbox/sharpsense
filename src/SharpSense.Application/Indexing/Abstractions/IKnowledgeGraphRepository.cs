@@ -31,6 +31,26 @@ public interface IKnowledgeGraphRepository
         CancellationToken ct);
 
     /// <summary>
+    /// Returns the persisted code nodes currently stored for the active repository. This lets the indexing slice reuse
+    /// existing vectors and detect no-op full analysis runs without exposing table details.
+    /// </summary>
+    /// <param name="ct"><see cref="CancellationToken"/> for the current read operation.</param>
+    /// <returns>The persisted code nodes for the current repository.</returns>
+    Task<IReadOnlyList<IndexedCodeNode>> GetPersistedCodeNodes(CancellationToken ct);
+
+    /// <summary>
+    /// Returns the persisted code nodes owned by the supplied repository-relative files. This lets incremental indexing
+    /// reuse stored vectors and compare changed files against the current database state without coupling callers to SQL
+    /// queries or persistence records.
+    /// </summary>
+    /// <param name="relativeFilePaths">The repository-relative files whose persisted code nodes should be returned.</param>
+    /// <param name="ct"><see cref="CancellationToken"/> for the current read operation.</param>
+    /// <returns>The persisted code nodes for the supplied repository-relative files.</returns>
+    Task<IReadOnlyList<IndexedCodeNode>> GetPersistedCodeNodes(
+        IReadOnlyList<string> relativeFilePaths,
+        CancellationToken ct);
+
+    /// <summary>
     /// Returns the normalized repository-relative persisted document paths beneath the supplied repository-relative
     /// directory path. This allows incremental directory events to be expanded into file-level replacements without
     /// coupling the Application layer to persistence tables or SQL shape.

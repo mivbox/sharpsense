@@ -388,7 +388,8 @@ public sealed class KnowledgeGraphIndexingTests
                     "docs/Guide.md",
                     1,
                     1,
-                    "See [Reference](./Reference.md)."),
+                    "See [Reference](./Reference.md).",
+                    "Guide\nSee [Reference](./Reference.md)."),
                 new IndexedCodeNode(
                     "code:doc:docs/Reference.md#document-root",
                     null,
@@ -398,7 +399,8 @@ public sealed class KnowledgeGraphIndexingTests
                     "docs/Reference.md",
                     1,
                     1,
-                    "Reference content.")
+                    "Reference content.",
+                    "Reference\nReference content.")
             ],
             [
                 new IndexedDependency(
@@ -421,7 +423,8 @@ public sealed class KnowledgeGraphIndexingTests
                     "docs/Guide.md",
                     1,
                     3,
-                    "Getting started guide.")
+                    "Getting started guide.",
+                    "Getting Started\nGetting started guide.")
             ],
             [],
             []);
@@ -439,7 +442,8 @@ public sealed class KnowledgeGraphIndexingTests
                     "docs/Guide.md",
                     1,
                     2,
-                    "Watch mode should refresh this guide.")
+                    "Watch mode should refresh this guide.",
+                    "Incremental Guide\nWatch mode should refresh this guide.")
             ],
             [],
             []);
@@ -457,7 +461,8 @@ public sealed class KnowledgeGraphIndexingTests
                     "docs/DocA.md",
                     1,
                     1,
-                    "See [DocB](./DocB.md)."),
+                    "See [DocB](./DocB.md).",
+                    "DocA\nSee [DocB](./DocB.md)."),
                 new IndexedCodeNode(
                     "code:doc:docs/DocB.md#document-root",
                     null,
@@ -467,7 +472,8 @@ public sealed class KnowledgeGraphIndexingTests
                     "docs/DocB.md",
                     1,
                     1,
-                    "Doc B reference content.")
+                    "Doc B reference content.",
+                    "DocB\nDoc B reference content.")
             ],
             [
                 new IndexedDependency(
@@ -490,7 +496,8 @@ public sealed class KnowledgeGraphIndexingTests
                     "docs/DocB.md",
                     1,
                     1,
-                    "Doc B reference content updated.")
+                    "Doc B reference content updated.",
+                    "DocB\nDoc B reference content updated.")
             ],
             [],
             []);
@@ -508,7 +515,8 @@ public sealed class KnowledgeGraphIndexingTests
                     "docs/Legacy/Guide.md",
                     1,
                     1,
-                    "Legacy guide.")
+                    "Legacy guide.",
+                    "Guide\nLegacy guide.")
             ],
             [],
             []);
@@ -526,7 +534,8 @@ public sealed class KnowledgeGraphIndexingTests
                     "docs/Legacy/Guide.md",
                     1,
                     1,
-                    "Legacy guide.")
+                    "Legacy guide.",
+                    "Guide\nLegacy guide.")
             ],
             [],
             []);
@@ -544,7 +553,8 @@ public sealed class KnowledgeGraphIndexingTests
                     "docs/Current/Guide.md",
                     1,
                     1,
-                    "Current guide.")
+                    "Current guide.",
+                    "Guide\nCurrent guide.")
             ],
             [],
             []);
@@ -657,6 +667,7 @@ public sealed class KnowledgeGraphIndexingTests
 
         private readonly UpdateWorkspaceFilesCommandHandler _updateWorkspaceFilesHandler = new(
             extractors,
+            embeddingGenerator,
             knowledgeGraphRepository,
             workspacePaths,
             workspaceFileDiscoverer,

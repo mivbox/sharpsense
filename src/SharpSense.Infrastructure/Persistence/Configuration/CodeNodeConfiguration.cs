@@ -55,6 +55,12 @@ public sealed class CodeNodeConfiguration : IEntityTypeConfiguration<CodeNodeRec
         builder.Property(codeNode => codeNode.Summary)
             .IsRequired();
 
+        builder.Property(codeNode => codeNode.SearchText)
+            .IsRequired();
+
+        builder.Property(codeNode => codeNode.BodyHash)
+            .HasMaxLength(128);
+
         builder.Property(codeNode => codeNode.VectorEmbedding)
             .HasColumnType("BLOB")
             .HasConversion(VectorEmbeddingConverter, VectorEmbeddingComparer);

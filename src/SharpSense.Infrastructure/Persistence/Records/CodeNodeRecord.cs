@@ -22,5 +22,9 @@ public sealed class CodeNodeRecord
 
     public string Summary { get; set; } = string.Empty;
 
+    public string SearchText { get; set; } = string.Empty;
+
+    public string? BodyHash { get; set; }
+
     public float[]? VectorEmbedding { get; set; }
 }

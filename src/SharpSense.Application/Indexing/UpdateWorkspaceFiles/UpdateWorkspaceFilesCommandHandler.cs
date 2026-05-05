@@ -11,6 +11,7 @@ namespace SharpSense.Application.Indexing.UpdateWorkspaceFiles;
 
 public sealed class UpdateWorkspaceFilesCommandHandler(
     IEnumerable<ILanguageExtractor> extractors,
+    IEmbeddingGenerator embeddingGenerator,
     IKnowledgeGraphRepository knowledgeGraphRepository,
     IIndexingWorkspacePaths workspacePaths,
     IWorkspaceFileDiscoverer workspaceFileDiscoverer,
@@ -50,6 +51,26 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
                 ct);
 
             extractedNodes = NormalizePersistedPaths(extractedNodes);
+            if (extractedNodes.CodeNodes.Count > 0)
+            {
+                if (!_cliOptions.SkipEmbeddings)
+                {
+                    command.Progress?.Report(new IndexingProgress("Embedding phase...", changedFilePaths.Length, changedFilePaths.Length));
+                }
+
+                var persistedCodeNodes = await knowledgeGraphRepository.GetPersistedCodeNodes(changedFilePaths, ct);
+                extractedNodes = extractedNodes with
+                {
+                    CodeNodes = await CodeNodeEmbeddingCoordinator.Populate(
+                        extractedNodes.CodeNodes,
+                        persistedCodeNodes,
+                        _cliOptions.SkipEmbeddings,
+                        embeddingGenerator,
+                        progress: null,
+                        ct)
+                };
+            }
+
             command.Progress?.Report(new IndexingProgress("Persisting incremental index...", changedFilePaths.Length, changedFilePaths.Length));
 
             await knowledgeGraphRepository.ReplaceWorkspaceFiles(changedFilePaths, extractedNodes, ct);

@@ -96,7 +96,7 @@ public sealed class HybridSearcher(
                 .Where(codeNode =>
                     codeNode.DisplayName.Contains(query.SearchText) ||
                     codeNode.FullyQualifiedName.Contains(query.SearchText) ||
-                    codeNode.Summary.Contains(query.SearchText) ||
+                    codeNode.SearchText.Contains(query.SearchText) ||
                     codeNode.RelativeFilePath.Contains(query.SearchText))
                 .OrderBy(codeNode => codeNode.FullyQualifiedName)
                 .ThenBy(codeNode => codeNode.Id)
@@ -282,7 +282,7 @@ public sealed class HybridSearcher(
             score += 70f;
         }
 
-        if (Contains(codeNode.Summary, searchText))
+        if (Contains(codeNode.SearchText, searchText))
         {
             score += 30f;
         }
@@ -304,7 +304,7 @@ public sealed class HybridSearcher(
                 score += 12f;
             }
 
-            if (Contains(codeNode.Summary, token))
+            if (Contains(codeNode.SearchText, token))
             {
                 score += 6f;
             }

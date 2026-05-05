@@ -14,4 +14,6 @@ public sealed record IndexedCodeNode(
     int StartLine,
     int EndLine,
     string Summary,
+    string SearchText,
+    string? BodyHash = null,
     float[]? VectorEmbedding = null);
