@@ -10,6 +10,7 @@ internal static class CodeNodeEmbeddingCoordinator
         IReadOnlyList<IndexedCodeNode> codeNodes,
         IReadOnlyList<IndexedCodeNode> persistedCodeNodes,
         bool skipEmbeddings,
+        bool disableCache,
         IEmbeddingGenerator embeddingGenerator,
         IProgress<EmbeddingGenerationProgress>? progress,
         CancellationToken ct)
@@ -23,16 +24,19 @@ internal static class CodeNodeEmbeddingCoordinator
             return [];
         }
 
-        var persistedCodeNodesByCanonicalId = persistedCodeNodes.ToDictionary(
-            static codeNode => codeNode.CanonicalId,
-            StringComparer.Ordinal);
+        var persistedCodeNodesByCanonicalId = disableCache || persistedCodeNodes.Count == 0
+            ? null
+            : persistedCodeNodes.ToDictionary(
+                static codeNode => codeNode.CanonicalId,
+                StringComparer.Ordinal);
         var updatedCodeNodes = new IndexedCodeNode[codeNodes.Count];
         var embeddingRequests = new List<(int Index, string SearchText)>();
 
         for (var index = 0; index < codeNodes.Count; index++)
         {
             var codeNode = codeNodes[index];
-            if (persistedCodeNodesByCanonicalId.TryGetValue(codeNode.CanonicalId, out var persistedCodeNode) &&
+            if (persistedCodeNodesByCanonicalId is not null &&
+                persistedCodeNodesByCanonicalId.TryGetValue(codeNode.CanonicalId, out var persistedCodeNode) &&
                 CanReuseEmbedding(codeNode, persistedCodeNode))
             {
                 updatedCodeNodes[index] = codeNode with

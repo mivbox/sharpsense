@@ -54,13 +54,16 @@ public sealed class IndexTargetCommandHandler(
                     command.Progress?.Report(new IndexingProgress("Embedding phase...", projectCount, projectCount));
                 }
 
-                var persistedCodeNodes = await knowledgeGraphRepository.GetPersistedCodeNodes(ct);
+                var persistedCodeNodes = _cliOptions.DisableEmbeddingCache
+                    ? []
+                    : await knowledgeGraphRepository.GetPersistedCodeNodes(ct);
                 extractedNodes = extractedNodes with
                 {
                     CodeNodes = await CodeNodeEmbeddingCoordinator.Populate(
                         extractedNodes.CodeNodes,
                         persistedCodeNodes,
                         _cliOptions.SkipEmbeddings,
+                        _cliOptions.DisableEmbeddingCache,
                         embeddingGenerator,
                         command.EmbeddingProgress,
                         ct)

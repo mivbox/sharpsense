@@ -54,13 +54,14 @@ sharpsense analyze src/SharpSense.Cli/SharpSense.Cli.csproj
 Useful options:
 
 - `--repo-root <path>`: override the repository root used for relative paths and persistence.
+- `--no-cache`: ignore persisted embedding reuse and force fresh embedding generation for analyzed nodes.
 - `--no-embeddings`: skip embedding generation during the indexing pass.
 - `-v`, `--verbose`: enable verbose logging.
 
 Example:
 
 ```bash
-sharpsense analyze SharpSense.sln --repo-root /Users/me/src/sharpsense --no-embeddings -v
+sharpsense analyze SharpSense.sln --repo-root /Users/me/src/sharpsense --no-cache -v
 ```
 
 ## Watch mode

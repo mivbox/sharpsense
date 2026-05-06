@@ -58,13 +58,16 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
                     command.Progress?.Report(new IndexingProgress("Embedding phase...", changedFilePaths.Length, changedFilePaths.Length));
                 }
 
-                var persistedCodeNodes = await knowledgeGraphRepository.GetPersistedCodeNodes(changedFilePaths, ct);
+                var persistedCodeNodes = _cliOptions.DisableEmbeddingCache
+                    ? []
+                    : await knowledgeGraphRepository.GetPersistedCodeNodes(changedFilePaths, ct);
                 extractedNodes = extractedNodes with
                 {
                     CodeNodes = await CodeNodeEmbeddingCoordinator.Populate(
                         extractedNodes.CodeNodes,
                         persistedCodeNodes,
                         _cliOptions.SkipEmbeddings,
+                        _cliOptions.DisableEmbeddingCache,
                         embeddingGenerator,
                         progress: null,
                         ct)

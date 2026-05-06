@@ -264,6 +264,75 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
     }
 
     [Fact]
+    public async Task WhenHandleWithNoCacheAndMatchingPersistedFingerprint_ThenRegeneratesEmbedding()
+    {
+        var expectedChangedPaths = new[] { "src/App/Feature.cs" };
+        var expectedEmbedding = new[] { 5f, 1f };
+        const string bodyHash = "hash-1";
+        const string expectedSearchText = "Feature.Run()\nRuns the feature.";
+        var command = new UpdateWorkspaceFilesCommand(
+            [
+                new WorkspaceFileChange(
+                    WorkspaceFileChangeAction.Modified,
+                    NewPath: "/repo/src/App/Feature.cs")
+            ]);
+        var extractor = new Mock<ILanguageExtractor>(MockBehavior.Strict);
+        extractor.SetupGet(candidate => candidate.ExtractorName)
+            .Returns("csharp");
+        extractor.Setup(candidate => candidate.ExtractIncremental(
+                It.IsAny<IncrementalExtractionContext>(),
+                CancellationToken.None))
+            .ReturnsAsync(new ExtractedNodes(
+                [],
+                [
+                    new IndexedCodeNode(
+                        "code:project-app:App.Feature.Run()",
+                        "project-app",
+                        "App.Feature.Run()",
+                        "Feature.Run()",
+                        NodeType.Method,
+                        "/repo/src/App/Feature.cs",
+                        10,
+                        20,
+                        "Runs the feature.",
+                        expectedSearchText,
+                        bodyHash)
+                ],
+                [],
+                []));
+        var embeddingGenerator = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
+        embeddingGenerator.Setup(candidate => candidate.GenerateBatch(
+                It.Is<IEnumerable<string>>(texts => texts.SequenceEqual(new[] { expectedSearchText })),
+                null,
+                CancellationToken.None))
+            .ReturnsAsync([new TextEmbedding(expectedSearchText, expectedEmbedding)]);
+        var repository = new Mock<IKnowledgeGraphRepository>(MockBehavior.Strict);
+        repository.Setup(candidate => candidate.ReplaceWorkspaceFiles(
+                It.Is<IReadOnlyList<string>>(paths => paths.SequenceEqual(expectedChangedPaths)),
+                It.Is<ExtractedNodes>(payload => payload.CodeNodes.Single().VectorEmbedding!.SequenceEqual(expectedEmbedding)),
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        var handler = CreateHandler(
+            [extractor.Object],
+            embeddingGenerator.Object,
+            repository.Object,
+            CreateWorkspacePaths().Object,
+            new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict).Object,
+            new SharpSenseCliOptions
+            {
+                TargetPath = "SharpSense.sln",
+                RepositoryRoot = "/repo",
+                DisableEmbeddingCache = true
+            });
+
+        await handler.Handle(command, CancellationToken.None);
+
+        embeddingGenerator.Verify(candidate => candidate.GenerateBatch(It.IsAny<IEnumerable<string>>(), null, CancellationToken.None), Times.Once);
+        repository.Verify(candidate => candidate.GetPersistedCodeNodes(It.IsAny<IReadOnlyList<string>>(), CancellationToken.None), Times.Never);
+        repository.Verify(candidate => candidate.ReplaceWorkspaceFiles(It.IsAny<IReadOnlyList<string>>(), It.IsAny<ExtractedNodes>(), CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
     public async Task WhenHandleWithChangedSearchTextButMatchingBodyHash_ThenRegeneratesEmbedding()
     {
         var expectedChangedPaths = new[] { "src/App/Feature.cs" };

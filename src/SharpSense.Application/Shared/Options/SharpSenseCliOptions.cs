@@ -9,4 +9,6 @@ public sealed class SharpSenseCliOptions
     public bool Watch { get; set; }
 
     public bool SkipEmbeddings { get; set; }
+
+    public bool DisableEmbeddingCache { get; set; }
 }
