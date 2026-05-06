@@ -353,17 +353,20 @@ internal sealed class NodeExtractor
 
         if (!codeNodesByCanonicalId.ContainsKey(canonicalId))
         {
+            var summary = RoslynSymbolUtilities.ExtractSummary(declarationSyntax);
             codeNodesByCanonicalId[canonicalId] = new CodeNode
             {
                 CanonicalId = canonicalId,
                 ProjectId = projectId,
                 FullyQualifiedName = RoslynSymbolUtilities.GetFullyQualifiedName(canonicalSymbol),
-                DisplayName = RoslynSymbolUtilities.GetDisplayName(canonicalSymbol),
+                    DisplayName = RoslynSymbolUtilities.GetDisplayName(canonicalSymbol),
                 NodeType = nodeType,
                 RelativeFilePath = relativeFilePath,
                 StartLine = startLine,
                 EndLine = endLine,
-                Summary = RoslynSymbolUtilities.ExtractSummary(canonicalSymbol, nodeType)
+                Summary = summary,
+                SearchText = RoslynSymbolUtilities.BuildSearchText(canonicalSymbol, summary),
+                BodyHash = RoslynSymbolUtilities.ComputeBodyHash(declarationSyntax)
             };
         }
 

@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
+using System.Security.Cryptography;
+using System.Text;
 using AwesomeAssertions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
@@ -191,6 +193,66 @@ public sealed class RoslynTargetAnalysisEngineTests
     }
 
     [Fact]
+    public async Task WhenExtractingDocumentedMethod_ThenItBuildsSemanticSearchTextAndBodyHash()
+    {
+        var fileSystem = CreateRepositoryFileSystem();
+        var workspace = CreateRepositoryWorkspace(fileSystem);
+        using var serviceProvider = CreateServiceProvider(fileSystem);
+        var engine = serviceProvider.GetRequiredService<ITargetAnalysisEngine>();
+        var fixture = CreateFixtureSolution();
+        const string documentedSource = """
+            namespace App;
+
+            public sealed class DocumentedProcessor
+            {
+                /// <summary>
+                /// Processes inbound messages.
+                /// </summary>
+                /// <remarks>
+                /// Writes audit entries and returns <see langword="null"/> when empty.
+                /// </remarks>
+                /// <param name="payload">Ignored parameter text.</param>
+                /// <returns>Ignored return text.</returns>
+                /// <exception cref="System.InvalidOperationException">Ignored exception text.</exception>
+                public string Process(string payload)
+                {
+                    return payload.Trim();
+                }
+            }
+            """;
+        var documentedDocumentId = DocumentId.CreateNewId(fixture.AppProject.Id, "DocumentedProcessor.cs");
+        var updatedSolution = fixture.Solution.AddDocument(
+            documentedDocumentId,
+            "DocumentedProcessor.cs",
+            SourceText.From(documentedSource),
+            filePath: "/repo/App/DocumentedProcessor.cs");
+
+        var payload = await engine.Extract(
+            "/repo/CommandPipelineFixture.sln",
+            updatedSolution,
+            workspace,
+            ct: TestContext.Current.CancellationToken);
+        var documentedMethod = payload.CodeNodes.Should()
+            .ContainSingle(codeNode => codeNode.FullyQualifiedName == "App.DocumentedProcessor.Process(string)")
+            .Subject;
+        var fallbackMethod = payload.CodeNodes.Should()
+            .ContainSingle(codeNode => codeNode.FullyQualifiedName == "App.MessageConsumer.Render()")
+            .Subject;
+        var interfaceMethod = payload.CodeNodes.Should()
+            .ContainSingle(codeNode => codeNode.FullyQualifiedName == "Contracts.IMessageProvider.GetMessage()")
+            .Subject;
+
+        documentedMethod.Summary.Should().Be("Processes inbound messages.\nWrites audit entries and returns null when empty.");
+        documentedMethod.Summary.Should().NotContain("Ignored parameter text");
+        documentedMethod.Summary.Should().NotContain("Ignored return text");
+        documentedMethod.Summary.Should().NotContain("Ignored exception text");
+        documentedMethod.SearchText.Should().Be("DocumentedProcessor.Process(string)\nProcesses inbound messages.\nWrites audit entries and returns null when empty.");
+        documentedMethod.BodyHash.Should().Be(ComputeHash("\n        return payload.Trim();\n    "));
+        fallbackMethod.SearchText.Should().Be("MessageConsumer.Render()");
+        interfaceMethod.BodyHash.Should().BeNull();
+    }
+
+    [Fact]
     public async Task WhenExtractingSolution_ThenEmitsSharpSenseTraceActivities()
     {
         var fileSystem = CreateRepositoryFileSystem();
@@ -376,6 +438,12 @@ public sealed class RoslynTargetAnalysisEngineTests
         };
 
         return [.. locations.Select(static location => MetadataReference.CreateFromFile(location))];
+    }
+
+    private static string ComputeHash(string bodyText)
+    {
+        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(bodyText));
+        return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
     private sealed record FixtureSolution(

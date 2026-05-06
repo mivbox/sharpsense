@@ -64,6 +64,10 @@ public sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDiscove
             codeNode.StartLine,
             codeNode.EndLine,
             codeNode.Summary,
+            string.IsNullOrWhiteSpace(codeNode.Summary)
+                ? codeNode.DisplayName
+                : $"{codeNode.DisplayName}\n{codeNode.Summary}",
+            null,
             codeNode.VectorEmbedding);
 
     private static IndexedDependency ToIndexedDependency(DependencyEdge dependencyEdge)

@@ -770,7 +770,8 @@ public sealed class CliCommandTests
                     NodeType = NodeType.Method,
                     StartLine = 20,
                     EndLine = 28,
-                    Summary = "Renders the message."
+                    Summary = "Renders the message.",
+                    SearchText = "MessageConsumer.Render()\nRenders the message."
                 },
                 new CodeNodeRecord
                 {
@@ -782,7 +783,8 @@ public sealed class CliCommandTests
                     NodeType = NodeType.Method,
                     StartLine = 5,
                     EndLine = 12,
-                    Summary = "Handles the HTTP endpoint."
+                    Summary = "Handles the HTTP endpoint.",
+                    SearchText = "HttpEndpoint.Handle()\nHandles the HTTP endpoint."
                 },
                 new CodeNodeRecord
                 {
@@ -794,7 +796,8 @@ public sealed class CliCommandTests
                     NodeType = NodeType.Method,
                     StartLine = 7,
                     EndLine = 11,
-                    Summary = "Gets a message."
+                    Summary = "Gets a message.",
+                    SearchText = "MessageProvider.GetMessage()\nGets a message."
                 },
                 new CodeNodeRecord
                 {
@@ -806,7 +809,8 @@ public sealed class CliCommandTests
                     NodeType = NodeType.Document,
                     StartLine = 1,
                     EndLine = 1,
-                    Summary = "See [Reference](./Reference.md)."
+                    Summary = "See [Reference](./Reference.md).",
+                    SearchText = "DocA\nSee [Reference](./Reference.md)."
                 },
                 new CodeNodeRecord
                 {
@@ -818,7 +822,8 @@ public sealed class CliCommandTests
                     NodeType = NodeType.Document,
                     StartLine = 1,
                     EndLine = 1,
-                    Summary = "Reference document."
+                    Summary = "Reference document.",
+                    SearchText = "Reference\nReference document."
                 },
                 new CodeNodeRecord
                 {
@@ -830,7 +835,8 @@ public sealed class CliCommandTests
                     NodeType = NodeType.Document,
                     StartLine = 1,
                     EndLine = 3,
-                    Summary = "Getting Started guide."
+                    Summary = "Getting Started guide.",
+                    SearchText = "Guide#getting-started\nGetting Started guide."
                 },
                 new CodeNodeRecord
                 {
@@ -842,7 +848,8 @@ public sealed class CliCommandTests
                     NodeType = NodeType.Interface,
                     StartLine = 3,
                     EndLine = 8,
-                    Summary = "Renderer contract."
+                    Summary = "Renderer contract.",
+                    SearchText = "IMessageRenderer\nRenderer contract."
                 },
                 new CodeNodeRecord
                 {
@@ -854,7 +861,8 @@ public sealed class CliCommandTests
                     NodeType = NodeType.Class,
                     StartLine = 3,
                     EndLine = 16,
-                    Summary = "HTML renderer."
+                    Summary = "HTML renderer.",
+                    SearchText = "HtmlRenderer\nHTML renderer."
                 },
                 new CodeNodeRecord
                 {
@@ -866,7 +874,8 @@ public sealed class CliCommandTests
                     NodeType = NodeType.Class,
                     StartLine = 3,
                     EndLine = 15,
-                    Summary = "Terminal renderer."
+                    Summary = "Terminal renderer.",
+                    SearchText = "TerminalRenderer\nTerminal renderer."
                 },
                 new CodeNodeRecord
                 {
@@ -878,7 +887,8 @@ public sealed class CliCommandTests
                     NodeType = NodeType.Class,
                     StartLine = 3,
                     EndLine = 14,
-                    Summary = "Base renderer."
+                    Summary = "Base renderer.",
+                    SearchText = "BaseRenderer\nBase renderer."
                 },
                 new CodeNodeRecord
                 {
@@ -890,7 +900,8 @@ public sealed class CliCommandTests
                     NodeType = NodeType.Class,
                     StartLine = 3,
                     EndLine = 18,
-                    Summary = "Fancy renderer."
+                    Summary = "Fancy renderer.",
+                    SearchText = "FancyRenderer\nFancy renderer."
                 });
 
             dbContext.DependencyEdges.AddRange(
@@ -935,8 +946,8 @@ public sealed class CliCommandTests
             await dbContext.Database.ExecuteSqlRawAsync(
                 """
                 DELETE FROM CodeNodeSearch;
-                INSERT INTO CodeNodeSearch (Id, CanonicalId, DisplayName, FullyQualifiedName, Summary, RelativeFilePath)
-                SELECT codeNode.Id, graphNode.CanonicalId, codeNode.DisplayName, codeNode.FullyQualifiedName, codeNode.Summary, document.RelativePath
+                INSERT INTO CodeNodeSearch (Id, CanonicalId, DisplayName, FullyQualifiedName, SearchText, RelativeFilePath)
+                SELECT codeNode.Id, graphNode.CanonicalId, codeNode.DisplayName, codeNode.FullyQualifiedName, codeNode.SearchText, document.RelativePath
                 FROM CodeNodes AS codeNode
                 INNER JOIN GraphNodes AS graphNode ON graphNode.Id = codeNode.Id
                 INNER JOIN Documents AS document ON document.Id = codeNode.DocumentId;

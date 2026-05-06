@@ -19,19 +19,21 @@ public static class CodeNodeNavigationQueries
            join projectGraphNode in context.GraphNodes.AsNoTracking() on codeNode.ProjectNodeId equals projectGraphNode.Id into projectGraphNodes
            from projectGraphNode in projectGraphNodes.DefaultIfEmpty()
            select new CodeNode
-           {
-               Id = codeNode.Id,
-               CanonicalId = graphNode.CanonicalId,
-               ProjectId = projectGraphNode == null ? null : projectGraphNode.CanonicalId,
-               FullyQualifiedName = codeNode.FullyQualifiedName,
+            {
+                Id = codeNode.Id,
+                CanonicalId = graphNode.CanonicalId,
+                ProjectId = projectGraphNode == null ? null : projectGraphNode.CanonicalId,
+                FullyQualifiedName = codeNode.FullyQualifiedName,
                DisplayName = codeNode.DisplayName,
                NodeType = codeNode.NodeType,
-               RelativeFilePath = document.RelativePath,
-               StartLine = codeNode.StartLine,
-               EndLine = codeNode.EndLine,
-               Summary = codeNode.Summary,
-               VectorEmbedding = codeNode.VectorEmbedding
-           };
+                RelativeFilePath = document.RelativePath,
+                StartLine = codeNode.StartLine,
+                EndLine = codeNode.EndLine,
+                Summary = codeNode.Summary,
+                SearchText = codeNode.SearchText,
+                BodyHash = codeNode.BodyHash,
+                VectorEmbedding = codeNode.VectorEmbedding
+            };
 
     public static IQueryable<CodeNodeResult> ProjectCodeNodeResults(
         SharpSenseDbContext context,

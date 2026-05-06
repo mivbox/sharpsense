@@ -104,6 +104,8 @@ public sealed class CSharpLanguageExtractor(
             codeNode.StartLine,
             codeNode.EndLine,
             codeNode.Summary,
+            codeNode.SearchText,
+            codeNode.BodyHash,
             codeNode.VectorEmbedding);
 
     private static IndexedDependency ToIndexedDependency(DependencyEdge dependencyEdge)

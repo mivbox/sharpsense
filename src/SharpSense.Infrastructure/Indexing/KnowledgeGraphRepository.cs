@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Diagnostics;
@@ -12,6 +13,8 @@ public sealed class KnowledgeGraphRepository(
     IDbContextFactory<SharpSenseDbContext> dbContextFactory)
     : IKnowledgeGraphRepository
 {
+    private static readonly ILogger _logger = Log.ForContext<KnowledgeGraphRepository>();
+
     public async Task ReplaceTarget(
         ExtractedNodes extractedNodes,
         CancellationToken ct)
@@ -24,10 +27,23 @@ public sealed class KnowledgeGraphRepository(
         {
             await using var context = await dbContextFactory.CreateDbContextAsync(ct);
             await using var transaction = await context.Database.BeginTransactionAsync(ct);
-            var identityMaps = await LoadIdentityMaps(context, ct);
-            var persistedGraph = BuildPersistedGraph(extractedNodes, identityMaps);
+            var normalizedExtractedNodes = CanonicalizeSnapshot(extractedNodes);
+            var currentSnapshot = await LoadCurrentSnapshot(context, ct);
+            if (AreEquivalentSnapshots(currentSnapshot, normalizedExtractedNodes))
+            {
+                trace.AddTag("index.persist.skipped", true);
+                _logger.Information("Skipping full index persistence because no graph changes were detected.");
+                return;
+            }
 
-            AddTraceCounts(trace, persistedGraph, extractedNodes.Diagnostics.Count);
+            _logger.Debug(
+                "Full index persistence required because {SnapshotDifference}",
+                DescribeSnapshotDifference(currentSnapshot, normalizedExtractedNodes));
+
+            var identityMaps = await LoadIdentityMaps(context, ct);
+            var persistedGraph = BuildPersistedGraph(normalizedExtractedNodes, identityMaps);
+
+            AddTraceCounts(trace, persistedGraph, normalizedExtractedNodes.Diagnostics.Count);
             await ReplacePersistedGraph(context, persistedGraph, ct);
             await transaction.CommitAsync(ct);
         }
@@ -63,13 +79,29 @@ public sealed class KnowledgeGraphRepository(
         {
             await using var context = await dbContextFactory.CreateDbContextAsync(ct);
             await using var transaction = await context.Database.BeginTransactionAsync(ct);
-            var currentSnapshot = await LoadCurrentSnapshot(context, ct);
-            var mergedSnapshot = MergeSnapshots(currentSnapshot, changedFilePaths, extractedNodes);
             var identityMaps = await LoadIdentityMaps(context, ct);
-            var persistedGraph = BuildPersistedGraph(mergedSnapshot, identityMaps);
+            var normalizedExtractedNodes = CanonicalizeSnapshot(
+                extractedNodes,
+                BuildKnownNodeIds(extractedNodes, identityMaps));
+            var currentSnapshot = await LoadWorkspaceFilesSnapshot(context, changedFilePaths, ct);
+            if (AreEquivalentSnapshots(currentSnapshot, normalizedExtractedNodes))
+            {
+                trace.AddTag("index.persist.skipped", true);
+                _logger.Information(
+                    "Skipping incremental index persistence because {ChangedFileCount} file(s) produced no graph changes.",
+                    changedFilePaths.Length);
+                return;
+            }
 
-            AddTraceCounts(trace, persistedGraph, extractedNodes.Diagnostics.Count);
-            await ReplacePersistedGraph(context, persistedGraph, ct);
+            _logger.Debug(
+                "Incremental index persistence required because {SnapshotDifference}",
+                DescribeSnapshotDifference(currentSnapshot, normalizedExtractedNodes));
+
+            await ReplaceWorkspaceFilesIncremental(context, changedFilePaths, currentSnapshot, normalizedExtractedNodes, identityMaps, ct);
+            trace.AddTag("index.project.count", normalizedExtractedNodes.Projects.Count);
+            trace.AddTag("index.code_node.count", normalizedExtractedNodes.CodeNodes.Count);
+            trace.AddTag("index.dependency.count", normalizedExtractedNodes.Edges.Count);
+            trace.AddTag("index.diagnostic.count", normalizedExtractedNodes.Diagnostics.Count);
             await transaction.CommitAsync(ct);
         }
         catch (Exception exception)
@@ -77,6 +109,28 @@ public sealed class KnowledgeGraphRepository(
             trace.RecordExceptionAndErrorStatus(exception);
             throw;
         }
+    }
+
+    public async Task<IReadOnlyList<IndexedCodeNode>> GetPersistedCodeNodes(CancellationToken ct)
+    {
+        await using var context = await dbContextFactory.CreateDbContextAsync(ct);
+        return await LoadPersistedCodeNodes(context, relativeFilePaths: null, ct);
+    }
+
+    public async Task<IReadOnlyList<IndexedCodeNode>> GetPersistedCodeNodes(
+        IReadOnlyList<string> relativeFilePaths,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(relativeFilePaths);
+
+        var normalizedPaths = NormalizeRelativePaths(relativeFilePaths);
+        if (normalizedPaths.Length == 0)
+        {
+            return [];
+        }
+
+        await using var context = await dbContextFactory.CreateDbContextAsync(ct);
+        return await LoadPersistedCodeNodes(context, normalizedPaths, ct);
     }
 
     public async Task<IReadOnlyList<string>> GetPersistedDocumentPathsUnderDirectory(
@@ -137,9 +191,11 @@ public sealed class KnowledgeGraphRepository(
                     codeNode.StartLine,
                     codeNode.EndLine,
                     codeNode.Summary,
+                    codeNode.SearchText,
+                    codeNode.BodyHash,
                     codeNode.VectorEmbedding))
             .ToArrayAsync(ct);
-        var edges = await CodeNodeNavigationQueries.ProjectDependencyEdges(
+        var edges = (await CodeNodeNavigationQueries.ProjectDependencyEdges(
                 context,
                 context.DependencyEdges
                     .AsNoTracking()
@@ -151,60 +207,146 @@ public sealed class KnowledgeGraphRepository(
                     edge.CallerId,
                     edge.CalleeId,
                     edge.EdgeType))
-            .ToArrayAsync(ct);
+            .ToArrayAsync(ct))
+            .OrderBy(static edge => edge.CallerId, StringComparer.Ordinal)
+            .ThenBy(static edge => edge.CalleeId, StringComparer.Ordinal)
+            .ThenBy(static edge => edge.EdgeType)
+            .ToArray();
 
         return new ExtractedNodes(projects, codeNodes, edges, []);
     }
 
-    private static ExtractedNodes MergeSnapshots(
-        ExtractedNodes currentSnapshot,
-        IReadOnlyCollection<string> changedFilePaths,
-        ExtractedNodes updatedSnapshot)
+    private static async Task<ExtractedNodes> LoadWorkspaceFilesSnapshot(
+        SharpSenseDbContext context,
+        IReadOnlyList<string> relativeFilePaths,
+        CancellationToken ct)
     {
-        var pathComparer = GetPathComparer();
-        var changedPaths = changedFilePaths.ToHashSet(pathComparer);
-        var currentChangedProjectIds = currentSnapshot.Projects
-            .Where(project => changedPaths.Contains(NormalizeRelativePath(project.RelativeFilePath)))
-            .Select(static project => project.Id)
-            .ToArray();
-        var currentChangedCodeNodeIds = currentSnapshot.CodeNodes
-            .Where(codeNode => changedPaths.Contains(NormalizeRelativePath(codeNode.RelativeFilePath)))
-            .Select(static codeNode => codeNode.CanonicalId)
-            .ToArray();
-        var changedCallerIds = currentChangedProjectIds
-            .Concat(currentChangedCodeNodeIds)
-            .ToHashSet(StringComparer.Ordinal);
-        var updatedNodeIds = updatedSnapshot.Projects
-            .Select(static project => project.Id)
-            .Concat(updatedSnapshot.CodeNodes.Select(static codeNode => codeNode.CanonicalId))
-            .ToHashSet(StringComparer.Ordinal);
-        var removedNodeIds = currentChangedProjectIds
-            .Concat(currentChangedCodeNodeIds)
-            .Where(nodeId => !updatedNodeIds.Contains(nodeId))
-            .ToHashSet(StringComparer.Ordinal);
+        var normalizedPaths = NormalizeRelativePaths(relativeFilePaths);
+        if (normalizedPaths.Length == 0)
+        {
+            return new ExtractedNodes([], [], [], []);
+        }
 
-        var mergedProjects = currentSnapshot.Projects
-            .Where(project => !changedPaths.Contains(NormalizeRelativePath(project.RelativeFilePath)))
-            .Concat(updatedSnapshot.Projects)
+        var pathComparer = GetPathComparer();
+        var relativePathSet = normalizedPaths.ToHashSet(pathComparer);
+        var documentIds = await context.Documents
+            .AsNoTracking()
+            .Where(document => relativePathSet.Contains(document.RelativePath))
+            .Select(static document => document.Id)
+            .ToArrayAsync(ct);
+        if (documentIds.Length == 0)
+        {
+            return new ExtractedNodes([], [], [], []);
+        }
+
+        var codeNodes = await LoadPersistedCodeNodes(context, normalizedPaths, ct);
+        var callerNodeIds = await context.CodeNodes
+            .AsNoTracking()
+            .Where(codeNode => documentIds.Contains(codeNode.DocumentId))
+            .Select(static codeNode => codeNode.Id)
+            .ToArrayAsync(ct);
+        var edges = callerNodeIds.Length == 0
+            ? []
+            : (await CodeNodeNavigationQueries.ProjectDependencyEdges(
+                        context,
+                        context.DependencyEdges
+                            .AsNoTracking()
+                            .Where(edge => callerNodeIds.Contains(edge.CallerNodeId))
+                            .OrderBy(static edge => edge.CallerNodeId)
+                            .ThenBy(static edge => edge.CalleeNodeId)
+                            .ThenBy(static edge => edge.EdgeType))
+                    .Select(
+                        static edge => new IndexedDependency(
+                            edge.CallerId,
+                            edge.CalleeId,
+                            edge.EdgeType))
+                    .ToArrayAsync(ct))
+                .OrderBy(static edge => edge.CallerId, StringComparer.Ordinal)
+                .ThenBy(static edge => edge.CalleeId, StringComparer.Ordinal)
+                .ThenBy(static edge => edge.EdgeType)
+                .ToArray();
+
+        return new ExtractedNodes([], codeNodes, edges, []);
+    }
+
+    private static async Task<IReadOnlyList<IndexedCodeNode>> LoadPersistedCodeNodes(
+        SharpSenseDbContext context,
+        IReadOnlyList<string>? relativeFilePaths,
+        CancellationToken ct)
+    {
+        IQueryable<CodeNodeRecord> codeNodeQuery = context.CodeNodes
+            .AsNoTracking()
+            .OrderBy(static codeNode => codeNode.FullyQualifiedName)
+            .ThenBy(static codeNode => codeNode.Id);
+        if (relativeFilePaths is { Count: > 0 })
+        {
+            var normalizedPaths = relativeFilePaths.ToHashSet(GetPathComparer());
+            var documentIds = await context.Documents
+                .AsNoTracking()
+                .Where(document => normalizedPaths.Contains(document.RelativePath))
+                .Select(static document => document.Id)
+                .ToArrayAsync(ct);
+            if (documentIds.Length == 0)
+            {
+                return [];
+            }
+
+            codeNodeQuery = codeNodeQuery.Where(codeNode => documentIds.Contains(codeNode.DocumentId));
+        }
+
+        return await CodeNodeNavigationQueries.ProjectCodeNodes(context, codeNodeQuery)
+            .Select(
+                static codeNode => new IndexedCodeNode(
+                    codeNode.CanonicalId,
+                    codeNode.ProjectId,
+                    codeNode.FullyQualifiedName,
+                    codeNode.DisplayName,
+                    codeNode.NodeType,
+                    codeNode.RelativeFilePath,
+                    codeNode.StartLine,
+                    codeNode.EndLine,
+                    codeNode.Summary,
+                    codeNode.SearchText,
+                    codeNode.BodyHash,
+                    codeNode.VectorEmbedding))
+            .ToArrayAsync(ct);
+    }
+
+    private static ExtractedNodes CanonicalizeSnapshot(
+        ExtractedNodes extractedNodes,
+        IReadOnlySet<string>? knownNodeIds = null)
+    {
+        ArgumentNullException.ThrowIfNull(extractedNodes);
+
+        var normalizedProjects = extractedNodes.Projects
+            .Select(
+                static project => project with
+                {
+                    RelativeFilePath = NormalizeRelativePath(project.RelativeFilePath)
+                })
             .GroupBy(static project => project.Id, StringComparer.Ordinal)
             .Select(static group => group.Last())
             .OrderBy(static project => project.Name, StringComparer.Ordinal)
             .ThenBy(static project => project.Id, StringComparer.Ordinal)
             .ToArray();
-        var mergedCodeNodes = currentSnapshot.CodeNodes
-            .Where(codeNode => !changedPaths.Contains(NormalizeRelativePath(codeNode.RelativeFilePath)))
-            .Concat(updatedSnapshot.CodeNodes)
+        var normalizedCodeNodes = extractedNodes.CodeNodes
+            .Select(
+                static codeNode => codeNode with
+                {
+                    RelativeFilePath = NormalizeRelativePath(codeNode.RelativeFilePath)
+                })
             .GroupBy(static codeNode => codeNode.CanonicalId, StringComparer.Ordinal)
             .Select(static group => group.Last())
             .OrderBy(static codeNode => codeNode.FullyQualifiedName, StringComparer.Ordinal)
             .ThenBy(static codeNode => codeNode.CanonicalId, StringComparer.Ordinal)
             .ToArray();
-        var mergedEdges = currentSnapshot.Edges
-            .Where(edge =>
-                !changedCallerIds.Contains(edge.CallerId) &&
-                !removedNodeIds.Contains(edge.CallerId) &&
-                !removedNodeIds.Contains(edge.CalleeId))
-            .Concat(updatedSnapshot.Edges)
+        var callerNodeIds = normalizedProjects
+            .Select(static project => project.Id)
+            .Concat(normalizedCodeNodes.Select(static codeNode => codeNode.CanonicalId))
+            .ToHashSet(StringComparer.Ordinal);
+        var persistedNodeIds = knownNodeIds ?? callerNodeIds;
+        var normalizedEdges = extractedNodes.Edges
+            .Where(edge => callerNodeIds.Contains(edge.CallerId) && persistedNodeIds.Contains(edge.CalleeId))
             .GroupBy(static edge => (edge.CallerId, edge.CalleeId, edge.EdgeType))
             .Select(static group => group.Last())
             .OrderBy(static edge => edge.CallerId, StringComparer.Ordinal)
@@ -213,10 +355,21 @@ public sealed class KnowledgeGraphRepository(
             .ToArray();
 
         return new ExtractedNodes(
-            mergedProjects,
-            mergedCodeNodes,
-            mergedEdges,
-            updatedSnapshot.Diagnostics);
+            normalizedProjects,
+            normalizedCodeNodes,
+            normalizedEdges,
+            extractedNodes.Diagnostics);
+    }
+
+    private static HashSet<string> BuildKnownNodeIds(
+        ExtractedNodes extractedNodes,
+        PersistedIdentityMaps identityMaps)
+    {
+        var knownNodeIds = identityMaps.GraphNodeIdsByCanonicalId.Keys
+            .ToHashSet(StringComparer.Ordinal);
+        knownNodeIds.UnionWith(extractedNodes.Projects.Select(static project => project.Id));
+        knownNodeIds.UnionWith(extractedNodes.CodeNodes.Select(static codeNode => codeNode.CanonicalId));
+        return knownNodeIds;
     }
 
     private static PersistedGraph BuildPersistedGraph(
@@ -285,6 +438,8 @@ public sealed class KnowledgeGraphRepository(
                     StartLine = codeNode.StartLine,
                     EndLine = codeNode.EndLine,
                     Summary = codeNode.Summary,
+                    SearchText = codeNode.SearchText,
+                    BodyHash = codeNode.BodyHash,
                     VectorEmbedding = codeNode.VectorEmbedding
                 })
             .ToArray();
@@ -556,6 +711,435 @@ public sealed class KnowledgeGraphRepository(
         await RefreshSearchIndex(context, ct);
     }
 
+    private static async Task ReplaceWorkspaceFilesIncremental(
+        SharpSenseDbContext context,
+        IReadOnlyList<string> changedFilePaths,
+        ExtractedNodes currentSnapshot,
+        ExtractedNodes updatedSnapshot,
+        PersistedIdentityMaps identityMaps,
+        CancellationToken ct)
+    {
+        var pathComparer = GetPathComparer();
+        var normalizedChangedPaths = NormalizeRelativePaths(changedFilePaths);
+        var currentCodeNodesByCanonicalId = currentSnapshot.CodeNodes.ToDictionary(
+            static codeNode => codeNode.CanonicalId,
+            StringComparer.Ordinal);
+        var updatedCodeNodesByCanonicalId = updatedSnapshot.CodeNodes.ToDictionary(
+            static codeNode => codeNode.CanonicalId,
+            StringComparer.Ordinal);
+        var currentPaths = currentSnapshot.CodeNodes
+            .Select(static codeNode => codeNode.RelativeFilePath)
+            .Distinct(pathComparer)
+            .ToHashSet(pathComparer);
+        var updatedPaths = updatedSnapshot.CodeNodes
+            .Select(static codeNode => codeNode.RelativeFilePath)
+            .Distinct(pathComparer)
+            .ToHashSet(pathComparer);
+        var graphNodeIdsByCanonicalId = new Dictionary<string, int>(
+            identityMaps.GraphNodeIdsByCanonicalId,
+            StringComparer.Ordinal);
+        var currentCodeNodeIds = currentSnapshot.CodeNodes
+            .Select(codeNode => graphNodeIdsByCanonicalId[codeNode.CanonicalId])
+            .ToArray();
+        var codeNodeRecordsById = currentCodeNodeIds.Length == 0
+            ? new Dictionary<int, CodeNodeRecord>()
+            : (await context.CodeNodes
+                    .Where(codeNode => currentCodeNodeIds.Contains(codeNode.Id))
+                    .ToArrayAsync(ct))
+                .ToDictionary(static codeNode => codeNode.Id);
+        var currentDocuments = await context.Documents
+            .Where(document => normalizedChangedPaths.Contains(document.RelativePath))
+            .ToArrayAsync(ct);
+        var documentsByPath = currentDocuments.ToDictionary(
+            static document => document.RelativePath,
+            pathComparer);
+        var directories = await context.Directories
+            .ToArrayAsync(ct);
+        var directoriesByPath = directories.ToDictionary(
+            static directory => directory.Path,
+            pathComparer);
+        var nextDirectoryId = GetNextId(directories.Select(static directory => directory.Id));
+        var nextDocumentId = GetNextId(identityMaps.DocumentIdsByRelativePath.Values);
+        var nextGraphNodeId = GetNextId(graphNodeIdsByCanonicalId.Values);
+
+        await EnsureDirectories(context, updatedPaths, directoriesByPath, nextDirectoryId, ct);
+        nextDirectoryId = GetNextId(directoriesByPath.Values.Select(static directory => directory.Id));
+
+        foreach (var updatedPath in updatedPaths.OrderBy(static path => path, pathComparer))
+        {
+            if (documentsByPath.ContainsKey(updatedPath))
+            {
+                continue;
+            }
+
+            var directoryId = directoriesByPath[GetDirectoryPath(updatedPath)].Id;
+            var documentId = identityMaps.DocumentIdsByRelativePath.GetValueOrDefault(updatedPath);
+            if (documentId == 0)
+            {
+                documentId = nextDocumentId++;
+            }
+
+            var document = new DocumentRecord
+            {
+                Id = documentId,
+                DirectoryId = directoryId,
+                FileName = GetFileName(updatedPath),
+                Extension = Path.GetExtension(updatedPath),
+                RelativePath = updatedPath,
+                Kind = GetDocumentKind(updatedPath, isProjectDocument: false)
+            };
+            documentsByPath[updatedPath] = document;
+            await context.Documents.AddAsync(document, ct);
+        }
+
+        var modifiedCodeNodeIds = new HashSet<int>();
+
+        foreach (var updatedCodeNode in updatedSnapshot.CodeNodes)
+        {
+            if (!documentsByPath.TryGetValue(updatedCodeNode.RelativeFilePath, out var document))
+            {
+                throw new InvalidOperationException($"Document '{updatedCodeNode.RelativeFilePath}' must exist before persisting code nodes.");
+            }
+
+            var graphNodeId = graphNodeIdsByCanonicalId.GetValueOrDefault(updatedCodeNode.CanonicalId);
+            if (graphNodeId == 0)
+            {
+                graphNodeId = nextGraphNodeId++;
+                graphNodeIdsByCanonicalId[updatedCodeNode.CanonicalId] = graphNodeId;
+                await context.GraphNodes.AddAsync(
+                    new GraphNodeRecord
+                    {
+                        Id = graphNodeId,
+                        CanonicalId = updatedCodeNode.CanonicalId,
+                        Kind = GraphNodeKind.Code
+                    },
+                    ct);
+            }
+
+            var projectNodeId = ResolveProjectNodeId(updatedCodeNode.ProjectId, graphNodeIdsByCanonicalId);
+            if (!codeNodeRecordsById.TryGetValue(graphNodeId, out var codeNodeRecord))
+            {
+                codeNodeRecord = CreateCodeNodeRecord(updatedCodeNode, graphNodeId, projectNodeId, document.Id);
+                codeNodeRecordsById[graphNodeId] = codeNodeRecord;
+                modifiedCodeNodeIds.Add(graphNodeId);
+                await context.CodeNodes.AddAsync(codeNodeRecord, ct);
+                continue;
+            }
+
+            if (!ApplyCodeNodeChanges(codeNodeRecord, updatedCodeNode, projectNodeId, document.Id))
+            {
+                continue;
+            }
+
+            modifiedCodeNodeIds.Add(graphNodeId);
+        }
+
+        var removedCodeNodeIds = currentCodeNodesByCanonicalId.Keys
+            .Where(canonicalId => !updatedCodeNodesByCanonicalId.ContainsKey(canonicalId))
+            .Select(canonicalId => graphNodeIdsByCanonicalId[canonicalId])
+            .ToArray();
+        var currentChangedCallerIds = currentSnapshot.CodeNodes
+            .Select(codeNode => graphNodeIdsByCanonicalId[codeNode.CanonicalId])
+            .ToArray();
+        if (currentChangedCallerIds.Length > 0 || removedCodeNodeIds.Length > 0)
+        {
+            await context.DependencyEdges
+                .Where(edge =>
+                    currentChangedCallerIds.Contains(edge.CallerNodeId) ||
+                    removedCodeNodeIds.Contains(edge.CalleeNodeId))
+                .ExecuteDeleteAsync(ct);
+        }
+
+        var dependencyEdges = updatedSnapshot.Edges
+            .Where(edge =>
+                graphNodeIdsByCanonicalId.ContainsKey(edge.CallerId) &&
+                graphNodeIdsByCanonicalId.ContainsKey(edge.CalleeId))
+            .Select(
+                edge => new DependencyEdgeRecord
+                {
+                    CallerNodeId = graphNodeIdsByCanonicalId[edge.CallerId],
+                    CalleeNodeId = graphNodeIdsByCanonicalId[edge.CalleeId],
+                    EdgeType = edge.EdgeType
+                })
+            .DistinctBy(static edge => (edge.CallerNodeId, edge.CalleeNodeId, edge.EdgeType))
+            .ToArray();
+        if (dependencyEdges.Length > 0)
+        {
+            await context.DependencyEdges.AddRangeAsync(dependencyEdges, ct);
+        }
+
+        if (removedCodeNodeIds.Length > 0)
+        {
+            var removedCodeNodes = codeNodeRecordsById
+                .Where(entry => removedCodeNodeIds.Contains(entry.Key))
+                .Select(static entry => entry.Value)
+                .ToArray();
+            if (removedCodeNodes.Length > 0)
+            {
+                context.CodeNodes.RemoveRange(removedCodeNodes);
+            }
+
+            var removedGraphNodes = await context.GraphNodes
+                .Where(graphNode => removedCodeNodeIds.Contains(graphNode.Id))
+                .ToArrayAsync(ct);
+            if (removedGraphNodes.Length > 0)
+            {
+                context.GraphNodes.RemoveRange(removedGraphNodes);
+            }
+        }
+
+        await context.SaveChangesAsync(ct);
+
+        var orphanDocuments = await context.Documents
+            .Where(document => normalizedChangedPaths.Contains(document.RelativePath))
+            .Where(document =>
+                !context.CodeNodes.Any(codeNode => codeNode.DocumentId == document.Id) &&
+                !context.ProjectNodes.Any(projectNode => projectNode.ProjectDocumentId == document.Id))
+            .ToArrayAsync(ct);
+        if (orphanDocuments.Length > 0)
+        {
+            context.Documents.RemoveRange(orphanDocuments);
+            await context.SaveChangesAsync(ct);
+        }
+
+        await PruneDirectories(context, currentPaths, updatedPaths, ct);
+        await RefreshSearchIndexDelta(context, modifiedCodeNodeIds, removedCodeNodeIds, ct);
+    }
+
+    private static async Task EnsureDirectories(
+        SharpSenseDbContext context,
+        IReadOnlyCollection<string> relativeFilePaths,
+        IDictionary<string, DirectoryRecord> directoriesByPath,
+        int nextDirectoryId,
+        CancellationToken ct)
+    {
+        if (relativeFilePaths.Count == 0)
+        {
+            return;
+        }
+
+        var pathComparer = GetPathComparer();
+        var requiredDirectoryPaths = new HashSet<string>(pathComparer) { string.Empty };
+        foreach (var relativeFilePath in relativeFilePaths)
+        {
+            AddDirectoryPath(requiredDirectoryPaths, GetDirectoryPath(relativeFilePath));
+        }
+
+        var missingPaths = requiredDirectoryPaths
+            .Where(path => !directoriesByPath.ContainsKey(path))
+            .OrderBy(static path => path.Count(static character => character == '/'))
+            .ThenBy(static path => path, pathComparer)
+            .ToArray();
+        if (missingPaths.Length == 0)
+        {
+            return;
+        }
+
+        var newDirectories = new List<DirectoryRecord>(missingPaths.Length);
+        var newClosures = new List<DirectoryClosureRecord>(missingPaths.Length * 2);
+
+        foreach (var path in missingPaths)
+        {
+            var parentPath = GetParentDirectoryPath(path);
+            var directory = new DirectoryRecord
+            {
+                Id = nextDirectoryId++,
+                ParentId = parentPath is null ? null : directoriesByPath[parentPath].Id,
+                Path = path,
+                Name = string.IsNullOrEmpty(path) ? "/" : GetFileName(path)
+            };
+
+            directoriesByPath[path] = directory;
+            newDirectories.Add(directory);
+            newClosures.Add(new DirectoryClosureRecord
+            {
+                AncestorDirectoryId = directory.Id,
+                DescendantDirectoryId = directory.Id,
+                Depth = 0
+            });
+
+            var ancestorPath = parentPath;
+            var depth = 1;
+            while (ancestorPath is not null)
+            {
+                newClosures.Add(
+                    new DirectoryClosureRecord
+                    {
+                        AncestorDirectoryId = directoriesByPath[ancestorPath].Id,
+                        DescendantDirectoryId = directory.Id,
+                        Depth = depth
+                    });
+                ancestorPath = GetParentDirectoryPath(ancestorPath);
+                depth++;
+            }
+        }
+
+        await context.Directories.AddRangeAsync(newDirectories, ct);
+        await context.DirectoryClosures.AddRangeAsync(newClosures, ct);
+    }
+
+    private static async Task PruneDirectories(
+        SharpSenseDbContext context,
+        IReadOnlySet<string> currentPaths,
+        IReadOnlySet<string> updatedPaths,
+        CancellationToken ct)
+    {
+        var removedPaths = currentPaths
+            .Except(updatedPaths, GetPathComparer())
+            .ToArray();
+        if (removedPaths.Length == 0)
+        {
+            return;
+        }
+
+        var pathComparer = GetPathComparer();
+        var candidateDirectoryPaths = new HashSet<string>(pathComparer);
+        foreach (var removedPath in removedPaths)
+        {
+            AddDirectoryPath(candidateDirectoryPaths, GetDirectoryPath(removedPath));
+        }
+
+        candidateDirectoryPaths.Remove(string.Empty);
+        if (candidateDirectoryPaths.Count == 0)
+        {
+            return;
+        }
+
+        var allDirectories = await context.Directories
+            .ToArrayAsync(ct);
+        var documentDirectoryIds = await context.Documents
+            .AsNoTracking()
+            .Select(static document => document.DirectoryId)
+            .Distinct()
+            .ToArrayAsync(ct);
+        var remainingDirectoryIds = allDirectories
+            .Select(static directory => directory.Id)
+            .ToHashSet();
+        var candidateDirectories = allDirectories
+            .Where(directory => candidateDirectoryPaths.Contains(directory.Path))
+            .OrderByDescending(static directory => directory.Path.Count(static character => character == '/'))
+            .ThenBy(static directory => directory.Path, pathComparer)
+            .ToArray();
+
+        foreach (var directory in candidateDirectories)
+        {
+            if (!remainingDirectoryIds.Contains(directory.Id))
+            {
+                continue;
+            }
+
+            var hasDocuments = documentDirectoryIds.Contains(directory.Id);
+            var hasChildren = allDirectories.Any(candidate =>
+                candidate.ParentId == directory.Id &&
+                remainingDirectoryIds.Contains(candidate.Id));
+            if (hasDocuments || hasChildren)
+            {
+                continue;
+            }
+
+            context.Directories.Remove(directory);
+            remainingDirectoryIds.Remove(directory.Id);
+        }
+
+        await context.SaveChangesAsync(ct);
+    }
+
+    private static CodeNodeRecord CreateCodeNodeRecord(
+        IndexedCodeNode codeNode,
+        int id,
+        int? projectNodeId,
+        int documentId)
+    {
+        return new CodeNodeRecord
+        {
+            Id = id,
+            ProjectNodeId = projectNodeId,
+            DocumentId = documentId,
+            FullyQualifiedName = codeNode.FullyQualifiedName,
+            DisplayName = codeNode.DisplayName,
+            NodeType = codeNode.NodeType,
+            StartLine = codeNode.StartLine,
+            EndLine = codeNode.EndLine,
+            Summary = codeNode.Summary,
+            SearchText = codeNode.SearchText,
+            BodyHash = codeNode.BodyHash,
+            VectorEmbedding = codeNode.VectorEmbedding
+        };
+    }
+
+    private static bool ApplyCodeNodeChanges(
+        CodeNodeRecord codeNodeRecord,
+        IndexedCodeNode updatedCodeNode,
+        int? projectNodeId,
+        int documentId)
+    {
+        if (codeNodeRecord.ProjectNodeId == projectNodeId &&
+            codeNodeRecord.DocumentId == documentId &&
+            string.Equals(codeNodeRecord.FullyQualifiedName, updatedCodeNode.FullyQualifiedName, StringComparison.Ordinal) &&
+            string.Equals(codeNodeRecord.DisplayName, updatedCodeNode.DisplayName, StringComparison.Ordinal) &&
+            codeNodeRecord.NodeType == updatedCodeNode.NodeType &&
+            codeNodeRecord.StartLine == updatedCodeNode.StartLine &&
+            codeNodeRecord.EndLine == updatedCodeNode.EndLine &&
+            string.Equals(codeNodeRecord.Summary, updatedCodeNode.Summary, StringComparison.Ordinal) &&
+            string.Equals(codeNodeRecord.SearchText, updatedCodeNode.SearchText, StringComparison.Ordinal) &&
+            string.Equals(codeNodeRecord.BodyHash, updatedCodeNode.BodyHash, StringComparison.Ordinal) &&
+            VectorsEqual(codeNodeRecord.VectorEmbedding, updatedCodeNode.VectorEmbedding))
+        {
+            return false;
+        }
+
+        codeNodeRecord.ProjectNodeId = projectNodeId;
+        codeNodeRecord.DocumentId = documentId;
+        codeNodeRecord.FullyQualifiedName = updatedCodeNode.FullyQualifiedName;
+        codeNodeRecord.DisplayName = updatedCodeNode.DisplayName;
+        codeNodeRecord.NodeType = updatedCodeNode.NodeType;
+        codeNodeRecord.StartLine = updatedCodeNode.StartLine;
+        codeNodeRecord.EndLine = updatedCodeNode.EndLine;
+        codeNodeRecord.Summary = updatedCodeNode.Summary;
+        codeNodeRecord.SearchText = updatedCodeNode.SearchText;
+        codeNodeRecord.BodyHash = updatedCodeNode.BodyHash;
+        codeNodeRecord.VectorEmbedding = updatedCodeNode.VectorEmbedding;
+        return true;
+    }
+
+    private static async Task RefreshSearchIndexDelta(
+        SharpSenseDbContext context,
+        IReadOnlyCollection<int> modifiedCodeNodeIds,
+        IReadOnlyCollection<int> removedCodeNodeIds,
+        CancellationToken ct)
+    {
+        var idsToDelete = modifiedCodeNodeIds
+            .Concat(removedCodeNodeIds)
+            .Distinct()
+            .OrderBy(static id => id)
+            .ToArray();
+        if (idsToDelete.Length > 0)
+        {
+            var deleteSql = $"DELETE FROM CodeNodeSearch WHERE CAST(Id AS INTEGER) IN ({string.Join(", ", idsToDelete)});";
+            await context.Database.ExecuteSqlRawAsync(deleteSql, ct);
+        }
+
+        var idsToInsert = modifiedCodeNodeIds
+            .Distinct()
+            .OrderBy(static id => id)
+            .ToArray();
+        if (idsToInsert.Length == 0)
+        {
+            return;
+        }
+
+        var insertSql =
+            $$"""
+            INSERT INTO CodeNodeSearch (Id, CanonicalId, DisplayName, FullyQualifiedName, SearchText, RelativeFilePath)
+            SELECT CodeNodes.Id, GraphNodes.CanonicalId, CodeNodes.DisplayName, CodeNodes.FullyQualifiedName, CodeNodes.SearchText, Documents.RelativePath
+            FROM CodeNodes
+            INNER JOIN GraphNodes ON GraphNodes.Id = CodeNodes.Id
+            INNER JOIN Documents ON Documents.Id = CodeNodes.DocumentId
+            WHERE CodeNodes.Id IN ({{string.Join(", ", idsToInsert)}});
+            """;
+        await context.Database.ExecuteSqlRawAsync(insertSql, ct);
+    }
+
     private static async Task RefreshSearchIndex(
         SharpSenseDbContext context,
         CancellationToken ct)
@@ -563,13 +1147,251 @@ public sealed class KnowledgeGraphRepository(
         await context.Database.ExecuteSqlRawAsync(
             """
             DELETE FROM CodeNodeSearch;
-            INSERT INTO CodeNodeSearch (Id, CanonicalId, DisplayName, FullyQualifiedName, Summary, RelativeFilePath)
-            SELECT CodeNodes.Id, GraphNodes.CanonicalId, CodeNodes.DisplayName, CodeNodes.FullyQualifiedName, CodeNodes.Summary, Documents.RelativePath
+            INSERT INTO CodeNodeSearch (Id, CanonicalId, DisplayName, FullyQualifiedName, SearchText, RelativeFilePath)
+            SELECT CodeNodes.Id, GraphNodes.CanonicalId, CodeNodes.DisplayName, CodeNodes.FullyQualifiedName, CodeNodes.SearchText, Documents.RelativePath
             FROM CodeNodes
             INNER JOIN GraphNodes ON GraphNodes.Id = CodeNodes.Id
             INNER JOIN Documents ON Documents.Id = CodeNodes.DocumentId;
             """,
             ct);
+    }
+
+    private static bool AreEquivalentSnapshots(
+        ExtractedNodes currentSnapshot,
+        ExtractedNodes updatedSnapshot)
+    {
+        return AreEquivalentProjects(currentSnapshot.Projects, updatedSnapshot.Projects) &&
+               AreEquivalentCodeNodes(currentSnapshot.CodeNodes, updatedSnapshot.CodeNodes) &&
+               AreEquivalentEdges(currentSnapshot.Edges, updatedSnapshot.Edges);
+    }
+
+    private static string DescribeSnapshotDifference(
+        ExtractedNodes currentSnapshot,
+        ExtractedNodes updatedSnapshot)
+    {
+        return DescribeProjectDifference(currentSnapshot.Projects, updatedSnapshot.Projects) ??
+               DescribeCodeNodeDifference(currentSnapshot.CodeNodes, updatedSnapshot.CodeNodes) ??
+               DescribeEdgeDifference(currentSnapshot.Edges, updatedSnapshot.Edges) ??
+               "no difference detected";
+    }
+
+    private static bool AreEquivalentProjects(
+        IReadOnlyList<IndexedProject> currentProjects,
+        IReadOnlyList<IndexedProject> updatedProjects)
+    {
+        if (currentProjects.Count != updatedProjects.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < currentProjects.Count; index++)
+        {
+            if (!EqualityComparer<IndexedProject>.Default.Equals(currentProjects[index], updatedProjects[index]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string? DescribeProjectDifference(
+        IReadOnlyList<IndexedProject> currentProjects,
+        IReadOnlyList<IndexedProject> updatedProjects)
+    {
+        if (currentProjects.Count != updatedProjects.Count)
+        {
+            return $"project count differs: persisted={currentProjects.Count}, updated={updatedProjects.Count}";
+        }
+
+        for (var index = 0; index < currentProjects.Count; index++)
+        {
+            var currentProject = currentProjects[index];
+            var updatedProject = updatedProjects[index];
+            if (!string.Equals(currentProject.Id, updatedProject.Id, StringComparison.Ordinal))
+            {
+                return $"project[{index}] id differs: persisted='{currentProject.Id}', updated='{updatedProject.Id}'";
+            }
+
+            if (!string.Equals(currentProject.Name, updatedProject.Name, StringComparison.Ordinal))
+            {
+                return $"project[{index}] name differs: persisted='{currentProject.Name}', updated='{updatedProject.Name}'";
+            }
+
+            if (!string.Equals(currentProject.RelativeFilePath, updatedProject.RelativeFilePath, StringComparison.Ordinal))
+            {
+                return $"project[{index}] relative path differs: persisted='{currentProject.RelativeFilePath}', updated='{updatedProject.RelativeFilePath}'";
+            }
+
+            if (!string.Equals(currentProject.ContentHash, updatedProject.ContentHash, StringComparison.Ordinal))
+            {
+                return $"project[{index}] content hash differs: persisted='{currentProject.ContentHash}', updated='{updatedProject.ContentHash}'";
+            }
+        }
+
+        return null;
+    }
+
+    private static bool AreEquivalentCodeNodes(
+        IReadOnlyList<IndexedCodeNode> currentCodeNodes,
+        IReadOnlyList<IndexedCodeNode> updatedCodeNodes)
+    {
+        if (currentCodeNodes.Count != updatedCodeNodes.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < currentCodeNodes.Count; index++)
+        {
+            var currentCodeNode = currentCodeNodes[index];
+            var updatedCodeNode = updatedCodeNodes[index];
+            if (!EqualityComparer<string>.Default.Equals(currentCodeNode.CanonicalId, updatedCodeNode.CanonicalId) ||
+                !EqualityComparer<string?>.Default.Equals(currentCodeNode.ProjectId, updatedCodeNode.ProjectId) ||
+                !EqualityComparer<string>.Default.Equals(currentCodeNode.FullyQualifiedName, updatedCodeNode.FullyQualifiedName) ||
+                !EqualityComparer<string>.Default.Equals(currentCodeNode.DisplayName, updatedCodeNode.DisplayName) ||
+                currentCodeNode.NodeType != updatedCodeNode.NodeType ||
+                !EqualityComparer<string>.Default.Equals(currentCodeNode.RelativeFilePath, updatedCodeNode.RelativeFilePath) ||
+                currentCodeNode.StartLine != updatedCodeNode.StartLine ||
+                currentCodeNode.EndLine != updatedCodeNode.EndLine ||
+                !EqualityComparer<string>.Default.Equals(currentCodeNode.Summary, updatedCodeNode.Summary) ||
+                !EqualityComparer<string>.Default.Equals(currentCodeNode.SearchText, updatedCodeNode.SearchText) ||
+                !EqualityComparer<string?>.Default.Equals(currentCodeNode.BodyHash, updatedCodeNode.BodyHash) ||
+                !VectorsEqual(currentCodeNode.VectorEmbedding, updatedCodeNode.VectorEmbedding))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string? DescribeCodeNodeDifference(
+        IReadOnlyList<IndexedCodeNode> currentCodeNodes,
+        IReadOnlyList<IndexedCodeNode> updatedCodeNodes)
+    {
+        if (currentCodeNodes.Count != updatedCodeNodes.Count)
+        {
+            return $"code node count differs: persisted={currentCodeNodes.Count}, updated={updatedCodeNodes.Count}";
+        }
+
+        for (var index = 0; index < currentCodeNodes.Count; index++)
+        {
+            var currentCodeNode = currentCodeNodes[index];
+            var updatedCodeNode = updatedCodeNodes[index];
+            if (!string.Equals(currentCodeNode.CanonicalId, updatedCodeNode.CanonicalId, StringComparison.Ordinal))
+            {
+                return $"code node[{index}] canonical id differs: persisted='{currentCodeNode.CanonicalId}', updated='{updatedCodeNode.CanonicalId}'";
+            }
+
+            if (!string.Equals(currentCodeNode.ProjectId, updatedCodeNode.ProjectId, StringComparison.Ordinal))
+            {
+                return $"code node[{index}] project id differs: persisted='{currentCodeNode.ProjectId}', updated='{updatedCodeNode.ProjectId}'";
+            }
+
+            if (!string.Equals(currentCodeNode.FullyQualifiedName, updatedCodeNode.FullyQualifiedName, StringComparison.Ordinal))
+            {
+                return $"code node[{index}] fully qualified name differs: persisted='{currentCodeNode.FullyQualifiedName}', updated='{updatedCodeNode.FullyQualifiedName}'";
+            }
+
+            if (!string.Equals(currentCodeNode.DisplayName, updatedCodeNode.DisplayName, StringComparison.Ordinal))
+            {
+                return $"code node[{index}] display name differs: persisted='{currentCodeNode.DisplayName}', updated='{updatedCodeNode.DisplayName}'";
+            }
+
+            if (currentCodeNode.NodeType != updatedCodeNode.NodeType)
+            {
+                return $"code node[{index}] node type differs: persisted='{currentCodeNode.NodeType}', updated='{updatedCodeNode.NodeType}'";
+            }
+
+            if (!string.Equals(currentCodeNode.RelativeFilePath, updatedCodeNode.RelativeFilePath, StringComparison.Ordinal))
+            {
+                return $"code node[{index}] relative path differs: persisted='{currentCodeNode.RelativeFilePath}', updated='{updatedCodeNode.RelativeFilePath}'";
+            }
+
+            if (currentCodeNode.StartLine != updatedCodeNode.StartLine)
+            {
+                return $"code node[{index}] start line differs: persisted={currentCodeNode.StartLine}, updated={updatedCodeNode.StartLine}";
+            }
+
+            if (currentCodeNode.EndLine != updatedCodeNode.EndLine)
+            {
+                return $"code node[{index}] end line differs: persisted={currentCodeNode.EndLine}, updated={updatedCodeNode.EndLine}";
+            }
+
+            if (!string.Equals(currentCodeNode.Summary, updatedCodeNode.Summary, StringComparison.Ordinal))
+            {
+                return $"code node[{index}] summary differs: persisted='{currentCodeNode.Summary}', updated='{updatedCodeNode.Summary}'";
+            }
+
+            if (!string.Equals(currentCodeNode.SearchText, updatedCodeNode.SearchText, StringComparison.Ordinal))
+            {
+                return $"code node[{index}] search text differs: persisted='{currentCodeNode.SearchText}', updated='{updatedCodeNode.SearchText}'";
+            }
+
+            if (!string.Equals(currentCodeNode.BodyHash, updatedCodeNode.BodyHash, StringComparison.Ordinal))
+            {
+                return $"code node[{index}] body hash differs: persisted='{currentCodeNode.BodyHash}', updated='{updatedCodeNode.BodyHash}'";
+            }
+
+            if (!VectorsEqual(currentCodeNode.VectorEmbedding, updatedCodeNode.VectorEmbedding))
+            {
+                return $"code node[{index}] vector differs";
+            }
+        }
+
+        return null;
+    }
+
+    private static bool AreEquivalentEdges(
+        IReadOnlyList<IndexedDependency> currentEdges,
+        IReadOnlyList<IndexedDependency> updatedEdges)
+    {
+        if (currentEdges.Count != updatedEdges.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < currentEdges.Count; index++)
+        {
+            if (!EqualityComparer<IndexedDependency>.Default.Equals(currentEdges[index], updatedEdges[index]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string? DescribeEdgeDifference(
+        IReadOnlyList<IndexedDependency> currentEdges,
+        IReadOnlyList<IndexedDependency> updatedEdges)
+    {
+        if (currentEdges.Count != updatedEdges.Count)
+        {
+            return $"dependency edge count differs: persisted={currentEdges.Count}, updated={updatedEdges.Count}";
+        }
+
+        for (var index = 0; index < currentEdges.Count; index++)
+        {
+            var currentEdge = currentEdges[index];
+            var updatedEdge = updatedEdges[index];
+            if (!string.Equals(currentEdge.CallerId, updatedEdge.CallerId, StringComparison.Ordinal))
+            {
+                return $"edge[{index}] caller differs: persisted='{currentEdge.CallerId}', updated='{updatedEdge.CallerId}'";
+            }
+
+            if (!string.Equals(currentEdge.CalleeId, updatedEdge.CalleeId, StringComparison.Ordinal))
+            {
+                return $"edge[{index}] callee differs: persisted='{currentEdge.CalleeId}', updated='{updatedEdge.CalleeId}'";
+            }
+
+            if (currentEdge.EdgeType != updatedEdge.EdgeType)
+            {
+                return $"edge[{index}] type differs: persisted='{currentEdge.EdgeType}', updated='{updatedEdge.EdgeType}'";
+            }
+        }
+
+        return null;
     }
 
     private static void AddTraceCounts(
@@ -607,6 +1429,14 @@ public sealed class KnowledgeGraphRepository(
 
     private static string NormalizeRelativePath(string path)
         => path.Trim().Replace('\\', '/').Trim('/');
+
+    private static string[] NormalizeRelativePaths(IEnumerable<string> paths)
+        => paths
+            .Where(static path => !string.IsNullOrWhiteSpace(path))
+            .Select(NormalizeRelativePath)
+            .Distinct(GetPathComparer())
+            .OrderBy(static path => path, GetPathComparer())
+            .ToArray();
 
     private static string NormalizeDirectoryPath(string path)
         => string.IsNullOrWhiteSpace(path) ? string.Empty : NormalizeRelativePath(path);
@@ -659,6 +1489,14 @@ public sealed class KnowledgeGraphRepository(
 
     private static int GetNextId(IEnumerable<int> ids)
         => ids.DefaultIfEmpty().Max() + 1;
+
+    private static bool VectorsEqual(
+        float[]? currentVector,
+        float[]? updatedVector)
+    {
+        return currentVector is null && updatedVector is null ||
+               currentVector is not null && updatedVector is not null && currentVector.SequenceEqual(updatedVector);
+    }
 
     private static int? ResolveProjectNodeId(
         string? projectId,

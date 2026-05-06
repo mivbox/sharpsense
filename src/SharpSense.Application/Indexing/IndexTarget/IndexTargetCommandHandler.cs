@@ -47,12 +47,26 @@ public sealed class IndexTargetCommandHandler(
             extractActivity.AddTag("index.dependency.count", extractedNodes.Edges.Count);
             extractActivity.AddTag("index.diagnostic.count", extractedNodes.Diagnostics.Count);
 
-            if (!_cliOptions.SkipEmbeddings && extractedNodes.CodeNodes.Count > 0)
+            if (extractedNodes.CodeNodes.Count > 0)
             {
-                command.Progress?.Report(new IndexingProgress("Embedding phase...", projectCount, projectCount));
+                if (!_cliOptions.SkipEmbeddings)
+                {
+                    command.Progress?.Report(new IndexingProgress("Embedding phase...", projectCount, projectCount));
+                }
+
+                var persistedCodeNodes = _cliOptions.DisableEmbeddingCache
+                    ? []
+                    : await knowledgeGraphRepository.GetPersistedCodeNodes(ct);
                 extractedNodes = extractedNodes with
                 {
-                    CodeNodes = await PopulateEmbeddings(extractedNodes.CodeNodes, command.EmbeddingProgress, ct)
+                    CodeNodes = await CodeNodeEmbeddingCoordinator.Populate(
+                        extractedNodes.CodeNodes,
+                        persistedCodeNodes,
+                        _cliOptions.SkipEmbeddings,
+                        _cliOptions.DisableEmbeddingCache,
+                        embeddingGenerator,
+                        command.EmbeddingProgress,
+                        ct)
                 };
             }
 
@@ -140,45 +154,6 @@ public sealed class IndexTargetCommandHandler(
                     })
             ]
         };
-    }
-
-    private async Task<IReadOnlyList<IndexedCodeNode>> PopulateEmbeddings(
-        IReadOnlyList<IndexedCodeNode> codeNodes,
-        IProgress<EmbeddingGenerationProgress>? progress,
-        CancellationToken ct)
-    {
-        using var trace = SharpSenseTraceSpan.Start("index.embeddings");
-        trace.AddTag("index.embedding.count", codeNodes.Count);
-
-        try
-        {
-            var embeddingSources = codeNodes
-                .Select(
-                    static codeNode => string.IsNullOrWhiteSpace(codeNode.Summary)
-                        ? codeNode.FullyQualifiedName
-                        : $"{codeNode.FullyQualifiedName}\n{codeNode.Summary}\n{codeNode.RelativeFilePath}")
-                .ToArray();
-            var embeddings = await embeddingGenerator.GenerateBatch(embeddingSources, progress, ct);
-
-            if (embeddings.Count != codeNodes.Count)
-            {
-                throw new InvalidOperationException("The embeddings generator returned an unexpected number of vectors.");
-            }
-
-            return
-            [
-                .. codeNodes.Select(
-                    (codeNode, index) => codeNode with
-                    {
-                        VectorEmbedding = embeddings[index].Vector
-                    })
-            ];
-        }
-        catch (Exception exception)
-        {
-            trace.RecordExceptionAndErrorStatus(exception);
-            throw;
-        }
     }
 
     private string GetRequiredTargetPath()

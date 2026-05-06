@@ -3,7 +3,7 @@ title: "Analyze Command"
 type: cli
 tags: [spectre, cqrs, implemented]
 created: 2026-04-26
-updated: 2026-04-26
+updated: 2026-05-06
 confidence: high
 ---
 
@@ -18,10 +18,11 @@ confidence: high
 | `TargetPath` | positional `<target-path>` | Identifies the Target to index. |
 | `RepositoryRoot` | `--repo-root <path>` | Overrides the repository root used to resolve relative paths. |
 | `Watch` | `--watch` | Keeps the process alive and applies incremental updates after the initial index. |
+| `DisableEmbeddingCache` | `--no-cache` | Forces analyzed nodes to regenerate embeddings instead of reusing persisted vectors. |
 | `SkipEmbeddings` | `--no-embeddings` | Disables embedding generation during the full index pass. |
 | `IsVerbose` | `-v\|--verbose` | Enables verbose logging for the command host. It does not flow through `SharpSenseCliOptions`. |
 
-`AnalyzeCommand.Configure()` resolves the repository root with `CommandPathResolver`, then copies `TargetPath`, `RepositoryRoot`, `Watch`, and `SkipEmbeddings` into `IOptions<SharpSenseCliOptions>`. The same method also calls `AddSharpSenseConfiguration(targetDirectory)` so the Target-local `sharpsense.yaml` file can populate `IOptions<SharpSenseConfig>` and publish change tokens for include-path updates. CLI values become host configuration, while runtime payloads stay in [[architecture/cqrs-pipeline]] command records.
+`AnalyzeCommand.Configure()` resolves the repository root with `CommandPathResolver`, then copies `TargetPath`, `RepositoryRoot`, `Watch`, `DisableEmbeddingCache`, and `SkipEmbeddings` into `IOptions<SharpSenseCliOptions>`. The same method also calls `AddSharpSenseConfiguration(targetDirectory)` so the Target-local `sharpsense.yaml` file can populate `IOptions<SharpSenseConfig>` and publish change tokens for include-path updates. CLI values become host configuration, while runtime payloads stay in [[architecture/cqrs-pipeline]] command records.
 
 ## Execution Flow
 

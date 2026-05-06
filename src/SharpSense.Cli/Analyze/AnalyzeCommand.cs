@@ -43,6 +43,8 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
 
         [CommandOption("--no-embeddings")] public bool SkipEmbeddings { get; init; }
 
+        [CommandOption("--no-cache")] public bool DisableEmbeddingCache { get; init; }
+
         public override ValidationResult Validate()
             => string.IsNullOrWhiteSpace(TargetPath)
                 ? ValidationResult.Error("A target path is required.")
@@ -62,6 +64,7 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
             options.RepositoryRoot = rawRoot;
             options.Watch = settings.Watch;
             options.SkipEmbeddings = settings.SkipEmbeddings;
+            options.DisableEmbeddingCache = settings.DisableEmbeddingCache;
         });
         services.AddRepositoryWorkspace(rawRoot);
         services.AddSharpSenseConfiguration(targetDirectory);
