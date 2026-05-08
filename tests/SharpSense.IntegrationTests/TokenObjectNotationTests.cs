@@ -1,5 +1,6 @@
 using SharpSense.Application.Context360.Models;
 using AwesomeAssertions;
+using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Refactoring.Models;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
@@ -241,5 +242,55 @@ public sealed class TokenObjectNotationTests
         output.Should().Be(
             "refactor_success: false" + Environment.NewLine +
             "error_message: Unable to locate document 'src/Fixture.App/Feature.cs'.");
+    }
+
+    [Fact]
+    public void WhenSerializeCommandExecutionResultHasBlocks_ThenItFormatsMetadataAndRanges()
+    {
+        var output = TokenObjectNotation.SerializeCommandExecutionResult(new CommandExecutionResult(
+            "dotnet build SharpSense.sln",
+            "/repo",
+            "Build succeeded",
+            0,
+            1201,
+            1,
+            false,
+            "Returned 1 merged block(s) from 1 matched line(s) across 1201 captured line(s).",
+            [
+                new CommandExecutionBlock(
+                    1201,
+                    1201,
+                    "1201| Build succeeded in 13.7s")
+            ]));
+
+        output.Should().Be(
+            "command: dotnet build SharpSense.sln" + Environment.NewLine +
+            "status: success" + Environment.NewLine +
+            "exit_code: 0" + Environment.NewLine +
+            "working_directory: /repo" + Environment.NewLine +
+            "query: Build succeeded" + Environment.NewLine +
+            "metrics:" + Environment.NewLine +
+            "  captured_lines: 1201" + Environment.NewLine +
+            "  matched_lines: 1" + Environment.NewLine +
+            "  block_count: 1" + Environment.NewLine +
+            "  truncated: false" + Environment.NewLine +
+            "summary: Returned 1 merged block(s) from 1 matched line(s) across 1201 captured line(s)." + Environment.NewLine +
+            "output:" + Environment.NewLine +
+            "  - span: 1201-1201" + Environment.NewLine +
+            "    text: |" + Environment.NewLine +
+            "      1201| Build succeeded in 13.7s");
+    }
+
+    [Fact]
+    public void WhenSerializeCommandExecutionFailureHasMessage_ThenItFormatsErrorOutput()
+    {
+        var output = TokenObjectNotation.SerializeCommandExecutionFailure(
+            "missing-command",
+            "Failed to start command 'missing-command'.");
+
+        output.Should().Be(
+            "command: missing-command" + Environment.NewLine +
+            "status: error" + Environment.NewLine +
+            "error_message: Failed to start command 'missing-command'.");
     }
 }

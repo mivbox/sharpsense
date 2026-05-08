@@ -1,5 +1,8 @@
 using AwesomeAssertions;
+using FluentResults;
 using Moq;
+using SharpSense.Application.CommandExecution.Abstractions;
+using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Context360.Abstractions;
 using SharpSense.Application.Context360.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
@@ -20,6 +23,74 @@ namespace SharpSense.IntegrationTests;
 
 public sealed class SharpSenseMcpToolsTests
 {
+    [Fact]
+    public async Task WhenCtxExecuteSucceeds_ThenItFormatsReducedExecutionOutput()
+    {
+        var commandExecutor = new Mock<ICommandExecutor>(MockBehavior.Strict);
+        commandExecutor.Setup(candidate => candidate.Execute(
+                new CommandExecutionRequest("dotnet build SharpSense.sln", "Build succeeded"),
+                CancellationToken.None))
+            .ReturnsAsync(Result.Ok(new CommandExecutionResult(
+                "dotnet build SharpSense.sln",
+                "/repo",
+                "Build succeeded",
+                0,
+                1201,
+                1,
+                false,
+                "Returned 1 merged block(s) from 1 matched line(s) across 1201 captured line(s).",
+                [
+                    new CommandExecutionBlock(
+                        1201,
+                        1201,
+                        "1201| Build succeeded in 13.7s")
+                ])));
+
+        var result = await SharpSenseMcpTools.ctx_execute(
+            commandExecutor.Object,
+            "dotnet build SharpSense.sln",
+            "Build succeeded",
+            CancellationToken.None);
+
+        result.Should().Be(
+            "command: dotnet build SharpSense.sln" + Environment.NewLine +
+            "status: success" + Environment.NewLine +
+            "exit_code: 0" + Environment.NewLine +
+            "working_directory: /repo" + Environment.NewLine +
+            "query: Build succeeded" + Environment.NewLine +
+            "metrics:" + Environment.NewLine +
+            "  captured_lines: 1201" + Environment.NewLine +
+            "  matched_lines: 1" + Environment.NewLine +
+            "  block_count: 1" + Environment.NewLine +
+            "  truncated: false" + Environment.NewLine +
+            "summary: Returned 1 merged block(s) from 1 matched line(s) across 1201 captured line(s)." + Environment.NewLine +
+            "output:" + Environment.NewLine +
+            "  - span: 1201-1201" + Environment.NewLine +
+            "    text: |" + Environment.NewLine +
+            "      1201| Build succeeded in 13.7s");
+    }
+
+    [Fact]
+    public async Task WhenCtxExecuteFails_ThenItFormatsExecutionErrorOutput()
+    {
+        var commandExecutor = new Mock<ICommandExecutor>(MockBehavior.Strict);
+        commandExecutor.Setup(candidate => candidate.Execute(
+                new CommandExecutionRequest("missing-command", "Error"),
+                CancellationToken.None))
+            .ReturnsAsync(Result.Fail<CommandExecutionResult>("Failed to start command 'missing-command'."));
+
+        var result = await SharpSenseMcpTools.ctx_execute(
+            commandExecutor.Object,
+            "missing-command",
+            "Error",
+            CancellationToken.None);
+
+        result.Should().Be(
+            "command: missing-command" + Environment.NewLine +
+            "status: error" + Environment.NewLine +
+            "error_message: Failed to start command 'missing-command'.");
+    }
+
     [Fact]
     public async Task WhenContextHasMatches_ThenItFormatsCompressedToonOutput()
     {

@@ -4,11 +4,14 @@ using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json;
 using AwesomeAssertions;
+using FluentResults;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Moq;
+using SharpSense.Application.CommandExecution.Abstractions;
+using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Refactoring.Abstractions;
 using SharpSense.Application.Refactoring.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
@@ -416,6 +419,95 @@ public sealed class CliCommandTests
             newName,
             "src/Fixture.App/Fixture.App.csproj",
             ct), Times.Once);
+    }
+
+    [Fact]
+    public async Task WhenExecuteRunsWithToon_ThenItFormatsCondensedCommandOutput()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var ct = TestContext.Current.CancellationToken;
+        var commandExecutor = new Mock<ICommandExecutor>(MockBehavior.Strict);
+        commandExecutor.Setup(candidate => candidate.Execute(
+                new CommandExecutionRequest("dotnet build SharpSense.sln", "Build succeeded"),
+                ct))
+            .ReturnsAsync(Result.Ok(new CommandExecutionResult(
+                "dotnet build SharpSense.sln",
+                RepositoryRoot,
+                "Build succeeded",
+                0,
+                1201,
+                1,
+                false,
+                "Returned 1 merged block(s) from 1 matched line(s) across 1201 captured line(s).",
+                [
+                    new CommandExecutionBlock(
+                        1201,
+                        1201,
+                        "1201| Build succeeded in 13.7s")
+                ])));
+        var app = CreateCommandApp(
+            console,
+            database,
+            configureServices: services =>
+            {
+                services.RemoveAll<ICommandExecutor>();
+                services.AddScoped<ICommandExecutor>(_ => commandExecutor.Object);
+            });
+
+        var exitCode = await app.RunAsync(
+            ["execute", "dotnet build SharpSense.sln", "--query", "Build succeeded", "--toon", "--repo-root", RepositoryRoot],
+            ct);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Be(
+            "command: dotnet build SharpSense.sln" + Environment.NewLine +
+            "status: success" + Environment.NewLine +
+            "exit_code: 0" + Environment.NewLine +
+            "working_directory: /repo" + Environment.NewLine +
+            "query: Build succeeded" + Environment.NewLine +
+            "metrics:" + Environment.NewLine +
+            "  captured_lines: 1201" + Environment.NewLine +
+            "  matched_lines: 1" + Environment.NewLine +
+            "  block_count: 1" + Environment.NewLine +
+            "  truncated: false" + Environment.NewLine +
+            "summary: Returned 1 merged block(s) from 1 matched line(s) across 1201 captured line(s)." + Environment.NewLine +
+            "output:" + Environment.NewLine +
+            "  - span: 1201-1201" + Environment.NewLine +
+            "    text: |" + Environment.NewLine +
+            "      1201| Build succeeded in 13.7s");
+    }
+
+    [Fact]
+    public async Task WhenExecuteFails_ThenItOutputsErrorJsonAndReturnsExitCodeOne()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var ct = TestContext.Current.CancellationToken;
+        var commandExecutor = new Mock<ICommandExecutor>(MockBehavior.Strict);
+        commandExecutor.Setup(candidate => candidate.Execute(
+                new CommandExecutionRequest("missing-command", "Error"),
+                ct))
+            .ReturnsAsync(Result.Fail<CommandExecutionResult>("Failed to start command 'missing-command'."));
+        var app = CreateCommandApp(
+            console,
+            database,
+            configureServices: services =>
+            {
+                services.RemoveAll<ICommandExecutor>();
+                services.AddScoped<ICommandExecutor>(_ => commandExecutor.Object);
+            });
+
+        var exitCode = await app.RunAsync(
+            ["execute", "missing-command", "--query", "Error", "--repo-root", RepositoryRoot],
+            ct);
+
+        exitCode.Should().Be(1);
+
+        using var jsonDocument = JsonDocument.Parse(console.Output);
+        jsonDocument.RootElement.GetProperty("command").GetString().Should().Be("missing-command");
+        jsonDocument.RootElement.GetProperty("status").GetString().Should().Be("error");
+        jsonDocument.RootElement.GetProperty("errorMessage").GetString().Should().Be("Failed to start command 'missing-command'.");
     }
 
     private static Spectre.Console.Cli.CommandApp CreateCommandApp(

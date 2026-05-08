@@ -1,4 +1,6 @@
 using ModelContextProtocol.Server;
+using SharpSense.Application.CommandExecution.Abstractions;
+using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Context360.Abstractions;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
@@ -21,6 +23,45 @@ namespace SharpSense.Cli.Mcp;
 [SuppressMessage("ReSharper", "InconsistentNaming")]
 internal sealed class SharpSenseMcpTools
 {
+    [McpServerTool, Description("Run a local command, index its streamed output with a transient full-text search index, and return compact reduced context blocks for the supplied query.")]
+    public static async Task<string> ctx_execute(
+        ICommandExecutor commandExecutor,
+        [Description("The OS command to run without a shell. Quote the full string when it contains spaces.")] string command,
+        [Description("Optional FTS query used to locate relevant output lines. When omitted or unmatched, only a compact summary is returned.")] string? query = null,
+        CancellationToken ct = default)
+    {
+        using var activity = SharpSenseTraceSpan.Start("mcp.tool.ctx_execute");
+        activity.AddTag("mcp.tool", "ctx_execute");
+        activity.AddTag("execution.command", command);
+
+        try
+        {
+            var result = await commandExecutor.Execute(
+                new CommandExecutionRequest(command, query),
+                ct);
+
+            if (result.IsFailed)
+            {
+                activity.AddTag("execution.success", false);
+                return TokenObjectNotation.SerializeCommandExecutionFailure(
+                    command,
+                    GetErrorMessage(result.Errors));
+            }
+
+            activity.AddTag("execution.success", result.Value.Success);
+            activity.AddTag("execution.exit_code", result.Value.ExitCode);
+            activity.AddTag("execution.matched_line_count", result.Value.MatchedLineCount);
+            activity.AddTag("execution.block_count", result.Value.BlockCount);
+            activity.AddTag("execution.truncated", result.Value.Truncated);
+            return TokenObjectNotation.SerializeCommandExecutionResult(result.Value);
+        }
+        catch (Exception ex)
+        {
+            activity.RecordExceptionAndErrorStatus(ex);
+            throw;
+        }
+    }
+
     [McpServerTool, Description("Run hybrid BM25 and semantic search against the indexed repository.")]
     public static async Task<string> semantic_search(
         IQueryHandler<HybridSearchQuery, HybridSearchResult> searchHandler,
@@ -216,4 +257,7 @@ internal sealed class SharpSenseMcpTools
             node.StartLine,
             node.EndLine,
             node.Summary))];
+
+    private static string GetErrorMessage(IEnumerable<FluentResults.IError> errors)
+        => string.Join("; ", errors.Select(static error => error.Message));
 }

@@ -27,12 +27,14 @@ raw sources, provides architectural directives, and directs queries. The human n
 * [[architecture/incremental-watch]] - Debounced watch-mode batching, recovery rules, and incremental dispatch flow.
 * [[architecture/virtual-file-system]] - The Infrastructure-owned `IFileSystem` boundary, allowed physical-edge exceptions, and stateless test rules.
 * [[architecture/vertical-slice-application]] - The canonical Application-layer Vertical Slice layout, boundaries, and handler locality rules.
+* [[architecture/windowed-execution-pipeline]] - Transient command execution, FTS5 log reduction, and merged context-window output rules.
 * [[architecture/workspace-tree]] - The persisted workspace-tree read model that powers lazy explorer expansion and opt-in graph scope.
 
 ### CLI
 
 * [[cli/analyze-command]] - The `analyze` and `index` routes, option binding, host composition, and watch/update flow.
 * [[cli/context-command]] - The `context` route for immediate callers, callees, and hierarchy breadth around a node id.
+* [[cli/execute-command]] - The `execute` route for local command execution and reduced log excerpts.
 * [[cli/inheritors-command]] - The `inheritors` route for direct class inheritors and interface implementers.
 * [[cli/skills-command]] - The `skills` route and embedded `.agents/skills` export flow.
 * [[cli/search-command]] - The `search` route, hybrid-search query flow, and TOON output switch.
