@@ -1,15 +1,18 @@
 using AwesomeAssertions;
 using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Infrastructure.CommandExecution;
+using SharpSense.Testkit;
 
 namespace SharpSense.Infrastructure.Tests.CommandExecution;
 
-public sealed class SqliteExecutionLogIndexTests
+public sealed class TransientExecutionLogIndexTests
 {
     [Fact]
     public async Task WhenAppendingAndSearchingLines_ThenItReturnsMatchedLineNumbersAndRanges()
     {
-        var factory = new SqliteExecutionLogIndexFactory();
+        await using var inMemoryFactory = new InMemoryContextFactory();
+        var dbContextFactory = inMemoryFactory.CreateDbContextFactory<TransientExecutionLogDbContext>();
+        var factory = new TransientExecutionLogIndexFactory(dbContextFactory);
         await using var index = await factory.Create(TestContext.Current.CancellationToken);
 
         var firstAppend = await index.AppendLine("Build started", TestContext.Current.CancellationToken);

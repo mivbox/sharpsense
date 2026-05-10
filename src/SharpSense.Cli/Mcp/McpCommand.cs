@@ -6,7 +6,6 @@ using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SharpSense.Application.Context360;
-using SharpSense.Application.CommandExecution;
 using Serilog;
 using SharpSense.Application.Inheritors;
 using SharpSense.Application.Refactoring;
@@ -57,7 +56,6 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
         });
         services.AddRepositoryWorkspace(rawRoot);
         services.AddSharpSenseConfiguration(rawRoot);
-        services.AddCommandExecution();
         services.AddCommandExecutionInfrastructure();
         services.AddContext360();
         services.AddContext360Infrastructure();

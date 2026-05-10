@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SharpSense.Application.CommandExecution.Abstractions;
@@ -10,8 +11,10 @@ public static class CommandExecutionInfrastructureServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        services.AddDbContextFactory<TransientExecutionLogDbContext>(options =>
+            options.UseSqlite("Data Source=:memory:;Mode=Memory;Cache=Private;Pooling=False"));
         services.TryAddSingleton<ICommandProcessRunner, SystemCommandRunner>();
-        services.TryAddSingleton<IExecutionLogIndexFactory, SqliteExecutionLogIndexFactory>();
+        services.TryAddSingleton<IExecuteLogIndexFactory, TransientExecutionLogIndexFactory>();
         return services;
     }
 }

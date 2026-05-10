@@ -1,4 +1,5 @@
 using ModelContextProtocol.Server;
+using Microsoft.Extensions.Options;
 using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Context360.Abstractions;
@@ -11,6 +12,7 @@ using SharpSense.Application.Refactoring.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Application.Shared.Models;
+using SharpSense.Application.Shared.Options;
 using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Shared;
@@ -25,7 +27,9 @@ internal sealed class SharpSenseMcpTools
 {
     [McpServerTool, Description("Run a local command, index its streamed output with a transient full-text search index, and return compact reduced context blocks for the supplied query.")]
     public static async Task<string> ctx_execute(
-        ICommandExecutor commandExecutor,
+        ICommandProcessRunner processRunner,
+        IExecuteLogIndexFactory executeLogIndexFactory,
+        IOptions<SharpSenseCliOptions> cliOptions,
         [Description("The OS command to run without a shell. Quote the full string when it contains spaces.")] string command,
         [Description("Optional FTS query used to locate relevant output lines. When omitted or unmatched, only a compact summary is returned.")] string? query = null,
         CancellationToken ct = default)
@@ -36,8 +40,11 @@ internal sealed class SharpSenseMcpTools
 
         try
         {
-            var result = await commandExecutor.Execute(
+            var result = await CommandExecutionReducer.Execute(
                 new CommandExecutionRequest(command, query),
+                processRunner,
+                executeLogIndexFactory,
+                cliOptions.Value.RepositoryRoot,
                 ct);
 
             if (result.IsFailed)

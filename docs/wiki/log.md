@@ -1,5 +1,6 @@
 # SharpSense Wiki Log
 
+- `2026-05-10T10:21:38+10:00` - Removed the app-layer command executor for transient command execution, moved the shared reduction flow into the CLI, and backed the transient execution index with a dedicated in-memory `TransientExecutionLogDbContext` created through `IDbContextFactory`. Pages updated: [[cli/execute-command]], [[cli/mcp-command]], [[architecture/windowed-execution-pipeline]].
 - `2026-04-26T10:24:44+10:00` - Added the Phase 1 wiki pages for CLI routing and the CQRS configuration boundary. Pages updated: [[cli/analyze-command]], [[architecture/cqrs-pipeline]], [[index]].
 - `2026-04-26T10:40:53+10:00` - Audited Layer 1 and added the shared host/bootstrap coverage plus the remaining CLI entrypoints. Pages updated: [[architecture/host-composition]], [[cli/search-command]], [[cli/trace-command]], [[cli/mcp-command]], [[cli/ui-command]], [[cli/analyze-command]], [[index]].
 - `2026-04-26T10:40:53+10:00` - Audited Layer 2 and expanded the CQRS wiki to cover command handlers, query handlers, and modular registrations. Pages updated: [[architecture/cqrs-pipeline]], [[index]].

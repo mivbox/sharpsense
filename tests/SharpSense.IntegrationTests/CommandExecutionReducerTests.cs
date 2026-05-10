@@ -1,35 +1,33 @@
 using AwesomeAssertions;
 using FluentResults;
-using Microsoft.Extensions.Options;
 using Moq;
-using SharpSense.Application.CommandExecution;
 using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.Models;
-using SharpSense.Application.Shared.Options;
+using SharpSense.Cli.Shared;
 
-namespace SharpSense.Application.Tests.CommandExecution;
+namespace SharpSense.IntegrationTests;
 
-public sealed class CommandExecutorTests
+public sealed class CommandExecutionReducerTests
 {
     [Fact]
     public async Task WhenQueryMatchesOverlappingWindows_ThenItReturnsMergedBlocks()
     {
         var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
-        var executionLogIndexFactory = new Mock<IExecutionLogIndexFactory>(MockBehavior.Strict);
-        var executionLogIndex = new Mock<IExecutionLogIndex>(MockBehavior.Strict);
+        var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
+        var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
 
-        executionLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
-            .ReturnsAsync(executionLogIndex.Object);
-        executionLogIndex.SetupSequence(candidate => candidate.AppendLine(It.IsAny<string>(), CancellationToken.None))
+        executeLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
+            .ReturnsAsync(executeLogIndex.Object);
+        executeLogIndex.SetupSequence(candidate => candidate.AppendLine(It.IsAny<string>(), CancellationToken.None))
             .ReturnsAsync(Result.Ok(1))
             .ReturnsAsync(Result.Ok(2))
             .ReturnsAsync(Result.Ok(3))
             .ReturnsAsync(Result.Ok(4))
             .ReturnsAsync(Result.Ok(5))
             .ReturnsAsync(Result.Ok(6));
-        executionLogIndex.Setup(candidate => candidate.FindMatches("Error", CancellationToken.None))
+        executeLogIndex.Setup(candidate => candidate.FindMatches("Error", CancellationToken.None))
             .ReturnsAsync(Result.Ok<int[]>([2, 5]));
-        executionLogIndex.Setup(candidate => candidate.ReadRange(new ExecutionLineRange(1, 6), CancellationToken.None))
+        executeLogIndex.Setup(candidate => candidate.ReadRange(new ExecutionLineRange(1, 6), CancellationToken.None))
             .ReturnsAsync(Result.Ok<ExecutionLogLine[]>(
             [
                 new ExecutionLogLine(1, "Starting build"),
@@ -39,7 +37,7 @@ public sealed class CommandExecutorTests
                 new ExecutionLogLine(5, "Error: second failure"),
                 new ExecutionLogLine(6, "Build finished")
             ]));
-        executionLogIndex.Setup(candidate => candidate.DisposeAsync())
+        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
         processRunner.Setup(candidate => candidate.Execute(
                 It.Is<CommandProcessRequest>(request =>
@@ -67,10 +65,12 @@ public sealed class CommandExecutorTests
 
                 return Result.Ok(new CommandProcessResult(1));
             });
-        var executor = CreateExecutor(processRunner, executionLogIndexFactory);
 
-        var result = await executor.Execute(
+        var result = await CommandExecutionReducer.Execute(
             new CommandExecutionRequest("dotnet build SharpSense.sln", "Error"),
+            processRunner.Object,
+            executeLogIndexFactory.Object,
+            "/repo",
             CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -94,14 +94,14 @@ public sealed class CommandExecutorTests
     public async Task WhenQueryIsMissing_ThenItReturnsCompactSummaryOnly()
     {
         var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
-        var executionLogIndexFactory = new Mock<IExecutionLogIndexFactory>(MockBehavior.Strict);
-        var executionLogIndex = new Mock<IExecutionLogIndex>(MockBehavior.Strict);
+        var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
+        var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
 
-        executionLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
-            .ReturnsAsync(executionLogIndex.Object);
-        executionLogIndex.Setup(candidate => candidate.AppendLine("Build succeeded in 1.0s", CancellationToken.None))
+        executeLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
+            .ReturnsAsync(executeLogIndex.Object);
+        executeLogIndex.Setup(candidate => candidate.AppendLine("Build succeeded in 1.0s", CancellationToken.None))
             .ReturnsAsync(Result.Ok(1));
-        executionLogIndex.Setup(candidate => candidate.DisposeAsync())
+        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
         processRunner.Setup(candidate => candidate.Execute(
                 It.IsAny<CommandProcessRequest>(),
@@ -115,10 +115,12 @@ public sealed class CommandExecutorTests
                 await onOutput("Build succeeded in 1.0s", innerCt);
                 return Result.Ok(new CommandProcessResult(0));
             });
-        var executor = CreateExecutor(processRunner, executionLogIndexFactory);
 
-        var result = await executor.Execute(
+        var result = await CommandExecutionReducer.Execute(
             new CommandExecutionRequest("dotnet build SharpSense.sln", null),
+            processRunner.Object,
+            executeLogIndexFactory.Object,
+            "/repo",
             CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -127,28 +129,28 @@ public sealed class CommandExecutorTests
         result.Value.MatchedLineCount.Should().Be(0);
         result.Value.Truncated.Should().BeFalse();
         result.Value.Summary.Should().Contain("No query was provided.");
-        executionLogIndex.Verify(candidate => candidate.FindMatches(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        executeLogIndex.Verify(candidate => candidate.FindMatches(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
     public async Task WhenReducedOutputExceedsMaxCharacters_ThenItTruncatesReturnedBlocks()
     {
         var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
-        var executionLogIndexFactory = new Mock<IExecutionLogIndexFactory>(MockBehavior.Strict);
-        var executionLogIndex = new Mock<IExecutionLogIndex>(MockBehavior.Strict);
+        var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
+        var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
 
-        executionLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
-            .ReturnsAsync(executionLogIndex.Object);
-        executionLogIndex.Setup(candidate => candidate.AppendLine("VeryLongFailureLine", CancellationToken.None))
+        executeLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
+            .ReturnsAsync(executeLogIndex.Object);
+        executeLogIndex.Setup(candidate => candidate.AppendLine("VeryLongFailureLine", CancellationToken.None))
             .ReturnsAsync(Result.Ok(1));
-        executionLogIndex.Setup(candidate => candidate.FindMatches("VeryLongFailureLine", CancellationToken.None))
+        executeLogIndex.Setup(candidate => candidate.FindMatches("VeryLongFailureLine", CancellationToken.None))
             .ReturnsAsync(Result.Ok<int[]>([1]));
-        executionLogIndex.Setup(candidate => candidate.ReadRange(new ExecutionLineRange(1, 1), CancellationToken.None))
+        executeLogIndex.Setup(candidate => candidate.ReadRange(new ExecutionLineRange(1, 1), CancellationToken.None))
             .ReturnsAsync(Result.Ok<ExecutionLogLine[]>(
             [
                 new ExecutionLogLine(1, "VeryLongFailureLine")
             ]));
-        executionLogIndex.Setup(candidate => candidate.DisposeAsync())
+        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
         processRunner.Setup(candidate => candidate.Execute(
                 It.IsAny<CommandProcessRequest>(),
@@ -162,13 +164,15 @@ public sealed class CommandExecutorTests
                 await onOutput("VeryLongFailureLine", innerCt);
                 return Result.Ok(new CommandProcessResult(1));
             });
-        var executor = CreateExecutor(processRunner, executionLogIndexFactory);
 
-        var result = await executor.Execute(
+        var result = await CommandExecutionReducer.Execute(
             new CommandExecutionRequest(
                 "dotnet build SharpSense.sln",
                 "VeryLongFailureLine",
                 MaxCharacters: 12),
+            processRunner.Object,
+            executeLogIndexFactory.Object,
+            "/repo",
             CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -182,22 +186,24 @@ public sealed class CommandExecutorTests
     public async Task WhenProcessRunnerFails_ThenItReturnsFailureResult()
     {
         var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
-        var executionLogIndexFactory = new Mock<IExecutionLogIndexFactory>(MockBehavior.Strict);
-        var executionLogIndex = new Mock<IExecutionLogIndex>(MockBehavior.Strict);
+        var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
+        var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
 
-        executionLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
-            .ReturnsAsync(executionLogIndex.Object);
-        executionLogIndex.Setup(candidate => candidate.DisposeAsync())
+        executeLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
+            .ReturnsAsync(executeLogIndex.Object);
+        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
         processRunner.Setup(candidate => candidate.Execute(
                 It.IsAny<CommandProcessRequest>(),
                 It.IsAny<Func<string, CancellationToken, Task>>(),
                 CancellationToken.None))
             .ReturnsAsync(Result.Fail<CommandProcessResult>("Failed to start command 'missing-command'."));
-        var executor = CreateExecutor(processRunner, executionLogIndexFactory);
 
-        var result = await executor.Execute(
+        var result = await CommandExecutionReducer.Execute(
             new CommandExecutionRequest("missing-command", "Error"),
+            processRunner.Object,
+            executeLogIndexFactory.Object,
+            "/repo",
             CancellationToken.None);
 
         result.IsFailed.Should().BeTrue();
@@ -209,23 +215,23 @@ public sealed class CommandExecutorTests
     public async Task WhenCapturedLinesExceedTheLimit_ThenItStopsIndexingAndFlagsTruncation()
     {
         var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
-        var executionLogIndexFactory = new Mock<IExecutionLogIndexFactory>(MockBehavior.Strict);
-        var executionLogIndex = new Mock<IExecutionLogIndex>(MockBehavior.Strict);
+        var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
+        var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
 
-        executionLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
-            .ReturnsAsync(executionLogIndex.Object);
-        executionLogIndex.SetupSequence(candidate => candidate.AppendLine(It.IsAny<string>(), CancellationToken.None))
+        executeLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
+            .ReturnsAsync(executeLogIndex.Object);
+        executeLogIndex.SetupSequence(candidate => candidate.AppendLine(It.IsAny<string>(), CancellationToken.None))
             .ReturnsAsync(Result.Ok(1))
             .ReturnsAsync(Result.Ok(2));
-        executionLogIndex.Setup(candidate => candidate.FindMatches("Error", CancellationToken.None))
+        executeLogIndex.Setup(candidate => candidate.FindMatches("Error", CancellationToken.None))
             .ReturnsAsync(Result.Ok<int[]>([2]));
-        executionLogIndex.Setup(candidate => candidate.ReadRange(new ExecutionLineRange(1, 2), CancellationToken.None))
+        executeLogIndex.Setup(candidate => candidate.ReadRange(new ExecutionLineRange(1, 2), CancellationToken.None))
             .ReturnsAsync(Result.Ok<ExecutionLogLine[]>(
             [
                 new ExecutionLogLine(1, "Starting build"),
                 new ExecutionLogLine(2, "Error: first failure")
             ]));
-        executionLogIndex.Setup(candidate => candidate.DisposeAsync())
+        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
         processRunner.Setup(candidate => candidate.Execute(
                 It.IsAny<CommandProcessRequest>(),
@@ -249,13 +255,15 @@ public sealed class CommandExecutorTests
 
                 return Result.Ok(new CommandProcessResult(1));
             });
-        var executor = CreateExecutor(processRunner, executionLogIndexFactory);
 
-        var result = await executor.Execute(
+        var result = await CommandExecutionReducer.Execute(
             new CommandExecutionRequest(
                 "dotnet build SharpSense.sln",
                 "Error",
                 MaxCapturedLines: 2),
+            processRunner.Object,
+            executeLogIndexFactory.Object,
+            "/repo",
             CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -267,15 +275,4 @@ public sealed class CommandExecutorTests
             "2| Error: first failure");
         result.Value.Summary.Should().Contain("Output capture was capped at 2 indexed line(s).");
     }
-
-    private static CommandExecutor CreateExecutor(
-        Mock<ICommandProcessRunner> processRunner,
-        Mock<IExecutionLogIndexFactory> executionLogIndexFactory)
-        => new(
-            processRunner.Object,
-            executionLogIndexFactory.Object,
-            Options.Create(new SharpSenseCliOptions
-            {
-                RepositoryRoot = "/repo"
-            }));
 }

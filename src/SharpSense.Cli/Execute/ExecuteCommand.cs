@@ -1,7 +1,6 @@
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using SharpSense.Application.CommandExecution;
 using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Shared.Options;
@@ -11,6 +10,7 @@ using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 
 namespace SharpSense.Cli.Execute;
 
@@ -49,7 +49,6 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
             options.RepositoryRoot = rawRoot;
         });
         services.AddSharpSenseConfiguration(rawRoot);
-        services.AddCommandExecution();
         services.AddCommandExecutionInfrastructure();
     }
 
@@ -60,9 +59,14 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
         CancellationToken ct)
     {
         await using var scope = host.Services.CreateAsyncScope();
-        var executor = scope.ServiceProvider.GetRequiredService<ICommandExecutor>();
-        var result = await executor.Execute(
+        var processRunner = scope.ServiceProvider.GetRequiredService<ICommandProcessRunner>();
+        var executeLogIndexFactory = scope.ServiceProvider.GetRequiredService<IExecuteLogIndexFactory>();
+        var cliOptions = scope.ServiceProvider.GetRequiredService<IOptions<SharpSenseCliOptions>>();
+        var result = await CommandExecutionReducer.Execute(
             new CommandExecutionRequest(settings.Command, settings.Query),
+            processRunner,
+            executeLogIndexFactory,
+            cliOptions.Value.RepositoryRoot,
             ct);
 
         if (result.IsFailed)

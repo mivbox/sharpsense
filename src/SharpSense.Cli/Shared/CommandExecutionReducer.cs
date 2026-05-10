@@ -1,23 +1,22 @@
 using System.Text;
 using FluentResults;
-using Microsoft.Extensions.Options;
 using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.Models;
-using SharpSense.Application.Shared.Options;
 
-namespace SharpSense.Application.CommandExecution;
+namespace SharpSense.Cli.Shared;
 
-public sealed class CommandExecutor(
-    ICommandProcessRunner processRunner,
-    IExecutionLogIndexFactory executionLogIndexFactory,
-    IOptions<SharpSenseCliOptions> cliOptions)
-    : ICommandExecutor
+internal static class CommandExecutionReducer
 {
-    public async Task<Result<CommandExecutionResult>> Execute(
+    public static async Task<Result<CommandExecutionResult>> Execute(
         CommandExecutionRequest request,
+        ICommandProcessRunner processRunner,
+        IExecuteLogIndexFactory executeLogIndexFactory,
+        string? repositoryRoot,
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(processRunner);
+        ArgumentNullException.ThrowIfNull(executeLogIndexFactory);
 
         if (string.IsNullOrWhiteSpace(request.Command))
         {
@@ -40,8 +39,8 @@ public sealed class CommandExecutor(
         }
 
         var command = request.Command.Trim();
-        var workingDirectory = ResolveWorkingDirectory();
-        await using var executionLogIndex = await executionLogIndexFactory.Create(ct);
+        var workingDirectory = ResolveWorkingDirectory(repositoryRoot);
+        await using var executeLogIndex = await executeLogIndexFactory.Create(ct);
         var indexedLineCount = 0;
         var totalObservedLines = 0;
         var captureLimitReached = false;
@@ -57,7 +56,7 @@ public sealed class CommandExecutor(
                     return;
                 }
 
-                var appendResult = await executionLogIndex.AppendLine(line, innerCt);
+                var appendResult = await executeLogIndex.AppendLine(line, innerCt);
                 if (appendResult.IsFailed)
                 {
                     throw new InvalidOperationException(GetErrorMessage(appendResult.Errors));
@@ -86,7 +85,7 @@ public sealed class CommandExecutor(
                 request.MaxCapturedLines));
         }
 
-        var matchResult = await executionLogIndex.FindMatches(query, ct);
+        var matchResult = await executeLogIndex.FindMatches(query, ct);
         if (matchResult.IsFailed)
         {
             return Result.Fail<CommandExecutionResult>(matchResult.Errors);
@@ -107,7 +106,7 @@ public sealed class CommandExecutor(
 
         var ranges = MergeRanges(matchResult.Value, indexedLineCount, request.ContextLineCount);
         var blockBuildResult = await BuildBlocks(
-            executionLogIndex,
+            executeLogIndex,
             ranges,
             request.MaxCharacters,
             ct);
@@ -137,10 +136,10 @@ public sealed class CommandExecutor(
             [.. blockBuildResult.Value.Blocks]));
     }
 
-    private string ResolveWorkingDirectory()
-        => string.IsNullOrWhiteSpace(cliOptions.Value.RepositoryRoot)
+    private static string ResolveWorkingDirectory(string? repositoryRoot)
+        => string.IsNullOrWhiteSpace(repositoryRoot)
             ? Environment.CurrentDirectory
-            : cliOptions.Value.RepositoryRoot;
+            : repositoryRoot;
 
     private static string? NormalizeQuery(string? query)
         => string.IsNullOrWhiteSpace(query)
@@ -271,7 +270,7 @@ public sealed class CommandExecutor(
     }
 
     private static async Task<Result<(List<CommandExecutionBlock> Blocks, bool Truncated)>> BuildBlocks(
-        IExecutionLogIndex executionLogIndex,
+        IExecuteLogIndex executeLogIndex,
         IReadOnlyList<ExecutionLineRange> ranges,
         int maxCharacters,
         CancellationToken ct)
@@ -292,7 +291,7 @@ public sealed class CommandExecutor(
             }
 
             remainingCharacters -= separatorLength;
-            var linesResult = await executionLogIndex.ReadRange(range, ct);
+            var linesResult = await executeLogIndex.ReadRange(range, ct);
             if (linesResult.IsFailed)
             {
                 return Result.Fail<(List<CommandExecutionBlock> Blocks, bool Truncated)>(linesResult.Errors);

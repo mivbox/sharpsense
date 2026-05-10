@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using FluentResults;
+using Microsoft.Extensions.Options;
 using Moq;
 using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.Models;
@@ -14,6 +15,7 @@ using SharpSense.Application.Refactoring.Abstractions;
 using SharpSense.Application.Refactoring.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
+using SharpSense.Application.Shared.Options;
 using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Mcp;
@@ -26,28 +28,45 @@ public sealed class SharpSenseMcpToolsTests
     [Fact]
     public async Task WhenCtxExecuteSucceeds_ThenItFormatsReducedExecutionOutput()
     {
-        var commandExecutor = new Mock<ICommandExecutor>(MockBehavior.Strict);
-        commandExecutor.Setup(candidate => candidate.Execute(
-                new CommandExecutionRequest("dotnet build SharpSense.sln", "Build succeeded"),
+        var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
+        var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
+        var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
+
+        executeLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
+            .ReturnsAsync(executeLogIndex.Object);
+        executeLogIndex.Setup(candidate => candidate.AppendLine("Build succeeded in 13.7s", CancellationToken.None))
+            .ReturnsAsync(Result.Ok(1));
+        executeLogIndex.Setup(candidate => candidate.FindMatches("Build succeeded", CancellationToken.None))
+            .ReturnsAsync(Result.Ok<int[]>([1]));
+        executeLogIndex.Setup(candidate => candidate.ReadRange(new ExecutionLineRange(1, 1), CancellationToken.None))
+            .ReturnsAsync(Result.Ok<ExecutionLogLine[]>(
+            [
+                new ExecutionLogLine(1, "Build succeeded in 13.7s")
+            ]));
+        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
+            .Returns(ValueTask.CompletedTask);
+        processRunner.Setup(candidate => candidate.Execute(
+                It.Is<CommandProcessRequest>(request =>
+                    request.Command == "dotnet build SharpSense.sln" &&
+                    request.WorkingDirectory == "/repo"),
+                It.IsAny<Func<string, CancellationToken, Task>>(),
                 CancellationToken.None))
-            .ReturnsAsync(Result.Ok(new CommandExecutionResult(
-                "dotnet build SharpSense.sln",
-                "/repo",
-                "Build succeeded",
-                0,
-                1201,
-                1,
-                false,
-                "Returned 1 merged block(s) from 1 matched line(s) across 1201 captured line(s).",
-                [
-                    new CommandExecutionBlock(
-                        1201,
-                        1201,
-                        "1201| Build succeeded in 13.7s")
-                ])));
+            .Returns(async (
+                CommandProcessRequest _,
+                Func<string, CancellationToken, Task> onOutput,
+                CancellationToken innerCt) =>
+            {
+                await onOutput("Build succeeded in 13.7s", innerCt);
+                return Result.Ok(new CommandProcessResult(0));
+            });
 
         var result = await SharpSenseMcpTools.ctx_execute(
-            commandExecutor.Object,
+            processRunner.Object,
+            executeLogIndexFactory.Object,
+            Options.Create(new SharpSenseCliOptions
+            {
+                RepositoryRoot = "/repo"
+            }),
             "dotnet build SharpSense.sln",
             "Build succeeded",
             CancellationToken.None);
@@ -59,28 +78,43 @@ public sealed class SharpSenseMcpToolsTests
             "working_directory: /repo" + Environment.NewLine +
             "query: Build succeeded" + Environment.NewLine +
             "metrics:" + Environment.NewLine +
-            "  captured_lines: 1201" + Environment.NewLine +
+            "  captured_lines: 1" + Environment.NewLine +
             "  matched_lines: 1" + Environment.NewLine +
             "  block_count: 1" + Environment.NewLine +
             "  truncated: false" + Environment.NewLine +
-            "summary: Returned 1 merged block(s) from 1 matched line(s) across 1201 captured line(s)." + Environment.NewLine +
+            "summary: Returned 1 merged block(s) from 1 matched line(s) across 1 captured line(s)." + Environment.NewLine +
             "output:" + Environment.NewLine +
-            "  - span: 1201-1201" + Environment.NewLine +
+            "  - span: 1-1" + Environment.NewLine +
             "    text: |" + Environment.NewLine +
-            "      1201| Build succeeded in 13.7s");
+            "      1| Build succeeded in 13.7s");
     }
 
     [Fact]
     public async Task WhenCtxExecuteFails_ThenItFormatsExecutionErrorOutput()
     {
-        var commandExecutor = new Mock<ICommandExecutor>(MockBehavior.Strict);
-        commandExecutor.Setup(candidate => candidate.Execute(
-                new CommandExecutionRequest("missing-command", "Error"),
+        var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
+        var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
+        var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
+
+        executeLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
+            .ReturnsAsync(executeLogIndex.Object);
+        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
+            .Returns(ValueTask.CompletedTask);
+        processRunner.Setup(candidate => candidate.Execute(
+                It.Is<CommandProcessRequest>(request =>
+                    request.Command == "missing-command" &&
+                    request.WorkingDirectory == "/repo"),
+                It.IsAny<Func<string, CancellationToken, Task>>(),
                 CancellationToken.None))
-            .ReturnsAsync(Result.Fail<CommandExecutionResult>("Failed to start command 'missing-command'."));
+            .ReturnsAsync(Result.Fail<CommandProcessResult>("Failed to start command 'missing-command'."));
 
         var result = await SharpSenseMcpTools.ctx_execute(
-            commandExecutor.Object,
+            processRunner.Object,
+            executeLogIndexFactory.Object,
+            Options.Create(new SharpSenseCliOptions
+            {
+                RepositoryRoot = "/repo"
+            }),
             "missing-command",
             "Error",
             CancellationToken.None);

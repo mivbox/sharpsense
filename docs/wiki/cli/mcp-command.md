@@ -3,7 +3,7 @@ title: "Mcp Command"
 type: cli
 tags: [spectre, mcp, implemented]
 created: 2026-04-26
-updated: 2026-05-02
+updated: 2026-05-10
 confidence: high
 ---
 
@@ -24,7 +24,7 @@ confidence: high
 
 | Tool | Backing query | Purpose |
 | --- | --- | --- |
-| `ctx_execute` | `ICommandExecutor` | Runs a local command, indexes streamed output in a transient FTS5 store, and returns reduced TOON log excerpts or a compact summary when no query hits are found. |
+| `ctx_execute` | `CommandExecutionReducer` | Runs a local command, indexes streamed output in a transient DbContext-backed FTS5 store, and returns reduced TOON log excerpts or a compact summary when no query hits are found. |
 | `semantic_search` | `HybridSearchQuery` | Hybrid BM25 + vector search over indexed code nodes, formatted as hierarchical directory/file TOON blocks for token-efficient handoff. |
 | `trace_node` | `TraceQuery` / `ImpactAnalysisQuery` | Downstream callees or upstream caller blast radius for a known node id, formatted as arrow-chain TOON. |
 | `get_inheritors` | `GetInheritorsQuery` | Direct derived classes or interface implementers for a persisted node id. |

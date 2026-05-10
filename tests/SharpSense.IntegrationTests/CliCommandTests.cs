@@ -427,32 +427,46 @@ public sealed class CliCommandTests
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
         var ct = TestContext.Current.CancellationToken;
-        var commandExecutor = new Mock<ICommandExecutor>(MockBehavior.Strict);
-        commandExecutor.Setup(candidate => candidate.Execute(
-                new CommandExecutionRequest("dotnet build SharpSense.sln", "Build succeeded"),
+        var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
+        var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
+        var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
+
+        executeLogIndexFactory.Setup(candidate => candidate.Create(ct))
+            .ReturnsAsync(executeLogIndex.Object);
+        executeLogIndex.Setup(candidate => candidate.AppendLine("Build succeeded in 13.7s", ct))
+            .ReturnsAsync(Result.Ok(1));
+        executeLogIndex.Setup(candidate => candidate.FindMatches("Build succeeded", ct))
+            .ReturnsAsync(Result.Ok<int[]>([1]));
+        executeLogIndex.Setup(candidate => candidate.ReadRange(new ExecutionLineRange(1, 1), ct))
+            .ReturnsAsync(Result.Ok<ExecutionLogLine[]>(
+            [
+                new ExecutionLogLine(1, "Build succeeded in 13.7s")
+            ]));
+        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
+            .Returns(ValueTask.CompletedTask);
+        processRunner.Setup(candidate => candidate.Execute(
+                It.Is<CommandProcessRequest>(request =>
+                    request.Command == "dotnet build SharpSense.sln" &&
+                    request.WorkingDirectory == RepositoryRoot),
+                It.IsAny<Func<string, CancellationToken, Task>>(),
                 ct))
-            .ReturnsAsync(Result.Ok(new CommandExecutionResult(
-                "dotnet build SharpSense.sln",
-                RepositoryRoot,
-                "Build succeeded",
-                0,
-                1201,
-                1,
-                false,
-                "Returned 1 merged block(s) from 1 matched line(s) across 1201 captured line(s).",
-                [
-                    new CommandExecutionBlock(
-                        1201,
-                        1201,
-                        "1201| Build succeeded in 13.7s")
-                ])));
+            .Returns(async (
+                CommandProcessRequest _,
+                Func<string, CancellationToken, Task> onOutput,
+                CancellationToken innerCt) =>
+            {
+                await onOutput("Build succeeded in 13.7s", innerCt);
+                return Result.Ok(new CommandProcessResult(0));
+            });
         var app = CreateCommandApp(
             console,
             database,
             configureServices: services =>
             {
-                services.RemoveAll<ICommandExecutor>();
-                services.AddScoped<ICommandExecutor>(_ => commandExecutor.Object);
+                services.RemoveAll<ICommandProcessRunner>();
+                services.RemoveAll<IExecuteLogIndexFactory>();
+                services.AddScoped<ICommandProcessRunner>(_ => processRunner.Object);
+                services.AddScoped<IExecuteLogIndexFactory>(_ => executeLogIndexFactory.Object);
             });
 
         var exitCode = await app.RunAsync(
@@ -467,15 +481,15 @@ public sealed class CliCommandTests
             "working_directory: /repo" + Environment.NewLine +
             "query: Build succeeded" + Environment.NewLine +
             "metrics:" + Environment.NewLine +
-            "  captured_lines: 1201" + Environment.NewLine +
+            "  captured_lines: 1" + Environment.NewLine +
             "  matched_lines: 1" + Environment.NewLine +
             "  block_count: 1" + Environment.NewLine +
             "  truncated: false" + Environment.NewLine +
-            "summary: Returned 1 merged block(s) from 1 matched line(s) across 1201 captured line(s)." + Environment.NewLine +
+            "summary: Returned 1 merged block(s) from 1 matched line(s) across 1 captured line(s)." + Environment.NewLine +
             "output:" + Environment.NewLine +
-            "  - span: 1201-1201" + Environment.NewLine +
+            "  - span: 1-1" + Environment.NewLine +
             "    text: |" + Environment.NewLine +
-            "      1201| Build succeeded in 13.7s");
+            "      1| Build succeeded in 13.7s");
     }
 
     [Fact]
@@ -484,18 +498,30 @@ public sealed class CliCommandTests
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
         var ct = TestContext.Current.CancellationToken;
-        var commandExecutor = new Mock<ICommandExecutor>(MockBehavior.Strict);
-        commandExecutor.Setup(candidate => candidate.Execute(
-                new CommandExecutionRequest("missing-command", "Error"),
+        var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
+        var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
+        var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
+
+        executeLogIndexFactory.Setup(candidate => candidate.Create(ct))
+            .ReturnsAsync(executeLogIndex.Object);
+        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
+            .Returns(ValueTask.CompletedTask);
+        processRunner.Setup(candidate => candidate.Execute(
+                It.Is<CommandProcessRequest>(request =>
+                    request.Command == "missing-command" &&
+                    request.WorkingDirectory == RepositoryRoot),
+                It.IsAny<Func<string, CancellationToken, Task>>(),
                 ct))
-            .ReturnsAsync(Result.Fail<CommandExecutionResult>("Failed to start command 'missing-command'."));
+            .ReturnsAsync(Result.Fail<CommandProcessResult>("Failed to start command 'missing-command'."));
         var app = CreateCommandApp(
             console,
             database,
             configureServices: services =>
             {
-                services.RemoveAll<ICommandExecutor>();
-                services.AddScoped<ICommandExecutor>(_ => commandExecutor.Object);
+                services.RemoveAll<ICommandProcessRunner>();
+                services.RemoveAll<IExecuteLogIndexFactory>();
+                services.AddScoped<ICommandProcessRunner>(_ => processRunner.Object);
+                services.AddScoped<IExecuteLogIndexFactory>(_ => executeLogIndexFactory.Object);
             });
 
         var exitCode = await app.RunAsync(
