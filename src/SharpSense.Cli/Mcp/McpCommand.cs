@@ -14,6 +14,7 @@ using SharpSense.Application.HybridSearch;
 using SharpSense.Application.ImpactAnalysis;
 using SharpSense.Application.Trace;
 using SharpSense.Infrastructure.Context360;
+using SharpSense.Infrastructure.CommandExecution;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.HybridSearch;
@@ -55,6 +56,7 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
         });
         services.AddRepositoryWorkspace(rawRoot);
         services.AddSharpSenseConfiguration(rawRoot);
+        services.AddCommandExecutionInfrastructure();
         services.AddContext360();
         services.AddContext360Infrastructure();
         services.AddHybridSearch();

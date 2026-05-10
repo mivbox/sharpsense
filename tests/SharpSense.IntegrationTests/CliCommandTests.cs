@@ -4,11 +4,14 @@ using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 using System.Text.Json;
 using AwesomeAssertions;
+using FluentResults;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Moq;
+using SharpSense.Application.CommandExecution.Abstractions;
+using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Refactoring.Abstractions;
 using SharpSense.Application.Refactoring.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
@@ -416,6 +419,121 @@ public sealed class CliCommandTests
             newName,
             "src/Fixture.App/Fixture.App.csproj",
             ct), Times.Once);
+    }
+
+    [Fact]
+    public async Task WhenExecuteRunsWithToon_ThenItFormatsCondensedCommandOutput()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var ct = TestContext.Current.CancellationToken;
+        var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
+        var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
+        var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
+
+        executeLogIndexFactory.Setup(candidate => candidate.Create(ct))
+            .ReturnsAsync(executeLogIndex.Object);
+        executeLogIndex.Setup(candidate => candidate.AppendLine("Build succeeded in 13.7s", ct))
+            .ReturnsAsync(Result.Ok(1));
+        executeLogIndex.Setup(candidate => candidate.FindMatches("Build succeeded", ct))
+            .ReturnsAsync(Result.Ok<int[]>([1]));
+        executeLogIndex.Setup(candidate => candidate.ReadRange(new ExecutionLineRange(1, 1), ct))
+            .ReturnsAsync(Result.Ok<ExecutionLogLine[]>(
+            [
+                new ExecutionLogLine(1, "Build succeeded in 13.7s")
+            ]));
+        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
+            .Returns(ValueTask.CompletedTask);
+        processRunner.Setup(candidate => candidate.Execute(
+                It.Is<CommandProcessRequest>(request =>
+                    request.Command == "dotnet build SharpSense.sln" &&
+                    request.WorkingDirectory == RepositoryRoot),
+                It.IsAny<Func<string, CancellationToken, Task>>(),
+                ct))
+            .Returns(async (
+                CommandProcessRequest _,
+                Func<string, CancellationToken, Task> onOutput,
+                CancellationToken innerCt) =>
+            {
+                await onOutput("Build succeeded in 13.7s", innerCt);
+                return Result.Ok(new CommandProcessResult(0));
+            });
+        var app = CreateCommandApp(
+            console,
+            database,
+            configureServices: services =>
+            {
+                services.RemoveAll<ICommandProcessRunner>();
+                services.RemoveAll<IExecuteLogIndexFactory>();
+                services.AddScoped<ICommandProcessRunner>(_ => processRunner.Object);
+                services.AddScoped<IExecuteLogIndexFactory>(_ => executeLogIndexFactory.Object);
+            });
+
+        var exitCode = await app.RunAsync(
+            ["execute", "dotnet build SharpSense.sln", "--query", "Build succeeded", "--toon", "--repo-root", RepositoryRoot],
+            ct);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Be(
+            "command: dotnet build SharpSense.sln" + Environment.NewLine +
+            "status: success" + Environment.NewLine +
+            "exit_code: 0" + Environment.NewLine +
+            "working_directory: /repo" + Environment.NewLine +
+            "query: Build succeeded" + Environment.NewLine +
+            "metrics:" + Environment.NewLine +
+            "  captured_lines: 1" + Environment.NewLine +
+            "  matched_lines: 1" + Environment.NewLine +
+            "  block_count: 1" + Environment.NewLine +
+            "  truncated: false" + Environment.NewLine +
+            "summary: Returned 1 merged block(s) from 1 matched line(s) across 1 captured line(s)." + Environment.NewLine +
+            "output:" + Environment.NewLine +
+            "  - span: 1-1" + Environment.NewLine +
+            "    text: |" + Environment.NewLine +
+            "      1| Build succeeded in 13.7s");
+    }
+
+    [Fact]
+    public async Task WhenExecuteFails_ThenItOutputsErrorJsonAndReturnsExitCodeOne()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var ct = TestContext.Current.CancellationToken;
+        var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
+        var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
+        var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
+
+        executeLogIndexFactory.Setup(candidate => candidate.Create(ct))
+            .ReturnsAsync(executeLogIndex.Object);
+        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
+            .Returns(ValueTask.CompletedTask);
+        processRunner.Setup(candidate => candidate.Execute(
+                It.Is<CommandProcessRequest>(request =>
+                    request.Command == "missing-command" &&
+                    request.WorkingDirectory == RepositoryRoot),
+                It.IsAny<Func<string, CancellationToken, Task>>(),
+                ct))
+            .ReturnsAsync(Result.Fail<CommandProcessResult>("Failed to start command 'missing-command'."));
+        var app = CreateCommandApp(
+            console,
+            database,
+            configureServices: services =>
+            {
+                services.RemoveAll<ICommandProcessRunner>();
+                services.RemoveAll<IExecuteLogIndexFactory>();
+                services.AddScoped<ICommandProcessRunner>(_ => processRunner.Object);
+                services.AddScoped<IExecuteLogIndexFactory>(_ => executeLogIndexFactory.Object);
+            });
+
+        var exitCode = await app.RunAsync(
+            ["execute", "missing-command", "--query", "Error", "--repo-root", RepositoryRoot],
+            ct);
+
+        exitCode.Should().Be(1);
+
+        using var jsonDocument = JsonDocument.Parse(console.Output);
+        jsonDocument.RootElement.GetProperty("command").GetString().Should().Be("missing-command");
+        jsonDocument.RootElement.GetProperty("status").GetString().Should().Be("error");
+        jsonDocument.RootElement.GetProperty("errorMessage").GetString().Should().Be("Failed to start command 'missing-command'.");
     }
 
     private static Spectre.Console.Cli.CommandApp CreateCommandApp(

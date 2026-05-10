@@ -1,4 +1,5 @@
 using SharpSense.Application.Context360.Models;
+using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.Refactoring.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
@@ -189,6 +190,72 @@ public static class TokenObjectNotation
 
         builder.Length -= Environment.NewLine.Length;
         return builder.ToString();
+    }
+
+    public static string SerializeCommandExecutionResult(CommandExecutionResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(result.Blocks);
+        ArgumentException.ThrowIfNullOrWhiteSpace(result.Command);
+        ArgumentException.ThrowIfNullOrWhiteSpace(result.WorkingDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(result.Status);
+        ArgumentException.ThrowIfNullOrWhiteSpace(result.Summary);
+
+        var builder = new StringBuilder();
+        builder.Append("command: ").AppendLine(result.Command);
+        builder.Append("status: ").AppendLine(result.Status);
+        builder.Append("exit_code: ").AppendLine(result.ExitCode.ToString());
+        builder.Append("working_directory: ").AppendLine(result.WorkingDirectory);
+
+        if (!string.IsNullOrWhiteSpace(result.Query))
+        {
+            builder.Append("query: ").AppendLine(result.Query);
+        }
+
+        builder.AppendLine("metrics:");
+        builder.Append("  captured_lines: ").AppendLine(result.TotalLines.ToString());
+        builder.Append("  matched_lines: ").AppendLine(result.MatchedLineCount.ToString());
+        builder.Append("  block_count: ").AppendLine(result.BlockCount.ToString());
+        builder.Append("  truncated: ").AppendLine(result.Truncated.ToString().ToLowerInvariant());
+        builder.Append("summary: ").AppendLine(result.Summary);
+
+        if (result.Blocks.Length == 0)
+        {
+            builder.Length -= Environment.NewLine.Length;
+            return builder.ToString();
+        }
+
+        builder.AppendLine("output:");
+
+        foreach (var block in result.Blocks)
+        {
+            builder.Append("  - span: ")
+                .Append(block.StartLine)
+                .Append('-')
+                .AppendLine(block.EndLine.ToString());
+            builder.AppendLine("    text: |");
+
+            using var reader = new StringReader(block.Text);
+            while (reader.ReadLine() is { } line)
+            {
+                builder.Append("      ").AppendLine(line);
+            }
+        }
+
+        builder.Length -= Environment.NewLine.Length;
+        return builder.ToString();
+    }
+
+    public static string SerializeCommandExecutionFailure(
+        string command,
+        string errorMessage)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(command);
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorMessage);
+
+        return "command: " + command + Environment.NewLine +
+               "status: error" + Environment.NewLine +
+               "error_message: " + errorMessage;
     }
 
     private static string SerializeGroupedNodes(IEnumerable<ToonNode> results)

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using SharpSense.Cli.Analyze;
 using SharpSense.Cli.Context;
+using SharpSense.Cli.Execute;
 using SharpSense.Cli.Inheritors;
 using SharpSense.Cli.Mcp;
 using SharpSense.Cli.Refactor;
@@ -59,6 +60,11 @@ public partial class Program
                 .AddCommand<ContextCommand>("context")
                 .WithDescription("Show immediate callers, callees, and hierarchy breadth for a node ID.");
             AttachData(contextCommand, executionContext);
+
+            var execute = config
+                .AddCommand<ExecuteCommand>("execute")
+                .WithDescription("Run a local command and reduce its output into compact excerpts.");
+            AttachData(execute, executionContext);
 
             var inheritors = config
                 .AddCommand<InheritorsCommand>("inheritors")

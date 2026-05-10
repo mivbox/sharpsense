@@ -12,7 +12,11 @@
       ],
       "tools": [
         "semantic_search",
-        "trace_node"
+        "trace_node",
+        "refactor_symbol",
+        "context",
+        "get_inheritors",
+        "ctx_execute"
       ],
       "type": "stdio"
     }

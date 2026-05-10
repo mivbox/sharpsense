@@ -228,6 +228,9 @@ Token Efficiency (Quantitative Analysis)
 * **With Skill Input Tokens**: 467.6k
 * **Net Savings**: 357.3k tokens per request **(~43% reduction)**.
 
+**Context without sharpsense**: 28.3k tokens
+**Context with skill and subagents**: 19.1k tokens
+
 Copilot search relies on brute-force file reads, loading the entirety of McpCommand.cs and every subsequently
 referenced file (e.g. HybridSearchExtensions.cs, Program.cs) into the LLM's context window. This includes unneeded
 elements like using directives, whitespace, and irrelevant methods. By utilising the MCP tools, the system queried the
