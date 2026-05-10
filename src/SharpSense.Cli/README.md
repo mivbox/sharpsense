@@ -17,6 +17,7 @@ sharpsense --help
 sharpsense analyze path/to/YourSolution.sln
 sharpsense search "WorkspaceLoader"
 sharpsense context --node-id 42
+sharpsense execute "dotnet test SharpSense.sln" --query "error OR failed"
 sharpsense trace 42 -d callee
 sharpsense refactor --node-id 42 --new-name Updated
 sharpsense skills
@@ -28,6 +29,7 @@ sharpsense skills
 |-------------------------|---------------------------------------|--------------------------------------------------------------------|
 | `analyze <target-path>` | `sharpsense analyze SharpSense.sln`   | Build or refresh the local index for a `.sln` or `.csproj` target. |
 | `context`               | `sharpsense context --node-id 42`     | Show the immediate callers, callees, and hierarchy breadth for a node. |
+| `execute <command>`     | `sharpsense execute "dotnet test SharpSense.sln" --query "error OR failed"` | Run a local command and reduce its output into compact JSON or TOON excerpts. |
 | `index <target-path>`   | `sharpsense index SharpSense.sln`     | Legacy alias for `analyze`.                                        |
 | `inheritors <node-id>`  | `sharpsense inheritors 232 --toon`    | List direct class inheritors or interface implementers.            |
 | `refactor`              | `sharpsense refactor --node-id 42 --new-name Updated` | Semantically rename an indexed symbol through Roslyn. |
@@ -80,6 +82,28 @@ Watch mode:
 - keeps using the same local repository index.
 
 This is the command to leave running while you edit code locally.
+
+## Execute
+
+Run a quoted local command string inside the resolved repository root and return either structured JSON or compact TOON excerpts:
+
+```bash
+sharpsense execute "dotnet test SharpSense.sln" --query "error OR failed"
+```
+
+Useful options:
+
+- `-q`, `--query <QUERY>`: apply an FTS query to find relevant output lines before SharpSense merges surrounding context windows.
+- `--repo-root <path>`: override the repository root used as the working directory for the command.
+- `--toon`: emit compact TOON output instead of JSON.
+- `-v`, `--verbose`: enable verbose logging.
+
+Notes:
+
+- Quote the full `<command>` value when it contains spaces.
+- The command is executed without a shell.
+- When `--query` is omitted or finds no hits, SharpSense returns only compact command metadata and summary text.
+- On success, the CLI exits with the executed process exit code. If SharpSense cannot start or reduce the command, it exits with `1`.
 
 ## Refactor command input model
 
