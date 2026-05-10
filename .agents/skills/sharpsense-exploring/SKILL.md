@@ -1,85 +1,63 @@
 ---
 name: sharpsense-exploring
-description: "Use when the user asks how code works, wants to understand architecture, trace execution flows, or explore unfamiliar parts of the codebase. Examples: \"How does X work?\", \"What calls this function?\", \"Show me the auth flow\""
+description: |
+  Delegates architectural discovery and codebase exploration to a subagent to protect the main context window.
+  Use when tracing execution flows, understanding project structure, or finding where logic lives.
+  Examples: "How does X work?", "Show me the auth flow", "What calls this function?".
 ---
 
-# Exploring Codebases with SharpSense
+# Exploring Codebases via Subagent Delegation
 
-## When to Use
+## MANDATORY ROUTING
 
-- "How does authentication work?"
-- "What's the project structure?"
-- "Show me the main components"
-- "Where is the database logic?"
-- Understanding code you haven't seen before
+Do NOT perform deep architectural tracing, codebase exploration, or multiple `sharpsense` discovery tool calls in the
+main thread.
+When asked to explain a flow, find a component, or map out an unknown area of the codebase, you MUST spawn a subagent to
+execute the graph discovery workflow.
 
-## Workflow
+## 1. Subagent Initialisation Protocol
 
-```
-1. semantic_search({query: "<what you want to understand>"})      → Discover relevant nodes and persisted ids
-2. context({nodeId: <id>})                                        → Load immediate callers, callees, and hierarchy breadth
-3. trace_node({nodeId: "<id>", direction: "callee"})             → Follow downstream execution flow
-4. trace_node({nodeId: "<id>", direction: "caller"})             → Find upstream entry points if needed
-5. get_inheritors({nodeId: <id>})                                 → Expand inheritance / implementation details when relevant
-6. Read cited source files or wiki docs for implementation detail
-```
+When spawning the subagent, instruct it to use the SharpSense tools to map the architecture and strictly constrain its
+output. Use this exact template for the task definition:
 
-> If the index is stale or missing the target area, run `sharpsense analyze <target>` in the terminal first.
+> "Task: [Explicitly state the user's goal, e.g. 'Map out the payment processing execution flows'].
+> Tools: Use `sharpsense:semantic_search`, `sharpsense:context`, `sharpsense:trace_node`, and
+`sharpsense:get_inheritors`. Do NOT read file contents.
+> Output Constraint: You MUST compress your analysis into a terse, multi-path architectural map. Return ALL relevant
+> execution branches discovered.
+>
+> Schema:
+> `[Primary Path]: [Entry] -> [Node] -> [Exit]`
+> `[Async/Event Path]: [Trigger] -> [Node] -> [Exit]`
+> `[Error/Fallback Path]: [Node] -> [Handler]`
+> `[File Targets]: [List of specific file paths WITH line numbers (e.g., path/to/file.cs:10-25)]`
+> `[Summary]: [Terse, fragment-based description of the system's structural behavior].`"
 
-## Checklist
+## 2. Subagent Workflow (Internal Checklist)
 
-```
-- [ ] semantic_search for the concept you want to understand
-- [ ] Extract the persisted id from the backticks
-- [ ] context for the immediate breadth snapshot
-- [ ] trace_node for deeper caller/callee flow when needed
-- [ ] get_inheritors for hierarchy-specific questions
-- [ ] Read the cited source files or docs for implementation details
-```
+*Instructions for the spawned subagent: Execute these steps internally to build the architectural map.*
 
-## Tools
+1. `semantic_search({query: "<concept>"})` → Discover relevant nodes and extract the persisted ID.
+2. `context({nodeId: <id>})` → Load immediate callers, callees, and hierarchy breadth.
+3. `trace_node({nodeId: "<id>", direction: "callee"})` → Follow downstream execution flow.
+4. `trace_node({nodeId: "<id>", direction: "caller"})` → Find upstream entry points if needed.
+5. `get_inheritors({nodeId: <id>})` → Expand inheritance / implementation details.
 
-**semantic_search** — find relevant nodes for a concept:
+*(Note: If the index is stale or missing the target area, run `sharpsense analyze <target>` via `ctx_execute` first).*
 
-```
-semantic_search({query: "payment processing"})
-→ src/Payments/Processor.cs:
-    - [M] `42` ProcessPayment L10-42
-```
+## 3. Parent Agent Re-Integration (The Read Phase)
 
-**context** — instant architectural dashboard for a node:
+When the subagent completes its traversal and returns the compressed multi-path map:
 
-```
-context({nodeId: 42})
-→ node / incoming / outgoing breadth in compressed TOON
-```
+1. Accept the map exactly as provided to establish your architectural context.
+2. **The Read Phase:** If implementation details, bug fixing, or code modifications are required, YOU (the main agent)
+   must now use standard file reading tools to inspect the specific line spans listed in the subagent's `[File Targets]`
+   block. Do not read the entire file if line numbers are provided.
+3. Present the final findings, explanation, or proposed code edits to the user based on the combined graph logic and
+   source code.
 
-**trace_node** — traverse deeper execution flow:
-
-```
-trace_node({nodeId: "42", direction: "callee"})
-→ downstream callees
-
-trace_node({nodeId: "42", direction: "caller"})
-→ upstream callers
-```
-
-**get_inheritors** — resolve derived classes or interface implementers:
-
-```
-get_inheritors({nodeId: 232})
-→ direct inheritors / implementers
-```
-
-## Example: "How does payment processing work?"
-
-```
-1. semantic_search({query: "payment processing"})
-   → src/Payments/Processor.cs:
-       - [M] `42` ProcessPayment L10-42
-2. context({nodeId: 42})
-   → callers, callees, and hierarchy breadth for ProcessPayment
-3. trace_node({nodeId: "42", direction: "callee"})
-   → validateCard, chargeGateway, persistTransaction
-4. Read the cited files for the implementation details
-```
+**Example of Expected Subagent Return Payload:**
+`[Primary Path]: PaymentsController.Charge() -> StripeProcessor.ProcessPayment() -> TransactionRepo.Save().`
+`[Error Path]: StripeProcessor.ProcessPayment() -> throws PaymentDeclinedException -> GlobalErrorHandler.Handle().`
+`[File Targets]: src/Payments/StripeProcessor.cs:12-30, src/Data/TransactionRepo.cs:45-50`
+`[Summary]: Controller validates DTO. Processor hits Stripe API. Repo persists to Postgres. Errors caught globally.`
