@@ -2,7 +2,9 @@ using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SharpSense.Application.Context360;
-using SharpSense.Application.Context360.Abstractions;
+using SharpSense.Application.Context360.GetNodeContext.Models;
+using SharpSense.Application.Context360.Models;
+using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Context360;
@@ -55,10 +57,11 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
         CancellationToken ct)
     {
         await using var scope = host.Services.CreateAsyncScope();
-        var contextService = scope.ServiceProvider.GetRequiredService<IContextService>();
-        var result = await contextService.GetNodeContext(
-            settings.NodeId,
-            10,
+        var handler = scope.ServiceProvider.GetRequiredService<IQueryHandler<GetNodeContextQuery, Context360Result>>();
+        var result = await handler.Handle(
+            new GetNodeContextQuery(
+                settings.NodeId,
+                10),
             ct);
 
         CommandOutput.Write(context, TokenObjectNotation.SerializeContext360(result));

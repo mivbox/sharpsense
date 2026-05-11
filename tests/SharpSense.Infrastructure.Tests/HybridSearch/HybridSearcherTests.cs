@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using Moq;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.Shared.Abstractions;
@@ -25,15 +26,17 @@ public sealed class HybridSearcherTests
             .ReturnsAsync(new TextEmbedding("Message", [1f, 0f]));
         var searcher = new HybridSearcher(
             inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
-            embeddings.Object);
+            embeddings.Object,
+            new SqliteKeywordCandidateProvider(),
+            new SqliteVectorScorer());
 
         var result = await searcher.Search(
             new HybridSearchQuery("Message", Limit: 3),
             TestContext.Current.CancellationToken);
 
-        Assert.Equal("Message", result.SearchText);
-        Assert.NotEmpty(result.Hits);
-        Assert.Equal(KnowledgeGraphFixture.TargetNodeId, result.Hits[0].Id);
+        result.SearchText.Should().Be("Message");
+        result.Hits.Should().NotBeEmpty();
+        result.Hits[0].Id.Should().Be(KnowledgeGraphFixture.TargetNodeId);
         embeddings.Verify(candidate => candidate.Generate("Message", TestContext.Current.CancellationToken), Times.Once);
     }
 
@@ -50,7 +53,9 @@ public sealed class HybridSearcherTests
             .ReturnsAsync(new TextEmbedding("Message", [1f, 0f]));
         var searcher = new HybridSearcher(
             inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
-            embeddings.Object);
+            embeddings.Object,
+            new SqliteKeywordCandidateProvider(),
+            new SqliteVectorScorer());
 
         var result = await searcher.Search(
             new HybridSearchQuery(
@@ -60,9 +65,9 @@ public sealed class HybridSearcherTests
                 IncludedNodeTypes: [NodeType.Method]),
             TestContext.Current.CancellationToken);
 
-        Assert.NotEmpty(result.Hits);
-        Assert.All(result.Hits, static hit => Assert.Equal(NodeType.Method, hit.NodeType));
-        Assert.All(result.Hits, static hit => Assert.Equal(KnowledgeGraphFixture.AppProjectId, hit.ProjectId));
-        Assert.DoesNotContain(result.Hits, static hit => hit.Id == KnowledgeGraphFixture.MessageNodeId);
+        result.Hits.Should().NotBeEmpty();
+        result.Hits.Should().OnlyContain(static hit => hit.NodeType == NodeType.Method);
+        result.Hits.Should().OnlyContain(static hit => hit.ProjectId == KnowledgeGraphFixture.AppProjectId);
+        result.Hits.Should().NotContain(static hit => hit.Id == KnowledgeGraphFixture.MessageNodeId);
     }
 }

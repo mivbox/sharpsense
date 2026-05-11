@@ -3,18 +3,19 @@ using SharpSense.Application.Context360.Models;
 namespace SharpSense.Application.Context360.Abstractions;
 
 /// <summary>
-/// Assembles the immediate architectural breadth around a persisted node id so CLI and MCP routes can share the exact
-/// same Context360 read logic without duplicating orchestration in route code.
+/// Reads the persisted target node and its immediate architectural breadth buckets from the knowledge graph so the
+/// Application layer can consume a fully shaped Context360 response without leaking EF Core details or persistence
+/// entities past the Dependency Inversion boundary.
 /// </summary>
-public interface IContextService
+public interface IContextRepository
 {
     /// <summary>
-    /// Returns the target node plus capped incoming and outgoing breadth buckets for the current request.
-    /// </summary>
+     /// Loads the target node plus its immediate incoming and outgoing breadth buckets for a persisted node id.
+     /// </summary>
     /// <param name="nodeId">The persisted integer code-node handle.</param>
     /// <param name="maxRelated">The maximum number of related rows to return per bucket.</param>
     /// <param name="ct"><see cref="CancellationToken" /> for the current request.</param>
-    Task<Context360Result> GetNodeContext(
+    Task<Context360Result?> GetNodeContext(
         int nodeId,
         int maxRelated,
         CancellationToken ct);

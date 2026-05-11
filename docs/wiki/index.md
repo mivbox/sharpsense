@@ -24,6 +24,7 @@ raw sources, provides architectural directives, and directs queries. The human n
 * [[architecture/cqrs-pipeline]] - The strict boundary between `SharpSenseCliOptions` configuration and CQRS payloads.
 * [[architecture/host-composition]] - Shared host bootstrapping, configuration binding, and DI composition for CLI routes.
 * [[architecture/file-discovery]] - The canonical discovery path for Target files, `.gitignore`, and normalized relative paths.
+* [[architecture/hybrid-search-pipeline]] - The search read-model orchestration split between candidate lookup, vector scoring, and final ranking.
 * [[architecture/incremental-watch]] - Debounced watch-mode batching, recovery rules, and incremental dispatch flow.
 * [[architecture/virtual-file-system]] - The Infrastructure-owned `IFileSystem` boundary, allowed physical-edge exceptions, and stateless test rules.
 * [[architecture/vertical-slice-application]] - The canonical Application-layer Vertical Slice layout, boundaries, and handler locality rules.

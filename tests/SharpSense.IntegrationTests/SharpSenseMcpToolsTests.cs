@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 using Moq;
 using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.Models;
-using SharpSense.Application.Context360.Abstractions;
+using SharpSense.Application.Context360.GetNodeContext.Models;
 using SharpSense.Application.Context360.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.Models;
@@ -128,8 +128,10 @@ public sealed class SharpSenseMcpToolsTests
     [Fact]
     public async Task WhenContextHasMatches_ThenItFormatsCompressedToonOutput()
     {
-        var contextService = new Mock<IContextService>(MockBehavior.Strict);
-        contextService.Setup(candidate => candidate.GetNodeContext(42, 10, CancellationToken.None))
+        var handler = new Mock<IQueryHandler<GetNodeContextQuery, Context360Result>>(MockBehavior.Strict);
+        handler.Setup(candidate => candidate.Handle(
+                It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
+                CancellationToken.None))
             .ReturnsAsync(
                 new Context360Result(
                     new Context360Node(
@@ -153,7 +155,7 @@ public sealed class SharpSenseMcpToolsTests
                     ]));
 
         var result = await SharpSenseMcpTools.context(
-            contextService.Object,
+            handler.Object,
             42,
             CancellationToken.None);
 
@@ -171,7 +173,10 @@ public sealed class SharpSenseMcpToolsTests
             "outgoing:" + Environment.NewLine +
             "  callees: [ReceiptWriter.WriteReceipt (Id:9)]" + Environment.NewLine +
             "  inherits: [IPaymentProcessor (Id:10)]");
-        contextService.Verify(candidate => candidate.GetNodeContext(42, 10, CancellationToken.None), Times.Once);
+        handler.Verify(candidate => candidate.Handle(
+                It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
+                CancellationToken.None),
+            Times.Once);
     }
 
     [Fact]

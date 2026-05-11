@@ -8,6 +8,7 @@ namespace SharpSense.Application.HybridSearch.HybridSearch;
 public sealed class HybridSearchQueryHandler(IHybridSearcher searcher)
     : IQueryHandler<HybridSearchQuery, HybridSearchResult>
 {
-    public Task<HybridSearchResult> Handle(HybridSearchQuery query, CancellationToken ct)
+    public Task<HybridSearchResult> Handle(HybridSearchQuery query,
+        CancellationToken ct)
         => searcher.Search(query, ct);
 }
