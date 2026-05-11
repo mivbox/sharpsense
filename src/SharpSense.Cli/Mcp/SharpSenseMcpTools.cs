@@ -2,7 +2,8 @@ using ModelContextProtocol.Server;
 using Microsoft.Extensions.Options;
 using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.Models;
-using SharpSense.Application.Context360.Abstractions;
+using SharpSense.Application.Context360.GetNodeContext.Models;
+using SharpSense.Application.Context360.Models;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.Inheritors.GetInheritors.Models;
@@ -102,7 +103,7 @@ internal sealed class SharpSenseMcpTools
     [McpServerTool]
     [Description("Gets an instant 360-degree architectural snapshot of a node. Returns immediate callers, callees, and inheritance hierarchy for a persisted node ID. Use this to understand a node's immediate context and blast radius before deep tracing.")]
     public static async Task<string> context(
-        IContextService contextService,
+        IQueryHandler<GetNodeContextQuery, Context360Result> handler,
         [Description("The persisted integer ID of the target node.")] int nodeId,
         CancellationToken ct = default)
     {
@@ -112,9 +113,10 @@ internal sealed class SharpSenseMcpTools
 
         try
         {
-            var result = await contextService.GetNodeContext(
-                nodeId,
-                10,
+            var result = await handler.Handle(
+                new GetNodeContextQuery(
+                    nodeId,
+                    10),
                 ct);
 
             activity.AddTag("context.callers.count", result.Callers.Length);

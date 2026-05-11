@@ -3,7 +3,7 @@ title: "Mcp Command"
 type: cli
 tags: [spectre, mcp, implemented]
 created: 2026-04-26
-updated: 2026-05-10
+updated: 2026-05-11
 confidence: high
 ---
 
@@ -28,7 +28,7 @@ confidence: high
 | `semantic_search` | `HybridSearchQuery` | Hybrid BM25 + vector search over indexed code nodes, formatted as hierarchical directory/file TOON blocks for token-efficient handoff. |
 | `trace_node` | `TraceQuery` / `ImpactAnalysisQuery` | Downstream callees or upstream caller blast radius for a known node id, formatted as arrow-chain TOON. |
 | `get_inheritors` | `GetInheritorsQuery` | Direct derived classes or interface implementers for a persisted node id. |
-| `context` | `IContextService` | Immediate callers, callees, and inheritance breadth for a persisted node id as compressed TOON. |
+| `context` | `GetNodeContextQuery` | Immediate callers, callees, and inheritance breadth for a persisted node id as compressed TOON. |
 | `refactor_symbol` | `IRefactorSymbolService` | Semantically rename a persisted symbol, update Roslyn references when applicable, and return compact TOON write results. |
 
 ## Example Outputs and Rough Token Cost
@@ -131,7 +131,7 @@ modified_files:
 6. `ctx_execute` resolves `ICommandExecutor`, runs the raw command string inside the configured repository root, streams output through the transient FTS5 reducer from [[architecture/windowed-execution-pipeline]], and renders metadata-first TOON through `TokenObjectNotation.SerializeCommandExecutionResult()`.
 7. `semantic_search` resolves `HybridSearchQuery` and serializes hits through `TokenObjectNotation.SerializeSemanticSearch()`, the shared hierarchical TOON serializer used by `sharp-sense search --toon`.
 8. `trace_node` resolves the root node through `ITraceNavigator`, then formats either direct callees or caller chains through the dedicated trace serializers in `TokenObjectNotation`.
-9. `context` resolves `IContextService` directly and renders the shared `Context360Result` through `TokenObjectNotation.SerializeContext360()`.
+9. `context` dispatches `GetNodeContextQuery` through `IQueryHandler<GetNodeContextQuery, Context360Result>`, then renders the shared `Context360Result` through `TokenObjectNotation.SerializeContext360()`.
 10. `get_inheritors` resolves `GetInheritorsQuery` through the `IInheritorFinder` read slice and formats direct class inheritors or interface implementers with the shared flat TOON output formatter.
 11. `refactor_symbol` resolves `IRefactorSymbolService`, performs a semantic rename against either the Roslyn workspace or the Markdown strategy, and returns `TokenObjectNotation.SerializeRefactorResult()` without waiting for downstream index refresh.
 12. `Execute()` waits for the stdio host to shut down while the registered tools resolve queries on demand.

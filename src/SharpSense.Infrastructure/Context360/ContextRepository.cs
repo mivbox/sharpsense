@@ -1,18 +1,16 @@
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.Context360.Abstractions;
 using SharpSense.Application.Context360.Models;
-using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
-using SharpSense.Infrastructure.Shared;
 
 namespace SharpSense.Infrastructure.Context360;
 
-public sealed class ContextLookup(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
-    : IContextLookup
+public sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
+    : IContextRepository
 {
-    public async Task<Context360LookupResult?> GetNodeContext(
+    public async Task<Context360Result?> GetNodeContext(
         int nodeId,
         int maxRelated,
         CancellationToken ct)
@@ -28,11 +26,17 @@ public sealed class ContextLookup(IDbContextFactory<SharpSenseDbContext> dbConte
         }
 
         await using var context = await dbContextFactory.CreateDbContextAsync(ct);
-        var targetNode = await CodeNodeNavigationQueries.ProjectCodeNodeResults(
-                context,
-                context.CodeNodes
-                    .AsNoTracking()
-                    .Where(codeNode => codeNode.Id == nodeId))
+        var targetNode = await (
+            from codeNode in context.CodeNodes.AsNoTracking()
+            join document in context.Documents.AsNoTracking() on codeNode.DocumentId equals document.Id
+            where codeNode.Id == nodeId
+            select new Context360Node(
+                codeNode.Id,
+                codeNode.DisplayName,
+                codeNode.NodeType,
+                document.RelativePath,
+                codeNode.StartLine,
+                codeNode.EndLine))
             .FirstOrDefaultAsync(ct);
 
         if (targetNode is null)
@@ -81,14 +85,15 @@ public sealed class ContextLookup(IDbContextFactory<SharpSenseDbContext> dbConte
             maxRelated,
             ct);
 
-        return new Context360LookupResult(
+        return new Context360Result(
             targetNode,
             callers,
             implementers,
             callees,
             inherits);
     }
-    private static async Task<CodeNodeResult[]> GetRelatedNodes(
+
+    private static Task<Context360RelatedNode[]> GetRelatedNodes(
         SharpSenseDbContext context,
         IQueryable<DependencyEdgeRecord> edgeQuery,
         bool selectCaller,
@@ -103,14 +108,17 @@ public sealed class ContextLookup(IDbContextFactory<SharpSenseDbContext> dbConte
             )
             .Distinct();
 
-        return await CodeNodeNavigationQueries.ProjectCodeNodeResults(
-                context,
-                context.CodeNodes
-                    .AsNoTracking()
-                    .Where(codeNode => relatedNodeIds.Contains(codeNode.Id))
-                    .OrderBy(static codeNode => codeNode.FullyQualifiedName)
-                    .ThenBy(static codeNode => codeNode.Id)
-                    .Take(maxRelated))
+        return context.CodeNodes
+            .AsNoTracking()
+            .Where(codeNode => relatedNodeIds.Contains(codeNode.Id))
+            .OrderBy(static codeNode => codeNode.FullyQualifiedName)
+            .ThenBy(static codeNode => codeNode.Id)
+            .Take(maxRelated)
+            .Select(static codeNode => new Context360RelatedNode(
+                codeNode.Id,
+                codeNode.NodeType == NodeType.Method && codeNode.DisplayName.Contains("(")
+                    ? codeNode.DisplayName.Substring(0, codeNode.DisplayName.IndexOf("("))
+                    : codeNode.DisplayName))
             .ToArrayAsync(ct);
     }
 }
