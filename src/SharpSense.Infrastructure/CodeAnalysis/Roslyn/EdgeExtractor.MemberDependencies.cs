@@ -82,6 +82,7 @@ internal sealed partial class EdgeExtractor
         var referencedSymbol = RoslynSymbolUtilities.ResolveReferencedSymbol(
             semanticModel.GetSymbolInfo(invocation));
         TryAddEdge(callerId, referencedSymbol, EdgeType.MethodCall, nodeResolver, edgeKeys);
+        ProcessInvocationArguments(callerId, semanticModel, invocation, nodeResolver, edgeKeys);
         var referencedMethodSymbol = referencedSymbol as IMethodSymbol;
 
         switch (GetServiceReceiverKind(semanticModel, invocation))
@@ -92,6 +93,27 @@ internal sealed partial class EdgeExtractor
             case ServiceReceiverKind.ServiceProvider:
                 AddServiceLocatorEdges(callerId, semanticModel, invocation, referencedMethodSymbol, nodeResolver, edgeKeys);
                 break;
+        }
+    }
+
+    private static void ProcessInvocationArguments(
+        string callerId,
+        SemanticModel semanticModel,
+        InvocationExpressionSyntax invocation,
+        SymbolNodeResolver nodeResolver,
+        ISet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeKeys)
+    {
+        foreach (var argument in invocation.ArgumentList.Arguments)
+        {
+            if (argument.Expression is not LambdaExpressionSyntax lambdaExpression)
+            {
+                continue;
+            }
+
+            foreach (var nestedInvocation in lambdaExpression.Body.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>())
+            {
+                ProcessInvocation(callerId, semanticModel, nestedInvocation, nodeResolver, edgeKeys);
+            }
         }
     }
 

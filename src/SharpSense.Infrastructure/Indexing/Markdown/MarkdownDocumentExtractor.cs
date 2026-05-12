@@ -37,8 +37,9 @@ public sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDiscove
             .Select(static changedFile => changedFile.GetCurrentPath())
             .Where(path => !string.IsNullOrWhiteSpace(path) && MarkdownIndexer.IsMarkdownDocumentPath(path))
             .Select(static path => path!)
-            .Distinct(GetPathComparer())
+            .Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
             .ToArray();
+
         if (changedMarkdownFiles.Length == 0)
         {
             return new ExtractedNodes([], [], [], []);
@@ -75,7 +76,4 @@ public sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDiscove
             dependencyEdge.CallerId,
             dependencyEdge.CalleeId,
             dependencyEdge.EdgeType);
-
-    private static StringComparer GetPathComparer()
-        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 }

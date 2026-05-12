@@ -370,7 +370,7 @@ internal sealed class NodeExtractor
             };
         }
 
-        declaredSymbols.Add(new DeclaredSymbolContext(canonicalId, canonicalSymbol, declarationSyntax, semanticModel));
+        declaredSymbols.Add(new DeclaredSymbolContext(canonicalId, projectId, canonicalSymbol, declarationSyntax, semanticModel));
     }
 
     private static (int StartLine, int EndLine) GetSourceLineRange(SyntaxNode declarationSyntax)

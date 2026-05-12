@@ -28,7 +28,13 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
     public string GetRequiredTargetDirectoryPath(string targetPath)
     {
         var absoluteTargetPath = ResolveTargetPath(targetPath);
-        return Path.GetDirectoryName(absoluteTargetPath)
+
+        if (_fileSystem.Directory.Exists(absoluteTargetPath))
+        {
+            return absoluteTargetPath;
+        }
+
+        return _fileSystem.Path.GetDirectoryName(absoluteTargetPath)
                ?? throw new InvalidOperationException($"Unable to determine the target directory for '{absoluteTargetPath}'.");
     }
 
@@ -99,9 +105,10 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
             throw new InvalidOperationException($"Target path '{absoluteTargetPath}' must be located under repository root '{RootPath}'.");
         }
 
-        if (!_fileSystem.File.Exists(absoluteTargetPath))
+        if (!_fileSystem.File.Exists(absoluteTargetPath) &&
+            !_fileSystem.Directory.Exists(absoluteTargetPath))
         {
-            throw new FileNotFoundException($"Target file '{absoluteTargetPath}' was not found.", absoluteTargetPath);
+            throw new FileNotFoundException($"Target path '{absoluteTargetPath}' was not found.", absoluteTargetPath);
         }
 
         return absoluteTargetPath;

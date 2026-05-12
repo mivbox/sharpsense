@@ -3,7 +3,7 @@ title: "CSharp"
 type: extractor
 tags: [csharp, roslyn, implemented]
 created: 2026-04-26
-updated: 2026-05-06
+updated: 2026-05-12
 confidence: high
 ---
 
@@ -21,7 +21,9 @@ C#. `CSharpLanguageExtractor` is the Roslyn-backed extractor that turns a Target
 6. For C# declarations, `RoslynSymbolUtilities` now extracts only `<summary>` and `<remarks>` text, strips nested XML formatting, ignores low-signal tags such as `<param>`, `<returns>`, and `<exception>`, and stores that intent text separately from the rendered signature.
 7. `NodeExtractor` also computes a one-way SHA-256 hash for method bodies only. The raw method-body text never leaves the Roslyn pass; only the hash is carried forward into persistence.
 8. `EdgeExtractor` consumes the same Roslyn snapshot and symbol maps to emit dependency edges.
-9. The extractor returns projects, code nodes, edges, and diagnostics to the indexing pipeline described in [[persistence/sqlite-schema]].
+9. Roslyn edge extraction now emits structural `ParentOf` relationships in addition to functional edges: projects parent top-level types, containing types parent nested types, and types parent declared methods, properties, and fields. Namespaces stay unmodeled, so top-level types attach directly to their project node.
+10. Member dependency extraction also re-walks lambda expressions passed as invocation arguments, so mocking-style calls such as `Setup(x => x.ProcessPayment())` can still emit a `MethodCall` edge to the interface method discovered inside the lambda body.
+11. The extractor returns projects, code nodes, edges, and diagnostics to the indexing pipeline described in [[persistence/sqlite-schema]].
 
 ## Incremental Logic
 

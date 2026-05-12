@@ -11,6 +11,7 @@ using SharpSense.Application.Trace;
 using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Shared;
+using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.ImpactAnalysis;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
@@ -35,6 +36,9 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
 
         [CommandOption("--toon")]
         public bool UseToonFormat { get; init; }
+
+        [CommandOption("--include-structural")]
+        public bool IncludeStructural { get; init; }
 
         [CommandOption("--repo-root <path>")]
         public string? RepositoryRoot { get; init; }
@@ -77,6 +81,9 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
         var traceNavigator = services.GetRequiredService<ITraceNavigator>();
         var direction = NormalizeDirection(settings.Direction)
                         ?? throw new InvalidOperationException("Direction validation should have prevented invalid values.");
+        var includedEdgeTypes = settings.IncludeStructural
+            ? KnowledgeGraphEdgeTypes.All
+            : null;
         var rootNode = settings.UseToonFormat
             ? await traceNavigator.GetRootNode(settings.Identifier, ct)
             : null;
@@ -88,7 +95,13 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
             {
                 impactResult = await services
                     .GetRequiredService<IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult>>()
-                    .Handle(new ImpactAnalysisQuery(settings.Identifier, MaxDepth: 1, IncludeTransitive: false), ct);
+                    .Handle(
+                        new ImpactAnalysisQuery(
+                            settings.Identifier,
+                            MaxDepth: 1,
+                            IncludeTransitive: false,
+                            IncludedEdgeTypes: includedEdgeTypes),
+                        ct);
 
                 nodes = MapImpactedNodes(impactResult.ImpactedNodes);
                 break;
@@ -96,7 +109,7 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
             case "callee":
                 nodes = await services
                     .GetRequiredService<IQueryHandler<TraceQuery, CodeNodeResult[]>>()
-                    .Handle(new TraceQuery(settings.Identifier), ct);
+                    .Handle(new TraceQuery(settings.Identifier, includedEdgeTypes), ct);
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported direction '{direction}'.");

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
+using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Shared;
 
@@ -43,9 +44,14 @@ public sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbCont
             return [];
         }
 
+        var includedEdgeTypes = query.IncludedEdgeTypes is { Length: > 0 }
+            ? query.IncludedEdgeTypes
+            : KnowledgeGraphEdgeTypes.Functional;
         var calleeIds = await context.DependencyEdges
             .AsNoTracking()
-            .Where(edge => edge.CallerNodeId == rootNode.Id)
+            .Where(edge =>
+                edge.CallerNodeId == rootNode.Id &&
+                includedEdgeTypes.Contains(edge.EdgeType))
             .Select(static edge => edge.CalleeNodeId)
             .Distinct()
             .ToArrayAsync(ct);

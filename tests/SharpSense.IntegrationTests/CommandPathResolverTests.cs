@@ -37,4 +37,16 @@ public sealed class CommandPathResolverTests
 
         targetDirectory.Should().Be(Path.Combine(repositoryRoot, "tests/SharpSense.IntegrationTests/Assets"));
     }
+
+    [Fact]
+    public void WhenResolveTargetDirectoryUsesDirectoryTarget_ThenItReturnsTheDirectory()
+    {
+        var repositoryRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
+
+        var targetDirectory = CommandPathResolver.ResolveTargetDirectory(
+            repositoryRoot,
+            "tests/SharpSense.IntegrationTests/Assets");
+
+        targetDirectory.Should().Be(Path.Combine(repositoryRoot, "tests/SharpSense.IntegrationTests/Assets"));
+    }
 }

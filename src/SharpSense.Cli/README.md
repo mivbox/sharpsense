@@ -27,7 +27,7 @@ sharpsense skills
 
 | Command                 | Example                               | Purpose                                                            |
 |-------------------------|---------------------------------------|--------------------------------------------------------------------|
-| `analyze <target-path>` | `sharpsense analyze SharpSense.sln`   | Build or refresh the local index for a `.sln` or `.csproj` target. |
+| `analyze <target-path>` | `sharpsense analyze SharpSense.sln`   | Build or refresh the local index for a `.sln`, `.csproj`, or directory target backed by `sharpsense.yaml`. |
 | `context`               | `sharpsense context --node-id 42`     | Show the immediate callers, callees, and hierarchy breadth for a node. |
 | `execute <command>`     | `sharpsense execute "dotnet test SharpSense.sln" --query "error OR failed"` | Run a local command and reduce its output into compact JSON or TOON excerpts. |
 | `index <target-path>`   | `sharpsense index SharpSense.sln`     | Legacy alias for `analyze`.                                        |
@@ -52,6 +52,18 @@ You can also index a single project:
 ```bash
 sharpsense analyze src/SharpSense.Cli/SharpSense.Cli.csproj
 ```
+
+You can also index a directory when that directory contains `sharpsense.yaml`:
+
+```bash
+sharpsense analyze docs
+```
+
+Directory targets are configuration-driven:
+
+- SharpSense reads `docs/sharpsense.yaml`.
+- `includePaths` controls which Markdown files under that directory are indexed.
+- Directory targets do **not** infer a C# solution or project. Use a `.sln` or `.csproj` target when you want Roslyn-backed C# indexing.
 
 Useful options:
 
@@ -135,7 +147,7 @@ includePaths:
 
 How it is resolved:
 
-- `analyze <target-path>` loads `sharpsense.yaml` from the directory that contains the target you passed.
+- `analyze <target-path>` loads `sharpsense.yaml` from the target directory. For file targets, that means the directory that contains the file. For directory targets, that means the directory itself.
 - Read-side commands such as `search`, `trace`, `inheritors`, `context`, `mcp`, and `ui` load `sharpsense.yaml` from the resolved repository root (`--repo-root` or the current working directory).
 
 Examples:
@@ -163,10 +175,27 @@ sharpsense analyze src/SharpSense.Cli/SharpSense.Cli.csproj
 
 place `sharpsense.yaml` in `src/SharpSense.Cli/`.
 
+If you index a directory directly:
+
+```bash
+sharpsense analyze docs
+```
+
+place `sharpsense.yaml` in `docs/`.
+Use globs relative to `docs/`, for example:
+
+```yaml
+includePaths:
+  - "**/*.md"
+```
+
 Notes:
 
 - `includePaths` values are trimmed and empty entries are ignored.
-- The globs are used to discover Markdown files that should be indexed alongside C#.
+- The globs are evaluated relative to the target directory that owns `sharpsense.yaml`.
+- Solution and project targets use those globs to index Markdown alongside C#.
+- A directory target is only useful when that directory has a `sharpsense.yaml` file.
+- Directory targets currently drive Markdown discovery only.
 - After changing `sharpsense.yaml`, rerun a full `analyze` so the persisted index reflects the new include set.
 
 ## Skills

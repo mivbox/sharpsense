@@ -250,10 +250,11 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
 
             if (chunk.ParentSlug is not null)
             {
+                var parentId = BuildDocumentNodeId(relativeFilePath, chunk.ParentSlug);
                 TryAddEdge(
-                    BuildDocumentNodeId(relativeFilePath, chunk.ParentSlug),
+                    parentId,
                     chunkId,
-                    EdgeType.DocumentHierarchy,
+                    EdgeType.ParentOf,
                     edgeKeys,
                     edges);
             }

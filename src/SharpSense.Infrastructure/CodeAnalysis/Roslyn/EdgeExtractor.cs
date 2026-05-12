@@ -32,6 +32,7 @@ internal sealed partial class EdgeExtractor
 
         AddProjectReferenceEdges(orderedProjects, projectIds, edgeKeys);
         AddTypeDependencyEdges(declaredSymbols, nodeResolver, edgeKeys);
+        AddStructuralHierarchyEdges(declaredSymbols, nodeResolver, edgeKeys);
         AddMemberDependencyEdges(declaredSymbols, nodeResolver, edgeKeys);
 
         var edges = edgeKeys
@@ -67,6 +68,7 @@ internal sealed partial class EdgeExtractor
         var nodeResolver = new SymbolNodeResolver(solution, projectIds, symbolNodeIds);
 
         AddTypeDependencyEdges(declaredSymbols, nodeResolver, edgeKeys);
+        AddStructuralHierarchyEdges(declaredSymbols, nodeResolver, edgeKeys);
         AddMemberDependencyEdges(declaredSymbols, nodeResolver, edgeKeys);
 
         var edges = edgeKeys

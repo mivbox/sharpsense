@@ -166,7 +166,11 @@ public sealed class CliCommandTests
             Environment.NewLine +
             "outgoing:" + Environment.NewLine +
             $"  callees: [MessageProvider.GetMessage (Id:{CliCommandTestDatabase.CalleeNodeId})]" + Environment.NewLine +
-            "  inherits: []");
+            "  inherits: []" + Environment.NewLine +
+            Environment.NewLine +
+            "structural:" + Environment.NewLine +
+            "  parents: []" + Environment.NewLine +
+            "  children: []");
     }
 
     [Fact]
@@ -194,7 +198,11 @@ public sealed class CliCommandTests
             Environment.NewLine +
             "outgoing:" + Environment.NewLine +
             "  callees: []" + Environment.NewLine +
-            "  inherits: []");
+            "  inherits: []" + Environment.NewLine +
+            Environment.NewLine +
+            "structural:" + Environment.NewLine +
+            "  parents: []" + Environment.NewLine +
+            "  children: []");
     }
 
     [Fact]
@@ -222,7 +230,11 @@ public sealed class CliCommandTests
             Environment.NewLine +
             "outgoing:" + Environment.NewLine +
             "  callees: []" + Environment.NewLine +
-            $"  inherits: [BaseRenderer (Id:{CliCommandTestDatabase.BaseClassNodeId})]");
+            $"  inherits: [BaseRenderer (Id:{CliCommandTestDatabase.BaseClassNodeId})]" + Environment.NewLine +
+            Environment.NewLine +
+            "structural:" + Environment.NewLine +
+            "  parents: []" + Environment.NewLine +
+            "  children: []");
     }
 
     [Fact]

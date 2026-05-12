@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.Abstractions;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
+using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Shared;
@@ -26,7 +27,7 @@ public sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCont
 
         var includedEdgeTypes = query.IncludedEdgeTypes is { Length: > 0 }
             ? query.IncludedEdgeTypes
-            : null;
+            : KnowledgeGraphEdgeTypes.Functional;
         var maxTraversalDepth = query.IncludeTransitive
             ? Math.Max(query.MaxDepth, 1)
             : 1;
@@ -41,10 +42,7 @@ public sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCont
                 .AsNoTracking()
                 .Where(edge => frontierNodeIds.Contains(edge.CalleeNodeId));
 
-            if (includedEdgeTypes is not null)
-            {
-                inboundEdgesQuery = inboundEdgesQuery.Where(edge => includedEdgeTypes.Contains(edge.EdgeType));
-            }
+            inboundEdgesQuery = inboundEdgesQuery.Where(edge => includedEdgeTypes.Contains(edge.EdgeType));
 
             var inboundEdges = await inboundEdgesQuery
                 .ToArrayAsync(ct)

@@ -3,7 +3,7 @@ title: "Markdown"
 type: extractor
 tags: [markdown, markdig, implemented]
 created: 2026-04-26
-updated: 2026-04-28
+updated: 2026-05-12
 confidence: high
 ---
 
@@ -18,7 +18,7 @@ Markdown. `MarkdownDocumentExtractor` combines the discovery pipeline from [[arc
 3. Each `DiscoveredFile` is read through `IFileSystem` on the [[architecture/virtual-file-system]] seam and passed to `IMarkdownIndexer.Index(rawText, relativeFilePath)`.
 4. `MarkdownIndexer` parses with Markdig advanced extensions, creates a document-root chunk, splits new chunks at headings, generates stable slugs, and captures summaries from the raw text spans.
 5. Each document node gets a compact `DisplayName`: top-level docs drop the `docs/` prefix, and wiki docs drop the `docs/wiki/` prefix so CLI output stays terse while `CanonicalId` remains deterministic.
-6. It emits `DocumentHierarchy` edges from heading nesting and `DocumentLink` edges for local Markdown links.
+6. It emits generic structural `ParentOf` edges from heading nesting and `DocumentLink` edges for local Markdown links.
 7. Standard Markdown links still resolve relative to the current file, but Obsidian-style wiki links now support `[[page]]`, `[[page#heading]]`, and `[[page|alias]]`. Plain wiki targets inside `docs/wiki/` resolve from the wiki root, while explicit `./` and `../` targets stay relative to the current page.
 
 ## Incremental Logic

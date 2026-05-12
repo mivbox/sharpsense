@@ -1,5 +1,6 @@
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
+using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
@@ -22,10 +23,21 @@ public sealed class CSharpLanguageExtractor(
         ArgumentNullException.ThrowIfNull(context);
         ArgumentException.ThrowIfNullOrWhiteSpace(context.TargetPath);
 
+        if (!IsCSharpWorkspace(context.TargetPath))
+        {
+            context.Progress?.Report(
+                new IndexingProgress("No C# solution/project found",
+                1,
+                1));
+
+            return new ExtractedNodes([], [], [], []);
+        }
+
         var loadedWorkspace = await workspaceLoader.Load(
             context.TargetPath,
             new RoslynWorkspaceOptions(),
             ct);
+
         var extractionPayload = await analysisEngine.Extract(
             context.TargetPath,
             loadedWorkspace.Solution,
@@ -52,6 +64,7 @@ public sealed class CSharpLanguageExtractor(
         var cSharpChanges = context.ChangedFiles
             .Where(static changedFile => changedFile.GetAffectedPaths().Any(IsCSharpFilePath))
             .ToArray();
+
         if (cSharpChanges.Length == 0)
         {
             return new ExtractedNodes([], [], [], []);
@@ -116,4 +129,15 @@ public sealed class CSharpLanguageExtractor(
 
     private static bool IsCSharpFilePath(string path)
         => string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsCSharpWorkspace(string targetPath)
+    {
+        if (File.Exists(targetPath))
+        {
+            return targetPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
+                   targetPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
 }

@@ -29,9 +29,7 @@ public static class SharpSenseConfigurationExtensions
         services.AddOptions<SharpSenseConfig>()
             .Configure<IFileSystem>((options, fileSystem) =>
             {
-                var normalizedTargetDirectory = fileSystem.Path.TrimEndingDirectorySeparator(
-                    fileSystem.Path.GetFullPath(targetDirectory));
-                var configPath = fileSystem.Path.Combine(normalizedTargetDirectory, "sharpsense.yaml");
+                var configPath = fileSystem.Path.Combine(normalizedPhysicalTargetDirectory, "sharpsense.yaml");
                 if (!fileSystem.File.Exists(configPath))
                 {
                     return;
@@ -48,6 +46,7 @@ public static class SharpSenseConfigurationExtensions
                         .Select(static includePath => includePath.Trim())
                 ];
             });
+
         services.TryAddSingleton<IOptionsChangeTokenSource<SharpSenseConfig>>(
             _ => new SharpSenseConfigChangeTokenSource(normalizedPhysicalTargetDirectory));
 
@@ -68,12 +67,21 @@ public static class SharpSenseConfigurationExtensions
             => _fileProvider.Dispose();
 
         private static PhysicalFileProvider CreateFileProvider(string targetDirectory)
-            => new(NormalizePhysicalTargetDirectory(targetDirectory))
+            => new(targetDirectory) // It's already normalized by the time it gets here
             {
                 UsePollingFileWatcher = true
             };
     }
 
     private static string NormalizePhysicalTargetDirectory(string targetDirectory)
-        => Path.TrimEndingDirectorySeparator(Path.GetFullPath(targetDirectory));
+    {
+        var fullPath = Path.GetFullPath(targetDirectory);
+
+        if (File.Exists(fullPath))
+        {
+            fullPath = Path.GetDirectoryName(fullPath) ?? fullPath;
+        }
+
+        return Path.TrimEndingDirectorySeparator(fullPath);
+    }
 }

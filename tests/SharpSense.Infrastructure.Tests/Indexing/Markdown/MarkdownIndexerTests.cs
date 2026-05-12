@@ -68,25 +68,30 @@ public sealed class MarkdownIndexerTests
                 Assert.Equal(10, node.EndLine);
                 Assert.Contains("Repeated body.", node.Summary, StringComparison.Ordinal);
             });
-        Assert.Collection(
+        Assert.Equal(3, result.Edges.Count);
+        Assert.Contains(
             result.Edges,
-            edge =>
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/Guide.md#document-root", edge.CallerId);
-                Assert.Equal("code:doc:docs/Guide.md#overview", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentHierarchy, edge.EdgeType);
-            },
-            edge =>
+                CallerId: "code:doc:docs/Guide.md#document-root",
+                CalleeId: "code:doc:docs/Guide.md#overview",
+                EdgeType: EdgeType.ParentOf
+            });
+        Assert.Contains(
+            result.Edges,
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/Guide.md#document-root", edge.CallerId);
-                Assert.Equal("code:doc:docs/Guide.md#overview-l9", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentHierarchy, edge.EdgeType);
-            },
-            edge =>
+                CallerId: "code:doc:docs/Guide.md#document-root",
+                CalleeId: "code:doc:docs/Guide.md#overview-l9",
+                EdgeType: EdgeType.ParentOf
+            });
+        Assert.Contains(
+            result.Edges,
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/Guide.md#overview", edge.CallerId);
-                Assert.Equal("code:doc:docs/Guide.md#details", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentHierarchy, edge.EdgeType);
+                CallerId: "code:doc:docs/Guide.md#overview",
+                CalleeId: "code:doc:docs/Guide.md#details",
+                EdgeType: EdgeType.ParentOf
             });
     }
 
@@ -130,31 +135,38 @@ public sealed class MarkdownIndexerTests
                 Assert.Equal(4, node.StartLine);
                 Assert.Equal(5, node.EndLine);
             });
-        Assert.Collection(
+        Assert.Equal(4, result.Edges.Count);
+        Assert.Contains(
             result.Edges,
-            edge =>
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/Guide.md#document-root", edge.CallerId);
-                Assert.Equal("code:doc:docs/Guide.md#overview", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentHierarchy, edge.EdgeType);
-            },
-            edge =>
+                CallerId: "code:doc:docs/Guide.md#document-root",
+                CalleeId: "code:doc:docs/Guide.md#overview",
+                EdgeType: EdgeType.ParentOf
+            });
+        Assert.Contains(
+            result.Edges,
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/Guide.md#overview", edge.CallerId);
-                Assert.Equal("code:doc:docs/DocB.md#document-root", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentLink, edge.EdgeType);
-            },
-            edge =>
+                CallerId: "code:doc:docs/Guide.md#overview",
+                CalleeId: "code:doc:docs/DocB.md#document-root",
+                EdgeType: EdgeType.DocumentLink
+            });
+        Assert.Contains(
+            result.Edges,
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/Guide.md#overview", edge.CallerId);
-                Assert.Equal("code:doc:docs/Guide.md#details", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentLink, edge.EdgeType);
-            },
-            edge =>
+                CallerId: "code:doc:docs/Guide.md#overview",
+                CalleeId: "code:doc:docs/Guide.md#details",
+                EdgeType: EdgeType.DocumentLink
+            });
+        Assert.Contains(
+            result.Edges,
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/Guide.md#overview", edge.CallerId);
-                Assert.Equal("code:doc:docs/Guide.md#details", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentHierarchy, edge.EdgeType);
+                CallerId: "code:doc:docs/Guide.md#overview",
+                CalleeId: "code:doc:docs/Guide.md#details",
+                EdgeType: EdgeType.ParentOf
             });
     }
 
@@ -209,31 +221,38 @@ public sealed class MarkdownIndexerTests
                 Assert.Equal(1, node.StartLine);
                 Assert.Equal(2, node.EndLine);
             });
-        Assert.Collection(
+        Assert.Equal(4, result.Edges.Count);
+        Assert.Contains(
             result.Edges,
-            edge =>
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/wiki/index.md#document-root", edge.CallerId);
-                Assert.Equal("code:doc:docs/wiki/index.md#wiki-home", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentHierarchy, edge.EdgeType);
-            },
-            edge =>
+                CallerId: "code:doc:docs/wiki/index.md#document-root",
+                CalleeId: "code:doc:docs/wiki/index.md#wiki-home",
+                EdgeType: EdgeType.ParentOf
+            });
+        Assert.Contains(
+            result.Edges,
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/wiki/index.md#wiki-home", edge.CallerId);
-                Assert.Equal("code:doc:docs/wiki/extractors/markdown.md#document-root", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentLink, edge.EdgeType);
-            },
-            edge =>
+                CallerId: "code:doc:docs/wiki/index.md#wiki-home",
+                CalleeId: "code:doc:docs/wiki/extractors/markdown.md#document-root",
+                EdgeType: EdgeType.DocumentLink
+            });
+        Assert.Contains(
+            result.Edges,
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/wiki/index.md#wiki-home", edge.CallerId);
-                Assert.Equal("code:doc:docs/wiki/persistence/sqlite-schema.md#document-root", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentLink, edge.EdgeType);
-            },
-            edge =>
+                CallerId: "code:doc:docs/wiki/index.md#wiki-home",
+                CalleeId: "code:doc:docs/wiki/persistence/sqlite-schema.md#document-root",
+                EdgeType: EdgeType.DocumentLink
+            });
+        Assert.Contains(
+            result.Edges,
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/wiki/index.md#wiki-home", edge.CallerId);
-                Assert.Equal("code:doc:docs/wiki/persistence/sqlite-schema.md#target-overwrites", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentLink, edge.EdgeType);
+                CallerId: "code:doc:docs/wiki/index.md#wiki-home",
+                CalleeId: "code:doc:docs/wiki/persistence/sqlite-schema.md#target-overwrites",
+                EdgeType: EdgeType.DocumentLink
             });
     }
 
@@ -269,37 +288,46 @@ public sealed class MarkdownIndexerTests
                 Assert.Equal("code:doc:docs/wiki/architecture/incremental-watch.md#local-notes", node.CanonicalId);
                 Assert.Equal("architecture/incremental-watch#local-notes", node.DisplayName);
             });
-        Assert.Collection(
+        Assert.Equal(5, result.Edges.Count);
+        Assert.Contains(
             result.Edges,
-            edge =>
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/wiki/architecture/incremental-watch.md#document-root", edge.CallerId);
-                Assert.Equal("code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentHierarchy, edge.EdgeType);
-            },
-            edge =>
+                CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#document-root",
+                CalleeId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
+                EdgeType: EdgeType.ParentOf
+            });
+        Assert.Contains(
+            result.Edges,
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch", edge.CallerId);
-                Assert.Equal("code:doc:docs/wiki/architecture/incremental-watch.md#local-notes", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentLink, edge.EdgeType);
-            },
-            edge =>
+                CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
+                CalleeId: "code:doc:docs/wiki/architecture/incremental-watch.md#local-notes",
+                EdgeType: EdgeType.DocumentLink
+            });
+        Assert.Contains(
+            result.Edges,
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch", edge.CallerId);
-                Assert.Equal("code:doc:docs/wiki/architecture/incremental-watch.md#local-notes", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentHierarchy, edge.EdgeType);
-            },
-            edge =>
+                CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
+                CalleeId: "code:doc:docs/wiki/architecture/incremental-watch.md#local-notes",
+                EdgeType: EdgeType.ParentOf
+            });
+        Assert.Contains(
+            result.Edges,
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch", edge.CallerId);
-                Assert.Equal("code:doc:docs/wiki/extractors/markdown.md#document-root", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentLink, edge.EdgeType);
-            },
-            edge =>
+                CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
+                CalleeId: "code:doc:docs/wiki/extractors/markdown.md#document-root",
+                EdgeType: EdgeType.DocumentLink
+            });
+        Assert.Contains(
+            result.Edges,
+            static edge => edge is
             {
-                Assert.Equal("code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch", edge.CallerId);
-                Assert.Equal("code:doc:docs/wiki/persistence/sqlite-schema.md#target-overwrites", edge.CalleeId);
-                Assert.Equal(EdgeType.DocumentLink, edge.EdgeType);
+                CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
+                CalleeId: "code:doc:docs/wiki/persistence/sqlite-schema.md#target-overwrites",
+                EdgeType: EdgeType.DocumentLink
             });
     }
 }
