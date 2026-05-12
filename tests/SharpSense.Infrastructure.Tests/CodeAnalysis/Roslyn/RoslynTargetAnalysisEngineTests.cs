@@ -97,6 +97,94 @@ public sealed class RoslynTargetAnalysisEngineTests
     }
 
     [Fact]
+    public async Task WhenExtractingInvocationInsideLambdaArgument_ThenEmitsMethodCallEdgeForInnerInvocation()
+    {
+        var fileSystem = CreateRepositoryFileSystem();
+        var workspace = CreateRepositoryWorkspace(fileSystem);
+        using var serviceProvider = CreateServiceProvider(fileSystem);
+        var engine = serviceProvider.GetRequiredService<ITargetAnalysisEngine>();
+        var fixture = CreateFixtureSolution();
+
+        var payload = await engine.Extract(
+            "/repo/CommandPipelineFixture.sln",
+            fixture.Solution,
+            workspace,
+            ct: TestContext.Current.CancellationToken);
+        var fullyQualifiedNamesById = payload.CodeNodes.ToDictionary(
+            static codeNode => codeNode.CanonicalId,
+            static codeNode => codeNode.FullyQualifiedName,
+            StringComparer.Ordinal);
+
+        AssertContainsEdge(
+            payload.Edges,
+            fullyQualifiedNamesById,
+            "App.PaymentGatewayExpectationBuilder.Configure()",
+            "Contracts.IPaymentGateway.ProcessPayment()",
+            EdgeType.MethodCall);
+    }
+
+    [Fact]
+    public async Task WhenExtractingSolution_ThenEmitsStructuralParentEdges()
+    {
+        var fileSystem = CreateRepositoryFileSystem();
+        var workspace = CreateRepositoryWorkspace(fileSystem);
+        using var serviceProvider = CreateServiceProvider(fileSystem);
+        var engine = serviceProvider.GetRequiredService<ITargetAnalysisEngine>();
+        var fixture = CreateFixtureSolution();
+
+        var payload = await engine.Extract(
+            "/repo/CommandPipelineFixture.sln",
+            fixture.Solution,
+            workspace,
+            ct: TestContext.Current.CancellationToken);
+        var fullyQualifiedNamesById = payload.CodeNodes.ToDictionary(
+            static codeNode => codeNode.CanonicalId,
+            static codeNode => codeNode.FullyQualifiedName,
+            StringComparer.Ordinal);
+
+        payload.Edges.Should().Contain(edge =>
+            edge.CallerId == "project:App/App.csproj" &&
+            fullyQualifiedNamesById.GetValueOrDefault(edge.CalleeId) == "App.MessageProvider" &&
+            edge.EdgeType == EdgeType.ParentOf);
+        AssertContainsEdge(
+            payload.Edges,
+            fullyQualifiedNamesById,
+            "App.MessageProvider",
+            "App.MessageProvider._prefix",
+            EdgeType.ParentOf);
+        AssertContainsEdge(
+            payload.Edges,
+            fullyQualifiedNamesById,
+            "App.MessageProvider",
+            "App.MessageProvider.GetMessage()",
+            EdgeType.ParentOf);
+        AssertContainsEdge(
+            payload.Edges,
+            fullyQualifiedNamesById,
+            "App.OuterProcessor",
+            "App.OuterProcessor.InnerProcessor",
+            EdgeType.ParentOf);
+        AssertContainsEdge(
+            payload.Edges,
+            fullyQualifiedNamesById,
+            "App.OuterProcessor.InnerProcessor",
+            "App.OuterProcessor.InnerProcessor.Execute()",
+            EdgeType.ParentOf);
+        AssertContainsEdge(
+            payload.Edges,
+            fullyQualifiedNamesById,
+            "App.PartialProcessor",
+            "App.PartialProcessor.Build()",
+            EdgeType.ParentOf);
+        AssertContainsEdge(
+            payload.Edges,
+            fullyQualifiedNamesById,
+            "App.PartialProcessor",
+            "App.PartialProcessor.Format()",
+            EdgeType.ParentOf);
+    }
+
+    [Fact]
     public async Task WhenExtractingIncrementalModifiedDocument_ThenReturnsDeltaNodesAndEdges()
     {
         var fileSystem = CreateRepositoryFileSystem();
@@ -359,6 +447,19 @@ public sealed class RoslynTargetAnalysisEngineTests
                 }
                 """),
             filePath: "/repo/Contracts/IMessageProvider.cs");
+        solution = solution.AddDocument(
+            DocumentId.CreateNewId(contractsProjectId, "IPaymentGateway.cs"),
+            "IPaymentGateway.cs",
+            SourceText.From(
+                """
+                namespace Contracts;
+                
+                public interface IPaymentGateway
+                {
+                   void ProcessPayment();
+                }
+                """),
+            filePath: "/repo/Contracts/IPaymentGateway.cs");
 
         var messageProviderDocumentId = DocumentId.CreateNewId(appProjectId, "MessageProvider.cs");
         solution = solution.AddDocument(
@@ -372,15 +473,85 @@ public sealed class RoslynTargetAnalysisEngineTests
 
                 public sealed class MessageProvider : IMessageProvider
                 {
+                    private readonly string _prefix = "Hello";
+
                     public string Name => "provider";
 
                     public string GetMessage()
                     {
-                        return "Hello";
+                        return _prefix;
                     }
                 }
                 """),
             filePath: "/repo/App/MessageProvider.cs");
+        solution = solution.AddDocument(
+            DocumentId.CreateNewId(appProjectId, "Mock.cs"),
+            "Mock.cs",
+            SourceText.From(
+                """
+                using System;
+                using System.Linq.Expressions;
+                
+                namespace App;
+                
+                public sealed class Mock<T>
+                {
+                   public void Setup(Expression<Action<T>> expression)
+                   {
+                   }
+                }
+                """),
+            filePath: "/repo/App/Mock.cs");
+        solution = solution.AddDocument(
+            DocumentId.CreateNewId(appProjectId, "OuterProcessor.cs"),
+            "OuterProcessor.cs",
+            SourceText.From(
+                """
+                namespace App;
+                
+                public sealed class OuterProcessor
+                {
+                   public sealed class InnerProcessor
+                   {
+                       public void Execute()
+                       {
+                       }
+                   }
+                }
+                """),
+            filePath: "/repo/App/OuterProcessor.cs");
+        solution = solution.AddDocument(
+            DocumentId.CreateNewId(appProjectId, "PartialProcessor.Part1.cs"),
+            "PartialProcessor.Part1.cs",
+            SourceText.From(
+                """
+                namespace App;
+                
+                public sealed partial class PartialProcessor
+                {
+                   public string Build()
+                   {
+                       return "build";
+                   }
+                }
+                """),
+            filePath: "/repo/App/PartialProcessor.Part1.cs");
+        solution = solution.AddDocument(
+            DocumentId.CreateNewId(appProjectId, "PartialProcessor.Part2.cs"),
+            "PartialProcessor.Part2.cs",
+            SourceText.From(
+                """
+                namespace App;
+                
+                public sealed partial class PartialProcessor
+                {
+                   public string Format()
+                   {
+                       return "format";
+                   }
+                }
+                """),
+            filePath: "/repo/App/PartialProcessor.Part2.cs");
         solution = solution.AddDocument(
             DocumentId.CreateNewId(appProjectId, "MessageConsumer.cs"),
             "MessageConsumer.cs",
@@ -399,6 +570,25 @@ public sealed class RoslynTargetAnalysisEngineTests
                 }
                 """),
             filePath: "/repo/App/MessageConsumer.cs");
+        solution = solution.AddDocument(
+            DocumentId.CreateNewId(appProjectId, "PaymentGatewayExpectationBuilder.cs"),
+            "PaymentGatewayExpectationBuilder.cs",
+            SourceText.From(
+                """
+                using Contracts;
+                
+                namespace App;
+                
+                public sealed class PaymentGatewayExpectationBuilder
+                {
+                   public void Configure()
+                   {
+                       var mock = new Mock<IPaymentGateway>();
+                       mock.Setup(x => x.ProcessPayment());
+                   }
+                }
+                """),
+            filePath: "/repo/App/PaymentGatewayExpectationBuilder.cs");
         solution = solution.AddDocument(
             DocumentId.CreateNewId(appProjectId, "ServiceRegistrationExtensions.cs"),
             "ServiceRegistrationExtensions.cs",

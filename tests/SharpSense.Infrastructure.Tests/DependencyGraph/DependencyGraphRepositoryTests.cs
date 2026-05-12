@@ -15,6 +15,8 @@ public sealed class DependencyGraphRepositoryTests
     private const int UserNodeId = 200;
     private const int UserServiceNodeId = 201;
     private const int AppHelperNodeId = 202;
+    private const int UserRepositoryInterfaceNodeId = 203;
+    private const int UserRepositoryImplementationNodeId = 204;
 
     [Fact]
     public async Task WhenGetGraphNodesWithSelectedDirectory_ThenReturnsSelectedAndBoundaryNodes()
@@ -142,6 +144,51 @@ public sealed class DependencyGraphRepositoryTests
 
         Assert.DoesNotContain(result, static edge => edge.Target == "missing-node");
         Assert.Equal(3, result.Length);
+    }
+
+    [Fact]
+    public async Task WhenGetGraphContainsBoundaryImplementsEdge_ThenItReturnsInterfaceAndImplementer()
+    {
+        await using var inMemoryFactory = new InMemoryContextFactory();
+        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(ct: TestContext.Current.CancellationToken);
+
+        await SeedGraph(context);
+        await SeedBoundaryImplementsScenario(context);
+        var service = new DependencyGraphRepository(context);
+
+        var nodes = await Materialize(service.GetGraphNodes([AppDirectoryId], CancellationToken.None));
+        var edges = await Materialize(service.GetGraphEdges([AppDirectoryId], CancellationToken.None));
+
+        Assert.Contains(
+            nodes,
+            static node => node is
+                {
+                    Id: "node-user-repository-interface",
+                    Label: "MyCompany.App.Abstractions.IUserRepository",
+                    Type: "interface",
+                    Scope: "selected",
+                    IsClickable: true
+                });
+        Assert.Contains(
+            nodes,
+            static node => node is
+                {
+                    Id: "node-user-repository-implementation",
+                    Label: "MyCompany.Core.UserRepository",
+                    Type: "class",
+                    Scope: "external",
+                    IsClickable: false
+                });
+        Assert.Contains(
+            edges,
+            static edge => edge is
+                {
+                    Id: "node-user-repository-implementation|node-user-repository-interface|implements",
+                    Source: "node-user-repository-implementation",
+                    Target: "node-user-repository-interface",
+                    Type: "implements",
+                    Scope: "boundary"
+                });
     }
 
     private static async Task SeedGraph(SharpSenseDbContext db)
@@ -341,6 +388,72 @@ public sealed class DependencyGraphRepositoryTests
                 CallerNodeId = UserServiceNodeId,
                 CalleeNodeId = AppHelperNodeId,
                 EdgeType = EdgeType.MethodCall
+            });
+
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SeedBoundaryImplementsScenario(SharpSenseDbContext db)
+    {
+        db.Documents.AddRange(
+            new DocumentRecord
+            {
+                Id = 18,
+                DirectoryId = AppDirectoryId,
+                FileName = "IUserRepository.cs",
+                Extension = ".cs",
+                RelativePath = "MyCompany.App/IUserRepository.cs",
+                Kind = DocumentKind.Source
+            },
+            new DocumentRecord
+            {
+                Id = 19,
+                DirectoryId = CoreDirectoryId,
+                FileName = "UserRepository.cs",
+                Extension = ".cs",
+                RelativePath = "MyCompany.Core/UserRepository.cs",
+                Kind = DocumentKind.Source
+            });
+        db.GraphNodes.AddRange(
+            new GraphNodeRecord
+            {
+                Id = UserRepositoryInterfaceNodeId,
+                CanonicalId = "node-user-repository-interface",
+                Kind = GraphNodeKind.Code
+            },
+            new GraphNodeRecord
+            {
+                Id = UserRepositoryImplementationNodeId,
+                CanonicalId = "node-user-repository-implementation",
+                Kind = GraphNodeKind.Code
+            });
+        db.CodeNodes.AddRange(
+            new CodeNodeRecord
+            {
+                Id = UserRepositoryInterfaceNodeId,
+                ProjectNodeId = AppProjectNodeId,
+                DocumentId = 18,
+                FullyQualifiedName = "MyCompany.App.Abstractions.IUserRepository",
+                DisplayName = "IUserRepository",
+                NodeType = NodeType.Interface,
+                Summary = "Application repository abstraction."
+            },
+            new CodeNodeRecord
+            {
+                Id = UserRepositoryImplementationNodeId,
+                ProjectNodeId = CoreProjectNodeId,
+                DocumentId = 19,
+                FullyQualifiedName = "MyCompany.Core.UserRepository",
+                DisplayName = "UserRepository",
+                NodeType = NodeType.Class,
+                Summary = "Repository implementation."
+            });
+        db.DependencyEdges.Add(
+            new DependencyEdgeRecord
+            {
+                CallerNodeId = UserRepositoryImplementationNodeId,
+                CalleeNodeId = UserRepositoryInterfaceNodeId,
+                EdgeType = EdgeType.Implements
             });
 
         await db.SaveChangesAsync();

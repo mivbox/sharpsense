@@ -152,7 +152,11 @@ public sealed class SharpSenseMcpToolsTests
                     ],
                     [
                         new Context360RelatedNode(10, "IPaymentProcessor")
-                    ]));
+                    ],
+                    [
+                        new Context360RelatedNode(11, "PaymentProcessor")
+                    ],
+                    []));
 
         var result = await SharpSenseMcpTools.context(
             handler.Object,
@@ -172,7 +176,11 @@ public sealed class SharpSenseMcpToolsTests
             Environment.NewLine +
             "outgoing:" + Environment.NewLine +
             "  callees: [ReceiptWriter.WriteReceipt (Id:9)]" + Environment.NewLine +
-            "  inherits: [IPaymentProcessor (Id:10)]");
+            "  inherits: [IPaymentProcessor (Id:10)]" + Environment.NewLine +
+            Environment.NewLine +
+            "structural:" + Environment.NewLine +
+            "  parents: [PaymentProcessor (Id:11)]" + Environment.NewLine +
+            "  children: []");
         handler.Verify(candidate => candidate.Handle(
                 It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
                 CancellationToken.None),

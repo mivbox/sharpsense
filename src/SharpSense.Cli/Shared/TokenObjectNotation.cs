@@ -129,6 +129,8 @@ public static class TokenObjectNotation
         ArgumentNullException.ThrowIfNull(result.Implementers);
         ArgumentNullException.ThrowIfNull(result.Callees);
         ArgumentNullException.ThrowIfNull(result.Inherits);
+        ArgumentNullException.ThrowIfNull(result.Parents);
+        ArgumentNullException.ThrowIfNull(result.Children);
         ArgumentException.ThrowIfNullOrWhiteSpace(result.TargetNode.Name);
         ArgumentException.ThrowIfNullOrWhiteSpace(result.TargetNode.RelativeFilePath);
 
@@ -151,7 +153,11 @@ public static class TokenObjectNotation
         builder.AppendLine();
         builder.AppendLine("outgoing:");
         builder.Append("  callees: ").Append(FormatContext360RelatedNodes(result.Callees)).AppendLine();
-        builder.Append("  inherits: ").Append(FormatContext360RelatedNodes(result.Inherits));
+        builder.Append("  inherits: ").Append(FormatContext360RelatedNodes(result.Inherits)).AppendLine();
+        builder.AppendLine();
+        builder.AppendLine("structural:");
+        builder.Append("  parents: ").Append(FormatContext360RelatedNodes(result.Parents)).AppendLine();
+        builder.Append("  children: ").Append(FormatContext360RelatedNodes(result.Children));
         return builder.ToString();
     }
 

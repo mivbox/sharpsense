@@ -25,7 +25,9 @@ public sealed class GetNodeContextQueryHandlerTests
             [new Context360RelatedNode(7, "HttpEndpoint.Handle")],
             [new Context360RelatedNode(8, "PaymentProcessorBase")],
             [new Context360RelatedNode(9, "ReceiptWriter.WriteReceipt")],
-            [new Context360RelatedNode(10, "IPaymentProcessor")]);
+            [new Context360RelatedNode(10, "IPaymentProcessor")],
+            [new Context360RelatedNode(11, "PaymentProcessor")],
+            []);
         var repository = new Mock<IContextRepository>(MockBehavior.Strict);
         repository.Setup(candidate => candidate.GetNodeContext(42, 50, ct))
             .ReturnsAsync(expected);

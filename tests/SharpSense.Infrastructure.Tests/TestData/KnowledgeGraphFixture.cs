@@ -20,12 +20,16 @@ internal static class KnowledgeGraphFixture
     public const int ServiceRegistrationCallerNodeId = 4;
     public const int FormatterNodeId = 5;
     public const int MessageNodeId = 6;
+    public const int MessageProviderTypeNodeId = 7;
+    public const int CachedMessageNodeId = 8;
     public const string TargetCanonicalId = "node-target";
     public const string DirectCallerCanonicalId = "node-direct-caller";
     public const string TransitiveCallerCanonicalId = "node-transitive-caller";
     public const string ServiceRegistrationCallerCanonicalId = "node-service-registration";
     public const string FormatterCanonicalId = "node-formatter";
     public const string MessageCanonicalId = "node-message";
+    public const string MessageProviderTypeCanonicalId = "node-message-provider-type";
+    public const string CachedMessageCanonicalId = "node-cached-message";
 
     public const string TargetFullyQualifiedName = "Fixture.App.MessageProvider.GetMessage()";
     public const string DirectCallerFullyQualifiedName = "Fixture.App.MessageConsumer.Render()";
@@ -33,12 +37,16 @@ internal static class KnowledgeGraphFixture
     public const string ServiceRegistrationCallerFullyQualifiedName = "Fixture.App.ServiceRegistration.Configure(IServiceCollection)";
     public const string FormatterFullyQualifiedName = "Fixture.App.MessageFormatter.Format(string)";
     public const string MessageFullyQualifiedName = "Fixture.Core.Message";
+    public const string MessageProviderTypeFullyQualifiedName = "Fixture.App.MessageProvider";
+    public const string CachedMessageFullyQualifiedName = "Fixture.App.MessageProvider.GetCachedMessage()";
     public const string TargetDisplayName = "MessageProvider.GetMessage()";
     public const string DirectCallerDisplayName = "MessageConsumer.Render()";
     public const string TransitiveCallerDisplayName = "HttpEndpoint.Handle()";
     public const string ServiceRegistrationCallerDisplayName = "ServiceRegistration.Configure(IServiceCollection)";
     public const string FormatterDisplayName = "MessageFormatter.Format(string)";
     public const string MessageDisplayName = "Message";
+    public const string MessageProviderTypeDisplayName = "MessageProvider";
+    public const string CachedMessageDisplayName = "MessageProvider.GetCachedMessage()";
 
     public static async Task SeedAsync(SharpSenseDbContext context)
     {
@@ -246,6 +254,18 @@ internal static class KnowledgeGraphFixture
                 Id = MessageNodeId,
                 CanonicalId = MessageCanonicalId,
                 Kind = GraphNodeKind.Code
+            },
+            new GraphNodeRecord
+            {
+                Id = MessageProviderTypeNodeId,
+                CanonicalId = MessageProviderTypeCanonicalId,
+                Kind = GraphNodeKind.Code
+            },
+            new GraphNodeRecord
+            {
+                Id = CachedMessageNodeId,
+                CanonicalId = CachedMessageCanonicalId,
+                Kind = GraphNodeKind.Code
             });
         context.ProjectNodes.AddRange(
             new ProjectNodeRecord
@@ -340,9 +360,53 @@ internal static class KnowledgeGraphFixture
                 EndLine = 12,
                 Summary = "Message model.",
                 VectorEmbedding = [0.4f, 0.6f]
+            },
+            new CodeNodeRecord
+            {
+                Id = MessageProviderTypeNodeId,
+                ProjectNodeId = AppProjectNodeId,
+                DocumentId = 12,
+                FullyQualifiedName = MessageProviderTypeFullyQualifiedName,
+                DisplayName = MessageProviderTypeDisplayName,
+                NodeType = NodeType.Class,
+                StartLine = 1,
+                EndLine = 24,
+                Summary = "Provides messages.",
+                VectorEmbedding = [0.85f, 0.15f]
+            },
+            new CodeNodeRecord
+            {
+                Id = CachedMessageNodeId,
+                ProjectNodeId = AppProjectNodeId,
+                DocumentId = 12,
+                FullyQualifiedName = CachedMessageFullyQualifiedName,
+                DisplayName = CachedMessageDisplayName,
+                NodeType = NodeType.Method,
+                StartLine = 16,
+                EndLine = 20,
+                Summary = "Returns cached messages.",
+                VectorEmbedding = [0.5f, 0.5f]
             });
 
         context.DependencyEdges.AddRange(
+            new DependencyEdgeRecord
+            {
+                CallerNodeId = AppProjectNodeId,
+                CalleeNodeId = MessageProviderTypeNodeId,
+                EdgeType = EdgeType.ParentOf
+            },
+            new DependencyEdgeRecord
+            {
+                CallerNodeId = MessageProviderTypeNodeId,
+                CalleeNodeId = TargetNodeId,
+                EdgeType = EdgeType.ParentOf
+            },
+            new DependencyEdgeRecord
+            {
+                CallerNodeId = MessageProviderTypeNodeId,
+                CalleeNodeId = CachedMessageNodeId,
+                EdgeType = EdgeType.ParentOf
+            },
             new DependencyEdgeRecord
             {
                 CallerNodeId = DirectCallerNodeId,

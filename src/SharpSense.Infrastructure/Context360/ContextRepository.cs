@@ -50,7 +50,8 @@ public sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> dbC
                 .AsNoTracking()
                 .Where(edge =>
                     edge.CalleeNodeId == nodeId &&
-                    edge.EdgeType != EdgeType.Implements),
+                    edge.EdgeType != EdgeType.Implements &&
+                    edge.EdgeType != EdgeType.ParentOf),
             selectCaller: true,
             maxRelated,
             ct);
@@ -70,7 +71,8 @@ public sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> dbC
                 .AsNoTracking()
                 .Where(edge =>
                     edge.CallerNodeId == nodeId &&
-                    edge.EdgeType != EdgeType.Implements),
+                    edge.EdgeType != EdgeType.Implements &&
+                    edge.EdgeType != EdgeType.ParentOf),
             selectCaller: false,
             maxRelated,
             ct);
@@ -84,13 +86,35 @@ public sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> dbC
             selectCaller: false,
             maxRelated,
             ct);
+        var parents = await GetStructuralRelatedNodes(
+            context,
+            context.DependencyEdges
+                .AsNoTracking()
+                .Where(edge =>
+                    edge.CalleeNodeId == nodeId &&
+                    edge.EdgeType == EdgeType.ParentOf),
+            selectCaller: true,
+            maxRelated,
+            ct);
+        var children = await GetStructuralRelatedNodes(
+            context,
+            context.DependencyEdges
+                .AsNoTracking()
+                .Where(edge =>
+                    edge.CallerNodeId == nodeId &&
+                    edge.EdgeType == EdgeType.ParentOf),
+            selectCaller: false,
+            maxRelated,
+            ct);
 
         return new Context360Result(
             targetNode,
             callers,
             implementers,
             callees,
-            inherits);
+            inherits,
+            parents,
+            children);
     }
 
     private static Task<Context360RelatedNode[]> GetRelatedNodes(
@@ -119,6 +143,51 @@ public sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> dbC
                 codeNode.NodeType == NodeType.Method && codeNode.DisplayName.Contains("(")
                     ? codeNode.DisplayName.Substring(0, codeNode.DisplayName.IndexOf("("))
                     : codeNode.DisplayName))
+            .ToArrayAsync(ct);
+    }
+
+    private static Task<Context360RelatedNode[]> GetStructuralRelatedNodes(
+        SharpSenseDbContext context,
+        IQueryable<DependencyEdgeRecord> edgeQuery,
+        bool selectCaller,
+        int maxRelated,
+        CancellationToken ct)
+    {
+        var relatedNodeIds = (selectCaller
+            ? edgeQuery
+                .Select(static edge => edge.CallerNodeId)
+            : edgeQuery
+                .Select(static edge => edge.CalleeNodeId)
+            )
+            .Distinct();
+
+        var codeNodes = context.CodeNodes
+            .AsNoTracking()
+            .Where(codeNode => relatedNodeIds.Contains(codeNode.Id))
+            .Select(static codeNode => new
+            {
+                codeNode.Id,
+                Name = codeNode.NodeType == NodeType.Method && codeNode.DisplayName.Contains("(")
+                    ? codeNode.DisplayName.Substring(0, codeNode.DisplayName.IndexOf("("))
+                    : codeNode.DisplayName
+            });
+        var projectNodes = context.ProjectNodes
+            .AsNoTracking()
+            .Where(projectNode => relatedNodeIds.Contains(projectNode.Id))
+            .Select(static projectNode => new
+            {
+                projectNode.Id,
+                Name = projectNode.Name
+            });
+
+        return codeNodes
+            .Concat(projectNodes)
+            .OrderBy(static node => node.Name)
+            .ThenBy(static node => node.Id)
+            .Take(maxRelated)
+            .Select(static node => new Context360RelatedNode(
+                node.Id,
+                node.Name))
             .ToArrayAsync(ct);
     }
 }

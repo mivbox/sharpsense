@@ -31,6 +31,10 @@ public sealed class TokenObjectNotationTests
             [
                 new Context360RelatedNode(3, "MessageProvider.GetMessage")
             ],
+            [],
+            [
+                new Context360RelatedNode(20, "MessageConsumer")
+            ],
             []);
 
         var output = TokenObjectNotation.SerializeContext360(result);
@@ -48,7 +52,11 @@ public sealed class TokenObjectNotationTests
             Environment.NewLine +
             "outgoing:" + Environment.NewLine +
             "  callees: [MessageProvider.GetMessage (Id:3)]" + Environment.NewLine +
-            "  inherits: []");
+            "  inherits: []" + Environment.NewLine +
+            Environment.NewLine +
+            "structural:" + Environment.NewLine +
+            "  parents: [MessageConsumer (Id:20)]" + Environment.NewLine +
+            "  children: []");
     }
 
     [Fact]
