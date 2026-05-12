@@ -38,6 +38,7 @@ public sealed class IndexTargetCommandHandler(
                 new ExtractionContext(absoluteTargetPath, command.Progress),
                 extractActivity,
                 ct);
+
             var projectCount = extractedNodes.Projects.Count;
             var documentNodeCount = extractedNodes.CodeNodes.Count(static codeNode => codeNode.NodeType == NodeType.Document);
 
