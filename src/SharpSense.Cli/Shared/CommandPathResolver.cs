@@ -18,6 +18,11 @@ internal static class CommandPathResolver
         ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
 
         var absoluteTargetPath = ResolvePath(repositoryRoot, targetPath);
+        if (Directory.Exists(absoluteTargetPath))
+        {
+            return NormalizeDirectory(absoluteTargetPath);
+        }
+
         return Path.GetDirectoryName(absoluteTargetPath) ?? NormalizeDirectory(repositoryRoot);
     }
 
