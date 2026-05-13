@@ -32,7 +32,6 @@ public sealed class CSharpLanguageExtractorTests
 
         workspaceLoader.Setup(loader => loader.Load(
                 "/repo/SharpSense.sln",
-                It.IsAny<RoslynWorkspaceOptions>(),
                 TestContext.Current.CancellationToken))
             .ReturnsAsync(new WorkspaceLoadResult(solution, ["load diagnostic"]));
         workspaceLoader.Setup(loader => loader.UpdateDocuments(

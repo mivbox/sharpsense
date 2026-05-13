@@ -90,6 +90,32 @@ public sealed class WorkspaceLoaderTests
         updatedContents.Should().Contain("Updated()");
     }
 
+    [Fact]
+    public async Task WhenDocumentIsDeleted_ThenItRemovesTheDocumentWithoutReloadingWorkspace()
+    {
+        using var fixture = TemporaryProject.Create();
+        var workspaceFactory = new CountingMsBuildWorkspaceFactory();
+        var fileSystem = CreateFileSystem((path, ct) => File.ReadAllTextAsync(path, ct));
+        using var loader = new WorkspaceLoader(workspaceFactory, fileSystem);
+
+        await loader.Load(
+            fixture.ProjectFilePath,
+            ct: TestContext.Current.CancellationToken);
+        fixture.DeleteSource();
+
+        var result = await loader.UpdateDocuments(
+            fixture.ProjectFilePath,
+            [
+                new WorkspaceFileChange(
+                    WorkspaceFileChangeAction.Deleted,
+                    OldPath: fixture.SourceFilePath)
+            ],
+            TestContext.Current.CancellationToken);
+
+        workspaceFactory.CreateCount.Should().Be(1);
+        SolutionContainsDocument(result.Solution, fixture.SourceFilePath).Should().BeFalse();
+    }
+
     private static IFileSystem CreateFileSystem(Func<string, CancellationToken, Task<string>> readContents)
     {
         var realFileSystem = new FileSystem();
@@ -127,16 +153,30 @@ public sealed class WorkspaceLoaderTests
         return documentContents.ToString();
     }
 
+    private static bool SolutionContainsDocument(
+        Solution solution,
+        string sourceFilePath)
+    {
+        var pathComparer = OperatingSystem.IsWindows()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+
+        return solution.Projects
+            .SelectMany(static project => project.Documents)
+            .Any(candidate => candidate.FilePath is not null &&
+                              pathComparer.Equals(Path.GetFullPath(candidate.FilePath), sourceFilePath));
+    }
+
     private sealed class CountingMsBuildWorkspaceFactory : IMsBuildWorkspaceFactory
     {
         private readonly MsBuildWorkspaceFactory _innerFactory = new();
 
         public int CreateCount { get; private set; }
 
-        public MSBuildWorkspace Create(RoslynWorkspaceOptions? options = null)
+        public MSBuildWorkspace Create()
         {
             CreateCount++;
-            return _innerFactory.Create(options);
+            return _innerFactory.Create();
         }
     }
 
@@ -212,6 +252,9 @@ public sealed class WorkspaceLoaderTests
                 }
                 """);
         }
+
+        public void DeleteSource()
+            => File.Delete(SourceFilePath);
 
         public void Dispose()
         {

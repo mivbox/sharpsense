@@ -4,5 +4,5 @@ namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
 public interface IMsBuildWorkspaceFactory
 {
-    MSBuildWorkspace Create(RoslynWorkspaceOptions? options = null);
+    MSBuildWorkspace Create();
 }
