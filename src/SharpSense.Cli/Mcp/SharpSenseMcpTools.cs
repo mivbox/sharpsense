@@ -1,14 +1,20 @@
+using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
+using FluentResults;
 using ModelContextProtocol.Server;
 using Microsoft.Extensions.Options;
 using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Context360.GetNodeContext.Models;
 using SharpSense.Application.Context360.Models;
-using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
-using SharpSense.Application.Inheritors.GetInheritors.Models;
-using SharpSense.Application.ImpactAnalysis.Models;
+using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
+using SharpSense.Application.ImpactAnalysis.Models;
+using SharpSense.Application.Inheritors.GetInheritors.Models;
+using SharpSense.Application.Memory.Abstractions;
+using SharpSense.Application.Memory.AttachMemory.Models;
+using SharpSense.Application.Memory.GetNodeMemories.Models;
 using SharpSense.Application.Refactoring.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Diagnostics;
@@ -17,8 +23,8 @@ using SharpSense.Application.Shared.Options;
 using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Shared;
-using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
+using SharpSense.Domain.KnowledgeGraph.Enums;
+using SharpSense.Domain.KnowledgeGraph.Nodes;
 
 namespace SharpSense.Cli.Mcp;
 
@@ -84,14 +90,42 @@ internal sealed class SharpSenseMcpTools
         try
         {
             var normalizedLimit = Math.Clamp(limit, 1, 50);
-            var result = await searchHandler
-                .Handle(
-                    new HybridSearchQuery(query, normalizedLimit),
-                    ct)
-                ;
+            var result = await searchHandler.Handle(
+                new HybridSearchQuery(query, normalizedLimit),
+                ct);
 
             activity.AddTag("search.result.count", result.Hits.Length);
             return TokenObjectNotation.SerializeSemanticSearch(result.Hits);
+        }
+        catch (Exception ex)
+        {
+            activity.RecordExceptionAndErrorStatus(ex);
+            throw;
+        }
+    }
+
+    [McpServerTool, Description("Attach persistent semantic memory to a persisted code node id.")]
+    public static async Task<string> attach_memory(
+        ICommandHandler<AttachMemoryCommand, Result> handler,
+        [Description("The persisted integer ID of the target node.")] int nodeId,
+        [Description("The markdown-formatted memory payload to attach.")] string content,
+        [Description("Optional tags used for filtering and classification.")] string[]? tags = null,
+        CancellationToken ct = default)
+    {
+        using var activity = SharpSenseTraceSpan.Start("mcp.tool.attach_memory");
+        activity.AddTag("mcp.tool", "attach_memory");
+        activity.AddTag("memory.node_id", nodeId);
+
+        try
+        {
+            var result = await handler.Handle(
+                new AttachMemoryCommand(nodeId, content, tags),
+                ct);
+
+            activity.AddTag("memory.success", result.IsSuccess);
+            return result.IsSuccess
+                ? $"attached memory to node {nodeId}"
+                : $"attach_memory failed: {GetErrorMessage(result.Errors)}";
         }
         catch (Exception ex)
         {
@@ -104,12 +138,15 @@ internal sealed class SharpSenseMcpTools
     [Description("Gets an instant 360-degree architectural snapshot of a node. Returns immediate callers, callees, and inheritance hierarchy for a persisted node ID. Use this to understand a node's immediate context and blast radius before deep tracing.")]
     public static async Task<string> context(
         IQueryHandler<GetNodeContextQuery, Context360Result> handler,
+        IQueryHandler<GetNodeMemoriesQuery, MemoryNode[]> memoryHandler,
         [Description("The persisted integer ID of the target node.")] int nodeId,
+        [Description("Optional edge-category mask. Defaults to Structural.")] EdgeCategory edgeCategories = EdgeCategory.Structural,
         CancellationToken ct = default)
     {
         using var activity = SharpSenseTraceSpan.Start("mcp.tool.context");
         activity.AddTag("mcp.tool", "context");
         activity.AddTag("context.node_id", nodeId);
+        activity.AddTag("context.edge_categories", edgeCategories);
 
         try
         {
@@ -118,12 +155,16 @@ internal sealed class SharpSenseMcpTools
                     nodeId,
                     10),
                 ct);
+            var semanticContext = edgeCategories.HasFlag(EdgeCategory.Semantic)
+                ? await memoryHandler.Handle(new GetNodeMemoriesQuery(nodeId), ct)
+                : [];
 
             activity.AddTag("context.callers.count", result.Callers.Length);
             activity.AddTag("context.callees.count", result.Callees.Length);
             activity.AddTag("context.implementers.count", result.Implementers.Length);
             activity.AddTag("context.inherits.count", result.Inherits.Length);
-            return TokenObjectNotation.SerializeContext360(result);
+            activity.AddTag("context.semantic.count", semanticContext.Length);
+            return TokenObjectNotation.SerializeContext360(result, semanticContext);
         }
         catch (Exception ex)
         {
@@ -136,9 +177,11 @@ internal sealed class SharpSenseMcpTools
     public static async Task<string> trace_node(
         IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult> impactHandler,
         IQueryHandler<TraceQuery, CodeNodeResult[]> traceHandler,
+        IMemoryReader memoryReader,
         ITraceNavigator traceNavigator,
         [Description("The exact Node ID to trace.")] string nodeId,
         [Description("Direction of the trace: 'caller' (upstream) or 'callee' (downstream).")] TraceDirection direction = TraceDirection.Callee,
+        [Description("Optional edge-category mask. Defaults to Structural.")] EdgeCategory edgeCategories = EdgeCategory.Structural,
         CancellationToken ct = default)
     {
         using var activity = SharpSenseTraceSpan.Start("mcp.tool.trace_node");
@@ -148,6 +191,7 @@ internal sealed class SharpSenseMcpTools
         try
         {
             activity.AddTag("trace.direction", direction);
+            activity.AddTag("trace.edge_categories", edgeCategories);
             var rootNode = await traceNavigator.GetRootNode(nodeId, ct);
             if (rootNode is null)
             {
@@ -161,20 +205,18 @@ internal sealed class SharpSenseMcpTools
             {
                 case TraceDirection.Caller:
                 {
-                    impactResult = await impactHandler
-                        .Handle(
-                            new ImpactAnalysisQuery(nodeId),
-                            ct);
+                    impactResult = await impactHandler.Handle(
+                        new ImpactAnalysisQuery(nodeId),
+                        ct);
 
                     activity.AddTag("trace.edge.count", impactResult.Dependencies.Length);
                     nodes = MapImpactedNodes(impactResult.ImpactedNodes);
                     break;
                 }
                 case TraceDirection.Callee:
-                    nodes = await traceHandler
-                        .Handle(
-                            new TraceQuery(nodeId),
-                            ct);
+                    nodes = await traceHandler.Handle(
+                        new TraceQuery(nodeId),
+                        ct);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(
@@ -183,11 +225,16 @@ internal sealed class SharpSenseMcpTools
                         "Direction must be either caller or callee.");
             }
 
+            var memoriesByNodeId = edgeCategories.HasFlag(EdgeCategory.Semantic)
+                ? await LoadTraceMemories(memoryReader, rootNode, nodes, ct)
+                : new Dictionary<int, MemoryNode[]>();
+
             activity.AddTag("trace.node.count", nodes.Length);
+            activity.AddTag("trace.semantic.count", memoriesByNodeId.Values.Sum(static memories => memories.Length));
             return direction switch
             {
-                TraceDirection.Caller => TokenObjectNotation.SerializeCallerTrace(rootNode, nodes, impactResult?.Dependencies ?? []),
-                TraceDirection.Callee => TokenObjectNotation.SerializeCalleeTrace(rootNode, nodes),
+                TraceDirection.Caller => TokenObjectNotation.SerializeCallerTrace(rootNode, nodes, impactResult?.Dependencies ?? [], memoriesByNodeId),
+                TraceDirection.Callee => TokenObjectNotation.SerializeCalleeTrace(rootNode, nodes, memoriesByNodeId),
                 _ => throw new ArgumentOutOfRangeException(nameof(direction), direction, null)
             };
         }
@@ -239,10 +286,9 @@ internal sealed class SharpSenseMcpTools
 
         try
         {
-            var result = await inheritorsHandler
-                .Handle(
-                    new GetInheritorsQuery(nodeId),
-                    ct);
+            var result = await inheritorsHandler.Handle(
+                new GetInheritorsQuery(nodeId),
+                ct);
 
             activity.AddTag("inheritors.result.count", result.Length);
             return ToonOutputFormatter.Format(result);
@@ -251,8 +297,17 @@ internal sealed class SharpSenseMcpTools
         {
             activity.RecordExceptionAndErrorStatus(ex);
             throw;
+        }
     }
-}
+
+    private static Task<IReadOnlyDictionary<int, MemoryNode[]>> LoadTraceMemories(
+        IMemoryReader memoryReader,
+        CodeNodeResult rootNode,
+        IReadOnlyList<CodeNodeResult> nodes,
+        CancellationToken ct)
+        => memoryReader.GetNodeMemories(
+            [rootNode.Id, .. nodes.Select(static node => node.Id)],
+            ct);
 
     private static CodeNodeResult[] MapImpactedNodes(IEnumerable<ImpactedCodeNode> impactedNodes)
         => [.. impactedNodes.Select(static node => new CodeNodeResult(
@@ -267,6 +322,6 @@ internal sealed class SharpSenseMcpTools
             node.EndLine,
             node.Summary))];
 
-    private static string GetErrorMessage(IEnumerable<FluentResults.IError> errors)
+    private static string GetErrorMessage(IEnumerable<IError> errors)
         => string.Join("; ", errors.Select(static error => error.Message));
 }

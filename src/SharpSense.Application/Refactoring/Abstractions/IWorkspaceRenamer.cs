@@ -8,6 +8,35 @@ namespace SharpSense.Application.Refactoring.Abstractions;
 /// </summary>
 public interface IWorkspaceRenamer
 {
+    Task<RefactorResult> RenameSymbol(
+        NodeRefactorTarget target,
+        string newName)
+        => RenameSymbol(
+            target,
+            newName,
+            targetPath: null,
+            CancellationToken.None);
+
+    Task<RefactorResult> RenameSymbol(
+        NodeRefactorTarget target,
+        string newName,
+        CancellationToken ct)
+        => RenameSymbol(
+            target,
+            newName,
+            targetPath: null,
+            ct);
+
+    Task<RefactorResult> RenameSymbol(
+        NodeRefactorTarget target,
+        string newName,
+        string? targetPath)
+        => RenameSymbol(
+            target,
+            newName,
+            targetPath,
+            CancellationToken.None);
+
     /// <summary>
     /// Renames the supplied target using the correct strategy for its persisted document kind and reports all modified
     /// repository-relative files when the operation succeeds.

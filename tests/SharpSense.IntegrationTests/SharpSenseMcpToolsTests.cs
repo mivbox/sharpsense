@@ -11,6 +11,9 @@ using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.Inheritors.GetInheritors.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
+using SharpSense.Application.Memory.Abstractions;
+using SharpSense.Application.Memory.AttachMemory.Models;
+using SharpSense.Application.Memory.GetNodeMemories.Models;
 using SharpSense.Application.Refactoring.Abstractions;
 using SharpSense.Application.Refactoring.Models;
 using SharpSense.Application.Shared.Abstractions;
@@ -20,6 +23,7 @@ using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Mcp;
 using SharpSense.Domain.KnowledgeGraph.Enums;
+using SharpSense.Domain.KnowledgeGraph.Nodes;
 
 namespace SharpSense.IntegrationTests;
 
@@ -129,6 +133,7 @@ public sealed class SharpSenseMcpToolsTests
     public async Task WhenContextHasMatches_ThenItFormatsCompressedToonOutput()
     {
         var handler = new Mock<IQueryHandler<GetNodeContextQuery, Context360Result>>(MockBehavior.Strict);
+        var memoryHandler = new Mock<IQueryHandler<GetNodeMemoriesQuery, MemoryNode[]>>(MockBehavior.Strict);
         handler.Setup(candidate => candidate.Handle(
                 It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
                 CancellationToken.None))
@@ -160,8 +165,9 @@ public sealed class SharpSenseMcpToolsTests
 
         var result = await SharpSenseMcpTools.context(
             handler.Object,
+            memoryHandler.Object,
             42,
-            CancellationToken.None);
+            ct: CancellationToken.None);
 
         result.Should().Be(
             "node:" + Environment.NewLine +
@@ -185,6 +191,27 @@ public sealed class SharpSenseMcpToolsTests
                 It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
                 CancellationToken.None),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task WhenAttachMemorySucceeds_ThenItReturnsConciseSuccessMessage()
+    {
+        var tags = new[] { "security" };
+        var handler = new Mock<ICommandHandler<AttachMemoryCommand, Result>>(MockBehavior.Strict);
+        handler.Setup(candidate => candidate.Handle(
+                new AttachMemoryCommand(42, "Security review", tags),
+                CancellationToken.None))
+            .ReturnsAsync(Result.Ok());
+
+        var result = await SharpSenseMcpTools.attach_memory(
+            handler.Object,
+            42,
+            "Security review",
+            tags,
+            CancellationToken.None);
+
+        result.Should().Be("attached memory to node 42");
+        handler.VerifyAll();
     }
 
     [Fact]
@@ -298,7 +325,6 @@ public sealed class SharpSenseMcpToolsTests
         refactorSymbolService.Setup(candidate => candidate.RenameSymbol(
                 42,
                 "Updated",
-                null,
                 CancellationToken.None))
             .ReturnsAsync(new RefactorResult(
                 true,
@@ -318,7 +344,6 @@ public sealed class SharpSenseMcpToolsTests
         refactorSymbolService.Verify(candidate => candidate.RenameSymbol(
             42,
             "Updated",
-            null,
             CancellationToken.None), Times.Once);
     }
 
@@ -327,6 +352,7 @@ public sealed class SharpSenseMcpToolsTests
     {
         var impactHandler = new Mock<IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult>>(MockBehavior.Strict);
         var traceHandler = new Mock<IQueryHandler<TraceQuery, CodeNodeResult[]>>(MockBehavior.Strict);
+        var memoryReader = new Mock<IMemoryReader>(MockBehavior.Strict);
         var traceNavigator = new Mock<ITraceNavigator>(MockBehavior.Strict);
         traceNavigator.Setup(candidate => candidate.GetRootNode("node-root", CancellationToken.None))
             .ReturnsAsync(
@@ -360,6 +386,7 @@ public sealed class SharpSenseMcpToolsTests
         var result = await SharpSenseMcpTools.trace_node(
             impactHandler.Object,
             traceHandler.Object,
+            memoryReader.Object,
             traceNavigator.Object,
             "node-root",
             ct: CancellationToken.None);

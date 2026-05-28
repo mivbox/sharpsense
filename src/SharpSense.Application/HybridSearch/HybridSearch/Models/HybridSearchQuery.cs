@@ -6,4 +6,6 @@ public sealed record HybridSearchQuery(
     string SearchText,
     int Limit = 10,
     string? ProjectId = null,
-    NodeType[]? IncludedNodeTypes = null);
+    NodeType[]? IncludedNodeTypes = null,
+    bool IncludeMemories = false,
+    string[]? TagFilters = null);

@@ -10,6 +10,28 @@ namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 /// </summary>
 public interface IWorkspaceLoader : IDisposable
 {
+    Task<WorkspaceLoadResult> Load(string targetPath)
+        => Load(
+            targetPath,
+            options: null,
+            CancellationToken.None);
+
+    Task<WorkspaceLoadResult> Load(
+        string targetPath,
+        CancellationToken ct)
+        => Load(
+            targetPath,
+            options: null,
+            ct);
+
+    Task<WorkspaceLoadResult> Load(
+        string targetPath,
+        RoslynWorkspaceOptions? options)
+        => Load(
+            targetPath,
+            options,
+            CancellationToken.None);
+
     /// <summary>
     /// Loads the supplied target into a cached Roslyn workspace and returns the current solution snapshot plus any loader
     /// diagnostics raised while opening the target.
@@ -23,6 +45,14 @@ public interface IWorkspaceLoader : IDisposable
         RoslynWorkspaceOptions? options = null,
         CancellationToken ct = default);
 
+    Task<WorkspaceLoadResult> UpdateDocuments(
+        string targetPath,
+        IReadOnlyList<WorkspaceFileChange> changedFiles)
+        => UpdateDocuments(
+            targetPath,
+            changedFiles,
+            CancellationToken.None);
+
     /// <summary>
     /// Applies the supplied file changes to an already-loaded workspace, reloading the workspace when incremental document
     /// updates are no longer safe, and returns the updated solution snapshot plus any loader diagnostics.
@@ -35,6 +65,16 @@ public interface IWorkspaceLoader : IDisposable
         string targetPath,
         IReadOnlyList<WorkspaceFileChange> changedFiles,
         CancellationToken ct = default);
+
+    Task<WorkspaceTextUpdateResult> ChangeDocumentText(
+        string targetPath,
+        string documentPath,
+        Func<SourceText, WorkspaceTextChange> changeText)
+        => ChangeDocumentText(
+            targetPath,
+            documentPath,
+            changeText,
+            CancellationToken.None);
 
     /// <summary>
     /// Applies a text mutation to every workspace document that maps to the supplied physical file path while holding the

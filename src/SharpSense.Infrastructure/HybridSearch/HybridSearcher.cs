@@ -2,8 +2,10 @@ using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.HybridSearch.Abstractions;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
+using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.Shared.Abstractions;
+using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Infrastructure.Shared;
@@ -13,6 +15,7 @@ namespace SharpSense.Infrastructure.HybridSearch;
 public sealed class HybridSearcher(
     IDbContextFactory<SharpSenseDbContext> dbContextFactory,
     IEmbeddingGenerator embeddingsService,
+    IMemoryReader memoryReader,
     IKeywordCandidateProvider keywordProvider,
     IVectorScorer vectorScorer)
     : IHybridSearcher
@@ -61,7 +64,7 @@ public sealed class HybridSearcher(
 
         var candidateLimit = GetCandidateLimit(query.Limit);
         var candidateIds = await keywordProvider.GetCandidateIdsAsync(context,
-            query.SearchText,
+            query,
             candidateLimit,
             ct);
 
@@ -86,22 +89,29 @@ public sealed class HybridSearcher(
             return new HybridSearchResult(query.SearchText, []);
         }
 
-        var queryEmbedding = codeNodes.Any(static codeNode => codeNode.VectorEmbedding is { Length: > 0 })
+        var queryEmbedding = query.IncludeMemories || codeNodes.Any(static codeNode => codeNode.VectorEmbedding is { Length: > 0 })
             ? (await embeddingsService.Generate(query.SearchText, ct).ConfigureAwait(false)).Vector
             : null;
 
         var vectorScores = queryEmbedding is { Length: > 0 }
             ? await vectorScorer.GetScoresAsync(context,
+                    query,
                     codeNodes.Select(static codeNode => codeNode.Id).ToArray(),
                     queryEmbedding,
                     ct)
                 .ConfigureAwait(false)
             : new Dictionary<int, float>();
+        IReadOnlyDictionary<int, MemoryNode[]> memoriesByCodeNodeId = query.IncludeMemories
+            ? await memoryReader.GetNodeMemories(
+                codeNodes.Select(static codeNode => codeNode.Id).ToArray(),
+                ct)
+            : new Dictionary<int, MemoryNode[]>();
 
         var rankedNodes = codeNodes.ApplyHybridScoring(
             query.SearchText,
             vectorScores,
-            query.Limit);
+            query.Limit,
+            memoriesByCodeNodeId);
 
         return new HybridSearchResult(query.SearchText, HybridSearchMapper.ToSearchHit(rankedNodes));
     }
