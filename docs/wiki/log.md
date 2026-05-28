@@ -1,5 +1,6 @@
 # SharpSense Wiki Log
 
+- `2026-05-14T09:30:28+10:00` - Added the persistent graph-native memory layer, made Roslyn body hashes trivia-insensitive, widened hybrid search with opt-in memory relevance and tag prefilters, and exposed memory-aware MCP surfaces. Pages updated: [[persistence/sqlite-schema]], [[cli/mcp-command]], [[cli/search-command]], [[extractors/csharp]], [[architecture/hybrid-search-pipeline]].
 - `2026-05-12T15:28:51+10:00` - Collapsed Markdown heading hierarchy onto the generic `ParentOf` edge, removed the markdown-only `DocumentHierarchy` edge type, and documented the single-edge structural model. Pages updated: [[extractors/markdown]].
 - `2026-05-12T15:12:10+10:00` - Added structural `ParentOf` emission to Markdown heading hierarchies while preserving the existing markdown-specific `DocumentHierarchy` edge, and documented the dual-edge contract. Pages updated: [[extractors/markdown]].
 - `2026-05-12T13:57:59+10:00` - Added structural `ParentOf` hierarchy edges for Roslyn-extracted C# nodes, kept trace on functional traversal unless `--include-structural` is requested, and split context output into functional vs structural buckets. Pages updated: [[extractors/csharp]], [[cli/trace-command]], [[cli/context-command]].

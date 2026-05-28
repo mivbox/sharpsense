@@ -1,11 +1,14 @@
 using AwesomeAssertions;
 using Moq;
+using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
+using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.HybridSearch;
 using SharpSense.Infrastructure.Persistence;
+using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Infrastructure.Tests.TestData;
 using SharpSense.Testkit;
 
@@ -24,9 +27,11 @@ public sealed class HybridSearcherTests
         var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
         embeddings.Setup(candidate => candidate.Generate("Message", TestContext.Current.CancellationToken))
             .ReturnsAsync(new TextEmbedding("Message", [1f, 0f]));
+        var memoryReader = new Mock<IMemoryReader>(MockBehavior.Strict);
         var searcher = new HybridSearcher(
             inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
             embeddings.Object,
+            memoryReader.Object,
             new SqliteKeywordCandidateProvider(),
             new SqliteVectorScorer());
 
@@ -51,9 +56,11 @@ public sealed class HybridSearcherTests
         var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
         embeddings.Setup(candidate => candidate.Generate("Message", TestContext.Current.CancellationToken))
             .ReturnsAsync(new TextEmbedding("Message", [1f, 0f]));
+        var memoryReader = new Mock<IMemoryReader>(MockBehavior.Strict);
         var searcher = new HybridSearcher(
             inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
             embeddings.Object,
+            memoryReader.Object,
             new SqliteKeywordCandidateProvider(),
             new SqliteVectorScorer());
 
@@ -69,5 +76,72 @@ public sealed class HybridSearcherTests
         result.Hits.Should().OnlyContain(static hit => hit.NodeType == NodeType.Method);
         result.Hits.Should().OnlyContain(static hit => hit.ProjectId == KnowledgeGraphFixture.AppProjectId);
         result.Hits.Should().NotContain(static hit => hit.Id == KnowledgeGraphFixture.MessageNodeId);
+    }
+
+    [Fact]
+    public async Task WhenSearchIncludesMemoriesWithMatchingTags_ThenItReturnsMemoryMatchedNode()
+    {
+        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
+            UseMigrations: true,
+            LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(TestContext.Current.CancellationToken);
+        await KnowledgeGraphFixture.SeedAsync(context);
+        context.MemoryNodes.Add(
+            new MemoryNodeRecord
+            {
+                Id = Guid.NewGuid(),
+                TargetFullyQualifiedName = KnowledgeGraphFixture.DirectCallerFullyQualifiedName,
+                TargetCodeHash = "hash-1",
+                Content = "Security review note",
+                ContentHash = "memory-hash-1",
+                TagsJson = "[\"security\"]",
+                VectorEmbedding = [1f, 0f],
+                CreatedAt = DateTimeOffset.Parse("2026-05-14T00:00:00+00:00")
+            });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
+        embeddings.Setup(candidate => candidate.Generate("security", TestContext.Current.CancellationToken))
+            .ReturnsAsync(new TextEmbedding("security", [1f, 0f]));
+        var memoryReader = new Mock<IMemoryReader>(MockBehavior.Strict);
+        memoryReader.Setup(candidate => candidate.GetNodeMemories(
+                It.Is<IReadOnlyCollection<int>>(nodeIds =>
+                    nodeIds.Count == 1 &&
+                    nodeIds.Contains(KnowledgeGraphFixture.DirectCallerNodeId)),
+                TestContext.Current.CancellationToken))
+            .ReturnsAsync(new Dictionary<int, MemoryNode[]>
+            {
+                [KnowledgeGraphFixture.DirectCallerNodeId] =
+                [
+                    new MemoryNode(
+                        Guid.NewGuid(),
+                        KnowledgeGraphFixture.DirectCallerFullyQualifiedName,
+                        "hash-1",
+                        "Security review note",
+                        "memory-hash-1",
+                        ["security"],
+                        DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
+                        false)
+                ]
+            });
+        var searcher = new HybridSearcher(
+            inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
+            embeddings.Object,
+            memoryReader.Object,
+            new SqliteKeywordCandidateProvider(),
+            new SqliteVectorScorer());
+
+        var result = await searcher.Search(
+            new HybridSearchQuery(
+                "security",
+                Limit: 5,
+                IncludeMemories: true,
+                TagFilters: ["security"]),
+            TestContext.Current.CancellationToken);
+
+        result.Hits.Should().ContainSingle();
+        result.Hits[0].Id.Should().Be(KnowledgeGraphFixture.DirectCallerNodeId);
+        embeddings.VerifyAll();
+        memoryReader.VerifyAll();
     }
 }

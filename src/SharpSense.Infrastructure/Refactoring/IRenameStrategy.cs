@@ -8,6 +8,35 @@ internal interface IRenameStrategy
 
     Task<RefactorResult> RenameAsync(
         NodeRefactorTarget target,
+        string newName)
+        => RenameAsync(
+            target,
+            newName,
+            targetPath: null,
+            CancellationToken.None);
+
+    Task<RefactorResult> RenameAsync(
+        NodeRefactorTarget target,
+        string newName,
+        CancellationToken ct)
+        => RenameAsync(
+            target,
+            newName,
+            targetPath: null,
+            ct);
+
+    Task<RefactorResult> RenameAsync(
+        NodeRefactorTarget target,
+        string newName,
+        string? targetPath)
+        => RenameAsync(
+            target,
+            newName,
+            targetPath,
+            CancellationToken.None);
+
+    Task<RefactorResult> RenameAsync(
+        NodeRefactorTarget target,
         string newName,
         string? targetPath = null,
         CancellationToken ct = default);

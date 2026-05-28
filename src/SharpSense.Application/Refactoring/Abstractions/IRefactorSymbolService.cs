@@ -8,6 +8,35 @@ namespace SharpSense.Application.Refactoring.Abstractions;
 /// </summary>
 public interface IRefactorSymbolService
 {
+    Task<RefactorResult> RenameSymbol(
+        int nodeId,
+        string newName)
+        => RenameSymbol(
+            nodeId,
+            newName,
+            targetPath: null,
+            CancellationToken.None);
+
+    Task<RefactorResult> RenameSymbol(
+        int nodeId,
+        string newName,
+        CancellationToken ct)
+        => RenameSymbol(
+            nodeId,
+            newName,
+            targetPath: null,
+            ct);
+
+    Task<RefactorResult> RenameSymbol(
+        int nodeId,
+        string newName,
+        string? targetPath)
+        => RenameSymbol(
+            nodeId,
+            newName,
+            targetPath,
+            CancellationToken.None);
+
     /// <summary>
     /// Renames the declared symbol represented by the persisted node id and reports every repository-relative file that
     /// changed when the operation succeeds.

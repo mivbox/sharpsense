@@ -3,13 +3,13 @@ title: "Mcp Command"
 type: cli
 tags: [spectre, mcp, implemented]
 created: 2026-04-26
-updated: 2026-05-11
+updated: 2026-05-14
 confidence: high
 ---
 
 ## Command
 
-`sharp-sense mcp` starts the stdio MCP host for SharpSense tools. It exposes the same indexed read surfaces as [[cli/search-command]], [[cli/trace-command]], [[cli/inheritors-command]], and [[cli/context-command]], the execution-focused `ctx_execute` surface shared with [[cli/execute-command]], plus the write-capable `refactor_symbol` surface shared with [[cli/refactor-command]]. MCP caller tracing still uses the broader `ImpactAnalysisQuery` defaults instead of the CLI trace command's direct-caller shortcut. Shared bootstrapping still follows [[architecture/host-composition]].
+`sharp-sense mcp` starts the stdio MCP host for SharpSense tools. It exposes the same indexed read surfaces as [[cli/search-command]], [[cli/trace-command]], [[cli/inheritors-command]], and [[cli/context-command]], the execution-focused `ctx_execute` surface shared with [[cli/execute-command]], plus the write-capable `attach_memory` and `refactor_symbol` surfaces. MCP caller tracing still uses the broader `ImpactAnalysisQuery` defaults instead of the CLI trace command's direct-caller shortcut, and both `context` and `trace_node` now accept an `EdgeCategory` mask so semantic memory stays opt-in. Shared bootstrapping still follows [[architecture/host-composition]].
 
 ## Options
 
@@ -26,9 +26,10 @@ confidence: high
 | --- | --- | --- |
 | `ctx_execute` | `CommandExecutionReducer` | Runs a local command, indexes streamed output in a transient DbContext-backed FTS5 store, and returns reduced TOON log excerpts or a compact summary when no query hits are found. |
 | `semantic_search` | `HybridSearchQuery` | Hybrid BM25 + vector search over indexed code nodes, formatted as hierarchical directory/file TOON blocks for token-efficient handoff. |
-| `trace_node` | `TraceQuery` / `ImpactAnalysisQuery` | Downstream callees or upstream caller blast radius for a known node id, formatted as arrow-chain TOON. |
+| `attach_memory` | `AttachMemoryCommand` | Persists markdown memory against the current FQDN/body-hash snapshot of a code node id. |
+| `trace_node` | `TraceQuery` / `ImpactAnalysisQuery` + `IMemoryReader` | Downstream callees or upstream caller blast radius for a known node id, with optional inline semantic memory metadata. |
 | `get_inheritors` | `GetInheritorsQuery` | Direct derived classes or interface implementers for a persisted node id. |
-| `context` | `GetNodeContextQuery` | Immediate callers, callees, and inheritance breadth for a persisted node id as compressed TOON. |
+| `context` | `GetNodeContextQuery` + `GetNodeMemoriesQuery` | Immediate callers, callees, inheritance breadth, and optional `semantic_context` memories for a persisted node id as compressed TOON. |
 | `refactor_symbol` | `IRefactorSymbolService` | Semantically rename a persisted symbol, update Roslyn references when applicable, and return compact TOON write results. |
 
 ## Example Outputs and Rough Token Cost
@@ -125,13 +126,14 @@ modified_files:
 
 1. `Program.CommandApp.cs` routes `mcp` to `McpCommand`.
 2. `AbstractAsyncCommand<TSettings>` builds the host using the shared rules in [[architecture/host-composition]].
-3. `Configure()` resolves the repository root and registers repository workspace, `SharpSenseConfig`, command execution, Context360, hybrid search, refactoring, indexing infrastructure, embeddings, inheritors, impact analysis, trace, and persistence.
+3. `Configure()` resolves the repository root and registers repository workspace, `SharpSenseConfig`, command execution, Context360, hybrid search, memory, refactoring, indexing infrastructure, embeddings, inheritors, impact analysis, trace, and persistence.
 4. The command adds the MCP server with stdio transport and registers `SharpSenseMcpTools` as the tool surface.
-5. Tool serialization adds a `JsonStringEnumConverter<TraceDirection>` so trace directions stay stable across the protocol boundary.
+5. Tool serialization adds `JsonStringEnumConverter<TraceDirection>` and `JsonStringEnumConverter<EdgeCategory>` so trace directions and semantic-edge masks stay stable across the protocol boundary.
 6. `ctx_execute` resolves `ICommandExecutor`, runs the raw command string inside the configured repository root, streams output through the transient FTS5 reducer from [[architecture/windowed-execution-pipeline]], and renders metadata-first TOON through `TokenObjectNotation.SerializeCommandExecutionResult()`.
 7. `semantic_search` resolves `HybridSearchQuery` and serializes hits through `TokenObjectNotation.SerializeSemanticSearch()`, the shared hierarchical TOON serializer used by `sharp-sense search --toon`.
-8. `trace_node` resolves the root node through `ITraceNavigator`, then formats either direct callees or caller chains through the dedicated trace serializers in `TokenObjectNotation`.
-9. `context` dispatches `GetNodeContextQuery` through `IQueryHandler<GetNodeContextQuery, Context360Result>`, then renders the shared `Context360Result` through `TokenObjectNotation.SerializeContext360()`.
-10. `get_inheritors` resolves `GetInheritorsQuery` through the `IInheritorFinder` read slice and formats direct class inheritors or interface implementers with the shared flat TOON output formatter.
-11. `refactor_symbol` resolves `IRefactorSymbolService`, performs a semantic rename against either the Roslyn workspace or the Markdown strategy, and returns `TokenObjectNotation.SerializeRefactorResult()` without waiting for downstream index refresh.
-12. `Execute()` waits for the stdio host to shut down while the registered tools resolve queries on demand.
+8. `attach_memory` dispatches `AttachMemoryCommand` through the memory write slice, normalizes tags, reuses embeddings by `ContentHash` when possible, and persists `MemoryNodes` without adding a foreign key to `CodeNodes`.
+9. `trace_node` resolves the root node through `ITraceNavigator`, then formats either direct callees or caller chains through the dedicated trace serializers in `TokenObjectNotation`; when `EdgeCategory.Semantic` is present, it also loads stale-aware memories and renders them inline on each owning node.
+10. `context` dispatches `GetNodeContextQuery` through `IQueryHandler<GetNodeContextQuery, Context360Result>` and can additionally dispatch `GetNodeMemoriesQuery` when the semantic edge mask is enabled, then renders the combined shape through `TokenObjectNotation.SerializeContext360()`.
+11. `get_inheritors` resolves `GetInheritorsQuery` through the `IInheritorFinder` read slice and formats direct class inheritors or interface implementers with the shared flat TOON output formatter.
+12. `refactor_symbol` resolves `IRefactorSymbolService`, performs a semantic rename against either the Roslyn workspace or the Markdown strategy, and returns `TokenObjectNotation.SerializeRefactorResult()` without waiting for downstream index refresh.
+13. `Execute()` waits for the stdio host to shut down while the registered tools resolve queries on demand.

@@ -1,4 +1,5 @@
 using SharpSense.Infrastructure.Persistence;
+using SharpSense.Application.HybridSearch.HybridSearch.Models;
 
 namespace SharpSense.Infrastructure.HybridSearch;
 
@@ -13,8 +14,7 @@ public interface IKeywordCandidateProvider
     /// Returns the best keyword-matching code-node ids for the supplied search text, ordered for candidate hydration.
     /// </summary>
     Task<int[]> GetCandidateIdsAsync(SharpSenseDbContext context,
-        string searchText,
+        HybridSearchQuery query,
         int limit,
         CancellationToken ct);
 }
-

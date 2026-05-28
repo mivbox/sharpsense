@@ -8,7 +8,8 @@ internal static class HybridScoringExtensions
     public static CodeNode[] ApplyHybridScoring(this IEnumerable<CodeNode> nodes,
         string searchText,
         IReadOnlyDictionary<int, float> vectorScores,
-        int limit)
+        int limit,
+        IReadOnlyDictionary<int, MemoryNode[]>? memoriesByCodeNodeId = null)
     {
         var tokens = HybridSearchTokenizer.Tokenize(searchText);
 
@@ -18,7 +19,8 @@ internal static class HybridScoringExtensions
                 {
                     var keywordScore = ComputeKeywordScore(codeNode,
                         searchText,
-                        tokens);
+                        tokens,
+                        memoriesByCodeNodeId?.GetValueOrDefault(codeNode.Id) ?? []);
                     var vectorScore = vectorScores.GetValueOrDefault(codeNode.Id, 0f);
                     var totalScore = keywordScore + (vectorScore * 40f);
                     return new RankedSearchResult(codeNode, keywordScore, vectorScore, totalScore);
@@ -36,7 +38,8 @@ internal static class HybridScoringExtensions
 
     private static float ComputeKeywordScore(CodeNode codeNode,
         string searchText,
-        IReadOnlyList<string> tokens)
+        IReadOnlyList<string> tokens,
+        IReadOnlyList<MemoryNode> memories)
     {
         var score = 0f;
 
@@ -88,6 +91,32 @@ internal static class HybridScoringExtensions
             }
         }
 
+        foreach (var memory in memories)
+        {
+            if (Contains(memory.Content, searchText))
+            {
+                score += 24f;
+            }
+
+            if (memory.Tags.Any(tag => Contains(tag, searchText)))
+            {
+                score += 18f;
+            }
+
+            foreach (var token in tokens)
+            {
+                if (Contains(memory.Content, token))
+                {
+                    score += 4f;
+                }
+
+                if (memory.Tags.Any(tag => Contains(tag, token)))
+                {
+                    score += 6f;
+                }
+            }
+        }
+
         return score;
     }
 
@@ -97,4 +126,3 @@ internal static class HybridScoringExtensions
 
     private sealed record RankedSearchResult(CodeNode Node, float KeywordScore, float VectorScore, float TotalScore);
 }
-

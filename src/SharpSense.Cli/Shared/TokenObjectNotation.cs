@@ -5,6 +5,7 @@ using SharpSense.Application.Refactoring.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
+using SharpSense.Domain.KnowledgeGraph.Nodes;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text;
@@ -30,18 +31,19 @@ public static class TokenObjectNotation
 
     public static string SerializeCalleeTrace(
         CodeNodeResult rootNode,
-        IReadOnlyList<CodeNodeResult> callees)
+        IReadOnlyList<CodeNodeResult> callees,
+        IReadOnlyDictionary<int, MemoryNode[]>? memoriesByNodeId = null)
     {
         ArgumentNullException.ThrowIfNull(rootNode);
         ArgumentNullException.ThrowIfNull(callees);
 
         var builder = new StringBuilder();
-        AppendTraceLine(builder, 0, rootNode);
+        AppendTraceLine(builder, 0, rootNode, memoriesByNodeId);
 
         foreach (var callee in callees)
         {
             builder.AppendLine();
-            AppendTraceLine(builder, 1, callee);
+            AppendTraceLine(builder, 1, callee, memoriesByNodeId);
         }
 
         return builder.ToString();
@@ -50,7 +52,8 @@ public static class TokenObjectNotation
     public static string SerializeCallerTrace(
         CodeNodeResult rootNode,
         IReadOnlyList<CodeNodeResult> callers,
-        IReadOnlyList<ImpactedDependencyEdge> dependencies)
+        IReadOnlyList<ImpactedDependencyEdge> dependencies,
+        IReadOnlyDictionary<int, MemoryNode[]>? memoriesByNodeId = null)
     {
         ArgumentNullException.ThrowIfNull(rootNode);
         ArgumentNullException.ThrowIfNull(callers);
@@ -58,7 +61,7 @@ public static class TokenObjectNotation
 
         if (callers.Count == 0 || dependencies.Count == 0)
         {
-            return SerializeCalleeTrace(rootNode, []);
+            return SerializeCalleeTrace(rootNode, [], memoriesByNodeId);
         }
 
         var nodeByCanonicalId = callers
@@ -93,7 +96,7 @@ public static class TokenObjectNotation
 
         if (chains.Count == 0)
         {
-            return SerializeCalleeTrace(rootNode, []);
+            return SerializeCalleeTrace(rootNode, [], memoriesByNodeId);
         }
 
         var builder = new StringBuilder();
@@ -114,14 +117,16 @@ public static class TokenObjectNotation
                     builder.AppendLine();
                 }
 
-                AppendTraceLine(builder, nodeIndex, chain[nodeIndex]);
+                AppendTraceLine(builder, nodeIndex, chain[nodeIndex], memoriesByNodeId);
             }
         }
 
         return builder.ToString();
     }
 
-    public static string SerializeContext360(Context360Result result)
+    public static string SerializeContext360(
+        Context360Result result,
+        IReadOnlyList<MemoryNode>? semanticContext = null)
     {
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(result.TargetNode);
@@ -158,6 +163,31 @@ public static class TokenObjectNotation
         builder.AppendLine("structural:");
         builder.Append("  parents: ").Append(FormatContext360RelatedNodes(result.Parents)).AppendLine();
         builder.Append("  children: ").Append(FormatContext360RelatedNodes(result.Children));
+
+        if (semanticContext is { Count: > 0 })
+        {
+            builder.AppendLine();
+            builder.AppendLine();
+            builder.AppendLine("semantic_context:");
+            builder.AppendLine("  memories:");
+
+            foreach (var memory in semanticContext)
+            {
+                builder.Append("    - [")
+                    .Append(GetNodeTypeShorthand(NodeType.Memory))
+                    .Append("] stale=")
+                    .Append(memory.IsStale ? "true" : "false")
+                    .Append(" tags=")
+                    .Append(FormatTags(memory.Tags))
+                    .Append(" content=\"")
+                    .Append(SanitizeInlineText(memory.Content))
+                    .Append('"')
+                    .AppendLine();
+            }
+
+            builder.Length -= Environment.NewLine.Length;
+        }
+
         return builder.ToString();
     }
 
@@ -343,7 +373,8 @@ public static class TokenObjectNotation
     private static void AppendTraceLine(
         StringBuilder builder,
         int depth,
-        CodeNodeResult node)
+        CodeNodeResult node,
+        IReadOnlyDictionary<int, MemoryNode[]>? memoriesByNodeId = null)
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(node);
@@ -370,6 +401,8 @@ public static class TokenObjectNotation
             .Append(node.RelativeFilePath)
             .Append(':')
             .Append(FormatLineSpan(node.StartLine, node.EndLine));
+
+        AppendTraceMemoryMetadata(builder, depth, node.Id, memoriesByNodeId);
     }
 
     private static void BuildCallerChains(
@@ -425,6 +458,7 @@ public static class TokenObjectNotation
             NodeType.Property => "P",
             NodeType.Field => "F",
             NodeType.Document => "D",
+            NodeType.Memory => "*",
             _ => throw new InvalidOperationException($"Unsupported node type '{nodeType}'.")
         };
 
@@ -441,6 +475,79 @@ public static class TokenObjectNotation
         return parameterListStart < 0
             ? displayName
             : displayName[..parameterListStart].TrimEnd();
+    }
+
+    private static void AppendTraceMemoryMetadata(
+        StringBuilder builder,
+        int depth,
+        int nodeId,
+        IReadOnlyDictionary<int, MemoryNode[]>? memoriesByNodeId)
+    {
+        if (memoriesByNodeId is null ||
+            !memoriesByNodeId.TryGetValue(nodeId, out var memories) ||
+            memories.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var memory in memories)
+        {
+            builder.AppendLine();
+            builder.Append(' ', (depth + 1) * 2)
+                .Append("semantic: [")
+                .Append(GetNodeTypeShorthand(NodeType.Memory))
+                .Append("] stale=")
+                .Append(memory.IsStale ? "true" : "false")
+                .Append(" tags=")
+                .Append(FormatTags(memory.Tags))
+                .Append(" content=\"")
+                .Append(SanitizeInlineText(memory.Content))
+                .Append('"');
+        }
+    }
+
+    private static string FormatTags(IReadOnlyList<string> tags)
+        => tags.Count == 0
+            ? "[]"
+            : $"[{string.Join(", ", tags)}]";
+
+    private static string SanitizeInlineText(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(value.Length);
+        var previousWasWhitespace = false;
+
+        foreach (var character in value)
+        {
+            if (char.IsWhiteSpace(character))
+            {
+                if (previousWasWhitespace)
+                {
+                    continue;
+                }
+
+                builder.Append(' ');
+                previousWasWhitespace = true;
+                continue;
+            }
+
+            if (character == '"')
+            {
+                builder.Append('\\').Append('"');
+            }
+            else
+            {
+                builder.Append(character);
+            }
+
+            previousWasWhitespace = false;
+        }
+
+        return builder.ToString().Trim();
     }
 
     private static string GetDirectoryPath(string relativeFilePath)

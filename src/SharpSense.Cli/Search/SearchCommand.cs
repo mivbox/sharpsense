@@ -9,6 +9,7 @@ using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.HybridSearch;
+using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
@@ -32,6 +33,9 @@ internal sealed class SearchCommand : AbstractAsyncCommand<SearchCommand.Setting
         [CommandOption("--toon")]
         public bool UseToonFormat { get; init; }
 
+        [CommandOption("--include-memories")]
+        public bool IncludeMemories { get; init; }
+
         public override ValidationResult Validate()
             => string.IsNullOrWhiteSpace(Query)
                 ? ValidationResult.Error("A search query is required.")
@@ -51,6 +55,7 @@ internal sealed class SearchCommand : AbstractAsyncCommand<SearchCommand.Setting
         services.AddHybridSearch();
         services.AddHybridSearchInfrastructure();
         services.AddEmbeddingsInfrastructure();
+        services.AddMemoryInfrastructure();
         services.AddPersistence();
     }
 
@@ -64,7 +69,9 @@ internal sealed class SearchCommand : AbstractAsyncCommand<SearchCommand.Setting
         var handler = scope.ServiceProvider.GetRequiredService<IQueryHandler<HybridSearchQuery, HybridSearchResult>>();
 
         var result = await handler.Handle(
-            new HybridSearchQuery(settings.Query),
+            new HybridSearchQuery(
+                settings.Query,
+                IncludeMemories: settings.IncludeMemories),
             ct);
         var output = settings.UseToonFormat
             ? TokenObjectNotation.SerializeSemanticSearch(result.Hits)

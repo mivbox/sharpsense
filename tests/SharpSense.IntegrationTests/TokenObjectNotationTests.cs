@@ -7,6 +7,7 @@ using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Cli.Shared;
 using SharpSense.Domain.KnowledgeGraph.Enums;
+using SharpSense.Domain.KnowledgeGraph.Nodes;
 
 namespace SharpSense.IntegrationTests;
 
@@ -57,6 +58,62 @@ public sealed class TokenObjectNotationTests
             "structural:" + Environment.NewLine +
             "  parents: [MessageConsumer (Id:20)]" + Environment.NewLine +
             "  children: []");
+    }
+
+    [Fact]
+    public void WhenSerializeContext360HasSemanticContext_ThenItFormatsSeparateSemanticBlock()
+    {
+        var result = new Context360Result(
+            new Context360Node(
+                1,
+                "MessageConsumer.Render()",
+                NodeType.Method,
+                "src/Fixture.App/MessageConsumer.cs",
+                20,
+                28),
+            [],
+            [],
+            [],
+            [],
+            [],
+            []);
+
+        var output = TokenObjectNotation.SerializeContext360(
+            result,
+            [
+                new MemoryNode(
+                    Guid.Parse("11111111-1111-1111-1111-111111111111"),
+                    "Fixture.App.MessageConsumer.Render()",
+                    "hash-1",
+                    "Security review note",
+                    "content-hash",
+                    ["security", "tech-debt"],
+                    DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
+                    true)
+            ]);
+
+        output.Should().Be(
+            "node:" + Environment.NewLine +
+            "  id: 1" + Environment.NewLine +
+            "  name: MessageConsumer.Render()" + Environment.NewLine +
+            "  kind: M" + Environment.NewLine +
+            "  file: src/Fixture.App/MessageConsumer.cs:20-28" + Environment.NewLine +
+            Environment.NewLine +
+            "incoming:" + Environment.NewLine +
+            "  callers: []" + Environment.NewLine +
+            "  implementers: []" + Environment.NewLine +
+            Environment.NewLine +
+            "outgoing:" + Environment.NewLine +
+            "  callees: []" + Environment.NewLine +
+            "  inherits: []" + Environment.NewLine +
+            Environment.NewLine +
+            "structural:" + Environment.NewLine +
+            "  parents: []" + Environment.NewLine +
+            "  children: []" + Environment.NewLine +
+            Environment.NewLine +
+            "semantic_context:" + Environment.NewLine +
+            "  memories:" + Environment.NewLine +
+            "    - [*] stale=true tags=[security, tech-debt] content=\"Security review note\"");
     }
 
     [Fact]
@@ -172,6 +229,80 @@ public sealed class TokenObjectNotationTests
         output.Should().Be(
             "- [M] `1` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28" + Environment.NewLine +
             "  -> [M] `7` MessageProvider.GetMessage @ src/Fixture.App/MessageProvider.cs:L7-11");
+    }
+
+    [Fact]
+    public void WhenSerializeCalleeTraceHasSemanticMetadata_ThenItFormatsInlineMemoryLines()
+    {
+        var output = TokenObjectNotation.SerializeCalleeTrace(
+            new CodeNodeResult(
+                1,
+                "node-root",
+                "project-app",
+                "Fixture.App.MessageConsumer.Render()",
+                "MessageConsumer.Render()",
+                NodeType.Method,
+                "src/Fixture.App/MessageConsumer.cs",
+                20,
+                28,
+                "Renders a message."),
+            [],
+            new Dictionary<int, MemoryNode[]>
+            {
+                [1] =
+                [
+                    new MemoryNode(
+                        Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                        "Fixture.App.MessageConsumer.Render()",
+                        "hash-1",
+                        "Security review note",
+                        "content-hash",
+                        ["security"],
+                        DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
+                        false)
+                ]
+            });
+
+        output.Should().Be(
+            "- [M] `1` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28" + Environment.NewLine +
+            "  semantic: [*] stale=false tags=[security] content=\"Security review note\"");
+    }
+
+    [Fact]
+    public void WhenSemanticMemoryContentContainsQuotes_ThenItEscapesThemInOutput()
+    {
+        var output = TokenObjectNotation.SerializeCalleeTrace(
+            new CodeNodeResult(
+                1,
+                "node-root",
+                "project-app",
+                "Fixture.App.MessageConsumer.Render()",
+                "MessageConsumer.Render()",
+                NodeType.Method,
+                "src/Fixture.App/MessageConsumer.cs",
+                20,
+                28,
+                "Renders a message."),
+            [],
+            new Dictionary<int, MemoryNode[]>
+            {
+                [1] =
+                [
+                    new MemoryNode(
+                        Guid.Parse("33333333-3333-3333-3333-333333333333"),
+                        "Fixture.App.MessageConsumer.Render()",
+                        "hash-1",
+                        "Use \"debug\" mode",
+                        "content-hash",
+                        ["security"],
+                        DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
+                        false)
+                ]
+            });
+
+        output.Should().Be(
+            "- [M] `1` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28" + Environment.NewLine +
+            "  semantic: [*] stale=false tags=[security] content=\"Use \\\"debug\\\" mode\"");
     }
 
     [Fact]
