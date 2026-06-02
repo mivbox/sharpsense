@@ -11,24 +11,21 @@ public sealed class MsBuildWorkspaceFactory : IMsBuildWorkspaceFactory
         CreateHostServices,
         LazyThreadSafetyMode.ExecutionAndPublication);
 
-    public MSBuildWorkspace Create(RoslynWorkspaceOptions? options = null)
+    public MSBuildWorkspace Create()
     {
         MsBuildLocatorRegistration.EnsureRegistered();
 
-        var effectiveOptions = options ?? new RoslynWorkspaceOptions();
-        var properties = effectiveOptions.MSBuildProperties.Count == 0
-            ? null
-            : effectiveOptions.MSBuildProperties.ToDictionary(
-                static pair => pair.Key,
-                static pair => pair.Value,
-                StringComparer.OrdinalIgnoreCase);
+        var properties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["SkipCompilerExecution"] = "true",
+            ["ProvideCommandLineArgs"] = "true",
+            ["DesignCheck"] = "false",
+            ["CheckForSystemRuntimeDependency"] = "true"
+        };
+        var workspace = MSBuildWorkspace.Create(properties, _hostServices.Value);
 
-        var workspace = properties is null
-            ? MSBuildWorkspace.Create(_hostServices.Value)
-            : MSBuildWorkspace.Create(properties, _hostServices.Value);
-
-        workspace.SkipUnrecognizedProjects = effectiveOptions.SkipUnrecognizedProjects;
-        workspace.LoadMetadataForReferencedProjects = effectiveOptions.LoadMetadataForReferencedProjects;
+        workspace.SkipUnrecognizedProjects = true;
+        workspace.LoadMetadataForReferencedProjects = true;
 
         return workspace;
     }

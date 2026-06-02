@@ -40,21 +40,22 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
 
     public async Task<WorkspaceLoadResult> Load(
         string targetPath,
-        RoslynWorkspaceOptions? options = null,
-        CancellationToken ct = default)
+        CancellationToken ct)
     {
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
 
         var diagnostics = new ConcurrentQueue<string>();
         var normalizedTargetPath = _fileSystem.Path.GetFullPath(targetPath);
+
         if (_activeWorkspaces.TryGetValue(normalizedTargetPath, out var activeWorkspace))
         {
             return await CreateLoadResult(activeWorkspace, diagnostics, ct);
         }
 
-        var createdWorkspace = await OpenWorkspace(normalizedTargetPath, diagnostics, options, ct);
-        var createdSession = new WorkspaceSession(createdWorkspace, createdWorkspace.CurrentSolution, options);
+        var createdWorkspace = await OpenWorkspace(normalizedTargetPath, diagnostics, ct);
+        var createdSession = new WorkspaceSession(createdWorkspace, createdWorkspace.CurrentSolution, _fileSystem);
+
         var cachedWorkspace = _activeWorkspaces.GetOrAdd(normalizedTargetPath, createdSession);
         if (!ReferenceEquals(cachedWorkspace, createdSession))
         {
@@ -75,60 +76,27 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
 
         var diagnostics = new ConcurrentQueue<string>();
         var normalizedTargetPath = _fileSystem.Path.GetFullPath(targetPath);
+
         if (!_activeWorkspaces.TryGetValue(normalizedTargetPath, out var activeWorkspace))
         {
-            throw new InvalidOperationException(
-                $"Workspace '{normalizedTargetPath}' must be loaded before documents can be updated.");
+            throw new InvalidOperationException($"Workspace '{normalizedTargetPath}' must be loaded before documents can be updated.");
         }
 
         await activeWorkspace.Gate.WaitAsync(ct);
 
         try
         {
-            if (RequiresReload(changedFiles))
+            if (changedFiles.Any(IsStructuralChange))
             {
-                var reloadedSolution = await ReplaceWorkspace(normalizedTargetPath, activeWorkspace, diagnostics, ct);
-                return new WorkspaceLoadResult(reloadedSolution, diagnostics.ToArray());
+                return await ReloadAndReturn(normalizedTargetPath, activeWorkspace, diagnostics, ct);
             }
 
-            var updatedSolution = activeWorkspace.ActiveSolution;
+            var readResults = await ReadDocumentMutationsAsync(changedFiles, normalizedTargetPath, ct);
+            var updatedSolution = ApplyFileMutations(activeWorkspace, activeWorkspace.ActiveSolution, changedFiles, readResults);
 
-            foreach (var changedFile in changedFiles)
+            if (updatedSolution is null)
             {
-                var currentPath = changedFile.GetCurrentPath();
-                if (string.IsNullOrWhiteSpace(currentPath))
-                {
-                    continue;
-                }
-
-                var absoluteFilePath = _fileSystem.Path.GetFullPath(currentPath);
-                if (!_fileSystem.File.Exists(absoluteFilePath))
-                {
-                    updatedSolution = await ReplaceWorkspace(normalizedTargetPath, activeWorkspace, diagnostics, ct);
-                    return new WorkspaceLoadResult(updatedSolution, diagnostics.ToArray());
-                }
-
-                var documentIds = FindDocumentIds(updatedSolution, absoluteFilePath);
-                if (documentIds.Count == 0)
-                {
-                    updatedSolution = await ReplaceWorkspace(normalizedTargetPath, activeWorkspace, diagnostics, ct);
-                    return new WorkspaceLoadResult(updatedSolution, diagnostics.ToArray());
-                }
-
-                var documentText = await ReadDocumentText(absoluteFilePath, normalizedTargetPath, ct);
-                if (documentText is null)
-                {
-                    updatedSolution = await ReplaceWorkspace(normalizedTargetPath, activeWorkspace, diagnostics, ct);
-                    return new WorkspaceLoadResult(updatedSolution, diagnostics.ToArray());
-                }
-
-                foreach (var documentId in documentIds)
-                {
-                    updatedSolution = updatedSolution.WithDocumentText(
-                        documentId,
-                        documentText,
-                        PreservationMode.PreserveIdentity);
-                }
+                return await ReloadAndReturn(normalizedTargetPath, activeWorkspace, diagnostics, ct);
             }
 
             activeWorkspace.UpdateActiveSolution(updatedSolution);
@@ -138,6 +106,110 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         {
             activeWorkspace.Gate.Release();
         }
+    }
+
+    private async Task<(WorkspaceFileChange File, string Path, SourceText? Text)[]> ReadDocumentMutationsAsync(
+        IReadOnlyList<WorkspaceFileChange> changedFiles,
+        string normalizedTargetPath,
+        CancellationToken ct)
+    {
+        var mutations = changedFiles.Where(static f => f.ActionType is not WorkspaceFileChangeAction.Deleted).ToList();
+        var readResults = new ConcurrentBag<(WorkspaceFileChange File, string Path, SourceText? Text)>();
+
+        var parallelOptions = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = Environment.ProcessorCount,
+            CancellationToken = ct
+        };
+
+        await Parallel.ForEachAsync(mutations, parallelOptions, async (file, token) =>
+        {
+            var path = _fileSystem.Path.GetFullPath(file.GetCurrentPath()!);
+            var text = await ReadDocumentText(path, normalizedTargetPath, token);
+            readResults.Add((File: file, Path: path, Text: text));
+        });
+
+        return readResults.ToArray();
+    }
+
+    private Solution? ApplyFileMutations(
+        WorkspaceSession session,
+        Solution currentSolution,
+        IReadOnlyList<WorkspaceFileChange> changedFiles,
+        (WorkspaceFileChange File, string Path, SourceText? Text)[] readResults)
+    {
+        var updatedSolution = currentSolution;
+
+        foreach (var change in changedFiles.Where(static f => f.ActionType is WorkspaceFileChangeAction.Deleted))
+        {
+            if (string.IsNullOrWhiteSpace(change.OldPath))
+            {
+                return null;
+            }
+
+            var pathToRemove = _fileSystem.Path.GetFullPath(change.OldPath);
+            if (!session.DocumentIndex.Remove(pathToRemove, out var documentIds) || documentIds.Count == 0)
+            {
+                return null;
+            }
+
+            updatedSolution = documentIds.Aggregate(updatedSolution, (current, id) => current.RemoveDocument(id));
+        }
+
+        foreach (var result in readResults)
+        {
+            if (result.Text is null)
+            {
+                return null;
+            }
+
+            if (result.File.ActionType is WorkspaceFileChangeAction.Modified)
+            {
+                if (!session.DocumentIndex.TryGetValue(result.Path, out var documentIds) || documentIds.Count == 0)
+                {
+                    return null;
+                }
+
+                foreach (var id in documentIds)
+                {
+                    updatedSolution = updatedSolution.WithDocumentText(id, result.Text, PreservationMode.PreserveIdentity);
+                }
+            }
+            else if (result.File.ActionType is WorkspaceFileChangeAction.Added)
+            {
+                var projectId = FindOwningProjectId(updatedSolution, result.Path);
+                if (projectId is null)
+                {
+                    return null;
+                }
+
+                var documentId = DocumentId.CreateNewId(projectId);
+                updatedSolution = updatedSolution.AddDocument(
+                    documentId,
+                    _fileSystem.Path.GetFileName(result.Path),
+                    result.Text,
+                    filePath: result.Path);
+
+                if (!session.DocumentIndex.TryGetValue(result.Path, out var ids))
+                {
+                    ids = new List<DocumentId>();
+                    session.DocumentIndex[result.Path] = ids;
+                }
+                ids.Add(documentId);
+            }
+        }
+
+        return updatedSolution;
+    }
+
+    private async Task<WorkspaceLoadResult> ReloadAndReturn(
+        string normalizedTargetPath,
+        WorkspaceSession activeWorkspace,
+        ConcurrentQueue<string> diagnostics,
+        CancellationToken ct)
+    {
+        var reloadedSolution = await ReplaceWorkspace(normalizedTargetPath, activeWorkspace, diagnostics, ct);
+        return new WorkspaceLoadResult(reloadedSolution, diagnostics.ToArray());
     }
 
     public async Task<WorkspaceTextUpdateResult> ChangeDocumentText(
@@ -151,9 +223,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         ArgumentException.ThrowIfNullOrWhiteSpace(documentPath);
         ArgumentNullException.ThrowIfNull(changeText);
 
-        var loadedWorkspace = await Load(
-            targetPath,
-            ct: ct);
+        var loadedWorkspace = await Load(targetPath, ct: ct);
         var diagnostics = new ConcurrentQueue<string>(loadedWorkspace.Diagnostics);
         var normalizedTargetPath = _fileSystem.Path.GetFullPath(targetPath);
         var absoluteDocumentPath = _fileSystem.Path.GetFullPath(documentPath);
@@ -163,10 +233,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
 
         try
         {
-            var documentIds = FindDocumentIds(
-                activeWorkspace.ActiveSolution,
-                absoluteDocumentPath);
-            if (documentIds.Count == 0)
+            if (!activeWorkspace.DocumentIndex.TryGetValue(absoluteDocumentPath, out var documentIds) || documentIds.Count == 0)
             {
                 return new WorkspaceTextUpdateResult(
                     false,
@@ -189,14 +256,12 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
 
             if (!requestedChange.Success)
             {
-                return new WorkspaceTextUpdateResult(
-                    false,
-                    diagnostics.ToArray(),
-                    requestedChange.ErrorMessage);
+                return new WorkspaceTextUpdateResult(false, diagnostics.ToArray(), requestedChange.ErrorMessage);
             }
 
             var updatedText = requestedChange.UpdatedText
-                              ?? throw new InvalidOperationException("Successful workspace text changes must supply updated text.");
+                ?? throw new InvalidOperationException("Successful workspace text changes must supply updated text.");
+
             if (!activeWorkspace.Workspace.CanApplyChange(ApplyChangesKind.ChangeDocument))
             {
                 return new WorkspaceTextUpdateResult(
@@ -225,10 +290,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
 
             activeWorkspace.UpdateActiveSolution(activeWorkspace.Workspace.CurrentSolution);
 
-            return new WorkspaceTextUpdateResult(
-                true,
-                diagnostics.ToArray(),
-                string.Empty);
+            return new WorkspaceTextUpdateResult(true, diagnostics.ToArray(), string.Empty);
         }
         finally
         {
@@ -236,13 +298,43 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         }
     }
 
+    private bool IsStructuralChange(WorkspaceFileChange change)
+    {
+        var path = change.GetCurrentPath();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        var extension = _fileSystem.Path.GetExtension(path);
+        return string.Equals(extension, ".csproj", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(extension, ".sln", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private ProjectId? FindOwningProjectId(Solution solution, string absoluteFilePath)
+    {
+        var fileDirectory = _fileSystem.Path.GetDirectoryName(absoluteFilePath);
+        if (string.IsNullOrWhiteSpace(fileDirectory))
+        {
+            return null;
+        }
+
+        var bestMatch = solution.Projects
+            .Where(static p => !string.IsNullOrWhiteSpace(p.FilePath))
+            .Select(p => new { Project = p, Directory = _fileSystem.Path.GetDirectoryName(p.FilePath)! })
+            .Where(p => absoluteFilePath.StartsWith(p.Directory, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(static p => p.Directory.Length)
+            .FirstOrDefault();
+
+        return bestMatch?.Project.Id;
+    }
+
     private async Task<MSBuildWorkspace> OpenWorkspace(
         string absoluteTargetPath,
         ConcurrentQueue<string> diagnostics,
-        RoslynWorkspaceOptions? options,
         CancellationToken ct)
     {
-        var workspace = _workspaceFactory.Create(options);
+        var workspace = _workspaceFactory.Create();
 
         try
         {
@@ -274,37 +366,10 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         ConcurrentQueue<string> diagnostics,
         CancellationToken ct)
     {
-        var replacementWorkspace = await OpenWorkspace(
-            absoluteTargetPath,
-            diagnostics,
-            activeWorkspace.Options,
-            ct);
-
-        activeWorkspace.Replace(replacementWorkspace, replacementWorkspace.CurrentSolution);
+        var replacementWorkspace = await OpenWorkspace(absoluteTargetPath, diagnostics, ct);
+        activeWorkspace.Replace(replacementWorkspace, replacementWorkspace.CurrentSolution, _fileSystem);
         return activeWorkspace.ActiveSolution;
     }
-
-    private IReadOnlyList<DocumentId> FindDocumentIds(
-        Solution solution,
-        string absoluteFilePath)
-    {
-        ArgumentNullException.ThrowIfNull(solution);
-        ArgumentException.ThrowIfNullOrWhiteSpace(absoluteFilePath);
-
-        var pathComparer = GetPathComparer();
-
-        return
-        [
-            .. solution.Projects
-                .SelectMany(static project => project.Documents)
-                .Where(document => !string.IsNullOrWhiteSpace(document.FilePath) &&
-                                   pathComparer.Equals(_fileSystem.Path.GetFullPath(document.FilePath), absoluteFilePath))
-                .Select(static document => document.Id)
-        ];
-    }
-
-    private static bool RequiresReload(IReadOnlyList<WorkspaceFileChange> changedFiles)
-        => changedFiles.Any(changedFile => changedFile.ActionType is not WorkspaceFileChangeAction.Modified);
 
     private async Task<SourceText?> ReadDocumentText(
         string absoluteFilePath,
@@ -377,47 +442,6 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         }
     }
 
-    private void ThrowIfDisposed()
-    {
-        if (_disposed)
-        {
-            throw new ObjectDisposedException(nameof(WorkspaceLoader));
-        }
-    }
-}
-
-internal sealed class WorkspaceSession(
-    MSBuildWorkspace workspace,
-    Solution activeSolution,
-    RoslynWorkspaceOptions? options) : IDisposable
-{
-    public MSBuildWorkspace Workspace { get; private set; } = workspace ?? throw new ArgumentNullException(nameof(workspace));
-
-    public Solution ActiveSolution { get; private set; } = activeSolution ?? throw new ArgumentNullException(nameof(activeSolution));
-
-    public RoslynWorkspaceOptions? Options { get; } = options;
-
-    public SemaphoreSlim Gate { get; } = new(1, 1);
-
-    public void UpdateActiveSolution(Solution activeSolution)
-        => ActiveSolution = activeSolution ?? throw new ArgumentNullException(nameof(activeSolution));
-
-    public void Replace(
-        MSBuildWorkspace workspace,
-        Solution activeSolution)
-    {
-        ArgumentNullException.ThrowIfNull(workspace);
-        ArgumentNullException.ThrowIfNull(activeSolution);
-
-        var previousWorkspace = Workspace;
-        Workspace = workspace;
-        ActiveSolution = activeSolution;
-        previousWorkspace.Dispose();
-    }
-
-    public void Dispose()
-    {
-        Workspace.Dispose();
-        Gate.Dispose();
-    }
+    private void ThrowIfDisposed() =>
+        ObjectDisposedException.ThrowIf(_disposed, nameof(WorkspaceLoader));
 }

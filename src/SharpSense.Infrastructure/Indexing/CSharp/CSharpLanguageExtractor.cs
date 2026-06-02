@@ -35,7 +35,6 @@ public sealed class CSharpLanguageExtractor(
 
         var loadedWorkspace = await workspaceLoader.Load(
             context.TargetPath,
-            new RoslynWorkspaceOptions(),
             ct);
 
         var extractionPayload = await analysisEngine.Extract(
@@ -72,8 +71,8 @@ public sealed class CSharpLanguageExtractor(
 
         var loadedWorkspace = await workspaceLoader.Load(
             context.TargetPath,
-            new RoslynWorkspaceOptions(),
             ct);
+
         var updatedWorkspace = await workspaceLoader.UpdateDocuments(
             context.TargetPath,
             cSharpChanges,
