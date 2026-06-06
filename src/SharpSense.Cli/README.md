@@ -15,11 +15,13 @@ sharpsense --help
 
 ```bash
 sharpsense analyze path/to/YourSolution.sln
-sharpsense search "WorkspaceLoader"
-sharpsense context --node-id 42
+sharpsense search "WorkspaceLoader" --include-memories
+sharpsense context --node-id 42 --include-memories
 sharpsense execute "dotnet test SharpSense.sln" --query "error OR failed"
-sharpsense trace 42 -d callee
+sharpsense trace 42 -d callee --include-memories
 sharpsense refactor --node-id 42 --new-name Updated
+sharpsense memory add --node-id 42 --content "Always greet politely." --tag convention
+sharpsense memory get --memory-id 5d3f7e2c-7c1a-4f4b-9e2c-2a6f1c2e8d1b
 sharpsense skills
 ```
 
@@ -32,6 +34,7 @@ sharpsense skills
 | `execute <command>`     | `sharpsense execute "dotnet test SharpSense.sln" --query "error OR failed"` | Run a local command and reduce its output into compact JSON or TOON excerpts. |
 | `index <target-path>`   | `sharpsense index SharpSense.sln`     | Legacy alias for `analyze`.                                        |
 | `inheritors <node-id>`  | `sharpsense inheritors 232 --toon`    | List direct class inheritors or interface implementers.            |
+| `memory <action>`       | `sharpsense memory add --node-id 42 --content "..."` | Attach, list, or remove persistent semantic memories on a code node. |
 | `refactor`              | `sharpsense refactor --node-id 42 --new-name Updated` | Semantically rename an indexed symbol through Roslyn. |
 | `search <query>`        | `sharpsense search "WorkspaceLoader"` | Search the persisted index for matching code nodes.                |
 | `trace <identifier>`    | `sharpsense trace 42 -d caller`       | Trace callers or callees for an indexed node.                      |
@@ -243,13 +246,17 @@ If you want live updates while an MCP client is connected, run `analyze --watch`
 
 ## MCP tool outputs
 
-The current MCP host exposes five tools:
+The current MCP host exposes nine tools:
 
 - `semantic_search`
 - `context`
 - `trace_node`
 - `get_inheritors`
 - `refactor_symbol`
+- `attach_memory` (with `intent` argument)
+- `delete_memory`
+- `get_memory` (single id)
+- `get_memories` (batch ids)
 
 The examples below use real fixture outputs and rough token estimates based on output length (`~characters / 4`), so expect some tokenizer/model variance.
 
@@ -326,6 +333,30 @@ modified_files:
   - src/Fixture.App/PaymentProcessor.cs
 ```
 
+### `attach_memory`
+
+Use this when the agent has confirmed a non-obvious behaviour, invariant, or convention on a code node and wants it
+to persist across sessions. The payload is markdown and survives a full workspace re-parse; the persisted memory
+includes an `IsStale` flag that flips to `true` if the target method's `BodyHash` changes.
+
+### `delete_memory`
+
+Use this when a previously attached memory is no longer correct (the user retracted the intent, the behaviour was
+rewritten, or the user explicitly asked to forget it). Memories are immutable once attached, so the only edit
+verbs are `attach_memory` and `delete_memory`.
+
+### `get_memory`
+
+Use this to fetch the full markdown content of a memory by its persistent `Guid`. `context` and `trace_node` only
+surface memory **id + intent + tags + stale** inline (to keep context small); call `get_memory` to retrieve the
+content when you actually need to act on a memory. Stale memories (`IsStale: true`) render an inline `hint`
+reminding the agent to call `delete_memory + attach_memory` to refresh.
+
+### `get_memories`
+
+Batch fetch by id. Pass `memoryIds: Guid[]`; the tool returns one rendered memory block per id, all in a
+single round-trip. Use this after a multi-step trace surfaced a list of memory ids and you want their content.
+
 ## Context
 
 Show the immediate architectural breadth for a persisted node:
@@ -334,11 +365,21 @@ Show the immediate architectural breadth for a persisted node:
 sharpsense context --node-id 42
 ```
 
+Add `--include-memories` to surface attached memories inline as `id + tags + stale` (no content; use
+`sharpsense memory get` to fetch the full markdown):
+
+```bash
+sharpsense context --node-id 42 --include-memories
+```
+
 The output is compressed TOON with:
 
 - the target node metadata,
 - incoming `callers` and `implementers`,
-- outgoing `callees` and `inherits`.
+- outgoing `callees` and `inherits`,
+- structural `parents` and `children` (with a `memories: N (X stale; ...)` hint when `--include-memories` is set),
+- an optional `semantic_context:` block with the inline memory shape described in the [Memory](#memory)
+  section.
 
 ## Inheritors
 
@@ -369,6 +410,86 @@ Notes:
 - If `--target` is omitted, SharpSense prefers repo-root workspace discovery and falls back to the persisted owning project when needed.
 - Keep `sharpsense analyze --watch` running if you want the graph and vector index to refresh automatically after the write.
 
+## Memory
+
+Manage persistent semantic memories through the CLI. The same handlers back the MCP `attach_memory`,
+`delete_memory`, `get_memory`, and `get_memories` tools, so the CLI and the MCP surface stay in lock-step.
+
+Attach a memory (with an intent classification that the agent can filter on at retrieval time):
+
+```bash
+sharpsense memory add --node-id 42 --content "Always greet politely." --tag convention --intent Invariant
+```
+
+List every memory attached to a node (summary only — use `get` to fetch full content). Filter by intent:
+
+```bash
+sharpsense memory list --node-id 42
+sharpsense memory list --node-id 42 --intent-filter Invariant --intent-filter Warning
+```
+
+Fetch the full content of a single memory by its persistent Guid:
+
+```bash
+sharpsense memory get --memory-id 5d3f7e2c-7c1a-4f4b-9e2c-2a6f1c2e8d1b
+```
+
+Batch fetch multiple memories in one round-trip (for a multi-step trace that just surfaced a list of ids):
+
+```bash
+sharpsense memory get --memory-ids 5d3f7e2c-7c1a-4f4b-9e2c-2a6f1c2e8d1b,8f0a2c41-ddee-4e6f-9d2a-b9c81ad4b5d2
+```
+
+Remove a memory by its persistent Guid:
+
+```bash
+sharpsense memory remove --memory-id 5d3f7e2c-7c1a-4f4b-9e2c-2a6f1c2e8d1b
+```
+
+Options (shared):
+
+- `--repo-root <path>`: override the repository root used for the persisted index.
+- `-v`, `--verbose`: enable verbose logging.
+
+### Memory intents
+
+Memories are classified with an intent enum (`Convention` | `Invariant` | `Todo` | `Warning` | `Decision`).
+The default is `Convention`. The agent can filter retrievals by intent — e.g. pull all `Invariant` memories
+across a node, or all `Warning` memories across a trace — instead of digging through every memory by id.
+Intents also make the inline shape filterable: a `Warning` memory stays visible inline until the agent
+deletes it, while a `Todo` memory naturally phases out as work completes.
+
+### Inline memory shape in `context` and `trace`
+
+`sharpsense context --include-memories` and `sharpsense trace --include-memories` surface attached memories
+inline as `id + tags + stale` only — the full content is **not** rendered. This keeps the inline context
+small. When a memory is stale, the inline shape appends a `hint: "call delete_memory + attach_memory to refresh"`.
+To retrieve the full content, call `sharpsense memory get --memory-id <id>` (or the MCP `get_memory` tool).
+
+Example (one stale memory on the target node):
+
+```text
+structural:
+  parents: []
+  children: []
+  memories: 1 (1 stale; use get_memory <id> to fetch content)
+
+semantic_context:
+  memories:
+    - [M] id=5d3f7e2c-7c1a-4f4b-9e2c-2a6f1c2e8d1b stale=true tags=[convention, security] hint="call delete_memory + attach_memory to refresh"
+```
+
+Notes:
+
+- The CLI/MCP boundary uses the persisted integer `NodeId`; the FQDN is resolved internally and never crosses the
+  tool boundary.
+- Memories are immutable once attached. The only write verbs are `add` (attach) and `remove` (delete).
+- The `IsStale` flag on a memory flips to `true` automatically when the target method's `BodyHash` changes during
+  a re-parse. The agent should then `remove` the stale memory and re-`add` the corrected one.
+- Cascade: when a code node is removed from the index (e.g. the underlying file is deleted and the workspace is
+  re-parsed), the SQLite cascade foreign key on `MemoryNodeRecord.TargetFullyQualifiedName` automatically removes
+  the matching memories.
+
 ## Search
 
 Search the existing index:
@@ -397,6 +518,8 @@ Options:
 
 - `-d`, `--direction <caller|callee>`
 - `--toon`
+- `--include-memories` — surface attached memories inline as `id + tags + stale` (no content; use
+  `sharpsense memory get --memory-id <id>` to fetch the full markdown).
 - `--repo-root <path>`
 
 ## UI
@@ -412,6 +535,21 @@ Bind to a custom address:
 ```bash
 sharpsense ui --repo-root /Users/me/src/sharpsense --url http://127.0.0.1:8080
 ```
+
+The UI exposes a right-hand **Memory panel** alongside the graph viewport. Type a node id (or click a node
+in the graph) to focus the panel, then list, view, add, and delete memories for that node. The panel
+surfaces inline metadata only (id + intent + tags + stale flag) and lazily fetches full content per id on
+demand, mirroring the CLI/MCP token-economy.
+
+The UI's HTTP surface is documented for tooling authors:
+
+| Verb | Path | Purpose |
+| --- | --- | --- |
+| `GET`  | `/api/memory/node/{nodeId}` | List inline metadata for one node. `?intents=Invariant,Warning` filters by intent. |
+| `GET`  | `/api/memory/{memoryId}` | Fetch the full content of a single memory. |
+| `GET`  | `/api/memory?ids=g1,g2,…` | Batch fetch multiple memories in one round-trip. |
+| `POST` | `/api/memory/node/{nodeId}` | Add a memory. JSON body: `{ "content": "...", "tags": [...], "intent": "Invariant" }`. |
+| `DELETE` | `/api/memory/{memoryId}` | Remove a memory by id. |
 
 ## Troubleshooting
 

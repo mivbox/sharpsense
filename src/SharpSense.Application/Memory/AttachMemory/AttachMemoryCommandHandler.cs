@@ -5,17 +5,18 @@ using SharpSense.Application.Shared.Abstractions;
 
 namespace SharpSense.Application.Memory.AttachMemory;
 
-public sealed class AttachMemoryCommandHandler(IMemoryWriter memoryWriter)
+public sealed class AttachMemoryCommandHandler(IMemoryRepository memoryRepository)
     : ICommandHandler<AttachMemoryCommand, Result>
 {
     public Task<Result> Handle(AttachMemoryCommand command, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        return memoryWriter.AttachMemory(
+        return memoryRepository.AttachMemory(
             command.NodeId,
             command.Content,
             command.Tags,
+            command.Intent,
             ct);
     }
 }

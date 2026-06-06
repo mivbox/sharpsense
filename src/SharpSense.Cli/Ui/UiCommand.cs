@@ -1,4 +1,5 @@
 using JetBrains.Annotations;
+using FluentResults;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.StaticFiles;
@@ -9,13 +10,24 @@ using SharpSense.Application.DependencyGraph;
 using SharpSense.Application.DependencyGraph.GetDependencyGraphEdges.Models;
 using SharpSense.Application.DependencyGraph.GetDependencyGraphNodes.Models;
 using SharpSense.Application.DependencyGraph.Models;
+using SharpSense.Application.Memory;
+using SharpSense.Application.Memory.Abstractions;
+using SharpSense.Application.Memory.AttachMemory.Models;
+using SharpSense.Application.Memory.DeleteMemory.Models;
+using SharpSense.Application.Memory.GetMemory.Models;
+using SharpSense.Application.Memory.GetMemories.Models;
+using SharpSense.Application.Memory.GetNodeMemories.Models;
 using SharpSense.Application.WorkspaceExplorer;
 using SharpSense.Application.WorkspaceExplorer.GetWorkspaceTree.Models;
 using SharpSense.Application.WorkspaceExplorer.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
+using SharpSense.Domain.KnowledgeGraph.Enums;
+using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.DependencyGraph;
+using SharpSense.Infrastructure.Embeddings;
+using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.WorkspaceExplorer;
 using SharpSense.Infrastructure.Storage;
@@ -53,6 +65,9 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
         services.AddDependencyGraphInfrastructure();
         services.AddWorkspaceExplorer();
         services.AddWorkspaceExplorerInfrastructure();
+        services.AddMemory();
+        services.AddMemoryInfrastructure();
+        services.AddEmbeddingsInfrastructure();
         services.AddPersistence();
     }
 
@@ -92,6 +107,106 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
                 IQueryHandler<GetDependencyGraphEdgesQuery, IAsyncEnumerable<GraphEdge>> handler,
                 CancellationToken ct) =>
                 await handler.Handle(new GetDependencyGraphEdgesQuery(directoryIds ?? []), ct))
+            .AllowAnonymous();
+
+        // Memory: list inline metadata for one node (id + intent + tags + stale flag, no content).
+        app.MapGet(
+                "/api/memory/node/{nodeId:int}",
+                static async Task<IResult> (
+                    int nodeId,
+                    IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>> handler,
+                    string? intents,
+                    CancellationToken ct) =>
+                {
+                    MemoryIntent[]? intentFilter = null;
+                    if (!string.IsNullOrWhiteSpace(intents))
+                    {
+                        intentFilter = intents
+                            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                            .Select(raw => Enum.Parse<MemoryIntent>(raw, ignoreCase: true))
+                            .ToArray();
+                    }
+
+                    var result = await handler.Handle(new GetNodeMemoriesQuery(nodeId, intentFilter), ct);
+                    return result.IsSuccess
+                        ? Results.Ok(result.Value)
+                        : Results.BadRequest(new { error = string.Join("; ", result.Errors) });
+                })
+            .AllowAnonymous();
+
+        // Memory: fetch the full content of a single memory by id.
+        app.MapGet(
+                "/api/memory/{memoryId:guid}",
+                static async Task<IResult> (
+                    Guid memoryId,
+                    IQueryHandler<GetMemoryQuery, Result<MemoryNode>> handler,
+                    CancellationToken ct) =>
+                {
+                    var result = await handler.Handle(new GetMemoryQuery(memoryId), ct);
+                    return result.IsSuccess
+                        ? Results.Ok(result.Value)
+                        : Results.NotFound(new { error = string.Join("; ", result.Errors) });
+                })
+            .AllowAnonymous();
+
+        // Memory: batch fetch by id list.
+        app.MapGet(
+                "/api/memory",
+                static async Task<IResult> (
+                    Guid[]? ids,
+                    IQueryHandler<GetMemoriesQuery, Result<IReadOnlyDictionary<Guid, MemoryNode>>> handler,
+                    CancellationToken ct) =>
+                {
+                    if (ids is null || ids.Length == 0)
+                    {
+                        return Results.Ok(Array.Empty<MemoryNode>());
+                    }
+
+                    var result = await handler.Handle(new GetMemoriesQuery(ids), ct);
+                    return result.IsSuccess
+                        ? Results.Ok(result.Value.Values)
+                        : Results.BadRequest(new { error = string.Join("; ", result.Errors) });
+                })
+            .AllowAnonymous();
+
+        // Memory: add a new memory to a node.
+        app.MapPost(
+                "/api/memory/node/{nodeId:int}",
+                static async Task<IResult> (
+                    int nodeId,
+                    AddMemoryRequest request,
+                    ICommandHandler<AttachMemoryCommand, Result> handler,
+                    CancellationToken ct) =>
+                {
+                    var intent = string.IsNullOrWhiteSpace(request.Intent)
+                        ? MemoryIntent.Convention
+                        : Enum.Parse<MemoryIntent>(request.Intent, ignoreCase: true);
+
+                    var command = new AttachMemoryCommand(
+                        nodeId,
+                        request.Content,
+                        request.Tags ?? [],
+                        intent);
+                    var result = await handler.Handle(command, ct);
+                    return result.IsSuccess
+                        ? Results.Ok(new { ok = true, nodeId, intent = intent.ToString() })
+                        : Results.BadRequest(new { error = string.Join("; ", result.Errors) });
+                })
+            .AllowAnonymous();
+
+        // Memory: remove a memory by id.
+        app.MapDelete(
+                "/api/memory/{memoryId:guid}",
+                static async Task<IResult> (
+                    Guid memoryId,
+                    ICommandHandler<DeleteMemoryCommand, Result> handler,
+                    CancellationToken ct) =>
+                {
+                    var result = await handler.Handle(new DeleteMemoryCommand(memoryId), ct);
+                    return result.IsSuccess
+                        ? Results.Ok(new { ok = true, memoryId })
+                        : Results.NotFound(new { error = string.Join("; ", result.Errors) });
+                })
             .AllowAnonymous();
 
         app.UseDefaultFiles(new DefaultFilesOptions
@@ -138,4 +253,6 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
         };
         return contentTypeProvider;
     }
+
+    public sealed record AddMemoryRequest(string Content, string[]? Tags, string? Intent);
 }

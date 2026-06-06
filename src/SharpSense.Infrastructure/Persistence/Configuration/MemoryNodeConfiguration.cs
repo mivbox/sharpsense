@@ -34,12 +34,23 @@ public sealed class MemoryNodeConfiguration : IEntityTypeConfiguration<MemoryNod
             .IsRequired()
             .HasColumnType("TEXT");
 
+        builder.Property(memoryNode => memoryNode.Intent)
+            .IsRequired()
+            .HasConversion<string>()
+            .HasMaxLength(32);
+
         builder.Property(memoryNode => memoryNode.VectorEmbedding)
             .HasColumnType("BLOB")
             .HasConversion(VectorEmbeddingPersistence.Converter, VectorEmbeddingPersistence.Comparer);
 
         builder.Property(memoryNode => memoryNode.CreatedAt)
             .IsRequired();
+
+        builder.HasOne<CodeNodeRecord>()
+            .WithMany()
+            .HasPrincipalKey(codeNode => codeNode.FullyQualifiedName)
+            .HasForeignKey(memoryNode => memoryNode.TargetFullyQualifiedName)
+            .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasIndex(memoryNode => memoryNode.TargetFullyQualifiedName);
         builder.HasIndex(memoryNode => memoryNode.ContentHash);

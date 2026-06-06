@@ -26,9 +26,21 @@ description: "Executes renaming of persisted declarations.
   `context()` before renaming. Evaluate the architectural impact and external boundaries.
 - **C# Inheritance**: For interfaces or abstract members, use `get_inheritors()` first to identify downstream impact.
 
+## Memory hygiene (CRITICAL after a rename)
+
+`refactor_symbol` rewrites the declaration, which always invalidates any memory previously attached to the
+renamed node (the persisted `TargetCodeHash` no longer matches the live `BodyHash`, so the memory's
+`IsStale` flag flips to `true` on the next read). After a successful rename, call
+`delete_memory(memoryId)` on every prior memory for that node, then re-attach the corrected intent via
+`attach_memory(nodeId, content, tags?)`. Memories are immutable — there is no update verb; always
+delete + re-attach for corrections.
+
+`context` and `trace` surface memories inline as `id + tags + stale` only — never as content. To read the
+full markdown, call `get_memory(memoryId)`.
+
 ## **Tool Sequence**
 
 1. **Discover**: `semantic_search` -> Retrieve `nodeId` and node type (C# vs Markdown).
 2. **Analyze**: (If C# and >five callers) `trace_node` / `context` -> Evaluate risk.
 3. **Execute**: `refactor_symbol` -> Apply to rename.
-4. **Verify**: `semantic_search` -> Confirm state.
+4. **Verify**: `semantic_search` -> Confirm state. Re-attach any memories the rename invalidated.

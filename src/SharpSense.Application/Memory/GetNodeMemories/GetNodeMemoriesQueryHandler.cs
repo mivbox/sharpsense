@@ -1,3 +1,4 @@
+using FluentResults;
 using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Memory.GetNodeMemories.Models;
 using SharpSense.Application.Shared.Abstractions;
@@ -5,24 +6,24 @@ using SharpSense.Domain.KnowledgeGraph.Nodes;
 
 namespace SharpSense.Application.Memory.GetNodeMemories;
 
-public sealed class GetNodeMemoriesQueryHandler(IMemoryReader memoryReader)
-    : IQueryHandler<GetNodeMemoriesQuery, MemoryNode[]>
+public sealed class GetNodeMemoriesQueryHandler(IMemoryRepository memoryRepository)
+    : IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>
 {
-    public async Task<MemoryNode[]> Handle(GetNodeMemoriesQuery query, CancellationToken ct)
+    public async Task<Result<MemoryNode[]>> Handle(GetNodeMemoriesQuery query, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(query);
 
         if (query.NodeId <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(query.NodeId), query.NodeId, "NodeId must be greater than zero.");
+            return Result.Fail("NodeId must be greater than zero.");
         }
 
-        var memoriesByNodeId = await memoryReader.GetNodeMemories([query.NodeId], ct);
+        var memoriesByNodeId = await memoryRepository.GetNodeMemories([query.NodeId], query.IntentFilter, ct);
         if (!memoriesByNodeId.TryGetValue(query.NodeId, out var memories))
         {
-            throw new InvalidOperationException($"No persisted node exists for id {query.NodeId}.");
+            return Result.Fail($"No persisted node exists for id {query.NodeId}.");
         }
 
-        return memories;
+        return Result.Ok(memories);
     }
 }

@@ -27,11 +27,11 @@ public sealed class HybridSearcherTests
         var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
         embeddings.Setup(candidate => candidate.Generate("Message", TestContext.Current.CancellationToken))
             .ReturnsAsync(new TextEmbedding("Message", [1f, 0f]));
-        var memoryReader = new Mock<IMemoryReader>(MockBehavior.Strict);
+        var memoryRepository = new Mock<IMemoryRepository>(MockBehavior.Strict);
         var searcher = new HybridSearcher(
             inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
             embeddings.Object,
-            memoryReader.Object,
+            memoryRepository.Object,
             new SqliteKeywordCandidateProvider(),
             new SqliteVectorScorer());
 
@@ -56,11 +56,11 @@ public sealed class HybridSearcherTests
         var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
         embeddings.Setup(candidate => candidate.Generate("Message", TestContext.Current.CancellationToken))
             .ReturnsAsync(new TextEmbedding("Message", [1f, 0f]));
-        var memoryReader = new Mock<IMemoryReader>(MockBehavior.Strict);
+        var memoryRepository = new Mock<IMemoryRepository>(MockBehavior.Strict);
         var searcher = new HybridSearcher(
             inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
             embeddings.Object,
-            memoryReader.Object,
+            memoryRepository.Object,
             new SqliteKeywordCandidateProvider(),
             new SqliteVectorScorer());
 
@@ -103,11 +103,12 @@ public sealed class HybridSearcherTests
         var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
         embeddings.Setup(candidate => candidate.Generate("security", TestContext.Current.CancellationToken))
             .ReturnsAsync(new TextEmbedding("security", [1f, 0f]));
-        var memoryReader = new Mock<IMemoryReader>(MockBehavior.Strict);
-        memoryReader.Setup(candidate => candidate.GetNodeMemories(
+        var memoryRepository = new Mock<IMemoryRepository>(MockBehavior.Strict);
+        memoryRepository.Setup(candidate => candidate.GetNodeMemories(
                 It.Is<IReadOnlyCollection<int>>(nodeIds =>
                     nodeIds.Count == 1 &&
                     nodeIds.Contains(KnowledgeGraphFixture.DirectCallerNodeId)),
+                It.IsAny<IReadOnlyCollection<SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent>?>(),
                 TestContext.Current.CancellationToken))
             .ReturnsAsync(new Dictionary<int, MemoryNode[]>
             {
@@ -120,6 +121,7 @@ public sealed class HybridSearcherTests
                         "Security review note",
                         "memory-hash-1",
                         ["security"],
+                        SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
                         DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
                         false)
                 ]
@@ -127,7 +129,7 @@ public sealed class HybridSearcherTests
         var searcher = new HybridSearcher(
             inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
             embeddings.Object,
-            memoryReader.Object,
+            memoryRepository.Object,
             new SqliteKeywordCandidateProvider(),
             new SqliteVectorScorer());
 
@@ -142,6 +144,6 @@ public sealed class HybridSearcherTests
         result.Hits.Should().ContainSingle();
         result.Hits[0].Id.Should().Be(KnowledgeGraphFixture.DirectCallerNodeId);
         embeddings.VerifyAll();
-        memoryReader.VerifyAll();
+        memoryRepository.VerifyAll();
     }
 }

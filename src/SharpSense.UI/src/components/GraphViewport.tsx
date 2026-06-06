@@ -26,6 +26,7 @@ type GraphViewportProps = {
   graphData: GraphApiResponse;
   hasSelection: boolean;
   isLoading: boolean;
+  onSelectNode?: (nodeId: number | null) => void;
   onToggleShowEdges: (showEdges: boolean) => void;
   searchText: string;
   showEdges: boolean;
@@ -282,6 +283,7 @@ export function GraphViewport({
     }
 
     setSelectedNodeId(node.id);
+    onSelectNode?.(node.id);
 
     if (!graphRef.current) {
       return;

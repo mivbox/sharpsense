@@ -68,7 +68,8 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("DocumentId");
 
-                    b.HasIndex("FullyQualifiedName");
+                    b.HasIndex("FullyQualifiedName")
+                        .IsUnique();
 
                     b.HasIndex("ProjectNodeId");
 
@@ -234,6 +235,11 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Intent")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("TagsJson")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -351,6 +357,16 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
                     b.HasOne("SharpSense.Infrastructure.Persistence.Records.DirectoryRecord", null)
                         .WithMany()
                         .HasForeignKey("DirectoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.MemoryNodeRecord", b =>
+                {
+                    b.HasOne("SharpSense.Infrastructure.Persistence.Records.CodeNodeRecord", null)
+                        .WithMany()
+                        .HasForeignKey("TargetFullyQualifiedName")
+                        .HasPrincipalKey("FullyQualifiedName")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

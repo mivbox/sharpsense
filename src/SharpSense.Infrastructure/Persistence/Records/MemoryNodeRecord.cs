@@ -14,6 +14,8 @@ public sealed class MemoryNodeRecord
 
     public string TagsJson { get; set; } = "[]";
 
+    public string Intent { get; set; } = "Convention";
+
     public float[]? VectorEmbedding { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

@@ -46,6 +46,7 @@ public static class TokenObjectNotation
             AppendTraceLine(builder, 1, callee, memoriesByNodeId);
         }
 
+        AppendMemorySummary(builder, rootNode, callees, memoriesByNodeId);
         return builder.ToString();
     }
 
@@ -121,6 +122,9 @@ public static class TokenObjectNotation
             }
         }
 
+        var allCallerNodes = chains.SelectMany(static chain => chain).ToArray();
+        AppendMemorySummary(builder, rootNode, allCallerNodes, memoriesByNodeId);
+
         return builder.ToString();
     }
 
@@ -163,6 +167,16 @@ public static class TokenObjectNotation
         builder.AppendLine("structural:");
         builder.Append("  parents: ").Append(FormatContext360RelatedNodes(result.Parents)).AppendLine();
         builder.Append("  children: ").Append(FormatContext360RelatedNodes(result.Children));
+        if (semanticContext is { Count: > 0 })
+        {
+            var staleCount = semanticContext.Count(static memory => memory.IsStale);
+            builder.AppendLine()
+                .Append("  memories: ")
+                .Append(semanticContext.Count)
+                .Append(" (")
+                .Append(staleCount)
+                .Append(" stale; use get_memory <id> to fetch content)");
+        }
 
         if (semanticContext is { Count: > 0 })
         {
@@ -175,17 +189,76 @@ public static class TokenObjectNotation
             {
                 builder.Append("    - [")
                     .Append(GetNodeTypeShorthand(NodeType.Memory))
-                    .Append("] stale=")
+                    .Append("] id=")
+                    .Append(memory.Id)
+                    .Append(" intent=")
+                    .Append(memory.Intent)
+                    .Append(" stale=")
                     .Append(memory.IsStale ? "true" : "false")
                     .Append(" tags=")
-                    .Append(FormatTags(memory.Tags))
-                    .Append(" content=\"")
-                    .Append(SanitizeInlineText(memory.Content))
-                    .Append('"')
-                    .AppendLine();
+                    .Append(FormatTags(memory.Tags));
+                if (memory.IsStale)
+                {
+                    builder.Append(" hint=\"call delete_memory + attach_memory to refresh\"");
+                }
+
+                builder.AppendLine();
             }
 
             builder.Length -= Environment.NewLine.Length;
+        }
+
+        return builder.ToString();
+    }
+
+    public static string SerializeMemory(MemoryNode memory)
+    {
+        ArgumentNullException.ThrowIfNull(memory);
+
+        return SerializeMemoryBlock(memory, prefix: string.Empty);
+    }
+
+    public static string SerializeMemories(IReadOnlyDictionary<Guid, MemoryNode> memories)
+    {
+        ArgumentNullException.ThrowIfNull(memories);
+
+        if (memories.Count == 0)
+        {
+            return "memories: 0";
+        }
+
+        var builder = new StringBuilder()
+            .Append("memories: ")
+            .Append(memories.Count)
+            .AppendLine();
+        foreach (var memory in memories.Values.OrderBy(static m => m.CreatedAt, Comparer<DateTimeOffset>.Default))
+        {
+            builder.Append(SerializeMemoryBlock(memory, prefix: "  "));
+            builder.AppendLine();
+        }
+        builder.Length -= Environment.NewLine.Length;
+        return builder.ToString();
+    }
+
+    private static string SerializeMemoryBlock(MemoryNode memory, string prefix)
+    {
+        var builder = new StringBuilder()
+            .Append(prefix).Append("- memory:").AppendLine()
+            .Append(prefix).Append("  id: ").Append(memory.Id).AppendLine()
+            .Append(prefix).Append("  target: ").Append(memory.TargetFullyQualifiedName).AppendLine()
+            .Append(prefix).Append("  intent: ").Append(memory.Intent).AppendLine()
+            .Append(prefix).Append("  stale: ").Append(memory.IsStale ? "true" : "false").AppendLine()
+            .Append(prefix).Append("  tags: ").Append(FormatTags(memory.Tags)).AppendLine()
+            .Append(prefix).Append("  created_at: ").Append(memory.CreatedAt.ToString("O")).AppendLine()
+            .Append(prefix).Append("  content: |").AppendLine();
+        foreach (var line in memory.Content.Split('\n'))
+        {
+            builder.Append(prefix).Append("    ").Append(line.TrimEnd('\r')).AppendLine();
+        }
+        if (memory.IsStale)
+        {
+            builder.AppendLine()
+                .Append(prefix).Append("  hint: call delete_memory + attach_memory to refresh");
         }
 
         return builder.ToString();
@@ -477,6 +550,60 @@ public static class TokenObjectNotation
             : displayName[..parameterListStart].TrimEnd();
     }
 
+    private static void AppendMemorySummary(
+        StringBuilder builder,
+        CodeNodeResult rootNode,
+        IReadOnlyList<CodeNodeResult> nodes,
+        IReadOnlyDictionary<int, MemoryNode[]>? memoriesByNodeId)
+    {
+        if (memoriesByNodeId is null)
+        {
+            return;
+        }
+
+        var allMemoryIds = new HashSet<Guid>();
+        var staleMemoryIds = new HashSet<Guid>();
+        CollectMemoryIds(memoriesByNodeId, rootNode.Id, allMemoryIds, staleMemoryIds);
+        foreach (var node in nodes)
+        {
+            CollectMemoryIds(memoriesByNodeId, node.Id, allMemoryIds, staleMemoryIds);
+        }
+
+        if (allMemoryIds.Count == 0)
+        {
+            return;
+        }
+
+        builder.AppendLine()
+            .AppendLine()
+            .Append("memories: ")
+            .Append(allMemoryIds.Count)
+            .Append(" (")
+            .Append(staleMemoryIds.Count)
+            .Append(" stale; use get_memory <id> to fetch content)");
+    }
+
+    private static void CollectMemoryIds(
+        IReadOnlyDictionary<int, MemoryNode[]> memoriesByNodeId,
+        int nodeId,
+        HashSet<Guid> allIds,
+        HashSet<Guid> staleIds)
+    {
+        if (!memoriesByNodeId.TryGetValue(nodeId, out var memories))
+        {
+            return;
+        }
+
+        foreach (var memory in memories)
+        {
+            allIds.Add(memory.Id);
+            if (memory.IsStale)
+            {
+                staleIds.Add(memory.Id);
+            }
+        }
+    }
+
     private static void AppendTraceMemoryMetadata(
         StringBuilder builder,
         int depth,
@@ -496,13 +623,18 @@ public static class TokenObjectNotation
             builder.Append(' ', (depth + 1) * 2)
                 .Append("semantic: [")
                 .Append(GetNodeTypeShorthand(NodeType.Memory))
-                .Append("] stale=")
+                .Append("] id=")
+                .Append(memory.Id)
+                .Append(" intent=")
+                .Append(memory.Intent)
+                .Append(" stale=")
                 .Append(memory.IsStale ? "true" : "false")
                 .Append(" tags=")
-                .Append(FormatTags(memory.Tags))
-                .Append(" content=\"")
-                .Append(SanitizeInlineText(memory.Content))
-                .Append('"');
+                .Append(FormatTags(memory.Tags));
+            if (memory.IsStale)
+            {
+                builder.Append(" hint=\"call delete_memory + attach_memory to refresh\"");
+            }
         }
     }
 

@@ -15,7 +15,7 @@ namespace SharpSense.Infrastructure.HybridSearch;
 public sealed class HybridSearcher(
     IDbContextFactory<SharpSenseDbContext> dbContextFactory,
     IEmbeddingGenerator embeddingsService,
-    IMemoryReader memoryReader,
+    IMemoryRepository memoryRepository,
     IKeywordCandidateProvider keywordProvider,
     IVectorScorer vectorScorer)
     : IHybridSearcher
@@ -102,8 +102,9 @@ public sealed class HybridSearcher(
                 .ConfigureAwait(false)
             : new Dictionary<int, float>();
         IReadOnlyDictionary<int, MemoryNode[]> memoriesByCodeNodeId = query.IncludeMemories
-            ? await memoryReader.GetNodeMemories(
+            ? await memoryRepository.GetNodeMemories(
                 codeNodes.Select(static codeNode => codeNode.Id).ToArray(),
+                intents: null,
                 ct)
             : new Dictionary<int, MemoryNode[]>();
 

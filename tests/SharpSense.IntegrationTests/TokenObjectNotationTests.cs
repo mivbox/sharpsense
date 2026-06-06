@@ -88,6 +88,7 @@ public sealed class TokenObjectNotationTests
                     "Security review note",
                     "content-hash",
                     ["security", "tech-debt"],
+                    SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
                     DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
                     true)
             ]);
@@ -110,10 +111,11 @@ public sealed class TokenObjectNotationTests
             "structural:" + Environment.NewLine +
             "  parents: []" + Environment.NewLine +
             "  children: []" + Environment.NewLine +
+            "  memories: 1 (1 stale; use get_memory <id> to fetch content)" + Environment.NewLine +
             Environment.NewLine +
             "semantic_context:" + Environment.NewLine +
             "  memories:" + Environment.NewLine +
-            "    - [*] stale=true tags=[security, tech-debt] content=\"Security review note\"");
+            "    - [*] id=11111111-1111-1111-1111-111111111111 intent=Invariant stale=true tags=[security, tech-debt] hint=\"call delete_memory + attach_memory to refresh\"");
     }
 
     [Fact]
@@ -258,6 +260,7 @@ public sealed class TokenObjectNotationTests
                         "Security review note",
                         "content-hash",
                         ["security"],
+                        SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
                         DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
                         false)
                 ]
@@ -265,44 +268,53 @@ public sealed class TokenObjectNotationTests
 
         output.Should().Be(
             "- [M] `1` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28" + Environment.NewLine +
-            "  semantic: [*] stale=false tags=[security] content=\"Security review note\"");
+            "  semantic: [*] id=22222222-2222-2222-2222-222222222222 intent=Invariant stale=false tags=[security]" + Environment.NewLine +
+            Environment.NewLine +
+            "memories: 1 (0 stale; use get_memory <id> to fetch content)");
     }
 
     [Fact]
-    public void WhenSemanticMemoryContentContainsQuotes_ThenItEscapesThemInOutput()
+    public void WhenSerializingMemory_ThenFullContentIsRendered()
     {
-        var output = TokenObjectNotation.SerializeCalleeTrace(
-            new CodeNodeResult(
-                1,
-                "node-root",
-                "project-app",
-                "Fixture.App.MessageConsumer.Render()",
-                "MessageConsumer.Render()",
-                NodeType.Method,
-                "src/Fixture.App/MessageConsumer.cs",
-                20,
-                28,
-                "Renders a message."),
-            [],
-            new Dictionary<int, MemoryNode[]>
-            {
-                [1] =
-                [
-                    new MemoryNode(
-                        Guid.Parse("33333333-3333-3333-3333-333333333333"),
-                        "Fixture.App.MessageConsumer.Render()",
-                        "hash-1",
-                        "Use \"debug\" mode",
-                        "content-hash",
-                        ["security"],
-                        DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
-                        false)
-                ]
-            });
+        var memory = new MemoryNode(
+            Guid.Parse("33333333-3333-3333-3333-333333333333"),
+            "Fixture.App.MessageConsumer.Render()",
+            "hash-1",
+            "Use \"debug\" mode for security review",
+            "content-hash",
+            ["security"],
+            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
+            DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
+            false);
 
-        output.Should().Be(
-            "- [M] `1` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28" + Environment.NewLine +
-            "  semantic: [*] stale=false tags=[security] content=\"Use \\\"debug\\\" mode\"");
+        var output = TokenObjectNotation.SerializeMemory(memory);
+
+        output.Should().Contain("id: 33333333-3333-3333-3333-333333333333");
+        output.Should().Contain("target: Fixture.App.MessageConsumer.Render()");
+        output.Should().Contain("stale: false");
+        output.Should().Contain("tags: [security]");
+        output.Should().Contain("Use \"debug\" mode for security review");
+        output.Should().NotContain("hint:");
+    }
+
+    [Fact]
+    public void WhenSerializingStaleMemory_ThenItIncludesDeleteHint()
+    {
+        var memory = new MemoryNode(
+            Guid.NewGuid(),
+            "Fixture.App.MessageConsumer.Render()",
+            "hash-1",
+            "Stale invariant",
+            "content-hash",
+            [],
+            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
+            DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
+            true);
+
+        var output = TokenObjectNotation.SerializeMemory(memory);
+
+        output.Should().Contain("stale: true");
+        output.Should().Contain("hint: call delete_memory + attach_memory to refresh");
     }
 
     [Fact]

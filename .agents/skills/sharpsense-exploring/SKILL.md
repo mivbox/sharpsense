@@ -61,3 +61,14 @@ When the subagent completes its traversal and returns the compressed multi-path 
 `[Error Path]: StripeProcessor.ProcessPayment() -> throws PaymentDeclinedException -> GlobalErrorHandler.Handle().`
 `[File Targets]: src/Payments/StripeProcessor.cs:12-30, src/Data/TransactionRepo.cs:45-50`
 `[Summary]: Controller validates DTO. Processor hits Stripe API. Repo persists to Postgres. Errors caught globally.`
+
+## Memory hygiene
+
+While exploring, if you confirm a non-obvious behaviour, invariant, or convention on a specific code node,
+persist it with `attach_memory(nodeId, content, tags?)` so future sessions inherit the context. If a memory
+returns with `IsStale: true` (the target method's `BodyHash` changed), or the user retracts the prior intent,
+call `delete_memory(memoryId)` to drop it. Memories are immutable — there is no update verb; always
+delete + re-attach for corrections.
+
+`context` and `trace` surface memories inline as `id + tags + stale` only — never as content. To read the
+full markdown, call `get_memory(memoryId)` (or `sharpsense memory get --memory-id <id>`).
