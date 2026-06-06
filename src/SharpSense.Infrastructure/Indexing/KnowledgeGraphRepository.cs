@@ -44,7 +44,7 @@ public sealed class KnowledgeGraphRepository(
             var persistedGraph = BuildPersistedGraph(normalizedExtractedNodes, identityMaps);
 
             AddTraceCounts(trace, persistedGraph, normalizedExtractedNodes.Diagnostics.Count);
-            await ReplacePersistedGraph(context, persistedGraph, ct);
+            await ReplacePersistedGraph(context, persistedGraph, identityMaps, ct);
             await transaction.CommitAsync(ct);
         }
         catch (Exception exception)
@@ -661,46 +661,29 @@ public sealed class KnowledgeGraphRepository(
     private static async Task ReplacePersistedGraph(
         SharpSenseDbContext context,
         PersistedGraph graph,
+        PersistedIdentityMaps identityMaps,
         CancellationToken ct)
     {
+        // Memory tables (MemoryNodes) and their FK target (CodeNodes / GraphNodes, shared PK) MUST NOT be
+        // bulk-deleted here: an ON DELETE CASCADE foreign key from MemoryNodeRecord.TargetFullyQualifiedName to
+        // CodeNodeRecord.FullyQualifiedName would silently destroy every persistent memory. We instead
+        // surgically wipe only the tables that have no memory dependency and no incoming FKs from rows we
+        // intend to preserve, and UPSERT the rest so the existing CodeNode / GraphNode / Document / ProjectNode
+        // identity survives a full workspace re-parse.
         await context.DependencyEdges.ExecuteDeleteAsync(ct);
-        await context.CodeNodes.ExecuteDeleteAsync(ct);
-        await context.ProjectNodes.ExecuteDeleteAsync(ct);
-        await context.GraphNodes.ExecuteDeleteAsync(ct);
-        await context.Documents.ExecuteDeleteAsync(ct);
         await context.DirectoryClosures.ExecuteDeleteAsync(ct);
         await context.Directories.ExecuteDeleteAsync(ct);
         context.ChangeTracker.Clear();
 
-        if (graph.Directories.Length > 0)
-        {
-            await context.Directories.AddRangeAsync(graph.Directories, ct);
-        }
-
+        UpsertDirectories(context, graph.Directories, identityMaps);
         if (graph.DirectoryClosures.Length > 0)
         {
             await context.DirectoryClosures.AddRangeAsync(graph.DirectoryClosures, ct);
         }
-
-        if (graph.Documents.Length > 0)
-        {
-            await context.Documents.AddRangeAsync(graph.Documents, ct);
-        }
-
-        if (graph.GraphNodes.Length > 0)
-        {
-            await context.GraphNodes.AddRangeAsync(graph.GraphNodes, ct);
-        }
-
-        if (graph.ProjectNodes.Length > 0)
-        {
-            await context.ProjectNodes.AddRangeAsync(graph.ProjectNodes, ct);
-        }
-
-        if (graph.CodeNodes.Length > 0)
-        {
-            await context.CodeNodes.AddRangeAsync(graph.CodeNodes, ct);
-        }
+        UpsertDocuments(context, graph.Documents, identityMaps);
+        UpsertGraphNodes(context, graph.GraphNodes, identityMaps);
+        UpsertCodeNodes(context, graph.CodeNodes, identityMaps);
+        UpsertProjectNodes(context, graph.ProjectNodes, identityMaps);
 
         if (graph.DependencyEdges.Length > 0)
         {
@@ -709,6 +692,106 @@ public sealed class KnowledgeGraphRepository(
 
         await context.SaveChangesAsync(ct);
         await RefreshSearchIndex(context, ct);
+    }
+
+    private static void UpsertDirectories(SharpSenseDbContext context, DirectoryRecord[] directories, PersistedIdentityMaps identityMaps)
+    {
+        if (directories.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var directory in directories)
+        {
+            if (identityMaps.DirectoryIdsByPath.ContainsKey(directory.Path))
+            {
+                context.Directories.Update(directory);
+            }
+            else
+            {
+                context.Directories.Add(directory);
+            }
+        }
+    }
+
+    private static void UpsertDocuments(SharpSenseDbContext context, DocumentRecord[] documents, PersistedIdentityMaps identityMaps)
+    {
+        if (documents.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var document in documents)
+        {
+            if (identityMaps.DocumentIdsByRelativePath.ContainsKey(document.RelativePath))
+            {
+                context.Documents.Update(document);
+            }
+            else
+            {
+                context.Documents.Add(document);
+            }
+        }
+    }
+
+    private static void UpsertGraphNodes(SharpSenseDbContext context, GraphNodeRecord[] graphNodes, PersistedIdentityMaps identityMaps)
+    {
+        if (graphNodes.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var graphNode in graphNodes)
+        {
+            if (identityMaps.GraphNodeIdsByCanonicalId.ContainsKey(graphNode.CanonicalId))
+            {
+                context.GraphNodes.Update(graphNode);
+            }
+            else
+            {
+                context.GraphNodes.Add(graphNode);
+            }
+        }
+    }
+
+    private static void UpsertCodeNodes(SharpSenseDbContext context, CodeNodeRecord[] codeNodes, PersistedIdentityMaps identityMaps)
+    {
+        if (codeNodes.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var codeNode in codeNodes)
+        {
+            if (identityMaps.GraphNodeIdsByCanonicalId.ContainsKey(codeNode.FullyQualifiedName))
+            {
+                context.CodeNodes.Update(codeNode);
+            }
+            else
+            {
+                context.CodeNodes.Add(codeNode);
+            }
+        }
+    }
+
+    private static void UpsertProjectNodes(SharpSenseDbContext context, ProjectNodeRecord[] projectNodes, PersistedIdentityMaps identityMaps)
+    {
+        if (projectNodes.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var projectNode in projectNodes)
+        {
+            if (identityMaps.GraphNodeIdsByCanonicalId.ContainsKey(projectNode.Name))
+            {
+                context.ProjectNodes.Update(projectNode);
+            }
+            else
+            {
+                context.ProjectNodes.Add(projectNode);
+            }
+        }
     }
 
     private static async Task ReplaceWorkspaceFilesIncremental(

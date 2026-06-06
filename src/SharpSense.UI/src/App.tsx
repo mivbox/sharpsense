@@ -1,6 +1,7 @@
-import { Box } from "@mui/material";
+import { Box, TextField, Stack } from "@mui/material";
 import { useCallback, useState } from "react";
 import { GraphViewport } from "./components/GraphViewport";
+import { MemoryPanel } from "./components/MemoryPanel";
 import { WorkspaceExplorerPanel } from "./components/WorkspaceExplorerPanel";
 import { normalizeSelectedPaths, useScopedGraph } from "./hooks/useScopedGraph";
 import { useWorkspaceTree } from "./hooks/useWorkspaceTree";
@@ -16,6 +17,7 @@ export default function App() {
   const [searchText, setSearchText] = useState("");
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
   const [showEdges, setShowEdges] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const tree = useWorkspaceTree(expandedPaths);
   const graphQuery = useScopedGraph(selectedPaths, tree.nodesByPath, showEdges);
 
@@ -81,7 +83,43 @@ export default function App() {
         searchText={searchText}
         showEdges={showEdges}
         onToggleShowEdges={setShowEdges}
+        onSelectNode={setSelectedNodeId}
       />
+
+      <Box
+        sx={{
+          position: "absolute",
+          right: 16,
+          top: 16,
+          bottom: 16,
+          width: 360,
+          display: "flex",
+          flexDirection: "column",
+          gap: 1
+        }}
+      >
+        <Stack direction="row" spacing={1} alignItems="center">
+          <TextField
+            type="number"
+            size="small"
+            label="Node ID"
+            value={selectedNodeId ?? ""}
+            onChange={(event) => {
+              const raw = event.target.value.trim();
+              if (raw === "") {
+                setSelectedNodeId(null);
+                return;
+              }
+              const parsed = Number(raw);
+              setSelectedNodeId(Number.isFinite(parsed) && parsed > 0 ? parsed : null);
+            }}
+            sx={{ flex: 1, backgroundColor: "rgba(2, 6, 23, 0.7)", borderRadius: 1 }}
+          />
+        </Stack>
+        <Box sx={{ flex: 1, minHeight: 0 }}>
+          <MemoryPanel nodeId={selectedNodeId} />
+        </Box>
+      </Box>
     </Box>
   );
 }

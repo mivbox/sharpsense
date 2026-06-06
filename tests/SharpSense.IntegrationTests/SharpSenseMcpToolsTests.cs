@@ -133,7 +133,7 @@ public sealed class SharpSenseMcpToolsTests
     public async Task WhenContextHasMatches_ThenItFormatsCompressedToonOutput()
     {
         var handler = new Mock<IQueryHandler<GetNodeContextQuery, Context360Result>>(MockBehavior.Strict);
-        var memoryHandler = new Mock<IQueryHandler<GetNodeMemoriesQuery, MemoryNode[]>>(MockBehavior.Strict);
+        var memoryHandler = new Mock<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>>(MockBehavior.Strict);
         handler.Setup(candidate => candidate.Handle(
                 It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
                 CancellationToken.None))
@@ -199,7 +199,7 @@ public sealed class SharpSenseMcpToolsTests
         var tags = new[] { "security" };
         var handler = new Mock<ICommandHandler<AttachMemoryCommand, Result>>(MockBehavior.Strict);
         handler.Setup(candidate => candidate.Handle(
-                new AttachMemoryCommand(42, "Security review", tags),
+                new AttachMemoryCommand(42, "Security review", tags, SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention),
                 CancellationToken.None))
             .ReturnsAsync(Result.Ok());
 
@@ -208,9 +208,10 @@ public sealed class SharpSenseMcpToolsTests
             42,
             "Security review",
             tags,
+            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention,
             CancellationToken.None);
 
-        result.Should().Be("attached memory to node 42");
+        result.Should().Be("attached memory to node 42 (intent=Convention)");
         handler.VerifyAll();
     }
 
@@ -352,7 +353,7 @@ public sealed class SharpSenseMcpToolsTests
     {
         var impactHandler = new Mock<IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult>>(MockBehavior.Strict);
         var traceHandler = new Mock<IQueryHandler<TraceQuery, CodeNodeResult[]>>(MockBehavior.Strict);
-        var memoryReader = new Mock<IMemoryReader>(MockBehavior.Strict);
+        var memoryReader = new Mock<IMemoryRepository>(MockBehavior.Strict);
         var traceNavigator = new Mock<ITraceNavigator>(MockBehavior.Strict);
         traceNavigator.Setup(candidate => candidate.GetRootNode("node-root", CancellationToken.None))
             .ReturnsAsync(

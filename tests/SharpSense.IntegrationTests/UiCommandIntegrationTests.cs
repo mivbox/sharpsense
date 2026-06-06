@@ -209,6 +209,109 @@ public sealed class UiCommandIntegrationTests
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
+    [Fact]
+    public async Task WhenMemoryEndpointsAreCalled_ThenTheyAttachListFetchAndDelete()
+    {
+        await using var database = await UiCommandTestDatabase.Create();
+        var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+        }, RepositoryRoot);
+        var app = Cli.Program.CreateCommandApp(
+            configureServices: services =>
+            {
+                services.AddSingleton<IFileSystem>(fileSystem);
+                database.ConfigureServices(services);
+            },
+            enableFileLogging: false);
+        using var shutdown = new CancellationTokenSource();
+        var runTask = app.RunAsync(
+            ["ui", "--url", baseUrl, "--repo-root", RepositoryRoot],
+            shutdown.Token);
+
+        try
+        {
+            await WaitForServer(runTask, $"{baseUrl}/");
+
+            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+
+            const int nodeId = 200;
+            var content = "Always greet politely: invariant the team expects.";
+
+            using (var addResponse = await httpClient.PostAsync(
+                $"{baseUrl}/api/memory/node/{nodeId}",
+                new StringContent(
+                    $"{{\"content\":\"{content}\",\"tags\":[\"convention\"],\"intent\":\"Invariant\"}}",
+                    System.Text.Encoding.UTF8,
+                    "application/json"),
+                TestContext.Current.CancellationToken))
+            {
+                Assert.Equal(HttpStatusCode.OK, addResponse.StatusCode);
+            }
+
+            var listJson = await httpClient.GetStringAsync(
+                $"{baseUrl}/api/memory/node/{nodeId}",
+                TestContext.Current.CancellationToken);
+            using var listDocument = JsonDocument.Parse(listJson);
+            var memories = listDocument.RootElement.EnumerateArray().ToArray();
+            Assert.Single(memories);
+            var memoryId = memories[0].GetProperty("id").GetString()!;
+            // MemoryIntent enum serializes as its integer value (Invariant = 1)
+            Assert.Equal(1, memories[0].GetProperty("intent").GetInt32());
+
+            var singleJson = await httpClient.GetStringAsync(
+                $"{baseUrl}/api/memory/{memoryId}",
+                TestContext.Current.CancellationToken);
+            using var singleDocument = JsonDocument.Parse(singleJson);
+            Assert.Equal(content, singleDocument.RootElement.GetProperty("content").GetString());
+
+            var batchJson = await httpClient.GetStringAsync(
+                $"{baseUrl}/api/memory?ids={memoryId}",
+                TestContext.Current.CancellationToken);
+            using var batchDocument = JsonDocument.Parse(batchJson);
+            Assert.Equal(1, batchDocument.RootElement.GetArrayLength());
+
+            var filteredJson = await httpClient.GetStringAsync(
+                $"{baseUrl}/api/memory/node/{nodeId}?intents=Invariant",
+                TestContext.Current.CancellationToken);
+            using var filteredDocument = JsonDocument.Parse(filteredJson);
+            Assert.Equal(1, filteredDocument.RootElement.GetArrayLength());
+
+            var noneJson = await httpClient.GetStringAsync(
+                $"{baseUrl}/api/memory/node/{nodeId}?intents=Warning",
+                TestContext.Current.CancellationToken);
+            using var noneDocument = JsonDocument.Parse(noneJson);
+            // MemoryIntent enum serializes as integer; "Warning" is index 3 — there is no Warning memory so we get 0.
+            Assert.Equal(0, noneDocument.RootElement.GetArrayLength());
+
+            using (var deleteResponse = await httpClient.DeleteAsync(
+                $"{baseUrl}/api/memory/{memoryId}",
+                TestContext.Current.CancellationToken))
+            {
+                Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
+            }
+
+            var afterJson = await httpClient.GetStringAsync(
+                $"{baseUrl}/api/memory/node/{nodeId}",
+                TestContext.Current.CancellationToken);
+            using var afterDocument = JsonDocument.Parse(afterJson);
+            Assert.Equal(0, afterDocument.RootElement.GetArrayLength());
+        }
+        finally
+        {
+            shutdown.Cancel();
+            try
+            {
+                await runTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // expected
+            }
+        }
+    }
+
     private sealed class UiCommandTestDatabase(InMemoryContextFactory contextFactory) : IAsyncDisposable
     {
         public const string AppProjectId = "project:src/Fixture.App/Fixture.App.csproj";

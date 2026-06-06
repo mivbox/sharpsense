@@ -37,6 +37,7 @@ public sealed class MemoryStoreTests
             KnowledgeGraphFixture.TargetNodeId,
             " Needs authentication review ",
             [" Security ", "tech-debt", "SECURITY"],
+            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
             TestContext.Current.CancellationToken);
 
         await using (var updateContext = await inMemoryFactory.GetContext<SharpSenseDbContext>(TestContext.Current.CancellationToken))
@@ -50,6 +51,7 @@ public sealed class MemoryStoreTests
 
         var memoriesByNodeId = await store.GetNodeMemories(
             [KnowledgeGraphFixture.TargetNodeId],
+            intents: null,
             TestContext.Current.CancellationToken);
 
         attachResult.IsSuccess.Should().BeTrue();
@@ -88,11 +90,13 @@ public sealed class MemoryStoreTests
             KnowledgeGraphFixture.TargetNodeId,
             "Reusable memory",
             ["security"],
+            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
             TestContext.Current.CancellationToken);
         var secondResult = await store.AttachMemory(
             KnowledgeGraphFixture.DirectCallerNodeId,
             "Reusable memory",
             ["security"],
+            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
             TestContext.Current.CancellationToken);
 
         await using var verifyContext = await inMemoryFactory.GetContext<SharpSenseDbContext>(TestContext.Current.CancellationToken);

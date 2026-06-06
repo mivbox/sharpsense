@@ -4,10 +4,13 @@ using Microsoft.Extensions.Hosting;
 using SharpSense.Application.Context360;
 using SharpSense.Application.Context360.GetNodeContext.Models;
 using SharpSense.Application.Context360.Models;
+using SharpSense.Application.Memory;
+using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Context360;
+using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
@@ -23,6 +26,9 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
     {
         [CommandOption("--node-id <NODE_ID>")]
         public int NodeId { get; init; }
+
+        [CommandOption("--include-memories")]
+        public bool IncludeMemories { get; init; }
 
         [CommandOption("--repo-root <path>")]
         public string? RepositoryRoot { get; init; }
@@ -47,6 +53,8 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
         services.AddSharpSenseConfiguration(rawRoot);
         services.AddContext360();
         services.AddContext360Infrastructure();
+        services.AddMemory();
+        services.AddMemoryInfrastructure();
         services.AddPersistence();
     }
 
@@ -57,14 +65,25 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
         CancellationToken ct)
     {
         await using var scope = host.Services.CreateAsyncScope();
-        var handler = scope.ServiceProvider.GetRequiredService<IQueryHandler<GetNodeContextQuery, Context360Result>>();
-        var result = await handler.Handle(
+        var services = scope.ServiceProvider;
+        var contextHandler = services.GetRequiredService<IQueryHandler<GetNodeContextQuery, Context360Result>>();
+        var result = await contextHandler.Handle(
             new GetNodeContextQuery(
                 settings.NodeId,
                 10),
             ct);
 
-        CommandOutput.Write(context, TokenObjectNotation.SerializeContext360(result));
+        SharpSense.Domain.KnowledgeGraph.Nodes.MemoryNode[]? semanticContext = null;
+        if (settings.IncludeMemories)
+        {
+            var memoryRepository = services.GetRequiredService<IMemoryRepository>();
+            var memoriesByNodeId = await memoryRepository.GetNodeMemories([settings.NodeId], intents: null, ct);
+            semanticContext = memoriesByNodeId.TryGetValue(settings.NodeId, out var records)
+                ? records
+                : [];
+        }
+
+        CommandOutput.Write(context, TokenObjectNotation.SerializeContext360(result, semanticContext));
         return 0;
     }
 }

@@ -54,3 +54,16 @@ When the subagent completes and returns the compressed payload:
 2. Do NOT expand, summarise, or apologise for the output.
 3. Print the compressed output to the user and proceed immediately to the next required action.
 4. Auto-expand to standard English ONLY for security warnings or irreversible actions.
+
+## Memory hygiene
+
+When a `ctx_execute` or `search` round-trip surfaces a confirmed behaviour, invariant, or convention, persist
+it via the MCP `attach_memory(nodeId, content, tags?)` tool (or `sharpsense memory add` from the terminal).
+If the persisted memory's `IsStale` flag flips to `true` after a re-parse, or the user retracts the intent,
+call `delete_memory(memoryId)` (or `sharpsense memory remove`). Memories are immutable — there is no
+update verb; always delete + re-attach for corrections.
+
+`context` and `trace` surface memories inline as `id + tags + stale` only — never as content. To read the
+full markdown, call the MCP `get_memory(memoryId)` tool (or `sharpsense memory get --memory-id <id>`).
+This keeps the inline context small (~50 tokens per memory) and lets the agent fetch only what it
+needs. Stale memories surface an inline `hint: "call delete_memory + attach_memory to refresh"`.

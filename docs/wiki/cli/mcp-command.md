@@ -9,7 +9,9 @@ confidence: high
 
 ## Command
 
-`sharp-sense mcp` starts the stdio MCP host for SharpSense tools. It exposes the same indexed read surfaces as [[cli/search-command]], [[cli/trace-command]], [[cli/inheritors-command]], and [[cli/context-command]], the execution-focused `ctx_execute` surface shared with [[cli/execute-command]], plus the write-capable `attach_memory` and `refactor_symbol` surfaces. MCP caller tracing still uses the broader `ImpactAnalysisQuery` defaults instead of the CLI trace command's direct-caller shortcut, and both `context` and `trace_node` now accept an `EdgeCategory` mask so semantic memory stays opt-in. Shared bootstrapping still follows [[architecture/host-composition]].
+`sharp-sense mcp` starts the stdio MCP host for SharpSense tools. It exposes the same indexed read surfaces as [[cli/search-command]], [[cli/trace-command]], [[cli/inheritors-command]], and [[cli/context-command]], the execution-focused `ctx_execute` surface shared with [[cli/execute-command]], plus the write-capable `attach_memory`, `delete_memory`, and `refactor_symbol` surfaces, plus the read-only `get_memory` retrieval tool that returns the full markdown of a memory by its persistent Guid. MCP caller tracing still uses the broader `ImpactAnalysisQuery` defaults instead of the CLI trace command's direct-caller shortcut, and both `context` and `trace_node` accept an `EdgeCategory` mask so semantic memory stays opt-in. Shared bootstrapping still follows [[architecture/host-composition]].
+
+Memory metadata is rendered inline as `id + tags + stale` (no content) to keep context small; the agent calls `get_memory(memoryId)` to retrieve the full markdown when it actually needs to act on a memory. Stale memories surface an inline `hint: "call delete_memory + attach_memory to refresh"`.
 
 ## Options
 
@@ -26,7 +28,10 @@ confidence: high
 | --- | --- | --- |
 | `ctx_execute` | `CommandExecutionReducer` | Runs a local command, indexes streamed output in a transient DbContext-backed FTS5 store, and returns reduced TOON log excerpts or a compact summary when no query hits are found. |
 | `semantic_search` | `HybridSearchQuery` | Hybrid BM25 + vector search over indexed code nodes, formatted as hierarchical directory/file TOON blocks for token-efficient handoff. |
-| `attach_memory` | `AttachMemoryCommand` | Persists markdown memory against the current FQDN/body-hash snapshot of a code node id. |
+| `attach_memory` | `AttachMemoryCommand` | Persists markdown memory against the current FQDN/body-hash snapshot of a code node id. Accepts an `intent` argument (Convention / Invariant / Todo / Warning / Decision) so the agent can filter retrievals by intent. |
+| `delete_memory` | `DeleteMemoryCommand` | Removes a previously attached memory by its persistent Guid; memories are immutable once written. |
+| `get_memory` | `GetMemoryQuery` | Returns the full markdown content of a single memory by its persistent Guid; inline metadata only carries id + intent + tags + stale. |
+| `get_memories` | `GetMemoriesQuery` | Batch fetch the full content of multiple memories in one round-trip. Pass `memoryIds: Guid[]`; returns one rendered memory block per id. |
 | `trace_node` | `TraceQuery` / `ImpactAnalysisQuery` + `IMemoryReader` | Downstream callees or upstream caller blast radius for a known node id, with optional inline semantic memory metadata. |
 | `get_inheritors` | `GetInheritorsQuery` | Direct derived classes or interface implementers for a persisted node id. |
 | `context` | `GetNodeContextQuery` + `GetNodeMemoriesQuery` | Immediate callers, callees, inheritance breadth, and optional `semantic_context` memories for a persisted node id as compressed TOON. |
@@ -131,7 +136,7 @@ modified_files:
 5. Tool serialization adds `JsonStringEnumConverter<TraceDirection>` and `JsonStringEnumConverter<EdgeCategory>` so trace directions and semantic-edge masks stay stable across the protocol boundary.
 6. `ctx_execute` resolves `ICommandExecutor`, runs the raw command string inside the configured repository root, streams output through the transient FTS5 reducer from [[architecture/windowed-execution-pipeline]], and renders metadata-first TOON through `TokenObjectNotation.SerializeCommandExecutionResult()`.
 7. `semantic_search` resolves `HybridSearchQuery` and serializes hits through `TokenObjectNotation.SerializeSemanticSearch()`, the shared hierarchical TOON serializer used by `sharp-sense search --toon`.
-8. `attach_memory` dispatches `AttachMemoryCommand` through the memory write slice, normalizes tags, reuses embeddings by `ContentHash` when possible, and persists `MemoryNodes` without adding a foreign key to `CodeNodes`.
+8. `attach_memory` dispatches `AttachMemoryCommand` through the memory write slice, normalizes tags, reuses embeddings by `ContentHash` when possible, and persists `MemoryNodes` with the cascade FK documented in [[persistence/sqlite-schema]]. `delete_memory` dispatches `DeleteMemoryCommand` through the same slice and removes the row by `Guid Id`. `get_memory` dispatches `GetMemoryQuery` to the same `IMemoryRepository` and returns the full markdown content (including the `IsStale` flag) so the agent can act on the memory. All three methods emit `SharpSenseTraceSpan.Start` traces and return `FluentResults.Result` for expected domain failures. The memory contract is a single `IMemoryRepository` (no separate reader/writer) so callers do not have to thread a pair through DI.
 9. `trace_node` resolves the root node through `ITraceNavigator`, then formats either direct callees or caller chains through the dedicated trace serializers in `TokenObjectNotation`; when `EdgeCategory.Semantic` is present, it also loads stale-aware memories and renders them inline on each owning node.
 10. `context` dispatches `GetNodeContextQuery` through `IQueryHandler<GetNodeContextQuery, Context360Result>` and can additionally dispatch `GetNodeMemoriesQuery` when the semantic edge mask is enabled, then renders the combined shape through `TokenObjectNotation.SerializeContext360()`.
 11. `get_inheritors` resolves `GetInheritorsQuery` through the `IInheritorFinder` read slice and formats direct class inheritors or interface implementers with the shared flat TOON output formatter.

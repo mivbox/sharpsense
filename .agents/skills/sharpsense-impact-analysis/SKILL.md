@@ -27,6 +27,17 @@ description: "Use when the user wants to know what will break if they change som
 
 > If the index is stale or missing the changed area, run `sharpsense analyze <target>` in the terminal first.
 
+## Memory hygiene
+
+Whenever the impact analysis confirms a non-trivial behaviour, invariant, or convention on the target node,
+persist it for future sessions via the MCP `attach_memory(nodeId, content, tags?)` tool. Conversely, if the
+user retracts an intent, the body changes enough to make a prior memory obsolete, or the tool's `IsStale`
+flag flips to `true` on a re-parse, call `delete_memory(memoryId)` to drop the stale record. Memories are
+immutable once attached — there is no update verb; always delete + re-attach for corrections.
+
+`context` and `trace` surface memories inline as `id + tags + stale` only — never as content. To read the
+full markdown, call `get_memory(memoryId)`.
+
 ## Checklist
 
 ```

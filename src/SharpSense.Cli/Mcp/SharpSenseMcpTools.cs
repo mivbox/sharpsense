@@ -14,6 +14,9 @@ using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.Inheritors.GetInheritors.Models;
 using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Memory.AttachMemory.Models;
+using SharpSense.Application.Memory.DeleteMemory.Models;
+using SharpSense.Application.Memory.GetMemory.Models;
+using SharpSense.Application.Memory.GetMemories.Models;
 using SharpSense.Application.Memory.GetNodeMemories.Models;
 using SharpSense.Application.Refactoring.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
@@ -104,28 +107,115 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool, Description("Attach persistent semantic memory to a persisted code node id.")]
+    [McpServerTool, Description("Attach persistent semantic memory to a persisted code node id. The intent classifies the memory so it can be filtered at retrieval time.")]
     public static async Task<string> attach_memory(
         ICommandHandler<AttachMemoryCommand, Result> handler,
         [Description("The persisted integer ID of the target node.")] int nodeId,
         [Description("The markdown-formatted memory payload to attach.")] string content,
         [Description("Optional tags used for filtering and classification.")] string[]? tags = null,
+        [Description("The memory's intent classification. One of: Convention, Invariant, Todo, Warning, Decision. Defaults to Convention.")] SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent intent = SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention,
         CancellationToken ct = default)
     {
         using var activity = SharpSenseTraceSpan.Start("mcp.tool.attach_memory");
         activity.AddTag("mcp.tool", "attach_memory");
         activity.AddTag("memory.node_id", nodeId);
+        activity.AddTag("memory.intent", intent.ToString());
 
         try
         {
             var result = await handler.Handle(
-                new AttachMemoryCommand(nodeId, content, tags),
+                new AttachMemoryCommand(nodeId, content, tags, intent),
                 ct);
 
             activity.AddTag("memory.success", result.IsSuccess);
             return result.IsSuccess
-                ? $"attached memory to node {nodeId}"
+                ? $"attached memory to node {nodeId} (intent={intent})"
                 : $"attach_memory failed: {GetErrorMessage(result.Errors)}";
+        }
+        catch (Exception ex)
+        {
+            activity.RecordExceptionAndErrorStatus(ex);
+            throw;
+        }
+    }
+
+    [McpServerTool, Description("Remove a previously attached semantic memory by its persistent Guid.")]
+    public static async Task<string> delete_memory(
+        ICommandHandler<DeleteMemoryCommand, Result> handler,
+        [Description("The persistent Guid of the memory to remove.")] Guid memoryId,
+        CancellationToken ct = default)
+    {
+        using var activity = SharpSenseTraceSpan.Start("mcp.tool.delete_memory");
+        activity.AddTag("mcp.tool", "delete_memory");
+        activity.AddTag("memory.id", memoryId);
+
+        try
+        {
+            var result = await handler.Handle(new DeleteMemoryCommand(memoryId), ct);
+            activity.AddTag("memory.success", result.IsSuccess);
+            return result.IsSuccess
+                ? $"deleted memory {memoryId}"
+                : $"delete_memory failed: {GetErrorMessage(result.Errors)}";
+        }
+        catch (Exception ex)
+        {
+            activity.RecordExceptionAndErrorStatus(ex);
+            throw;
+        }
+    }
+
+    [McpServerTool, Description("Fetch the full markdown content of a previously attached semantic memory by its persistent Guid. Use this after context or trace surfaces a memory id and you need the full text.")]
+    public static async Task<string> get_memory(
+        IQueryHandler<GetMemoryQuery, Result<MemoryNode>> handler,
+        [Description("The persistent Guid of the memory to fetch.")] Guid memoryId,
+        CancellationToken ct = default)
+    {
+        using var activity = SharpSenseTraceSpan.Start("mcp.tool.get_memory");
+        activity.AddTag("mcp.tool", "get_memory");
+        activity.AddTag("memory.id", memoryId);
+
+        try
+        {
+            var result = await handler.Handle(new GetMemoryQuery(memoryId), ct);
+            if (result.IsFailed)
+            {
+                activity.AddTag("memory.success", false);
+                return $"get_memory failed: {GetErrorMessage(result.Errors)}";
+            }
+
+            activity.AddTag("memory.success", true);
+            activity.AddTag("memory.stale", result.Value!.IsStale);
+            return TokenObjectNotation.SerializeMemory(result.Value);
+        }
+        catch (Exception ex)
+        {
+            activity.RecordExceptionAndErrorStatus(ex);
+            throw;
+        }
+    }
+
+    [McpServerTool, Description("Batch-fetch the full content of multiple memories by their persistent Guids. Returns one rendered memory block per id, in a single round-trip. Use this after a multi-step trace surfaces a list of memory ids.")]
+    public static async Task<string> get_memories(
+        IQueryHandler<GetMemoriesQuery, Result<IReadOnlyDictionary<Guid, MemoryNode>>> handler,
+        [Description("The persistent Guids of the memories to fetch.")] Guid[] memoryIds,
+        CancellationToken ct = default)
+    {
+        using var activity = SharpSenseTraceSpan.Start("mcp.tool.get_memories");
+        activity.AddTag("mcp.tool", "get_memories");
+        activity.AddTag("memory.count", memoryIds?.Length ?? 0);
+
+        try
+        {
+            var result = await handler.Handle(new GetMemoriesQuery(memoryIds ?? []), ct);
+            if (result.IsFailed)
+            {
+                activity.AddTag("memory.success", false);
+                return $"get_memories failed: {GetErrorMessage(result.Errors)}";
+            }
+
+            activity.AddTag("memory.success", true);
+            activity.AddTag("memory.returned", result.Value!.Count);
+            return TokenObjectNotation.SerializeMemories(result.Value);
         }
         catch (Exception ex)
         {
@@ -138,7 +228,7 @@ internal sealed class SharpSenseMcpTools
     [Description("Gets an instant 360-degree architectural snapshot of a node. Returns immediate callers, callees, and inheritance hierarchy for a persisted node ID. Use this to understand a node's immediate context and blast radius before deep tracing.")]
     public static async Task<string> context(
         IQueryHandler<GetNodeContextQuery, Context360Result> handler,
-        IQueryHandler<GetNodeMemoriesQuery, MemoryNode[]> memoryHandler,
+        IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>> memoryHandler,
         [Description("The persisted integer ID of the target node.")] int nodeId,
         [Description("Optional edge-category mask. Defaults to Structural.")] EdgeCategory edgeCategories = EdgeCategory.Structural,
         CancellationToken ct = default)
@@ -156,7 +246,7 @@ internal sealed class SharpSenseMcpTools
                     10),
                 ct);
             var semanticContext = edgeCategories.HasFlag(EdgeCategory.Semantic)
-                ? await memoryHandler.Handle(new GetNodeMemoriesQuery(nodeId), ct)
+                ? (await memoryHandler.Handle(new GetNodeMemoriesQuery(nodeId), ct)).Value ?? []
                 : [];
 
             activity.AddTag("context.callers.count", result.Callers.Length);
@@ -177,7 +267,7 @@ internal sealed class SharpSenseMcpTools
     public static async Task<string> trace_node(
         IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult> impactHandler,
         IQueryHandler<TraceQuery, CodeNodeResult[]> traceHandler,
-        IMemoryReader memoryReader,
+        IMemoryRepository memoryRepository,
         ITraceNavigator traceNavigator,
         [Description("The exact Node ID to trace.")] string nodeId,
         [Description("Direction of the trace: 'caller' (upstream) or 'callee' (downstream).")] TraceDirection direction = TraceDirection.Callee,
@@ -226,7 +316,7 @@ internal sealed class SharpSenseMcpTools
             }
 
             var memoriesByNodeId = edgeCategories.HasFlag(EdgeCategory.Semantic)
-                ? await LoadTraceMemories(memoryReader, rootNode, nodes, ct)
+                ? await LoadTraceMemories(memoryRepository, rootNode, nodes, ct)
                 : new Dictionary<int, MemoryNode[]>();
 
             activity.AddTag("trace.node.count", nodes.Length);
@@ -301,12 +391,13 @@ internal sealed class SharpSenseMcpTools
     }
 
     private static Task<IReadOnlyDictionary<int, MemoryNode[]>> LoadTraceMemories(
-        IMemoryReader memoryReader,
+        IMemoryRepository memoryRepository,
         CodeNodeResult rootNode,
         IReadOnlyList<CodeNodeResult> nodes,
         CancellationToken ct)
-        => memoryReader.GetNodeMemories(
+        => memoryRepository.GetNodeMemories(
             [rootNode.Id, .. nodes.Select(static node => node.Id)],
+            intents: null,
             ct);
 
     private static CodeNodeResult[] MapImpactedNodes(IEnumerable<ImpactedCodeNode> impactedNodes)

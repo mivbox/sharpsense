@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using FluentResults;
 using Moq;
 using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Memory.GetNodeMemories;
@@ -13,13 +14,13 @@ public sealed class GetNodeMemoriesQueryHandlerTests
     [Fact]
     public void WhenConstructed_ThenImplementsQueryHandlerContract()
     {
-        var handler = new GetNodeMemoriesQueryHandler(new Mock<IMemoryReader>(MockBehavior.Strict).Object);
+        var handler = new GetNodeMemoriesQueryHandler(new Mock<IMemoryRepository>(MockBehavior.Strict).Object);
 
-        handler.Should().BeAssignableTo<IQueryHandler<GetNodeMemoriesQuery, MemoryNode[]>>();
+        handler.Should().BeAssignableTo<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>>();
     }
 
     [Fact]
-    public async Task WhenNodeExists_ThenReturnsReaderResults()
+    public async Task WhenNodeExists_ThenReturnsRepositoryResults()
     {
         var expectedMemory = new MemoryNode(
             Guid.NewGuid(),
@@ -28,37 +29,54 @@ public sealed class GetNodeMemoriesQueryHandlerTests
             "Security review",
             "content-hash",
             ["security"],
+            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
             DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
             false);
-        var memoryReader = new Mock<IMemoryReader>(MockBehavior.Strict);
-        memoryReader.Setup(candidate => candidate.GetNodeMemories(
+        var memoryRepository = new Mock<IMemoryRepository>(MockBehavior.Strict);
+        memoryRepository.Setup(candidate => candidate.GetNodeMemories(
                 It.Is<IReadOnlyCollection<int>>(nodeIds => nodeIds.Count == 1 && nodeIds.Contains(42)),
+                It.IsAny<IReadOnlyCollection<SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent>?>(),
                 CancellationToken.None))
             .ReturnsAsync(new Dictionary<int, MemoryNode[]>
             {
                 [42] = [expectedMemory]
             });
-        var handler = new GetNodeMemoriesQueryHandler(memoryReader.Object);
+        var handler = new GetNodeMemoriesQueryHandler(memoryRepository.Object);
 
         var result = await handler.Handle(new GetNodeMemoriesQuery(42), CancellationToken.None);
 
-        result.Should().ContainSingle().Which.Should().Be(expectedMemory);
-        memoryReader.VerifyAll();
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().ContainSingle().Which.Should().Be(expectedMemory);
+        memoryRepository.VerifyAll();
     }
 
     [Fact]
-    public async Task WhenNodeDoesNotExist_ThenThrowsInvalidOperationException()
+    public async Task WhenNodeDoesNotExist_ThenReturnsFailedResult()
     {
-        var memoryReader = new Mock<IMemoryReader>(MockBehavior.Strict);
-        memoryReader.Setup(candidate => candidate.GetNodeMemories(
+        var memoryRepository = new Mock<IMemoryRepository>(MockBehavior.Strict);
+        memoryRepository.Setup(candidate => candidate.GetNodeMemories(
                 It.Is<IReadOnlyCollection<int>>(nodeIds => nodeIds.Count == 1 && nodeIds.Contains(42)),
+                It.IsAny<IReadOnlyCollection<SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent>?>(),
                 CancellationToken.None))
             .ReturnsAsync(new Dictionary<int, MemoryNode[]>());
-        var handler = new GetNodeMemoriesQueryHandler(memoryReader.Object);
+        var handler = new GetNodeMemoriesQueryHandler(memoryRepository.Object);
 
-        var act = async () => await handler.Handle(new GetNodeMemoriesQuery(42), CancellationToken.None);
+        var result = await handler.Handle(new GetNodeMemoriesQuery(42), CancellationToken.None);
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("No persisted node exists for id 42.");
+        result.IsFailed.Should().BeTrue();
+        result.Errors.Should().ContainSingle().Which.Message.Should().Be("No persisted node exists for id 42.");
+    }
+
+    [Fact]
+    public async Task WhenNodeIdIsNotPositive_ThenReturnsFailedResult()
+    {
+        var memoryRepository = new Mock<IMemoryRepository>(MockBehavior.Strict);
+        var handler = new GetNodeMemoriesQueryHandler(memoryRepository.Object);
+
+        var result = await handler.Handle(new GetNodeMemoriesQuery(0), CancellationToken.None);
+
+        result.IsFailed.Should().BeTrue();
+        result.Errors.Should().ContainSingle().Which.Message.Should().Be("NodeId must be greater than zero.");
+        memoryRepository.VerifyNoOtherCalls();
     }
 }

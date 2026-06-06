@@ -12,8 +12,12 @@ using Microsoft.Extensions.Hosting;
 using Moq;
 using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.Models;
+using SharpSense.Application.Memory;
 using SharpSense.Application.Refactoring.Abstractions;
 using SharpSense.Application.Refactoring.Models;
+using SharpSense.Application.Shared.Abstractions;
+using SharpSense.Application.Shared.Models;
+using SharpSense.Infrastructure.Memory;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
@@ -570,6 +574,173 @@ public sealed class CliCommandTests
             enableFileLogging: false);
     }
 
+    [Fact]
+    public async Task WhenMemoryAddRuns_ThenItAttachesAndReturnsTheNewMemory()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+        var ct = TestContext.Current.CancellationToken;
+
+        var exitCode = await app.RunAsync(
+            ["memory", "add", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--content", "Always greet politely", "--tag", "convention", "--repo-root", RepositoryRoot],
+            ct);
+
+        var actualOutput = console.Output;
+        exitCode.Should().Be(0, "actual output was: <" + actualOutput + ">");
+        actualOutput.Should().Contain("added_memory: true");
+        actualOutput.Should().Contain("memory_id: ");
+        actualOutput.Should().Contain("content: \"Always greet politely\"");
+
+        await using var verification = await database.GetDbContext();
+        var memoryCount = await verification.MemoryNodes.CountAsync(ct);
+        memoryCount.Should().Be(1, "the memory must be persisted by the CLI command");
+    }
+
+    [Fact]
+    public async Task WhenMemoryListRuns_ThenItPrintsAttachedMemories()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var seedConsole = new TestConsole();
+        var seedApp = CreateCommandApp(seedConsole, database);
+        var ct = TestContext.Current.CancellationToken;
+
+        var addExit = await seedApp.RunAsync(
+            ["memory", "add", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--content", "Always greet politely", "--repo-root", RepositoryRoot],
+            ct);
+        addExit.Should().Be(0);
+
+        using var listConsole = new TestConsole();
+        var listApp = CreateCommandApp(listConsole, database);
+
+        var exitCode = await listApp.RunAsync(
+            ["memory", "list", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot],
+            ct);
+
+        exitCode.Should().Be(0);
+        listConsole.Output.Should().Contain("count: 1");
+        listConsole.Output.Should().Contain("content: \"Always greet politely\"");
+    }
+
+    [Fact]
+    public async Task WhenMemoryRemoveRuns_ThenItDeletesTheMemory()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var seedConsole = new TestConsole();
+        var seedApp = CreateCommandApp(seedConsole, database);
+        var ct = TestContext.Current.CancellationToken;
+
+        var addExit = await seedApp.RunAsync(
+            ["memory", "add", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--content", "Always greet politely", "--repo-root", RepositoryRoot],
+            ct);
+        addExit.Should().Be(0);
+        var memoryId = await GetSingleMemoryId(database, ct);
+
+        using var removeConsole = new TestConsole();
+        var removeApp = CreateCommandApp(removeConsole, database);
+
+        var exitCode = await removeApp.RunAsync(
+            ["memory", "remove", "--memory-id", memoryId.ToString(), "--repo-root", RepositoryRoot],
+            ct);
+
+        exitCode.Should().Be(0);
+        removeConsole.Output.Should().Contain($"removed_memory: {memoryId}");
+
+        await using var verification = await database.GetDbContext();
+        var memoryCount = await verification.MemoryNodes.CountAsync(ct);
+        memoryCount.Should().Be(0, "the memory must be removed by the CLI command");
+    }
+
+    [Fact]
+    public async Task WhenMemoryRemoveRunsWithUnknownId_ThenItReturnsExitCodeOne()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+        var unknownId = Guid.NewGuid();
+
+        var exitCode = await app.RunAsync(
+            ["memory", "remove", "--memory-id", unknownId.ToString(), "--repo-root", RepositoryRoot],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(1);
+        console.Output.Should().Contain("remove failed:");
+    }
+
+    [Fact]
+    public async Task WhenMemoryGetRuns_ThenItPrintsFullMemoryContent()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var seedConsole = new TestConsole();
+        var seedApp = CreateCommandApp(seedConsole, database);
+        var ct = TestContext.Current.CancellationToken;
+
+        var addExit = await seedApp.RunAsync(
+            ["memory", "add", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--content", "Always greet politely", "--tag", "convention", "--repo-root", RepositoryRoot],
+            ct);
+        addExit.Should().Be(0);
+        var memoryId = await GetSingleMemoryId(database, ct);
+
+        using var getConsole = new TestConsole();
+        var getApp = CreateCommandApp(getConsole, database);
+
+        var exitCode = await getApp.RunAsync(
+            ["memory", "get", "--memory-id", memoryId.ToString(), "--repo-root", RepositoryRoot],
+            ct);
+
+        exitCode.Should().Be(0);
+        getConsole.Output.Should().Contain("memory:");
+        getConsole.Output.Should().Contain($"id: {memoryId}");
+        getConsole.Output.Should().Contain("Always greet politely");
+        getConsole.Output.Should().Contain("tags: [convention]");
+    }
+
+    [Fact]
+    public async Task WhenContextRunsWithIncludeMemories_ThenItPrintsMemoryHint()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var seedConsole = new TestConsole();
+        var seedApp = CreateCommandApp(seedConsole, database);
+        var ct = TestContext.Current.CancellationToken;
+
+        await seedApp.RunAsync(
+            ["memory", "add", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--content", "Always greet politely", "--repo-root", RepositoryRoot],
+            ct);
+
+        using var contextConsole = new TestConsole();
+        var contextApp = CreateCommandApp(contextConsole, database);
+
+        var exitCode = await contextApp.RunAsync(
+            ["context", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--include-memories", "--repo-root", RepositoryRoot],
+            ct);
+
+        exitCode.Should().Be(0);
+        contextConsole.Output.Should().Contain("memories: 1 (");
+        contextConsole.Output.Should().Contain("semantic_context:");
+        contextConsole.Output.Should().Contain("stale=false");
+        // The inline shape must NEVER leak the content.
+        contextConsole.Output.Should().NotContain("Always greet politely");
+    }
+
+    private static async Task<Guid> GetSingleMemoryId(CliCommandTestDatabase database, CancellationToken ct)
+    {
+        await using var context = await database.GetDbContext();
+        return await context.MemoryNodes.Select(static memory => memory.Id).SingleAsync(ct);
+    }
+
+    private sealed class NoopEmbeddingGenerator : IEmbeddingGenerator
+    {
+        public Task<TextEmbedding> Generate(string text, CancellationToken ct = default)
+            => Task.FromResult(new TextEmbedding(text, Array.Empty<float>()));
+
+        public Task<IReadOnlyList<TextEmbedding>> GenerateBatch(
+            IEnumerable<string> texts,
+            IProgress<EmbeddingGenerationProgress>? progress,
+            CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<TextEmbedding>>(
+                texts.Select(text => new TextEmbedding(text, Array.Empty<float>())).ToArray());
+    }
+
     private sealed class CliCommandTestDatabase(InMemoryContextFactory contextFactory) : IAsyncDisposable
     {
         public const string ProjectId = "project-app";
@@ -610,7 +781,13 @@ public sealed class CliCommandTests
         {
             services.RemoveAll<IHostedService>();
             contextFactory.ConfigureServices<SharpSenseDbContext>(services);
+            services.AddMemory();
+            services.AddMemoryInfrastructure();
+            services.TryAddSingleton<IEmbeddingGenerator, NoopEmbeddingGenerator>();
         }
+
+        public async Task<SharpSenseDbContext> GetDbContext()
+            => await contextFactory.GetContext<SharpSenseDbContext>(ct: TestContext.Current.CancellationToken);
 
         public async ValueTask DisposeAsync()
         {
