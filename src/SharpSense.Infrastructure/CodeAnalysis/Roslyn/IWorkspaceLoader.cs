@@ -15,12 +15,10 @@ public interface IWorkspaceLoader : IDisposable
     /// diagnostics raised while opening the target.
     /// </summary>
     /// <param name="targetPath">The target path to load.</param>
-    /// <param name="options">Optional Roslyn workspace loading options.</param>
     /// <param name="ct"><see cref="CancellationToken"/> for the current load operation.</param>
     /// <returns>The current workspace load result for the supplied target.</returns>
     Task<WorkspaceLoadResult> Load(
         string targetPath,
-        RoslynWorkspaceOptions? options = null,
         CancellationToken ct = default);
 
     /// <summary>
