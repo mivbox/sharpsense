@@ -1,6 +1,8 @@
 ---
 name: sharpsense-impact-analysis
-description: "Use when the user wants to know what will break if they change something, or needs safety analysis before editing code. Examples: \"Is it safe to change X?\", \"What depends on this?\", \"What will break?\""
+description: "Use when the user wants to know what will break if they change something,
+             or needs safety analysis before editing code.
+             Examples: \"Is it safe to change X?\", \"What depends on this?\", \"What will break?\""
 ---
 
 # Impact Analysis with SharpSense
@@ -17,11 +19,11 @@ description: "Use when the user wants to know what will break if they change som
 ## Workflow
 
 ```
-1. semantic_search({query: "<target symbol or concept>"})         → Discover the persisted node id
-2. context({nodeId: <id>})                                        → Inspect immediate callers, implementers, callees, and inherits
-3. trace_node({nodeId: "<id>", direction: "caller"})             → Expand the upstream blast radius
-4. trace_node({nodeId: "<id>", direction: "callee"})             → Check downstream execution flow if behaviour may shift
-5. get_inheritors({nodeId: <id>})                                 → Check hierarchy-specific impact when classes/interfaces are involved
+1. semantic_search({query: "<target symbol or concept>"}) → Discover the persisted node id
+2. context({nodeId: <id>}) → Inspect immediate callers, implementers, callees, and inherits
+3. trace_node({nodeId: "<id>", direction: "caller"}) → Expand the upstream blast radius
+4. trace_node({nodeId: "<id>", direction: "callee"}) → Check downstream execution flow if behaviour may shift
+5. get_inheritors({nodeId: <id>}) → Check hierarchy-specific impact when classes/interfaces are involved
 6. Assess risk and report the likely breakage surface
 ```
 
@@ -52,21 +54,21 @@ full markdown, call `get_memory(memoryId)`.
 
 ## Understanding Output
 
-| Signal | Risk Level | Meaning |
-| --- | --- | --- |
-| `incoming.callers` | **WILL BREAK** | Direct upstream callers / dependents |
-| `incoming.implementers` | HIGH | Direct hierarchy dependents |
-| `outgoing.callees` | MEDIUM | Behaviour touched downstream |
-| `outgoing.inherits` | MEDIUM | Base/interface contract dependency |
+| Signal                  | Risk Level     | Meaning                              |
+|-------------------------|----------------|--------------------------------------|
+| `incoming.callers`      | **WILL BREAK** | Direct upstream callers / dependents |
+| `incoming.implementers` | HIGH           | Direct hierarchy dependents          |
+| `outgoing.callees`      | MEDIUM         | Behaviour touched downstream         |
+| `outgoing.inherits`     | MEDIUM         | Base/interface contract dependency   |
 
 ## Risk Assessment
 
-| Affected | Risk |
-| --- | --- |
-| 1-3 direct relationships | LOW |
-| 4-10 direct + traced relationships | MEDIUM |
-| 10+ relationships or multiple critical flows | HIGH |
-| Auth, payments, startup composition | CRITICAL |
+| Affected                                     | Risk     |
+|----------------------------------------------|----------|
+| 1-3 direct relationships                     | LOW      |
+| 4-10 direct + traced relationships           | MEDIUM   |
+| 10+ relationships or multiple critical flows | HIGH     |
+| Auth, payments, startup composition          | CRITICAL |
 
 ## Tools
 
