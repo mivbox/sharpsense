@@ -10,28 +10,6 @@ namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 /// </summary>
 public interface IWorkspaceLoader : IDisposable
 {
-    Task<WorkspaceLoadResult> Load(string targetPath)
-        => Load(
-            targetPath,
-            options: null,
-            CancellationToken.None);
-
-    Task<WorkspaceLoadResult> Load(
-        string targetPath,
-        CancellationToken ct)
-        => Load(
-            targetPath,
-            options: null,
-            ct);
-
-    Task<WorkspaceLoadResult> Load(
-        string targetPath,
-        RoslynWorkspaceOptions? options)
-        => Load(
-            targetPath,
-            options,
-            CancellationToken.None);
-
     /// <summary>
     /// Loads the supplied target into a cached Roslyn workspace and returns the current solution snapshot plus any loader
     /// diagnostics raised while opening the target.
