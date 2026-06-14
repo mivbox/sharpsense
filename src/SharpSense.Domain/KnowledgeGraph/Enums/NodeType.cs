@@ -7,5 +7,6 @@ public enum NodeType
     Method,
     Property,
     Field,
-    Document
+    Document,
+    Memory
 }

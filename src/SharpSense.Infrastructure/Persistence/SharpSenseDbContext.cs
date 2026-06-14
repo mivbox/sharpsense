@@ -18,6 +18,8 @@ public sealed class SharpSenseDbContext(DbContextOptions<SharpSenseDbContext> op
 
     public DbSet<CodeNodeRecord> CodeNodes => Set<CodeNodeRecord>();
 
+    public DbSet<MemoryNodeRecord> MemoryNodes => Set<MemoryNodeRecord>();
+
     public DbSet<DependencyEdgeRecord> DependencyEdges => Set<DependencyEdgeRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

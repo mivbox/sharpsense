@@ -21,6 +21,14 @@ public interface IWorkspaceLoader : IDisposable
         string targetPath,
         CancellationToken ct = default);
 
+    Task<WorkspaceLoadResult> UpdateDocuments(
+        string targetPath,
+        IReadOnlyList<WorkspaceFileChange> changedFiles)
+        => UpdateDocuments(
+            targetPath,
+            changedFiles,
+            CancellationToken.None);
+
     /// <summary>
     /// Applies the supplied file changes to an already-loaded workspace, reloading the workspace when incremental document
     /// updates are no longer safe, and returns the updated solution snapshot plus any loader diagnostics.
@@ -32,6 +40,31 @@ public interface IWorkspaceLoader : IDisposable
     Task<WorkspaceLoadResult> UpdateDocuments(
         string targetPath,
         IReadOnlyList<WorkspaceFileChange> changedFiles,
+        CancellationToken ct = default);
+
+    Task<WorkspaceTextUpdateResult> ChangeDocumentText(
+        string targetPath,
+        string documentPath,
+        Func<SourceText, WorkspaceTextChange> changeText)
+        => ChangeDocumentText(
+            targetPath,
+            documentPath,
+            changeText,
+            CancellationToken.None);
+
+    /// <summary>
+    /// Applies a text mutation to every workspace document that maps to the supplied physical file path while holding the
+    /// cached workspace gate, then persists the Roslyn changes through the backing workspace.
+    /// </summary>
+    /// <param name="targetPath">The target path whose workspace should be mutated.</param>
+    /// <param name="documentPath">The physical file path of the document to mutate.</param>
+    /// <param name="changeText">The callback that produces the updated text from the current source text.</param>
+    /// <param name="ct"><see cref="CancellationToken"/> for the current mutation.</param>
+    /// <returns>The result of the text mutation.</returns>
+    Task<WorkspaceTextUpdateResult> ChangeDocumentText(
+        string targetPath,
+        string documentPath,
+        Func<SourceText, WorkspaceTextChange> changeText,
         CancellationToken ct = default);
 }
 
@@ -48,6 +81,12 @@ public sealed class WorkspaceLoadResult
     public Solution Solution { get; }
 
     public IReadOnlyList<string> Diagnostics { get; }
+
+    public IReadOnlyList<Project> OrderedProjects =>
+    [
+        .. Solution.Projects
+            .OrderBy(static project => project.FilePath ?? project.Name, StringComparer.Ordinal)
+    ];
 }
 
 public sealed class WorkspaceTextChange
@@ -67,6 +106,18 @@ public sealed class WorkspaceTextChange
     public SourceText? UpdatedText { get; }
 
     public string ErrorMessage { get; }
+
+    public static WorkspaceTextChange SuccessChange(SourceText updatedText)
+        => new(
+            true,
+            updatedText ?? throw new ArgumentNullException(nameof(updatedText)),
+            string.Empty);
+
+    public static WorkspaceTextChange Failure(string errorMessage)
+        => new(
+            false,
+            null,
+            errorMessage);
 }
 
 public sealed class WorkspaceTextUpdateResult

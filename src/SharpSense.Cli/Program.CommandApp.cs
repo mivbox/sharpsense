@@ -4,6 +4,7 @@ using SharpSense.Cli.Context;
 using SharpSense.Cli.Execute;
 using SharpSense.Cli.Inheritors;
 using SharpSense.Cli.Mcp;
+using SharpSense.Cli.Memory;
 using SharpSense.Cli.Refactor;
 using SharpSense.Cli.Search;
 using SharpSense.Cli.Shared;
@@ -75,6 +76,11 @@ public partial class Program
                 .AddCommand<McpCommand>("mcp")
                 .WithDescription("Start the MCP server over stdio.");
             AttachData(mcp, executionContext);
+
+            var memory = config
+                .AddCommand<MemoryCommand>("memory")
+                .WithDescription("Manage semantic memories: add <node-id>, remove <memory-id>, or list <node-id>.");
+            AttachData(memory, executionContext);
 
             var refactor = config
                 .AddCommand<RefactorSymbolCommand>("refactor")

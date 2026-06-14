@@ -1,4 +1,5 @@
 using SharpSense.Infrastructure.Persistence;
+using SharpSense.Application.HybridSearch.HybridSearch.Models;
 
 namespace SharpSense.Infrastructure.HybridSearch;
 
@@ -13,8 +14,8 @@ public interface IVectorScorer
     /// Returns normalized vector scores for the supplied candidate ids using the provided query embedding.
     /// </summary>
     Task<Dictionary<int, float>> GetScoresAsync(SharpSenseDbContext context,
+        HybridSearchQuery query,
         IReadOnlyList<int> candidateIds,
         float[] queryVector,
         CancellationToken ct);
 }
-

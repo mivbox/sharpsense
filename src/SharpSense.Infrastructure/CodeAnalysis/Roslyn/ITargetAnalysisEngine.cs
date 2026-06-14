@@ -12,6 +12,31 @@ namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 /// </summary>
 public interface ITargetAnalysisEngine
 {
+    Task<KnowledgeGraphExtractionPayload> Extract(
+        string targetPath,
+        Solution solution,
+        IRepositoryWorkspace repositoryWorkspace)
+        => Extract(
+            targetPath,
+            solution,
+            repositoryWorkspace,
+            progress: null,
+            diagnostics: null,
+            CancellationToken.None);
+
+    Task<KnowledgeGraphExtractionPayload> Extract(
+        string targetPath,
+        Solution solution,
+        IRepositoryWorkspace repositoryWorkspace,
+        CancellationToken ct)
+        => Extract(
+            targetPath,
+            solution,
+            repositoryWorkspace,
+            progress: null,
+            diagnostics: null,
+            ct);
+
     /// <summary>
     /// Extracts a full knowledge-graph payload from the supplied Roslyn solution.
     /// </summary>
@@ -30,6 +55,31 @@ public interface ITargetAnalysisEngine
         IReadOnlyCollection<string>? diagnostics = null,
         CancellationToken ct = default);
 
+    Task<KnowledgeGraphExtractionPayload> Extract(
+        string targetPath,
+        Project project,
+        IRepositoryWorkspace repositoryWorkspace)
+        => Extract(
+            targetPath,
+            project,
+            repositoryWorkspace,
+            progress: null,
+            diagnostics: null,
+            CancellationToken.None);
+
+    Task<KnowledgeGraphExtractionPayload> Extract(
+        string targetPath,
+        Project project,
+        IRepositoryWorkspace repositoryWorkspace,
+        CancellationToken ct)
+        => Extract(
+            targetPath,
+            project,
+            repositoryWorkspace,
+            progress: null,
+            diagnostics: null,
+            ct);
+
     /// <summary>
     /// Extracts a full knowledge-graph payload from the supplied Roslyn project.
     /// </summary>
@@ -47,6 +97,35 @@ public interface ITargetAnalysisEngine
         IProgress<IndexingProgress>? progress = null,
         IReadOnlyCollection<string>? diagnostics = null,
         CancellationToken ct = default);
+
+    Task<KnowledgeGraphExtractionPayload> ExtractIncremental(
+        string targetPath,
+        Solution solution,
+        IRepositoryWorkspace repositoryWorkspace,
+        IReadOnlyList<WorkspaceFileChange> changedFiles)
+        => ExtractIncremental(
+            targetPath,
+            solution,
+            repositoryWorkspace,
+            changedFiles,
+            progress: null,
+            diagnostics: null,
+            CancellationToken.None);
+
+    Task<KnowledgeGraphExtractionPayload> ExtractIncremental(
+        string targetPath,
+        Solution solution,
+        IRepositoryWorkspace repositoryWorkspace,
+        IReadOnlyList<WorkspaceFileChange> changedFiles,
+        CancellationToken ct)
+        => ExtractIncremental(
+            targetPath,
+            solution,
+            repositoryWorkspace,
+            changedFiles,
+            progress: null,
+            diagnostics: null,
+            ct);
 
     /// <summary>
     /// Extracts an incremental knowledge-graph payload for the supplied Roslyn solution after a set of workspace file

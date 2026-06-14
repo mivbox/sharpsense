@@ -12,6 +12,7 @@ using SharpSense.Application.Refactoring;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Application.HybridSearch;
 using SharpSense.Application.ImpactAnalysis;
+using SharpSense.Application.Memory;
 using SharpSense.Application.Trace;
 using SharpSense.Infrastructure.Context360;
 using SharpSense.Infrastructure.CommandExecution;
@@ -21,6 +22,7 @@ using SharpSense.Infrastructure.HybridSearch;
 using SharpSense.Infrastructure.Inheritors;
 using SharpSense.Infrastructure.ImpactAnalysis;
 using SharpSense.Infrastructure.Indexing;
+using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Refactoring;
 using SharpSense.Infrastructure.Storage;
@@ -61,6 +63,8 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
         services.AddContext360Infrastructure();
         services.AddHybridSearch();
         services.AddHybridSearchInfrastructure();
+        services.AddMemory();
+        services.AddMemoryInfrastructure();
         services.AddEmbeddingsInfrastructure();
         services.AddRefactoring();
         services.AddRefactoringInfrastructure();
@@ -91,6 +95,7 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
     private static JsonSerializerOptions CreateToolSerializerOptions()
     {
         var serializerOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<SharpSense.Domain.KnowledgeGraph.Enums.EdgeCategory>());
         serializerOptions.Converters.Add(new JsonStringEnumConverter<TraceDirection>());
         return serializerOptions;
     }

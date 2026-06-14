@@ -3,7 +3,6 @@ using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
@@ -108,11 +107,17 @@ internal static class RoslynSymbolUtilities
     {
         ArgumentNullException.ThrowIfNull(declarationSyntax);
 
-        return declarationSyntax switch
+        var normalizedDeclaration = string.Concat(
+            declarationSyntax
+                .DescendantTokens()
+                .Select(static token => token.Text));
+        if (string.IsNullOrEmpty(normalizedDeclaration))
         {
-            MethodDeclarationSyntax methodDeclaration => HashMethodBody(methodDeclaration),
-            _ => null
-        };
+            return null;
+        }
+
+        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedDeclaration));
+        return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
 
     private static string ExtractDocumentationElementText(
@@ -255,29 +260,4 @@ internal static class RoslynSymbolUtilities
         return normalizedBuilder.ToString().Trim();
     }
 
-    private static string? HashMethodBody(MethodDeclarationSyntax methodDeclaration)
-    {
-        if (methodDeclaration.Body is null && methodDeclaration.ExpressionBody is null)
-        {
-            return null;
-        }
-
-        var bodyText = methodDeclaration.Body is not null
-            ? GetDelimitedText(
-                methodDeclaration.SyntaxTree,
-                methodDeclaration.Body.OpenBraceToken.Span.End,
-                methodDeclaration.Body.CloseBraceToken.SpanStart)
-            : methodDeclaration.ExpressionBody!.Expression.ToFullString();
-        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(bodyText));
-        return Convert.ToHexString(hashBytes).ToLowerInvariant();
-    }
-
-    private static string GetDelimitedText(
-        SyntaxTree syntaxTree,
-        int start,
-        int end)
-    {
-        var span = TextSpan.FromBounds(start, end);
-        return syntaxTree.GetText().ToString(span);
-    }
 }

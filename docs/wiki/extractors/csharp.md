@@ -3,7 +3,7 @@ title: "CSharp"
 type: extractor
 tags: [csharp, roslyn, implemented]
 created: 2026-04-26
-updated: 2026-05-12
+updated: 2026-05-14
 confidence: high
 ---
 
@@ -19,7 +19,7 @@ C#. `CSharpLanguageExtractor` is the Roslyn-backed extractor that turns a Target
 4. `ITargetAnalysisEngine` creates repository-relative project ids and project nodes for the ordered projects in the workspace snapshot.
 5. `NodeExtractor` walks the ordered projects and documents to emit `CodeNode` records plus the symbol maps needed for edge construction.
 6. For C# declarations, `RoslynSymbolUtilities` now extracts only `<summary>` and `<remarks>` text, strips nested XML formatting, ignores low-signal tags such as `<param>`, `<returns>`, and `<exception>`, and stores that intent text separately from the rendered signature.
-7. `NodeExtractor` also computes a one-way SHA-256 hash for method bodies only. The raw method-body text never leaves the Roslyn pass; only the hash is carried forward into persistence.
+7. `NodeExtractor` also computes a one-way SHA-256 hash from the declaration syntax after stripping every `SyntaxTrivia` entry (whitespace, formatting, comments) from the declaration tokens. Trivia-only edits therefore leave `BodyHash` stable, while structural code changes still invalidate the persisted hash.
 8. `EdgeExtractor` consumes the same Roslyn snapshot and symbol maps to emit dependency edges.
 9. Roslyn edge extraction now emits structural `ParentOf` relationships in addition to functional edges: projects parent top-level types, containing types parent nested types, and types parent declared methods, properties, and fields. Namespaces stay unmodeled, so top-level types attach directly to their project node.
 10. Member dependency extraction also re-walks lambda expressions passed as invocation arguments, so mocking-style calls such as `Setup(x => x.ProcessPayment())` can still emit a `MethodCall` edge to the interface method discovered inside the lambda body.
@@ -32,7 +32,7 @@ C#. `CSharpLanguageExtractor` is the Roslyn-backed extractor that turns a Target
 3. Modified-document reads now retry across short transient failures; if the file still cannot be read stably, the loader falls back to reloading the Roslyn workspace instead of failing the whole batch immediately.
 4. Any add, delete, rename, or unresolved file also forces a workspace reload so Roslyn state never drifts from the real Target.
 5. `ITargetAnalysisEngine.ExtractIncremental()` analyzes only the changed documents from the updated in-memory `Solution`.
-6. Incremental C# indexing now compares the newly extracted `SearchText` and `BodyHash` against the persisted rows for the changed files. Matching nodes reuse their stored vector embedding, while new or stale nodes regenerate embeddings before persistence.
+6. Incremental C# indexing now compares the newly extracted `SearchText` and trivia-insensitive `BodyHash` against the persisted rows for the changed files. Matching nodes reuse their stored vector embedding, while new or stale nodes regenerate embeddings before persistence.
 7. The resulting nodes and edges flow through the RelativeFilePath-targeted overwrite path coordinated by [[architecture/incremental-watch]].
 8. Because the analysis engine accepts in-memory `Solution` and `Project` models directly, the default Roslyn tests can exercise extraction through `AdhocWorkspace` instead of temp directories.
 

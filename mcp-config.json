@@ -16,7 +16,10 @@
         "refactor_symbol",
         "context",
         "get_inheritors",
-        "ctx_execute"
+        "ctx_execute",
+        "attach_memory",
+        "delete_memory",
+        "get_memory"
       ],
       "type": "stdio"
     }

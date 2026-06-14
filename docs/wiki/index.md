@@ -42,6 +42,7 @@ raw sources, provides architectural directives, and directs queries. The human n
 * [[cli/trace-command]] - The `trace` route, caller/callee dispatch, and output shaping.
 * [[cli/refactor-command]] - The `refactor` route, shared Application write boundary, and watcher-backed index refresh contract.
 * [[cli/mcp-command]] - The `mcp` route and stdio MCP host composition.
+* [[cli/memory-command]] - The `memory` route for adding, listing, fetching, and removing persistent semantic memories.
 * [[cli/ui-command]] - The `ui` route, embedded asset host, workspace-tree API, and opt-in dependency graph API.
 
 ### Extractors

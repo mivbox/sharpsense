@@ -5,6 +5,8 @@ using System.Security.Cryptography;
 using System.Text;
 using AwesomeAssertions;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.DependencyInjection;
 using SharpSense.Application.Indexing.Models;
@@ -335,9 +337,9 @@ public sealed class RoslynTargetAnalysisEngineTests
         documentedMethod.Summary.Should().NotContain("Ignored return text");
         documentedMethod.Summary.Should().NotContain("Ignored exception text");
         documentedMethod.SearchText.Should().Be("DocumentedProcessor.Process(string)\nProcesses inbound messages.\nWrites audit entries and returns null when empty.");
-        documentedMethod.BodyHash.Should().Be(ComputeHash("\n        return payload.Trim();\n    "));
+        documentedMethod.BodyHash.Should().Be(ComputeSyntaxHash<MethodDeclarationSyntax>(documentedSource));
         fallbackMethod.SearchText.Should().Be("MessageConsumer.Render()");
-        interfaceMethod.BodyHash.Should().BeNull();
+        interfaceMethod.BodyHash.Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -635,6 +637,17 @@ public sealed class RoslynTargetAnalysisEngineTests
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(bodyText));
         return Convert.ToHexString(hashBytes).ToLowerInvariant();
     }
+
+    private static string ComputeSyntaxHash<TSyntaxNode>(string source)
+        where TSyntaxNode : SyntaxNode
+        => ComputeHash(string.Concat(
+            CSharpSyntaxTree.ParseText(source)
+                .GetRoot()
+                .DescendantNodes()
+                .OfType<TSyntaxNode>()
+                .Single()
+                .DescendantTokens()
+                .Select(static token => token.Text)));
 
     private sealed record FixtureSolution(
         Solution Solution,

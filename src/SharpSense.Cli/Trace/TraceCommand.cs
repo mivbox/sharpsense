@@ -4,6 +4,8 @@ using Microsoft.Extensions.Hosting;
 using SharpSense.Application.ImpactAnalysis;
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
+using SharpSense.Application.Memory;
+using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Shared.Options;
@@ -13,6 +15,7 @@ using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Shared;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.ImpactAnalysis;
+using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
 using SharpSense.Infrastructure.Trace;
@@ -39,6 +42,9 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
 
         [CommandOption("--include-structural")]
         public bool IncludeStructural { get; init; }
+
+        [CommandOption("--include-memories")]
+        public bool IncludeMemories { get; init; }
 
         [CommandOption("--repo-root <path>")]
         public string? RepositoryRoot { get; init; }
@@ -67,6 +73,8 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
         services.AddImpactAnalysisInfrastructure();
         services.AddTrace();
         services.AddTraceInfrastructure();
+        services.AddMemory();
+        services.AddMemoryInfrastructure();
         services.AddPersistence();
     }
 
@@ -115,12 +123,22 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
                 throw new InvalidOperationException($"Unsupported direction '{direction}'.");
         }
 
+        IReadOnlyDictionary<int, SharpSense.Domain.KnowledgeGraph.Nodes.MemoryNode[]>? memoriesByNodeId = null;
+        if (settings.IncludeMemories && rootNode is not null)
+        {
+            var memoryRepository = services.GetRequiredService<IMemoryRepository>();
+            memoriesByNodeId = await memoryRepository.GetNodeMemories(
+                [rootNode.Id, .. nodes.Select(static node => node.Id)],
+                intents: null,
+                ct);
+        }
+
         var output = settings.UseToonFormat
             ? rootNode is null
                 ? string.Empty
                 : direction == "caller"
-                    ? TokenObjectNotation.SerializeCallerTrace(rootNode, nodes, impactResult?.Dependencies ?? [])
-                    : TokenObjectNotation.SerializeCalleeTrace(rootNode, nodes)
+                    ? TokenObjectNotation.SerializeCallerTrace(rootNode, nodes, impactResult?.Dependencies ?? [], memoriesByNodeId)
+                    : TokenObjectNotation.SerializeCalleeTrace(rootNode, nodes, memoriesByNodeId)
             : JsonSerializer.Serialize(nodes, TokenObjectNotation.JsonOptions);
 
         CommandOutput.Write(context, output);
