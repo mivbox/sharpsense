@@ -7,7 +7,7 @@ using SharpSense.Application.Memory.GetNodeMemories.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 
-namespace SharpSense.Application.Tests.Memory.GetNodeMemories;
+namespace SharpSense.Application.Tests.Features.Memory.GetNodeMemories;
 
 public sealed class GetNodeMemoriesQueryHandlerTests
 {

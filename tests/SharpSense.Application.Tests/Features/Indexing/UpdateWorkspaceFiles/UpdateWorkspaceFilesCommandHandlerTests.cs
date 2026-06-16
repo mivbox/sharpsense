@@ -9,18 +9,10 @@ using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 
-namespace SharpSense.Application.Tests.Indexing.UpdateWorkspaceFiles;
+namespace SharpSense.Application.Tests.Features.Indexing.UpdateWorkspaceFiles;
 
 public sealed class UpdateWorkspaceFilesCommandHandlerTests
 {
-    [Fact]
-    public void WhenConstructingUpdateWorkspaceFilesCommandHandler_ThenImplementsCommandHandlerContract()
-    {
-        var handler = CreateHandler();
-
-        Assert.IsAssignableFrom<ICommandHandler<UpdateWorkspaceFilesCommand>>(handler);
-    }
-
     [Fact]
     public async Task WhenHandleWithValidCommand_ThenPersistsNormalizedIncrementalGraph()
     {

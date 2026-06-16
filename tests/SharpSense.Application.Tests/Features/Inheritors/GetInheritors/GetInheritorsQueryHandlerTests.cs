@@ -6,7 +6,7 @@ using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 
-namespace SharpSense.Application.Tests.Inheritors.GetInheritors;
+namespace SharpSense.Application.Tests.Features.Inheritors.GetInheritors;
 
 public sealed class GetInheritorsQueryHandlerTests
 {

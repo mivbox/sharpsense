@@ -1,11 +1,11 @@
 using Moq;
-using SharpSense.Application.ImpactAnalysis.Models;
+using SharpSense.Application.ImpactAnalysis.Abstractions;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
-using SharpSense.Application.ImpactAnalysis.Abstractions;
+using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.Shared.Abstractions;
 
-namespace SharpSense.Application.Tests.ImpactAnalysis.ImpactAnalysis;
+namespace SharpSense.Application.Tests.Features.ImpactAnalysis.ImpactAnalysis;
 
 public sealed class ImpactAnalysisQueryHandlerTests
 {

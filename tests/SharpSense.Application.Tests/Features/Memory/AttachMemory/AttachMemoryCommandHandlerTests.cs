@@ -6,7 +6,7 @@ using SharpSense.Application.Memory.AttachMemory;
 using SharpSense.Application.Memory.AttachMemory.Models;
 using SharpSense.Application.Shared.Abstractions;
 
-namespace SharpSense.Application.Tests.Memory.AttachMemory;
+namespace SharpSense.Application.Tests.Features.Memory.AttachMemory;
 
 public sealed class AttachMemoryCommandHandlerTests
 {
