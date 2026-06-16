@@ -761,8 +761,14 @@ public sealed class KnowledgeGraphRepository(
             return;
         }
 
+        var attachedFullyQualifiedNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var codeNode in codeNodes)
         {
+            if (attachedFullyQualifiedNames.Contains(codeNode.FullyQualifiedName))
+            {
+                continue;
+            }
+
             if (identityMaps.GraphNodeIdsByCanonicalId.ContainsKey(codeNode.FullyQualifiedName))
             {
                 context.CodeNodes.Update(codeNode);
@@ -771,6 +777,8 @@ public sealed class KnowledgeGraphRepository(
             {
                 context.CodeNodes.Add(codeNode);
             }
+
+            attachedFullyQualifiedNames.Add(codeNode.FullyQualifiedName);
         }
     }
 
