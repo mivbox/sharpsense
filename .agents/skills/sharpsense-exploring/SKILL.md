@@ -47,6 +47,34 @@ memories, and strictly constrain its output. Use this exact template for the tas
 6. **[Memory Retrieval]**: If `context` or `trace` surfaces memory IDs (shown as `id + tags + stale`), call
    `get_memory(memoryId)` to read the full markdown content for relevant tags.
 
+### 2a. `semantic_search` Query Syntax
+
+`semantic_search` is hybrid (BM25 keyword + sqlite-vec cosine). The query string is
+tokenized in C# (split on `.`, `:`, `-`, `_`, `/`, `\\`, `(`, `)`, `[`, `]`, `<`, `>`,
+`,`, `;`, whitespace), then each token is forwarded to SQLite FTS5 as a **prefix
+term** (`token*`). That means partial words already match (`Mess` finds
+`MessageProvider`). Vector cosine is also evaluated for every candidate and the
+two signals are fused in `HybridScoringExtensions`.
+
+For the FTS5 side, you can use the standard SQLite FTS5 query operators inside
+the query string and they will be forwarded verbatim:
+
+| Operator | Meaning | Example |
+| --- | --- | --- |
+| `(implicit)` | Token1 AND Token2 | `Message Get` matches nodes whose FTS row contains both |
+| `OR` | Either token | `Message OR Mailer` matches either |
+| `NOT` | Exclude a token | `Provider NOT Test` matches `MessageProvider` but not `TestProvider` |
+| `"phrase"` | Exact phrase (tokens must be adjacent in the source order) | `"Get Message"` matches the literal substring |
+| `term*` | Prefix match (this is what bare tokens already expand to) | `Mess*` returns every token starting with `Mess` |
+| `column:` | Restrict to one FTS5 column | `FullyQualifiedName:Message` |
+| `NEAR(x y)` | Tokens within 10 tokens of each other | `Message NEAR Provider` |
+
+> **Tip:** do NOT quote a token unless you need a literal phrase match. Quoting
+> disables prefix expansion and breaks partial-word search.
+
+> **Tip:** combine operators to scope tightly. `FullyQualifiedName:Message
+> NOT Test` is valid FTS5 and is forwarded as-is.
+
 *(Note: If the index is missing the target area, run `sharpsense analyze <target>` via `ctx_execute` first).*
 
 ## 3. Parent Agent Re-Integration (The Read Phase)
