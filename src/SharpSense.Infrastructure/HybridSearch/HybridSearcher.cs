@@ -18,8 +18,10 @@ namespace SharpSense.Infrastructure.HybridSearch;
 /// <summary>
 /// Runs the persisted hybrid-search pipeline against <c>CodeNodes</c>. A single SQLite CTE ranks candidates using
 /// Reciprocal Rank Fusion of BM25 keyword scores (FTS5 over <c>CodeNodeSearch</c>) and vector cosine distance
-/// (sqlite-vec over <c>CodeNodes.VectorEmbedding</c>). The orchestrator then hydrates the ordered ids back into the
-/// full <see cref="CodeNode"/> projection consumed by the CLI and MCP read surfaces.
+/// (sqlite-vec over <c>CodeNodes.VectorEmbedding</c>). When <c>IncludeMemories</c> is set, the keyword match
+/// query and query vector are also evaluated against the <c>MemoryNodes</c> table — joined to the owning
+/// <c>CodeNodes</c> row — so memory-tagged content can promote its target node. Project/NodeType filters and
+/// the optional tag filter push into the CTEs so ranking only happens over the relevant subset.
 /// </summary>
 public sealed class HybridSearcher(
     IDbContextFactory<SharpSenseDbContext> dbContextFactory,
@@ -31,48 +33,6 @@ public sealed class HybridSearcher(
     private const int MinimumCandidateLimit = 50;
     private const int MaximumCandidateLimit = 250;
     private const int RrfConstant = 60;
-
-    private static readonly string HybridSearchRrfQuery =
-        $$"""
-        WITH bm25_ranked AS (
-            SELECT CAST(c.Id AS INTEGER) AS Id, ROW_NUMBER() OVER (ORDER BY bm25(CodeNodeSearch) ASC) AS rank
-            FROM CodeNodeSearch
-            INNER JOIN CodeNodes c ON c.Id = CodeNodeSearch.Id
-            WHERE CodeNodeSearch MATCH @matchQuery
-              AND (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
-              AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))
-            ORDER BY bm25(CodeNodeSearch) ASC
-            LIMIT @candidateLimit
-        ),
-        vec_ranked AS (
-            SELECT c.Id AS Id, ROW_NUMBER() OVER (ORDER BY vec_distance_cosine(c.VectorEmbedding, vec_f32(@queryVector)) ASC) AS rank
-            FROM CodeNodes c
-            WHERE c.VectorEmbedding IS NOT NULL
-              AND (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
-              AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))
-            ORDER BY vec_distance_cosine(c.VectorEmbedding, vec_f32(@queryVector)) ASC
-            LIMIT @candidateLimit
-        ),
-        rrf AS (
-            SELECT bm25_ranked.Id AS Id,
-                   1.0 / (@rrf + bm25_ranked.rank) AS bm25_rrf,
-                   1.0 / (@rrf + COALESCE(vec_ranked.rank, @missingRank)) AS vec_rrf
-            FROM bm25_ranked
-            LEFT JOIN vec_ranked ON vec_ranked.Id = bm25_ranked.Id
-            UNION ALL
-            SELECT vec_ranked.Id AS Id,
-                   1.0 / (@rrf + COALESCE(bm25_ranked.rank, @missingRank)) AS bm25_rrf,
-                   1.0 / (@rrf + vec_ranked.rank) AS vec_rrf
-            FROM vec_ranked
-            LEFT JOIN bm25_ranked ON bm25_ranked.Id = vec_ranked.Id
-            WHERE bm25_ranked.Id IS NULL
-        )
-        SELECT Id, SUM(bm25_rrf + vec_rrf) AS rrf_score
-        FROM rrf
-        GROUP BY Id
-        ORDER BY rrf_score DESC
-        LIMIT @resultLimit;
-        """;
 
     public async Task<HybridSearchResult> Search(HybridSearchQuery query, CancellationToken ct)
     {
@@ -117,6 +77,8 @@ public sealed class HybridSearcher(
             queryVector,
             projectNodeId,
             query.IncludedNodeTypes ?? [],
+            query.TagFilters,
+            query.IncludeMemories,
             candidateLimit,
             query.Limit,
             ct);
@@ -148,6 +110,8 @@ public sealed class HybridSearcher(
         float[] queryVector,
         int? projectNodeId,
         IReadOnlyCollection<NodeType> includedNodeTypes,
+        string[]? tagFilters,
+        bool includeMemories,
         int candidateLimit,
         int resultLimit,
         CancellationToken ct)
@@ -159,7 +123,7 @@ public sealed class HybridSearcher(
         }
 
         await using var command = connection.CreateCommand();
-        command.CommandText = HybridSearchRrfQuery;
+        command.CommandText = BuildRrfQuery(tagFilters, includeMemories);
 
         AddParameter(command, "@matchQuery", matchQuery);
         AddParameter(command, "@queryVector", ConvertToBytes(queryVector));
@@ -169,7 +133,9 @@ public sealed class HybridSearcher(
         AddParameter(command, "@candidateLimit", candidateLimit);
         AddParameter(command, "@resultLimit", resultLimit);
         AddParameter(command, "@rrf", RrfConstant);
-        AddParameter(command, "@missingRank", MaximumCandidateLimit + 1);
+        AddParameter(command, "@memorySearchText", matchQuery.ToLowerInvariant());
+
+        MemorySearchSql.AddTagFilterParameters(command, tagFilters);
 
         var rankedIds = new List<int>();
         await using var reader = await command.ExecuteReaderAsync(ct);
@@ -182,6 +148,96 @@ public sealed class HybridSearcher(
         }
 
         return rankedIds.ToArray();
+    }
+
+    private static string BuildRrfQuery(string[]? tagFilters, bool includeMemories)
+    {
+        var memoryTagFilterClause = includeMemories
+            ? MemorySearchSql.BuildTagFilterClause(tagFilters, "m.TagsJson")
+            : string.Empty;
+
+        var memoryCtes = includeMemories
+            ? $$"""
+
+            ,
+            memory_bm25 AS (
+                SELECT c.Id AS Id, ROW_NUMBER() OVER (ORDER BY memory_hits.score DESC) AS rank
+                FROM (
+                    SELECT m.TargetFullyQualifiedName AS fqn,
+                           (CASE WHEN instr(lower(m.Content), @memorySearchText) > 0 THEN 12 ELSE 0 END
+                            + CASE WHEN instr(lower(m.TargetFullyQualifiedName), @memorySearchText) > 0 THEN 8 ELSE 0 END
+                            + CASE WHEN EXISTS (SELECT 1 FROM json_each(m.TagsJson) AS tag WHERE instr(lower(CAST(tag.value AS TEXT)), @memorySearchText) > 0) THEN 10 ELSE 0 END
+                           ) AS score
+                    FROM MemoryNodes m
+                    WHERE (instr(lower(m.Content), @memorySearchText) > 0
+                           OR instr(lower(m.TargetFullyQualifiedName), @memorySearchText) > 0
+                           OR EXISTS (SELECT 1 FROM json_each(m.TagsJson) AS tag WHERE instr(lower(CAST(tag.value AS TEXT)), @memorySearchText) > 0)){{memoryTagFilterClause}}
+                ) memory_hits
+                INNER JOIN CodeNodes c ON c.FullyQualifiedName = memory_hits.fqn
+                WHERE (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
+                  AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))
+                ORDER BY memory_hits.score DESC
+                LIMIT @candidateLimit
+            ),
+            memory_vec AS (
+                SELECT c.Id AS Id, ROW_NUMBER() OVER (ORDER BY vec_distance_cosine(m.VectorEmbedding, vec_f32(@queryVector)) ASC) AS rank
+                FROM MemoryNodes m
+                INNER JOIN CodeNodes c ON c.FullyQualifiedName = m.TargetFullyQualifiedName
+                WHERE m.VectorEmbedding IS NOT NULL{{memoryTagFilterClause}}
+                  AND (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
+                  AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))
+                ORDER BY vec_distance_cosine(m.VectorEmbedding, vec_f32(@queryVector)) ASC
+                LIMIT @candidateLimit
+            )
+            """
+            : string.Empty;
+
+        var rankedSourcesUnion = includeMemories
+            ? """
+                SELECT 'code_bm25' AS src, Id, rank FROM code_bm25
+                UNION ALL
+                SELECT 'code_vec', Id, rank FROM code_vec
+                UNION ALL
+                SELECT 'memory_bm25', Id, rank FROM memory_bm25
+                UNION ALL
+                SELECT 'memory_vec', Id, rank FROM memory_vec
+              """
+            : """
+                SELECT 'code_bm25' AS src, Id, rank FROM code_bm25
+                UNION ALL
+                SELECT 'code_vec', Id, rank FROM code_vec
+              """;
+
+        return
+            $$"""
+            WITH code_bm25 AS (
+                SELECT CAST(c.Id AS INTEGER) AS Id, ROW_NUMBER() OVER (ORDER BY bm25(CodeNodeSearch) ASC) AS rank
+                FROM CodeNodeSearch
+                INNER JOIN CodeNodes c ON c.Id = CodeNodeSearch.Id
+                WHERE CodeNodeSearch MATCH @matchQuery
+                  AND (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
+                  AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))
+                ORDER BY bm25(CodeNodeSearch) ASC
+                LIMIT @candidateLimit
+            ),
+            code_vec AS (
+                SELECT c.Id AS Id, ROW_NUMBER() OVER (ORDER BY vec_distance_cosine(c.VectorEmbedding, vec_f32(@queryVector)) ASC) AS rank
+                FROM CodeNodes c
+                WHERE c.VectorEmbedding IS NOT NULL
+                  AND (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
+                  AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))
+                ORDER BY vec_distance_cosine(c.VectorEmbedding, vec_f32(@queryVector)) ASC
+                LIMIT @candidateLimit
+            ){{memoryCtes}},
+            ranked_sources AS (
+            {{rankedSourcesUnion}}
+            )
+            SELECT Id
+            FROM ranked_sources
+            GROUP BY Id
+            ORDER BY SUM(1.0 / (@rrf + rank)) DESC
+            LIMIT @resultLimit;
+            """;
     }
 
     private static void AddParameter(DbCommand command, string name, object value)
