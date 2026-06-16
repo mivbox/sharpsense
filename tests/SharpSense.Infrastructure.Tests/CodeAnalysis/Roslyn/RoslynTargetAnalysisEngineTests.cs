@@ -48,6 +48,10 @@ public sealed class RoslynTargetAnalysisEngineTests
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "Contracts.IMessageProvider");
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "App.MessageProvider");
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "App.MessageConsumer.Render()");
+        payload.CodeNodes
+            .Select(static codeNode => codeNode.FullyQualifiedName)
+            .Distinct(StringComparer.Ordinal)
+            .Should().HaveCount(payload.CodeNodes.Count);
         AssertContainsEdge(
             payload.Edges,
             fullyQualifiedNamesById,
