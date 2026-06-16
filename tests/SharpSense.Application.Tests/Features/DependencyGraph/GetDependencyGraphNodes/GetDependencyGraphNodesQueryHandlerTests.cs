@@ -5,7 +5,7 @@ using SharpSense.Application.DependencyGraph.GetDependencyGraphNodes.Models;
 using SharpSense.Application.DependencyGraph.Models;
 using SharpSense.Application.Shared.Abstractions;
 
-namespace SharpSense.Application.Tests.DependencyGraph.GetDependencyGraphNodes;
+namespace SharpSense.Application.Tests.Features.DependencyGraph.GetDependencyGraphNodes;
 
 public sealed class GetDependencyGraphNodesQueryHandlerTests
 {

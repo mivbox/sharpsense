@@ -1,9 +1,11 @@
+using FluentResults;
 using Microsoft.Extensions.Options;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Indexing.UpdateWorkspaceFiles.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Diagnostics;
+using SharpSense.Application.Shared.Errors;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Shared.Options;
 
@@ -16,13 +18,13 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
     IIndexingWorkspacePaths workspacePaths,
     IWorkspaceFileDiscoverer workspaceFileDiscoverer,
     IOptions<SharpSenseCliOptions> cliOptions)
-    : ICommandHandler<UpdateWorkspaceFilesCommand>
+    : ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>
 {
     private static readonly string[] MarkdownExtensions = [".md", ".markdown", ".mdown", ".mkd"];
     private static readonly string[] IncrementalDiscoveryGlobs = ["**/*.cs", "**/*.md", "**/*.markdown", "**/*.mdown", "**/*.mkd"];
     private readonly SharpSenseCliOptions _cliOptions = cliOptions?.Value ?? throw new ArgumentNullException(nameof(cliOptions));
 
-    public async Task Handle(UpdateWorkspaceFilesCommand command, CancellationToken ct)
+    public async Task<Result<UpdateWorkspaceFilesOutcome>> Handle(UpdateWorkspaceFilesCommand command, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(command.ChangedFiles);
@@ -41,15 +43,22 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
         {
             if (expandedChangedFiles.Count == 0 || changedFilePaths.Length == 0)
             {
-                return;
+                return Result.Ok(new UpdateWorkspaceFilesOutcome(0, 0, 0));
             }
 
             using var extractActivity = SharpSenseTraceSpan.Start("index.extract.incremental");
-            var extractedNodes = await Extract(
+            var extractionResult = await Extract(
                 new IncrementalExtractionContext(absoluteTargetPath, expandedChangedFiles, command.Progress),
                 extractActivity,
                 ct);
 
+            if (extractionResult.IsFailed)
+            {
+                trace.SetError();
+                return Result.Fail(extractionResult.Errors);
+            }
+
+            var extractedNodes = extractionResult.Value;
             extractedNodes = NormalizePersistedPaths(extractedNodes);
             if (extractedNodes.CodeNodes.Count > 0)
             {
@@ -81,15 +90,29 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
             trace.AddTag("index.code_node.count", extractedNodes.CodeNodes.Count);
             trace.AddTag("index.dependency.count", extractedNodes.Edges.Count);
             trace.AddTag("index.diagnostic.count", extractedNodes.Diagnostics.Count);
+
+            return Result.Ok(new UpdateWorkspaceFilesOutcome(
+                ProjectsReindexed: extractedNodes.Projects.Count,
+                CodeNodesPersisted: extractedNodes.CodeNodes.Count,
+                DependencyEdgesPersisted: extractedNodes.Edges.Count));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            trace.SetError();
+            return Result.Fail(new ServiceError(
+                ServiceErrorCode.FailedPrecondition,
+                $"Incremental update of '{absoluteTargetPath}' was cancelled."));
         }
         catch (Exception exception)
         {
             trace.RecordExceptionAndErrorStatus(exception);
-            throw;
+            return Result.Fail(new ServiceError(
+                ServiceErrorCode.InternalError,
+                $"Incremental update of '{absoluteTargetPath}' failed: {exception.Message}"));
         }
     }
 
-    private async Task<ExtractedNodes> Extract(
+    private async Task<Result<ExtractedNodes>> Extract(
         IncrementalExtractionContext context,
         SharpSenseTraceSpan extractActivity,
         CancellationToken ct)
@@ -98,10 +121,22 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
         var aggregatedCodeNodes = new List<IndexedCodeNode>();
         var aggregatedEdges = new List<IndexedDependency>();
         var aggregatedDiagnostics = new List<string>();
+        var allErrors = new List<ServiceError>();
 
         foreach (var extractor in extractors)
         {
-            var extractedNodes = await extractor.ExtractIncremental(context, ct);
+            var extractionResult = await extractor.ExtractIncremental(context, ct);
+
+            if (extractionResult.IsFailed)
+            {
+                allErrors.AddRange(extractionResult.Errors.Select(error =>
+                    error is ServiceError serviceError
+                        ? serviceError
+                        : new ServiceError(ServiceErrorCode.ThirdPartyError, error.Message)));
+                continue;
+            }
+
+            var extractedNodes = extractionResult.Value;
 
             aggregatedProjects.AddRange(extractedNodes.Projects);
             aggregatedCodeNodes.AddRange(extractedNodes.CodeNodes);
@@ -114,7 +149,12 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
             extractActivity.AddTag($"index.extractor.{extractor.ExtractorName}.diagnostic.count", extractedNodes.Diagnostics.Count);
         }
 
-        return new ExtractedNodes(
+        if (allErrors.Count > 0)
+        {
+            return Result.Fail(allErrors);
+        }
+
+        return Result.Ok(new ExtractedNodes(
             [
                 .. aggregatedProjects
                     .OrderBy(static project => project.Name, StringComparer.Ordinal)
@@ -131,7 +171,7 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
                     .ThenBy(static edge => edge.CalleeId, StringComparer.Ordinal)
                     .ThenBy(static edge => edge.EdgeType)
             ],
-            aggregatedDiagnostics);
+            aggregatedDiagnostics));
     }
 
     private async Task<IReadOnlyList<WorkspaceFileChange>> ExpandDirectoryChanges(

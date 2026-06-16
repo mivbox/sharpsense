@@ -1,6 +1,8 @@
+using FluentResults;
 using Microsoft.CodeAnalysis;
-using SharpSense.Application.Indexing.Models;
 using Microsoft.CodeAnalysis.Text;
+using SharpSense.Application.Indexing.Models;
+using SharpSense.Application.Shared.Errors;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
@@ -11,17 +13,21 @@ namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 public interface IWorkspaceLoader : IDisposable
 {
     /// <summary>
-    /// Loads the supplied target into a cached Roslyn workspace and returns the current solution snapshot plus any loader
-    /// diagnostics raised while opening the target.
+    /// Loads the supplied target into a cached Roslyn workspace and returns the resulting solution snapshot wrapped in
+    /// a <see cref="Result{T}"/>. The result carries any loader diagnostics raised while opening the target.
     /// </summary>
     /// <param name="targetPath">The target path to load.</param>
     /// <param name="ct"><see cref="CancellationToken"/> for the current load operation.</param>
-    /// <returns>The current workspace load result for the supplied target.</returns>
-    Task<WorkspaceLoadResult> Load(
+    /// <returns>
+    /// <see cref="Result.Ok(T)"/> with a <see cref="WorkspaceLoadResult"/> when the workspace opened cleanly, or
+    /// <see cref="Result.Fail(string)"/> with one or more <see cref="ServiceError"/> entries when MSBuild reported critical
+    /// project-load failures or <c>OpenSolutionAsync</c> threw.
+    /// </returns>
+    Task<Result<WorkspaceLoadResult>> Load(
         string targetPath,
         CancellationToken ct = default);
 
-    Task<WorkspaceLoadResult> UpdateDocuments(
+    Task<Result<WorkspaceLoadResult>> UpdateDocuments(
         string targetPath,
         IReadOnlyList<WorkspaceFileChange> changedFiles)
         => UpdateDocuments(
@@ -31,13 +37,17 @@ public interface IWorkspaceLoader : IDisposable
 
     /// <summary>
     /// Applies the supplied file changes to an already-loaded workspace, reloading the workspace when incremental document
-    /// updates are no longer safe, and returns the updated solution snapshot plus any loader diagnostics.
+    /// updates are no longer safe. Returns the updated solution snapshot wrapped in a <see cref="Result{T}"/> so any
+    /// reload-time critical diagnostics propagate as <see cref="ServiceError"/> instances.
     /// </summary>
     /// <param name="targetPath">The target path whose workspace should be refreshed.</param>
     /// <param name="changedFiles">The file changes to apply.</param>
     /// <param name="ct"><see cref="CancellationToken"/> for the current update operation.</param>
-    /// <returns>The updated workspace load result.</returns>
-    Task<WorkspaceLoadResult> UpdateDocuments(
+    /// <returns>
+    /// <see cref="Result.Ok(T)"/> on a clean update, or <see cref="Result.Fail(string)"/> when the underlying reload
+    /// raised critical diagnostics.
+    /// </returns>
+    Task<Result<WorkspaceLoadResult>> UpdateDocuments(
         string targetPath,
         IReadOnlyList<WorkspaceFileChange> changedFiles,
         CancellationToken ct = default);
@@ -73,14 +83,25 @@ public sealed class WorkspaceLoadResult
     public WorkspaceLoadResult(
         Solution solution,
         IReadOnlyList<string> diagnostics)
+        : this(solution, diagnostics, [])
+    {
+    }
+
+    public WorkspaceLoadResult(
+        Solution solution,
+        IReadOnlyList<string> diagnostics,
+        IReadOnlyList<ServiceError> errors)
     {
         Solution = solution ?? throw new ArgumentNullException(nameof(solution));
         Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
+        Errors = errors ?? throw new ArgumentNullException(nameof(errors));
     }
 
     public Solution Solution { get; }
 
     public IReadOnlyList<string> Diagnostics { get; }
+
+    public IReadOnlyList<ServiceError> Errors { get; }
 
     public IReadOnlyList<Project> OrderedProjects =>
     [

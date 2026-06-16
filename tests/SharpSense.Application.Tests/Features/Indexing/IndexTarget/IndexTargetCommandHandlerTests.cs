@@ -9,18 +9,10 @@ using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 
-namespace SharpSense.Application.Tests.Indexing.IndexTarget;
+namespace SharpSense.Application.Tests.Features.Indexing.IndexTarget;
 
 public sealed class IndexTargetCommandHandlerTests
 {
-    [Fact]
-    public void WhenConstructingIndexTargetCommandHandler_ThenImplementsCommandHandlerContract()
-    {
-        var handler = CreateHandler();
-
-        Assert.IsAssignableFrom<ICommandHandler<IndexTargetCommand>>(handler);
-    }
-
     [Fact]
     public async Task WhenHandleWithValidCommand_ThenPersistsNormalizedGraphWithEmbeddings()
     {

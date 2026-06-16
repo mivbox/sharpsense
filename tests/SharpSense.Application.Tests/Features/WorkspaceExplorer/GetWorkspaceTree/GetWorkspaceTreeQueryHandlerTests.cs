@@ -5,7 +5,7 @@ using SharpSense.Application.WorkspaceExplorer.GetWorkspaceTree;
 using SharpSense.Application.WorkspaceExplorer.GetWorkspaceTree.Models;
 using SharpSense.Application.WorkspaceExplorer.Models;
 
-namespace SharpSense.Application.Tests.WorkspaceExplorer.GetWorkspaceTree;
+namespace SharpSense.Application.Tests.Features.WorkspaceExplorer.GetWorkspaceTree;
 
 public sealed class GetWorkspaceTreeQueryHandlerTests
 {

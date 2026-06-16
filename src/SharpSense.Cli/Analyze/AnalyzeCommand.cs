@@ -1,3 +1,4 @@
+using FluentResults;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -18,6 +19,7 @@ using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
 using Serilog;
+using SharpSense.Application.Shared.Errors;
 using Spectre.Console;
 using Spectre.Console.Cli;
 using System.Diagnostics.CodeAnalysis;
@@ -183,13 +185,26 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
         CancellationToken ct)
     {
         await using var scope = host.Services.CreateAsyncScope();
-        var handler = scope.ServiceProvider.GetRequiredService<ICommandHandler<IndexTargetCommand>>();
+        var handler = scope.ServiceProvider.GetRequiredService<ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>>();
 
-        await handler.Handle(
+        var result = await handler.Handle(
             new IndexTargetCommand(
                 progress,
                 embeddingProgress),
             ct);
+
+        if (result.IsFailed)
+        {
+            foreach (var error in result.Errors)
+            {
+                if (error is ServiceError serviceError)
+                {
+                    AnsiConsole.MarkupLine($"[red]ERROR[/]: {serviceError.Message}");
+                    continue;
+                }
+                AnsiConsole.MarkupLine($"[red]ERROR[/]: {error}");
+            }
+        }
     }
 
     private static async Task WatchWorkspace(

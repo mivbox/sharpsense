@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using FluentResults;
 using Microsoft.CodeAnalysis;
 using Moq;
 using SharpSense.Application.Indexing.Models;
@@ -33,14 +34,14 @@ public sealed class CSharpLanguageExtractorTests
         workspaceLoader.Setup(loader => loader.Load(
                 "/repo/SharpSense.sln",
                 TestContext.Current.CancellationToken))
-            .ReturnsAsync(new WorkspaceLoadResult(solution, ["load diagnostic"]));
+            .ReturnsAsync(Result.Ok(new WorkspaceLoadResult(solution, ["load diagnostic"])));
         workspaceLoader.Setup(loader => loader.UpdateDocuments(
                 "/repo/SharpSense.sln",
                 It.Is<IReadOnlyList<WorkspaceFileChange>>(files =>
                     files.Count == changedFiles.Count &&
                     files[0] == changedFiles[0]),
                 TestContext.Current.CancellationToken))
-            .ReturnsAsync(new WorkspaceLoadResult(solution, ["update diagnostic"]));
+            .ReturnsAsync(Result.Ok(new WorkspaceLoadResult(solution, ["update diagnostic"])));
         analysisEngine.Setup(engine => engine.ExtractIncremental(
                 "/repo/SharpSense.sln",
                 solution,
@@ -63,6 +64,7 @@ public sealed class CSharpLanguageExtractorTests
             new IncrementalExtractionContext("/repo/SharpSense.sln", changedFiles),
             TestContext.Current.CancellationToken);
 
-        result.Diagnostics.Should().Equal(expectedDiagnostics);
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Diagnostics.Should().Equal(expectedDiagnostics);
     }
 }

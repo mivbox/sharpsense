@@ -25,3 +25,5 @@ public static class HybridSearchMapper
     public static HybridSearchHit[] ToSearchHit(IEnumerable<CodeNode> codeNodes)
         => [.. codeNodes.Select(ToSearchHit)];
 }
+
+

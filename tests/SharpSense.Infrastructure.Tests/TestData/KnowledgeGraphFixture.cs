@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
@@ -294,6 +295,7 @@ internal static class KnowledgeGraphFixture
                 StartLine = 10,
                 EndLine = 14,
                 Summary = "Gets a message.",
+                SearchText = "MessageProvider.GetMessage()\nGets a message.",
                 VectorEmbedding = [1f, 0f]
             },
             new CodeNodeRecord
@@ -307,6 +309,7 @@ internal static class KnowledgeGraphFixture
                 StartLine = 20,
                 EndLine = 28,
                 Summary = "Renders a message.",
+                SearchText = "MessageConsumer.Render()\nRenders a message.",
                 VectorEmbedding = [0.7f, 0.3f]
             },
             new CodeNodeRecord
@@ -320,6 +323,7 @@ internal static class KnowledgeGraphFixture
                 StartLine = 5,
                 EndLine = 12,
                 Summary = "Handles HTTP requests.",
+                SearchText = "HttpEndpoint.Handle()\nHandles HTTP requests.",
                 VectorEmbedding = [0.6f, 0.4f]
             },
             new CodeNodeRecord
@@ -333,6 +337,7 @@ internal static class KnowledgeGraphFixture
                 StartLine = 4,
                 EndLine = 14,
                 Summary = "Registers the message pipeline.",
+                SearchText = "ServiceRegistration.Configure(IServiceCollection)\nRegisters the message pipeline.",
                 VectorEmbedding = [0.2f, 0.8f]
             },
             new CodeNodeRecord
@@ -346,6 +351,7 @@ internal static class KnowledgeGraphFixture
                 StartLine = 7,
                 EndLine = 11,
                 Summary = "Formats messages.",
+                SearchText = "MessageFormatter.Format(string)\nFormats messages.",
                 VectorEmbedding = [0.95f, 0.05f]
             },
             new CodeNodeRecord
@@ -359,6 +365,7 @@ internal static class KnowledgeGraphFixture
                 StartLine = 1,
                 EndLine = 12,
                 Summary = "Message model.",
+                SearchText = "Message\nMessage model.",
                 VectorEmbedding = [0.4f, 0.6f]
             },
             new CodeNodeRecord
@@ -372,6 +379,7 @@ internal static class KnowledgeGraphFixture
                 StartLine = 1,
                 EndLine = 24,
                 Summary = "Provides messages.",
+                SearchText = "MessageProvider\nProvides messages.",
                 VectorEmbedding = [0.85f, 0.15f]
             },
             new CodeNodeRecord
@@ -385,6 +393,7 @@ internal static class KnowledgeGraphFixture
                 StartLine = 16,
                 EndLine = 20,
                 Summary = "Returns cached messages.",
+                SearchText = "MessageProvider.GetCachedMessage()\nReturns cached messages.",
                 VectorEmbedding = [0.5f, 0.5f]
             });
 
@@ -445,5 +454,36 @@ internal static class KnowledgeGraphFixture
             });
 
         await context.SaveChangesAsync();
+
+        if (await FtsTableExistsAsync(context))
+        {
+            await context.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO CodeNodeSearch (Id, CanonicalId, DisplayName, FullyQualifiedName, SearchText, RelativeFilePath)
+                SELECT CodeNodes.Id,
+                       GraphNodes.CanonicalId,
+                       CodeNodes.DisplayName,
+                       CodeNodes.FullyQualifiedName,
+                       CodeNodes.SearchText,
+                       Documents.RelativePath
+                FROM CodeNodes
+                INNER JOIN GraphNodes ON GraphNodes.Id = CodeNodes.Id
+                INNER JOIN Documents ON Documents.Id = CodeNodes.DocumentId;
+                """);
+        }
+    }
+
+    private static async Task<bool> FtsTableExistsAsync(SharpSenseDbContext context)
+    {
+        var connection = context.Database.GetDbConnection();
+        if (connection.State != System.Data.ConnectionState.Open)
+        {
+            await connection.OpenAsync();
+        }
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='CodeNodeSearch');";
+        var result = await command.ExecuteScalarAsync();
+        return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture) == 1;
     }
 }

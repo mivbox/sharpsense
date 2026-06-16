@@ -1,9 +1,11 @@
+using FluentResults;
 using Microsoft.Extensions.Options;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.IndexTarget.Models;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Diagnostics;
+using SharpSense.Application.Shared.Errors;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Domain.KnowledgeGraph.Enums;
@@ -16,11 +18,11 @@ public sealed class IndexTargetCommandHandler(
     IKnowledgeGraphRepository knowledgeGraphRepository,
     IIndexingWorkspacePaths workspacePaths,
     IOptions<SharpSenseCliOptions> cliOptions)
-    : ICommandHandler<IndexTargetCommand>
+    : ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>
 {
     private readonly SharpSenseCliOptions _cliOptions = cliOptions?.Value ?? throw new ArgumentNullException(nameof(cliOptions));
 
-    public async Task Handle(IndexTargetCommand command, CancellationToken ct)
+    public async Task<Result<IndexTargetOutcome>> Handle(IndexTargetCommand command, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(command);
 
@@ -34,11 +36,18 @@ public sealed class IndexTargetCommandHandler(
         try
         {
             using var extractActivity = SharpSenseTraceSpan.Start("index.extract");
-            var extractedNodes = await Extract(
+            var extractionResult = await Extract(
                 new ExtractionContext(absoluteTargetPath, command.Progress),
                 extractActivity,
                 ct);
 
+            if (extractionResult.IsFailed)
+            {
+                trace.SetError();
+                return Result.Fail(extractionResult.Errors);
+            }
+
+            var extractedNodes = extractionResult.Value;
             var projectCount = extractedNodes.Projects.Count;
             var documentNodeCount = extractedNodes.CodeNodes.Count(static codeNode => codeNode.NodeType == NodeType.Document);
 
@@ -78,18 +87,33 @@ public sealed class IndexTargetCommandHandler(
 
             trace.AddTag("index.project.count", extractedNodes.Projects.Count);
             trace.AddTag("index.code_node.count", extractedNodes.CodeNodes.Count);
-            trace.AddTag("index.document_node.count", documentNodeCount);
+            extractActivity.AddTag("index.document_node.count", documentNodeCount);
             trace.AddTag("index.dependency.count", extractedNodes.Edges.Count);
             trace.AddTag("index.diagnostic.count", extractedNodes.Diagnostics.Count);
+
+            return Result.Ok(new IndexTargetOutcome(
+                ProjectsIndexed: extractedNodes.Projects.Count,
+                CodeNodesPersisted: extractedNodes.CodeNodes.Count,
+                DependencyEdgesPersisted: extractedNodes.Edges.Count,
+                DocumentNodesPersisted: documentNodeCount));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            trace.SetError();
+            return Result.Fail(new ServiceError(
+                ServiceErrorCode.FailedPrecondition,
+                $"Indexing of '{absoluteTargetPath}' was cancelled."));
         }
         catch (Exception exception)
         {
             trace.RecordExceptionAndErrorStatus(exception);
-            throw;
+            return Result.Fail(new ServiceError(
+                ServiceErrorCode.InternalError,
+                $"Indexing of '{absoluteTargetPath}' failed: {exception.Message}"));
         }
     }
 
-    private async Task<ExtractedNodes> Extract(
+    private async Task<Result<ExtractedNodes>> Extract(
         ExtractionContext context,
         SharpSenseTraceSpan extractActivity,
         CancellationToken ct)
@@ -101,7 +125,13 @@ public sealed class IndexTargetCommandHandler(
 
         foreach (var extractor in extractors)
         {
-            var extractedNodes = await extractor.Extract(context, ct);
+            var extractionResult = await extractor.Extract(context, ct);
+            if (extractionResult.IsFailed)
+            {
+                return extractionResult;
+            }
+
+            var extractedNodes = extractionResult.Value;
 
             aggregatedProjects.AddRange(extractedNodes.Projects);
             aggregatedCodeNodes.AddRange(extractedNodes.CodeNodes);
@@ -114,7 +144,7 @@ public sealed class IndexTargetCommandHandler(
             extractActivity.AddTag($"index.extractor.{extractor.ExtractorName}.diagnostic.count", extractedNodes.Diagnostics.Count);
         }
 
-        return new ExtractedNodes(
+        return Result.Ok(new ExtractedNodes(
             [
                 .. aggregatedProjects
                     .OrderBy(static project => project.Name, StringComparer.Ordinal)
@@ -131,7 +161,7 @@ public sealed class IndexTargetCommandHandler(
                     .ThenBy(static edge => edge.CalleeId, StringComparer.Ordinal)
                     .ThenBy(static edge => edge.EdgeType)
             ],
-            aggregatedDiagnostics);
+            aggregatedDiagnostics));
     }
 
     private ExtractedNodes NormalizePersistedPaths(ExtractedNodes extractedNodes)

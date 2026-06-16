@@ -26,7 +26,7 @@ internal sealed class NodeExtractor
         ArgumentNullException.ThrowIfNull(diagnostics);
 
         using var codeNodeActivity = SharpSenseTraceSpan.Start("roslyn.build-code-nodes");
-        var codeNodesByCanonicalId = new Dictionary<string, CodeNode>(StringComparer.Ordinal);
+        var codeNodesByFullyQualifiedName = new Dictionary<string, CodeNode>(StringComparer.Ordinal);
         var declaredSymbols = new List<DeclaredSymbolContext>();
         var symbolNodeIds = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -67,7 +67,7 @@ internal sealed class NodeExtractor
                 var syntaxTrees = compilation.SyntaxTrees
                     .OrderBy(static syntaxTree => syntaxTree.FilePath, StringComparer.Ordinal)
                     .ToArray();
-                var codeNodeCountBeforeProject = codeNodesByCanonicalId.Count;
+                var codeNodeCountBeforeProject = codeNodesByFullyQualifiedName.Count;
 
                 projectActivity.AddTag("project.document.count", syntaxTrees.Length);
 
@@ -81,14 +81,14 @@ internal sealed class NodeExtractor
                         compilation,
                         repositoryWorkspace,
                         diagnostics,
-                        codeNodesByCanonicalId,
+                        codeNodesByFullyQualifiedName,
                         declaredSymbols,
                         symbolNodeIds,
                         projectId,
                         ct);
                 }
 
-                projectActivity.AddTag("project.code_node.count", codeNodesByCanonicalId.Count - codeNodeCountBeforeProject);
+                projectActivity.AddTag("project.code_node.count", codeNodesByFullyQualifiedName.Count - codeNodeCountBeforeProject);
             }
             catch (Exception ex)
             {
@@ -98,7 +98,7 @@ internal sealed class NodeExtractor
             }
         }
 
-        var codeNodes = codeNodesByCanonicalId.Values
+        var codeNodes = codeNodesByFullyQualifiedName.Values
             .OrderBy(static codeNode => codeNode.FullyQualifiedName, StringComparer.Ordinal)
             .ThenBy(static codeNode => codeNode.CanonicalId, StringComparer.Ordinal)
             .ToArray();
@@ -121,7 +121,7 @@ internal sealed class NodeExtractor
         ArgumentNullException.ThrowIfNull(diagnostics);
 
         using var codeNodeActivity = SharpSenseTraceSpan.Start("roslyn.build-code-nodes");
-        var codeNodesByCanonicalId = new Dictionary<string, CodeNode>(StringComparer.Ordinal);
+        var codeNodesByFullyQualifiedName = new Dictionary<string, CodeNode>(StringComparer.Ordinal);
         var declaredSymbols = new List<DeclaredSymbolContext>();
         var symbolNodeIds = new Dictionary<string, string>(StringComparer.Ordinal);
         var orderedDocuments = documents
@@ -161,13 +161,13 @@ internal sealed class NodeExtractor
                 semanticModel,
                 repositoryWorkspace,
                 diagnostics,
-                codeNodesByCanonicalId,
+                codeNodesByFullyQualifiedName,
                 declaredSymbols,
                 symbolNodeIds,
                 projectId);
         }
 
-        var codeNodes = codeNodesByCanonicalId.Values
+        var codeNodes = codeNodesByFullyQualifiedName.Values
             .OrderBy(static codeNode => codeNode.FullyQualifiedName, StringComparer.Ordinal)
             .ThenBy(static codeNode => codeNode.CanonicalId, StringComparer.Ordinal)
             .ToArray();
@@ -182,7 +182,7 @@ internal sealed class NodeExtractor
         Compilation compilation,
         IRepositoryWorkspace repositoryWorkspace,
         ConcurrentQueue<string> diagnostics,
-        IDictionary<string, CodeNode> codeNodesByCanonicalId,
+        IDictionary<string, CodeNode> codeNodesByFullyQualifiedName,
         ICollection<DeclaredSymbolContext> declaredSymbols,
         IDictionary<string, string> symbolNodeIds,
         string projectId,
@@ -197,7 +197,7 @@ internal sealed class NodeExtractor
             semanticModel,
             repositoryWorkspace,
             diagnostics,
-            codeNodesByCanonicalId,
+            codeNodesByFullyQualifiedName,
             declaredSymbols,
             symbolNodeIds,
             projectId);
@@ -210,7 +210,7 @@ internal sealed class NodeExtractor
         SemanticModel semanticModel,
         IRepositoryWorkspace repositoryWorkspace,
         ConcurrentQueue<string> diagnostics,
-        IDictionary<string, CodeNode> codeNodesByCanonicalId,
+        IDictionary<string, CodeNode> codeNodesByFullyQualifiedName,
         ICollection<DeclaredSymbolContext> declaredSymbols,
         IDictionary<string, string> symbolNodeIds,
         string projectId)
@@ -231,7 +231,7 @@ internal sealed class NodeExtractor
             {
                 case ClassDeclarationSyntax classDeclaration:
                     AddDeclaredSymbol(
-                        codeNodesByCanonicalId,
+                        codeNodesByFullyQualifiedName,
                         declaredSymbols,
                         symbolNodeIds,
                         semanticModel,
@@ -244,7 +244,7 @@ internal sealed class NodeExtractor
 
                 case InterfaceDeclarationSyntax interfaceDeclaration:
                     AddDeclaredSymbol(
-                        codeNodesByCanonicalId,
+                        codeNodesByFullyQualifiedName,
                         declaredSymbols,
                         symbolNodeIds,
                         semanticModel,
@@ -257,7 +257,7 @@ internal sealed class NodeExtractor
 
                 case RecordDeclarationSyntax recordDeclaration:
                     AddDeclaredSymbol(
-                        codeNodesByCanonicalId,
+                        codeNodesByFullyQualifiedName,
                         declaredSymbols,
                         symbolNodeIds,
                         semanticModel,
@@ -270,7 +270,7 @@ internal sealed class NodeExtractor
 
                 case StructDeclarationSyntax structDeclaration:
                     AddDeclaredSymbol(
-                        codeNodesByCanonicalId,
+                        codeNodesByFullyQualifiedName,
                         declaredSymbols,
                         symbolNodeIds,
                         semanticModel,
@@ -283,7 +283,7 @@ internal sealed class NodeExtractor
 
                 case MethodDeclarationSyntax methodDeclaration:
                     AddDeclaredSymbol(
-                        codeNodesByCanonicalId,
+                        codeNodesByFullyQualifiedName,
                         declaredSymbols,
                         symbolNodeIds,
                         semanticModel,
@@ -296,7 +296,7 @@ internal sealed class NodeExtractor
 
                 case PropertyDeclarationSyntax propertyDeclaration:
                     AddDeclaredSymbol(
-                        codeNodesByCanonicalId,
+                        codeNodesByFullyQualifiedName,
                         declaredSymbols,
                         symbolNodeIds,
                         semanticModel,
@@ -311,7 +311,7 @@ internal sealed class NodeExtractor
                     foreach (var variable in fieldDeclaration.Declaration.Variables)
                     {
                         AddDeclaredSymbol(
-                            codeNodesByCanonicalId,
+                            codeNodesByFullyQualifiedName,
                             declaredSymbols,
                             symbolNodeIds,
                             semanticModel,
@@ -328,7 +328,7 @@ internal sealed class NodeExtractor
     }
 
     private static void AddDeclaredSymbol(
-        IDictionary<string, CodeNode> codeNodesByCanonicalId,
+        IDictionary<string, CodeNode> codeNodesByFullyQualifiedName,
         ICollection<DeclaredSymbolContext> declaredSymbols,
         IDictionary<string, string> symbolNodeIds,
         SemanticModel semanticModel,
@@ -346,19 +346,25 @@ internal sealed class NodeExtractor
         var canonicalSymbol = RoslynSymbolUtilities.Canonicalize(symbol);
         var symbolLookupKey = RoslynSymbolUtilities.GetLookupKey(canonicalSymbol);
         var canonicalId = RoslynSymbolUtilities.GetCanonicalId(projectId, canonicalSymbol);
+        var fullyQualifiedName = RoslynSymbolUtilities.GetFullyQualifiedName(canonicalSymbol);
         var (startLine, endLine) = GetSourceLineRange(declarationSyntax);
 
         symbolNodeIds.TryAdd(symbolLookupKey, canonicalId);
         symbolNodeIds.TryAdd(RoslynSymbolUtilities.GetLookupKey(symbol), canonicalId);
 
-        if (!codeNodesByCanonicalId.ContainsKey(canonicalId))
+        // The FQDN of a canonical symbol is project-independent: RoslynSymbolUtilities.Canonicalize
+        // collapses OriginalDefinition / ReducedFrom into a single symbol, so the same FQDN is
+        // produced for every project that contains a declaration of the symbol. Keying the
+        // emission cache by FQDN therefore guarantees the "one symbol = one CodeNode" invariant
+        // the persisted IX_CodeNodes_FullyQualifiedName unique index depends on.
+        if (!codeNodesByFullyQualifiedName.ContainsKey(fullyQualifiedName))
         {
             var summary = RoslynSymbolUtilities.ExtractSummary(declarationSyntax);
-            codeNodesByCanonicalId[canonicalId] = new CodeNode
+            codeNodesByFullyQualifiedName[fullyQualifiedName] = new CodeNode
             {
                 CanonicalId = canonicalId,
                 ProjectId = projectId,
-                FullyQualifiedName = RoslynSymbolUtilities.GetFullyQualifiedName(canonicalSymbol),
+                FullyQualifiedName = fullyQualifiedName,
                     DisplayName = RoslynSymbolUtilities.GetDisplayName(canonicalSymbol),
                 NodeType = nodeType,
                 RelativeFilePath = relativeFilePath,

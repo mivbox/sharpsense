@@ -9,7 +9,6 @@ public static class HybridSearchInfrastructureServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddSingleton<IKeywordCandidateProvider, SqliteKeywordCandidateProvider>();
-        services.AddSingleton<IVectorScorer, SqliteVectorScorer>();
         services.AddSingleton<IHybridSearcher, HybridSearcher>();
         return services;
     }

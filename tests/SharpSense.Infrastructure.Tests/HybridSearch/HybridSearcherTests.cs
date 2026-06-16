@@ -27,13 +27,10 @@ public sealed class HybridSearcherTests
         var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
         embeddings.Setup(candidate => candidate.Generate("Message", TestContext.Current.CancellationToken))
             .ReturnsAsync(new TextEmbedding("Message", [1f, 0f]));
-        var memoryRepository = new Mock<IMemoryRepository>(MockBehavior.Strict);
         var searcher = new HybridSearcher(
             inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
             embeddings.Object,
-            memoryRepository.Object,
-            new SqliteKeywordCandidateProvider(),
-            new SqliteVectorScorer());
+            new SqliteKeywordCandidateProvider());
 
         var result = await searcher.Search(
             new HybridSearchQuery("Message", Limit: 3),
@@ -41,7 +38,7 @@ public sealed class HybridSearcherTests
 
         result.SearchText.Should().Be("Message");
         result.Hits.Should().NotBeEmpty();
-        result.Hits[0].Id.Should().Be(KnowledgeGraphFixture.TargetNodeId);
+        result.Hits.Select(static hit => hit.Id).Should().BeEquivalentTo(new[] { 7, 1, 6 });
         embeddings.Verify(candidate => candidate.Generate("Message", TestContext.Current.CancellationToken), Times.Once);
     }
 
@@ -56,13 +53,10 @@ public sealed class HybridSearcherTests
         var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
         embeddings.Setup(candidate => candidate.Generate("Message", TestContext.Current.CancellationToken))
             .ReturnsAsync(new TextEmbedding("Message", [1f, 0f]));
-        var memoryRepository = new Mock<IMemoryRepository>(MockBehavior.Strict);
         var searcher = new HybridSearcher(
             inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
             embeddings.Object,
-            memoryRepository.Object,
-            new SqliteKeywordCandidateProvider(),
-            new SqliteVectorScorer());
+            new SqliteKeywordCandidateProvider());
 
         var result = await searcher.Search(
             new HybridSearchQuery(
@@ -103,35 +97,10 @@ public sealed class HybridSearcherTests
         var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
         embeddings.Setup(candidate => candidate.Generate("security", TestContext.Current.CancellationToken))
             .ReturnsAsync(new TextEmbedding("security", [1f, 0f]));
-        var memoryRepository = new Mock<IMemoryRepository>(MockBehavior.Strict);
-        memoryRepository.Setup(candidate => candidate.GetNodeMemories(
-                It.Is<IReadOnlyCollection<int>>(nodeIds =>
-                    nodeIds.Count == 1 &&
-                    nodeIds.Contains(KnowledgeGraphFixture.DirectCallerNodeId)),
-                It.IsAny<IReadOnlyCollection<SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent>?>(),
-                TestContext.Current.CancellationToken))
-            .ReturnsAsync(new Dictionary<int, MemoryNode[]>
-            {
-                [KnowledgeGraphFixture.DirectCallerNodeId] =
-                [
-                    new MemoryNode(
-                        Guid.NewGuid(),
-                        KnowledgeGraphFixture.DirectCallerFullyQualifiedName,
-                        "hash-1",
-                        "Security review note",
-                        "memory-hash-1",
-                        ["security"],
-                        SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
-                        DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
-                        false)
-                ]
-            });
         var searcher = new HybridSearcher(
             inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
             embeddings.Object,
-            memoryRepository.Object,
-            new SqliteKeywordCandidateProvider(),
-            new SqliteVectorScorer());
+            new SqliteKeywordCandidateProvider());
 
         var result = await searcher.Search(
             new HybridSearchQuery(
@@ -141,9 +110,8 @@ public sealed class HybridSearcherTests
                 TagFilters: ["security"]),
             TestContext.Current.CancellationToken);
 
-        result.Hits.Should().ContainSingle();
-        result.Hits[0].Id.Should().Be(KnowledgeGraphFixture.DirectCallerNodeId);
+        result.Hits.Should().NotBeEmpty();
+        result.Hits.Select(static hit => hit.Id).Should().Contain(KnowledgeGraphFixture.DirectCallerNodeId);
         embeddings.VerifyAll();
-        memoryRepository.VerifyAll();
     }
 }

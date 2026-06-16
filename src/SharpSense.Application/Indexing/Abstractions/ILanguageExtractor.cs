@@ -1,3 +1,4 @@
+using FluentResults;
 using JetBrains.Annotations;
 using SharpSense.Application.Indexing.Models;
 
@@ -26,8 +27,12 @@ public interface ILanguageExtractor
     /// </summary>
     /// <param name="context">The indexing context containing the absolute target path and shared progress reporter.</param>
     /// <param name="ct"><see cref="CancellationToken"/> for the current indexing operation.</param>
-    /// <returns>The extracted projects, code nodes, dependency edges, and diagnostics for this extractor.</returns>
-    Task<ExtractedNodes> Extract(
+    /// <returns>
+    /// <see cref="Result.Ok(T)"/> with the extracted batch, or <see cref="Result.Fail(string)"/> with one or more
+    /// <see cref="SharpSense.Application.Shared.Errors.ServiceError"/> entries when the underlying workspace load
+    /// or analysis pipeline reports a typed failure.
+    /// </returns>
+    Task<Result<ExtractedNodes>> Extract(
         ExtractionContext context,
         CancellationToken ct);
 
@@ -37,9 +42,12 @@ public interface ILanguageExtractor
     /// only the replacement nodes and dependency edges that should be persisted for the current change set.
     /// </summary>
     /// <param name="context">The incremental indexing context containing the watched target path and file changes.</param>
-    /// <param name="ct"><see cref="CancellationToken"/> for the current incremental indexing operation.</param>
-    /// <returns>The extracted replacement projects, code nodes, dependency edges, and diagnostics for the change set.</returns>
-    Task<ExtractedNodes> ExtractIncremental(
+    /// <param name="ct"><see cref="CancellationToken"/> for the current indexing operation.</param>
+    /// <returns>
+    /// <see cref="Result.Ok(T)"/> with the extracted delta, or <see cref="Result.Fail(string)"/> when the underlying
+    /// incremental reload reports a typed failure.
+    /// </returns>
+    Task<Result<ExtractedNodes>> ExtractIncremental(
         IncrementalExtractionContext context,
         CancellationToken ct);
 }

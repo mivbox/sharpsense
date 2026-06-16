@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using FluentResults;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.CodeAnalysis.Text;
@@ -6,6 +7,7 @@ using Polly;
 using Polly.Retry;
 using Serilog;
 using SharpSense.Application.Indexing.Models;
+using SharpSense.Application.Shared.Errors;
 using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
@@ -38,7 +40,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
     }
 
-    public async Task<WorkspaceLoadResult> Load(
+    public async Task<Result<WorkspaceLoadResult>> Load(
         string targetPath,
         CancellationToken ct)
     {
@@ -46,26 +48,36 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
 
         var diagnostics = new ConcurrentQueue<string>();
+        var criticalDiagnostics = new ConcurrentBag<ServiceError>();
         var normalizedTargetPath = _fileSystem.Path.GetFullPath(targetPath);
 
         if (_activeWorkspaces.TryGetValue(normalizedTargetPath, out var activeWorkspace))
         {
-            return await CreateLoadResult(activeWorkspace, diagnostics, ct);
+            return await CreateLoadResult(activeWorkspace, diagnostics, criticalDiagnostics, ct);
         }
 
-        var createdWorkspace = await OpenWorkspace(normalizedTargetPath, diagnostics, ct);
-        var createdSession = new WorkspaceSession(createdWorkspace, createdWorkspace.CurrentSolution, _fileSystem);
+        var openedWorkspace = await OpenWorkspace(
+            normalizedTargetPath,
+            diagnostics,
+            criticalDiagnostics,
+            ct);
 
+        if (openedWorkspace is null)
+        {
+            return Result.Fail(BuildFailureResult(diagnostics, criticalDiagnostics, normalizedTargetPath));
+        }
+
+        var createdSession = new WorkspaceSession(openedWorkspace, openedWorkspace.CurrentSolution, _fileSystem);
         var cachedWorkspace = _activeWorkspaces.GetOrAdd(normalizedTargetPath, createdSession);
         if (!ReferenceEquals(cachedWorkspace, createdSession))
         {
             createdSession.Dispose();
         }
 
-        return await CreateLoadResult(cachedWorkspace, diagnostics, ct);
+        return await CreateLoadResult(cachedWorkspace, diagnostics, criticalDiagnostics, ct);
     }
 
-    public async Task<WorkspaceLoadResult> UpdateDocuments(
+    public async Task<Result<WorkspaceLoadResult>> UpdateDocuments(
         string targetPath,
         IReadOnlyList<WorkspaceFileChange> changedFiles,
         CancellationToken ct = default)
@@ -75,11 +87,15 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         ArgumentNullException.ThrowIfNull(changedFiles);
 
         var diagnostics = new ConcurrentQueue<string>();
+        var criticalDiagnostics = new ConcurrentBag<ServiceError>();
         var normalizedTargetPath = _fileSystem.Path.GetFullPath(targetPath);
 
         if (!_activeWorkspaces.TryGetValue(normalizedTargetPath, out var activeWorkspace))
         {
-            throw new InvalidOperationException($"Workspace '{normalizedTargetPath}' must be loaded before documents can be updated.");
+            return Result.Fail(
+                new ServiceError(
+                    ServiceErrorCode.FailedPrecondition,
+                    $"Workspace '{targetPath}' must be loaded before documents can be updated."));
         }
 
         await activeWorkspace.Gate.WaitAsync(ct);
@@ -88,7 +104,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         {
             if (changedFiles.Any(IsStructuralChange))
             {
-                return await ReloadAndReturn(normalizedTargetPath, activeWorkspace, diagnostics, ct);
+                return await ReloadAndReturn(normalizedTargetPath, activeWorkspace, diagnostics, criticalDiagnostics, ct);
             }
 
             var readResults = await ReadDocumentMutationsAsync(changedFiles, normalizedTargetPath, ct);
@@ -96,11 +112,11 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
 
             if (updatedSolution is null)
             {
-                return await ReloadAndReturn(normalizedTargetPath, activeWorkspace, diagnostics, ct);
+                return await ReloadAndReturn(normalizedTargetPath, activeWorkspace, diagnostics, criticalDiagnostics, ct);
             }
 
             activeWorkspace.UpdateActiveSolution(updatedSolution);
-            return new WorkspaceLoadResult(updatedSolution, diagnostics.ToArray());
+            return await CreateLoadResult(activeWorkspace, diagnostics, criticalDiagnostics, ct);
         }
         finally
         {
@@ -202,14 +218,21 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         return updatedSolution;
     }
 
-    private async Task<WorkspaceLoadResult> ReloadAndReturn(
+    private async Task<Result<WorkspaceLoadResult>> ReloadAndReturn(
         string normalizedTargetPath,
         WorkspaceSession activeWorkspace,
         ConcurrentQueue<string> diagnostics,
+        ConcurrentBag<ServiceError> criticalDiagnostics,
         CancellationToken ct)
     {
-        var reloadedSolution = await ReplaceWorkspace(normalizedTargetPath, activeWorkspace, diagnostics, ct);
-        return new WorkspaceLoadResult(reloadedSolution, diagnostics.ToArray());
+        var reloadResult = await ReplaceWorkspace(normalizedTargetPath, activeWorkspace, diagnostics, criticalDiagnostics, ct);
+
+        if (reloadResult.IsFailed)
+        {
+            return Result.Fail(reloadResult.Errors);
+        }
+
+        return await CreateLoadResult(activeWorkspace, diagnostics, criticalDiagnostics, ct);
     }
 
     public async Task<WorkspaceTextUpdateResult> ChangeDocumentText(
@@ -224,7 +247,19 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         ArgumentNullException.ThrowIfNull(changeText);
 
         var loadedWorkspace = await Load(targetPath, ct: ct);
-        var diagnostics = new ConcurrentQueue<string>(loadedWorkspace.Diagnostics);
+
+        if (loadedWorkspace.IsFailed)
+        {
+            var combinedMessage = string.Join(
+                Environment.NewLine,
+                loadedWorkspace.Errors.Select(static error => $"{error.GetType().Name}: {error.Message}"));
+            return new WorkspaceTextUpdateResult(
+                false,
+                [],
+                combinedMessage);
+        }
+
+        var diagnostics = new ConcurrentQueue<string>();
         var normalizedTargetPath = _fileSystem.Path.GetFullPath(targetPath);
         var absoluteDocumentPath = _fileSystem.Path.GetFullPath(documentPath);
         var activeWorkspace = _activeWorkspaces[normalizedTargetPath];
@@ -329,9 +364,10 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         return bestMatch?.Project.Id;
     }
 
-    private async Task<MSBuildWorkspace> OpenWorkspace(
+    private async Task<MSBuildWorkspace?> OpenWorkspace(
         string absoluteTargetPath,
         ConcurrentQueue<string> diagnostics,
+        ConcurrentBag<ServiceError> criticalDiagnostics,
         CancellationToken ct)
     {
         var workspace = _workspaceFactory.Create();
@@ -339,8 +375,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         try
         {
             workspace.RegisterWorkspaceFailedHandler(
-                args => diagnostics.Enqueue(args.Diagnostic.ToString()),
-                null);
+                args => RouteWorkspaceDiagnostic(args.Diagnostic, diagnostics, criticalDiagnostics));
 
             if (IsSolutionTargetPath(absoluteTargetPath))
             {
@@ -353,22 +388,51 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
 
             return workspace;
         }
-        catch
+        catch (Exception exception)
         {
             workspace.Dispose();
-            throw;
+            criticalDiagnostics.Add(
+                new ServiceError(
+                    ServiceErrorCode.ThirdPartyError,
+                    $"MSBuild workspace failed to open '{absoluteTargetPath}': {exception.Message}"));
+            _logger.Error(
+                exception,
+                "Workspace loader caught an exception while opening {TargetPath}; converted to ServiceError.",
+                absoluteTargetPath);
+            return null;
         }
     }
 
-    private async Task<Solution> ReplaceWorkspace(
+    private static void RouteWorkspaceDiagnostic(
+        WorkspaceDiagnostic diagnostic,
+        ConcurrentQueue<string> diagnostics,
+        ConcurrentBag<ServiceError> criticalDiagnostics)
+    {
+        if (diagnostic.Kind == WorkspaceDiagnosticKind.Failure)
+        {
+            criticalDiagnostics.Add(
+                new ServiceError(ServiceErrorCode.ThirdPartyError, diagnostic.ToString()));
+            return;
+        }
+
+        diagnostics.Enqueue(diagnostic.ToString());
+    }
+
+    private async Task<Result<MSBuildWorkspace>> ReplaceWorkspace(
         string absoluteTargetPath,
         WorkspaceSession activeWorkspace,
         ConcurrentQueue<string> diagnostics,
+        ConcurrentBag<ServiceError> criticalDiagnostics,
         CancellationToken ct)
     {
-        var replacementWorkspace = await OpenWorkspace(absoluteTargetPath, diagnostics, ct);
+        var replacementWorkspace = await OpenWorkspace(absoluteTargetPath, diagnostics, criticalDiagnostics, ct);
+        if (replacementWorkspace is null)
+        {
+            return Result.Fail(BuildFailureResult(diagnostics, criticalDiagnostics, absoluteTargetPath));
+        }
+
         activeWorkspace.Replace(replacementWorkspace, replacementWorkspace.CurrentSolution, _fileSystem);
-        return activeWorkspace.ActiveSolution;
+        return Result.Ok(replacementWorkspace);
     }
 
     private async Task<SourceText?> ReadDocumentText(
@@ -404,24 +468,53 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
     private static StringComparer GetPathComparer()
         => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
-    private static async Task<WorkspaceLoadResult> CreateLoadResult(
+    private static async Task<Result<WorkspaceLoadResult>> CreateLoadResult(
         WorkspaceSession workspaceSession,
         ConcurrentQueue<string> diagnostics,
+        ConcurrentBag<ServiceError> criticalDiagnostics,
         CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(workspaceSession);
         ArgumentNullException.ThrowIfNull(diagnostics);
+        ArgumentNullException.ThrowIfNull(criticalDiagnostics);
 
         await workspaceSession.Gate.WaitAsync(ct);
 
         try
         {
-            return new WorkspaceLoadResult(workspaceSession.ActiveSolution, diagnostics.ToArray());
+            var errorList = criticalDiagnostics.ToArray();
+            var solution = workspaceSession.ActiveSolution;
+            var result = new WorkspaceLoadResult(solution, diagnostics.ToArray(), errorList);
+
+            return errorList.Length == 0
+                ? Result.Ok(result)
+                : Result.Fail(errorList);
         }
         finally
         {
             workspaceSession.Gate.Release();
         }
+    }
+
+    private static List<ServiceError> BuildFailureResult(
+        ConcurrentQueue<string> diagnostics,
+        ConcurrentBag<ServiceError> criticalDiagnostics,
+        string targetPath)
+    {
+        var errors = criticalDiagnostics.ToArray();
+
+        if (errors.Length == 0)
+        {
+            errors =
+            [
+                new ServiceError(
+                    ServiceErrorCode.ThirdPartyError,
+                    $"MSBuild workspace '{targetPath}' did not produce any projects. " +
+                    $"Loader warnings: {string.Join(", ", diagnostics)}")
+            ];
+        }
+
+        return errors.ToList();
     }
 
     public void Dispose()

@@ -332,4 +332,61 @@ public sealed class KnowledgeGraphRepositoryTests
         canonicalSnapshot.Should().NotBeNull();
         areEquivalent.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task WhenReplacingTargetWithDuplicateFullyQualifiedNames_ThenPersistsFirstSeenEntry()
+    {
+        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
+            UseMigrations: true,
+            LoadVectorExtension: true));
+        var repository = new KnowledgeGraphRepository(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>());
+        const string projectId = "project:fixture";
+        const string processorPath = "src/Fixture/Processor.Part1.cs";
+        const string processorPart2Path = "src/Fixture/Processor.Part2.cs";
+        const string firstCanonicalId = "code:fixture:src/Fixture/Processor.Part1.cs:T:Fixture.Processor";
+        const string secondCanonicalId = "code:fixture:src/Fixture/Processor.Part2.cs:T:Fixture.Processor";
+
+        await repository.ReplaceTarget(
+            new ExtractedNodes(
+                [
+                    new IndexedProject(
+                        projectId,
+                        "Fixture",
+                        "src/Fixture/Fixture.csproj",
+                        "project-hash")
+                ],
+                [
+                    new IndexedCodeNode(
+                        firstCanonicalId,
+                        projectId,
+                        "Fixture.Processor",
+                        "Processor",
+                        NodeType.Class,
+                        processorPath,
+                        1,
+                        20,
+                        "First half of the processor.",
+                        "Processor\nFirst half of the processor.",
+                        "part-1-hash"),
+                    new IndexedCodeNode(
+                        secondCanonicalId,
+                        projectId,
+                        "Fixture.Processor",
+                        "Processor",
+                        NodeType.Class,
+                        processorPart2Path,
+                        1,
+                        15,
+                        "Second half of the processor.",
+                        "Processor\nSecond half of the processor.",
+                        "part-2-hash")
+                ],
+                [],
+                []),
+            TestContext.Current.CancellationToken);
+
+        var persistedCodeNodes = await repository.GetPersistedCodeNodes(TestContext.Current.CancellationToken);
+        persistedCodeNodes.Should().ContainSingle();
+        persistedCodeNodes[0].FullyQualifiedName.Should().Be("Fixture.Processor");
+    }
 }

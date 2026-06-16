@@ -1,5 +1,7 @@
+using FluentResults;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
+using SharpSense.Application.Shared.Errors;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
@@ -16,7 +18,7 @@ public sealed class CSharpLanguageExtractor(
 {
     public string ExtractorName => "csharp";
 
-    public async Task<ExtractedNodes> Extract(
+    public async Task<Result<ExtractedNodes>> Extract(
         ExtractionContext context,
         CancellationToken ct)
     {
@@ -30,29 +32,34 @@ public sealed class CSharpLanguageExtractor(
                 1,
                 1));
 
-            return new ExtractedNodes([], [], [], []);
+            return Result.Ok(new ExtractedNodes([], [], [], []));
         }
 
         var loadedWorkspace = await workspaceLoader.Load(
             context.TargetPath,
             ct);
 
+        if (loadedWorkspace.IsFailed)
+        {
+            return Result.Fail(loadedWorkspace.Errors);
+        }
+
         var extractionPayload = await analysisEngine.Extract(
             context.TargetPath,
-            loadedWorkspace.Solution,
+            loadedWorkspace.Value.Solution,
             repositoryWorkspace,
             context.Progress,
-            loadedWorkspace.Diagnostics,
+            loadedWorkspace.Value.Diagnostics,
             ct);
 
-        return new ExtractedNodes(
+        return Result.Ok(new ExtractedNodes(
             [.. extractionPayload.Projects.Select(ToIndexedProject)],
             [.. extractionPayload.CodeNodes.Select(ToIndexedCodeNode)],
             [.. extractionPayload.Edges.Select(ToIndexedDependency)],
-            extractionPayload.Diagnostics);
+            extractionPayload.Diagnostics));
     }
 
-    public async Task<ExtractedNodes> ExtractIncremental(
+    public async Task<Result<ExtractedNodes>> ExtractIncremental(
         IncrementalExtractionContext context,
         CancellationToken ct)
     {
@@ -66,36 +73,47 @@ public sealed class CSharpLanguageExtractor(
 
         if (cSharpChanges.Length == 0)
         {
-            return new ExtractedNodes([], [], [], []);
+            return Result.Ok(new ExtractedNodes([], [], [], []));
         }
 
         var loadedWorkspace = await workspaceLoader.Load(
             context.TargetPath,
             ct);
 
+        if (loadedWorkspace.IsFailed)
+        {
+            return Result.Fail(loadedWorkspace.Errors);
+        }
+
         var updatedWorkspace = await workspaceLoader.UpdateDocuments(
             context.TargetPath,
             cSharpChanges,
             ct);
+
+        if (updatedWorkspace.IsFailed)
+        {
+            return Result.Fail(updatedWorkspace.Errors);
+        }
+
         IReadOnlyList<string> diagnostics =
         [
-            .. loadedWorkspace.Diagnostics,
-            .. updatedWorkspace.Diagnostics
+            .. loadedWorkspace.Value.Diagnostics,
+            .. updatedWorkspace.Value.Diagnostics
         ];
         var extractionPayload = await analysisEngine.ExtractIncremental(
             context.TargetPath,
-            updatedWorkspace.Solution,
+            updatedWorkspace.Value.Solution,
             repositoryWorkspace,
             cSharpChanges,
             context.Progress,
             diagnostics,
             ct);
 
-        return new ExtractedNodes(
+        return Result.Ok(new ExtractedNodes(
             [.. extractionPayload.Projects.Select(ToIndexedProject)],
             [.. extractionPayload.CodeNodes.Select(ToIndexedCodeNode)],
             [.. extractionPayload.Edges.Select(ToIndexedDependency)],
-            extractionPayload.Diagnostics);
+            extractionPayload.Diagnostics));
     }
 
     private static IndexedProject ToIndexedProject(ProjectNode projectNode)
