@@ -682,7 +682,7 @@ public sealed class KnowledgeGraphRepository(
         }
         UpsertDocuments(context, graph.Documents, identityMaps);
         UpsertGraphNodes(context, graph.GraphNodes, identityMaps);
-        UpsertCodeNodes(context, graph.CodeNodes, identityMaps);
+        UpsertCodeNodes(context, graph.CodeNodes);
         UpsertProjectNodes(context, graph.ProjectNodes, identityMaps);
 
         if (graph.DependencyEdges.Length > 0)
@@ -754,31 +754,30 @@ public sealed class KnowledgeGraphRepository(
         }
     }
 
-    private static void UpsertCodeNodes(SharpSenseDbContext context, CodeNodeRecord[] codeNodes, PersistedIdentityMaps identityMaps)
+    private static void UpsertCodeNodes(SharpSenseDbContext context, CodeNodeRecord[] codeNodes)
     {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(codeNodes);
+
         if (codeNodes.Length == 0)
         {
             return;
         }
 
+        // The Roslyn extractor (NodeExtractor) keys its emissions by FullyQualifiedName so a
+        // symbol visible in more than one .csproj compilation produces a single CodeNodeRecord.
+        // The in-batch dedup below is a defence-in-depth safety net: if a future change to the
+        // extractor reintroduces duplicate FQDNs, EF Core's change tracker will not throw
+        // "another instance with the key value for {'FullyQualifiedName'} is already being tracked".
         var attachedFullyQualifiedNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var codeNode in codeNodes)
         {
-            if (attachedFullyQualifiedNames.Contains(codeNode.FullyQualifiedName))
+            if (!attachedFullyQualifiedNames.Add(codeNode.FullyQualifiedName))
             {
                 continue;
             }
 
-            if (identityMaps.GraphNodeIdsByCanonicalId.ContainsKey(codeNode.FullyQualifiedName))
-            {
-                context.CodeNodes.Update(codeNode);
-            }
-            else
-            {
-                context.CodeNodes.Add(codeNode);
-            }
-
-            attachedFullyQualifiedNames.Add(codeNode.FullyQualifiedName);
+            context.CodeNodes.Add(codeNode);
         }
     }
 

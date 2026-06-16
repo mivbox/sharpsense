@@ -334,7 +334,7 @@ public sealed class KnowledgeGraphRepositoryTests
     }
 
     [Fact]
-    public async Task WhenReplacingTargetWithDuplicateFullyQualifiedNames_ThenCoalescesRowsByLastSeenEntry()
+    public async Task WhenReplacingTargetWithDuplicateFullyQualifiedNames_ThenPersistsFirstSeenEntry()
     {
         await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
             UseMigrations: true,

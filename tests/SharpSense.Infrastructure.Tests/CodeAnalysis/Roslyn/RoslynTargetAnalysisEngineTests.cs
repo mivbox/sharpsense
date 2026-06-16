@@ -48,6 +48,10 @@ public sealed class RoslynTargetAnalysisEngineTests
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "Contracts.IMessageProvider");
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "App.MessageProvider");
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "App.MessageConsumer.Render()");
+        // One symbol = one CodeNode. The persisted IX_CodeNodes_FullyQualifiedName unique index
+        // enforces this invariant, so the extractor payload must never carry a duplicate FQDN.
+        // If a future fixture starts sharing a symbol across projects (which currently nothing
+        // here does) the failing assertion below is the first line of defence.
         payload.CodeNodes
             .Select(static codeNode => codeNode.FullyQualifiedName)
             .Distinct(StringComparer.Ordinal)
