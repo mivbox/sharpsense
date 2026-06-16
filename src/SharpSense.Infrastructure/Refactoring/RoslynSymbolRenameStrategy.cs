@@ -50,7 +50,16 @@ internal sealed class RoslynSymbolRenameStrategy(
             var loadResult = await workspaceLoader.Load(
                 targetResolution.TargetPath,
                 ct: ct);
-            var solution = loadResult.Solution;
+            if (loadResult.IsFailed)
+            {
+                var combinedMessage = string.Join(
+                    Environment.NewLine,
+                    loadResult.Errors.Select(static error => $"{error.GetType().Name}: {error.Message}"));
+                return Failure(
+                    $"Workspace load failed for '{normalizedWorkspaceTargetPath}': {combinedMessage}");
+            }
+
+            var solution = loadResult.Value.Solution;
             var workspace = solution.Workspace;
             var absoluteFilePath = fileSystem.Path.GetFullPath(
                 fileSystem.Path.Combine(

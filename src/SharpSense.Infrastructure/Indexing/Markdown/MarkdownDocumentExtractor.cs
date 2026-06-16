@@ -1,3 +1,4 @@
+using FluentResults;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Domain.KnowledgeGraph.Edges;
@@ -9,7 +10,7 @@ public sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDiscove
 {
     public string ExtractorName => "markdown";
 
-    public async Task<ExtractedNodes> Extract(
+    public async Task<Result<ExtractedNodes>> Extract(
         ExtractionContext context,
         CancellationToken ct)
     {
@@ -18,14 +19,14 @@ public sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDiscove
 
         var discoveredDocuments = await documentDiscoverer.Discover(context.TargetPath, ct);
 
-        return new ExtractedNodes(
+        return Result.Ok(new ExtractedNodes(
             [],
             [.. discoveredDocuments.CodeNodes.Select(ToIndexedCodeNode)],
             [.. discoveredDocuments.Edges.Select(ToIndexedDependency)],
-            []);
+            []));
     }
 
-    public async Task<ExtractedNodes> ExtractIncremental(
+    public async Task<Result<ExtractedNodes>> ExtractIncremental(
         IncrementalExtractionContext context,
         CancellationToken ct)
     {
@@ -42,16 +43,16 @@ public sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDiscove
 
         if (changedMarkdownFiles.Length == 0)
         {
-            return new ExtractedNodes([], [], [], []);
+            return Result.Ok(new ExtractedNodes([], [], [], []));
         }
 
         var discoveredDocuments = await documentDiscoverer.DiscoverFiles(context.TargetPath, changedMarkdownFiles, ct);
 
-        return new ExtractedNodes(
+        return Result.Ok(new ExtractedNodes(
             [],
             [.. discoveredDocuments.CodeNodes.Select(ToIndexedCodeNode)],
             [.. discoveredDocuments.Edges.Select(ToIndexedDependency)],
-            []);
+            []));
     }
 
     private static IndexedCodeNode ToIndexedCodeNode(CodeNode codeNode)

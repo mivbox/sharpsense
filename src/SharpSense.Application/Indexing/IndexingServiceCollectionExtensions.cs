@@ -1,3 +1,4 @@
+using FluentResults;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SharpSense.Application.Indexing.IndexTarget.Models;
@@ -13,8 +14,8 @@ public static class IndexingServiceCollectionExtensions
     public static IServiceCollection AddIndexing(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.TryAddTransient<ICommandHandler<IndexTargetCommand>, IndexTargetCommandHandler>();
-        services.TryAddTransient<ICommandHandler<UpdateWorkspaceFilesCommand>, UpdateWorkspaceFilesCommandHandler>();
+        services.TryAddTransient<ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>, IndexTargetCommandHandler>();
+        services.TryAddTransient<ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>, UpdateWorkspaceFilesCommandHandler>();
         return services;
     }
 }
