@@ -3,7 +3,7 @@ title: "Windowed Execution Pipeline"
 type: architecture
 tags: [sqlite, mcp, cqrs, implemented]
 created: 2026-05-08
-updated: 2026-05-10
+updated: 2026-09-24
 confidence: high
 ---
 
@@ -13,13 +13,13 @@ AI agents need to run real local commands such as builds and audits, but raw ter
 
 ## The Approach
 
-SharpSense now routes command execution through a shared CLI reduction helper used by both [[cli/execute-command]] and the MCP `ctx_execute` tool documented in [[cli/mcp-command]]. `CommandExecutionReducer` runs the command through an Infrastructure-owned process runner, asks `IExecuteLogIndexFactory` for a dedicated in-memory `TransientExecutionLogDbContext`, streams each emitted line into the DbContext-backed SQLite FTS5 table, then reduces the transcript by querying matching line numbers, expanding each match into a sliding context window, merging overlapping or adjacent intervals, and rehydrating only the merged blocks that fit inside the configured character ceiling. The reducer also enforces a hard indexed-line cap so runaway commands cannot grow the transient transcript without bound; lines beyond the cap are drained but not indexed, and the result is flagged as truncated. When the caller omits `query` or the query returns no matches, the route deliberately returns a compact summary instead of falling back to raw tail output. This keeps the route aligned with the read-side shaping rules in [[architecture/cqrs-pipeline]] while preserving the shared host composition described in [[architecture/host-composition]].
+SharpSense now routes command execution through a shared CLI reduction helper used by both [execute command](../cli/execute-command.md) and the MCP `ctx_execute` tool documented in [mcp command](../cli/mcp-command.md). `CommandExecutionReducer` runs the command through an Infrastructure-owned process runner, asks `IExecuteLogIndexFactory` for a dedicated in-memory `TransientExecutionLogDbContext`, streams each emitted line into the DbContext-backed SQLite FTS5 table, then reduces the transcript by querying matching line numbers, expanding each match into a sliding context window, merging overlapping or adjacent intervals, and rehydrating only the merged blocks that fit inside the configured character ceiling. The reducer also enforces a hard indexed-line cap so runaway commands cannot grow the transient transcript without bound; lines beyond the cap are drained but not indexed, and the result is flagged as truncated. When the caller omits `query` or the query returns no matches, the route deliberately returns a compact summary instead of falling back to raw tail output. This keeps the route aligned with the read-side shaping rules in [cqrs pipeline](cqrs-pipeline.md) while preserving the shared host composition described in [host composition](host-composition.md).
 
 ## Components Involved
 
 | Component | Role |
 | --- | --- |
-| `CommandExecutionReducer` | Shared CLI orchestrator that validates input, selects the working directory, runs the command, merges context windows, and shapes the reduced result. |
+| `CommandExecutionReducer` | Shared CLI orchestrator that validates input, uses the selected workspace's repository root, runs the command, merges context windows, and shapes the reduced result. |
 | `ICommandProcessRunner` / `SystemCommandRunner` | Infrastructure boundary that parses the raw command string, launches `System.Diagnostics.Process` without shell indirection, redirects and closes stdin, and streams output lines back to the shared reducer. |
 | `IExecuteLogIndexFactory` / `IExecuteLogIndex` / `TransientExecutionLogDbContext` / `TransientExecutionLogIndex` | Per-invocation transient search store that opens a dedicated in-memory DbContext, assigns line numbers, executes FTS5 lookups, and rehydrates inclusive line ranges without touching the repository database. |
 | `CommandInvocationParser` | Internal tokenizer that splits the user-supplied command string into executable plus arguments while preserving quoted segments. |

@@ -1,37 +1,24 @@
----
-title: "Host Composition"
-type: architecture
-tags: [spectre, cqrs, implemented]
-created: 2026-04-26
-updated: 2026-04-26
-confidence: high
----
+# Host composition
 
-## The Problem
+CLI, MCP, and concurrent UI requests must retain a fixed workspace identity while resolving database and indexing services.
 
-Every command needs the same lifecycle guarantees: resolve a Target consistently, bootstrap logging, bind configuration once, and compose feature modules without turning `Program.cs` into a registration dump.
+`AbstractAsyncCommand` manages command host lifecycle and errors. `WorkspaceCommandServices` registers deferred selection from `WorkspaceCatalog`; `WorkspaceSelection` carries the definition, home-owned configuration path, and `IRepositoryWorkspace`. Its typed sources populate indexing options.
 
-## The Approach
+CLI and MCP bind one workspace per host. Analyze/watch retain one dependency-injection scope for the session, keeping Roslyn state and change filtering together. The indexing lease starts before database initialization and lasts through teardown.
 
-SharpSense centralizes route bootstrapping in two base classes. `AbstractAsyncCommand<TSettings>` builds a generic host for console commands, while `AbstractWebAsyncCommand<TSettings>` builds a `WebApplication` for long-lived HTTP routes such as [[cli/ui-command]]. Each concrete command inherits `GlobalSettings`, uses `CommandPathResolver` to normalize repository and Target paths, copies CLI values into `IOptions<SharpSenseCliOptions>`, and loads `sharpsense.yaml` through `AddSharpSenseConfiguration()`. `AnalyzeCommand` points that configuration loader at the Target directory, while the read-side commands point it at the repository root. Feature modules are then chained through layer-specific `Add*` extension methods, keeping command routing thin and consistent with [[architecture/cqrs-pipeline]].
+The UI has a global catalog. Workspace-specific HTTP operations bind `WorkspaceScope` from the required `X-SharpSense-Workspace` header; indexing routes select a workspace by route ID and create a separate job scope. Query services and the database factory resolve the selected workspace from that scope. The optional UI startup workspace is an initial view hint, not global mutable state.
 
-## Components Involved
+## Responsibilities
 
-| Component | Role |
+| Component | Responsibility |
 | --- | --- |
-| `Program.CommandApp.cs` | Registers the `analyze`, `index`, `search`, `trace`, `mcp`, and `ui` routes. |
-| `AbstractAsyncCommand<TSettings>` | Builds the generic host, configures Serilog, starts the host, and delegates execution to the command. |
-| `AbstractWebAsyncCommand<TSettings>` | Builds the web host, wires request logging, and delegates HTTP app configuration. |
-| `GlobalSettings` | Adds the shared `-v\|--verbose` switch for every command. |
-| `CommandPathResolver` | Resolves repository roots from `PWD` or `CurrentDirectory` and normalizes Target directories. |
-| `SharpSenseCliOptions` | Holds host-scoped CLI configuration such as `RepositoryRoot`, `TargetPath`, `Watch`, and `SkipEmbeddings`. |
-| `SharpSenseConfig` | Holds `sharpsense.yaml` include-path settings loaded from the directory passed to `AddSharpSenseConfiguration()`; `AnalyzeCommand` uses the Target directory, while the read-side commands use the repository root. |
-| `*ServiceCollectionExtensions` | Register application handlers and infrastructure implementations per feature slice. |
+| `WorkspaceCatalog` | Definition validation, registration, selection, merge, atomic source edits, and indexing leases. |
+| `WorkspaceSelection` | Stable workspace ID, source snapshot, root, and storage paths. |
+| `WorkspaceScope` | Bind a UI request or job once before resolving dependent services. |
+| `IRepositoryWorkspace` | Workspace-specific root, database path, and path normalization. |
+| `WorkspaceDatabaseInitializer` | Initialize the selected UI workspace database when needed. |
+| `SharpSenseHome` | Resolve the absolute override or default `~/.sharpsense` home. |
 
-## Strict Rules
+Catalog reads and doctor do not create or migrate databases. Logs use the same home under `logs/`. Production configuration does not read project-local YAML or synthesize an implicit workspace.
 
-1. Bootstrap command hosts through `AbstractAsyncCommand<TSettings>` or `AbstractWebAsyncCommand<TSettings>` instead of building hosts directly in `Program.cs`.
-2. Resolve repository roots and Target directories with `CommandPathResolver`; do not duplicate path-joining logic inside commands.
-3. Copy CLI settings into `IOptions<SharpSenseCliOptions>` during `Configure()` or `ConfigureServices()` and keep runtime payloads in CQRS records as described in [[architecture/cqrs-pipeline]].
-4. Load `sharpsense.yaml` through `AddSharpSenseConfiguration()` so include-path filters and change tokens stay consistent across commands.
-5. Compose features through modular `Add*` extension methods rather than direct one-off registrations in `Program.cs`.
+See [analyze](../cli/analyze-command.md), [MCP](../cli/mcp-command.md), and [UI](../cli/ui-command.md).

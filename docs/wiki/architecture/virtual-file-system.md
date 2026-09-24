@@ -1,38 +1,13 @@
----
-title: "Virtual File System"
-type: architecture
-tags: [filesystem, dependency-injection, implemented]
-created: 2026-04-28
-updated: 2026-04-28
-confidence: high
----
+# Filesystem boundaries
 
-## The Problem
+Infrastructure uses `System.IO.Abstractions.IFileSystem` for testable configuration, path, discovery, and document operations. Application handlers depend on feature interfaces rather than opening files directly.
 
-Indexing, configuration, persistence, and watch mode all touch disk-backed resources. When those collaborators call `File`, `Directory`, or `new FileSystemWatcher()` directly, the dependency graph becomes hidden, tests need temp directories or user-profile paths, and Linux CI picks up brittle physical-I/O behavior that has nothing to do with the indexing rules themselves.
+`WorkspaceCatalog` owns registered definitions under the resolved SharpSense home. `IRepositoryWorkspace` provides the selected root, database path, and relative-path operations. A selected `WorkspaceSelection` is registered explicitly; there is no production factory fallback that invents a workspace from a directory.
 
-## The Approach
+Roslyn loading sits behind its workspace abstractions, while source analysis can operate on an already loaded workspace. Markdown and TypeScript discovery/read boundaries allow focused tests without requiring every test to launch an external toolchain.
 
-SharpSense owns the filesystem boundary in Infrastructure. `AddFileSystem()` registers `IFileSystem` plus `IFileSystemWatcherFactory`, and long-lived infrastructure collaborators consume those abstractions through constructor injection. `RepositoryWorkspaceFactory` now owns repository-root discovery plus database-path derivation so callers depend on `IRepositoryWorkspace` instead of a static workspace constructor. `RepositoryWorkspace`, `WorkspaceFileDiscoverer`, `DocumentDiscoverer`, `WorkspaceWatcher`, `WorkspaceLoader`, `SharpSenseConfigurationExtensions`, and `PersistenceServiceCollectionExtensions` all read or create paths through `IFileSystem` instead of direct `System.IO` calls. The Roslyn side is split so `IWorkspaceLoader` owns disk-backed `MSBuildWorkspace` loading, while `ITargetAnalysisEngine` only analyzes already-loaded `Solution` or `Project` models. The Markdown side mirrors that separation by making `DocumentDiscoverer` depend on `IMarkdownIndexer` instead of a concrete indexer. This keeps physical-edge behavior explicit while letting tests swap in `MockFileSystem`, manual options change tokens, and `AdhocWorkspace`. See [[architecture/file-discovery]], [[architecture/incremental-watch]], [[extractors/csharp]], and [[extractors/markdown]].
+Some behavior requires the actual operating system: file-handle exclusivity, process execution, SQLite native integration, and MSBuild workspace loading. Tests for those boundaries use isolated temporary directories and an explicit `SHARPSENSE_HOME` rather than the developer's real catalog.
 
-## Components Involved
+Use the abstraction at filesystem boundaries without pretending a mock proves native locking or process behavior. Configuration tests should exercise home-owned definitions and selected sources; production code never falls back to project-local `sharpsense.yaml`.
 
-| Component | Role |
-| --- | --- |
-| `FileSystemServiceCollectionExtensions` | Registers the default `IFileSystem` and `IFileSystemWatcherFactory` inside Infrastructure. |
-| `IFileSystem` | Canonical abstraction for file reads, writes, directory queries, and path operations in long-lived infrastructure code. |
-| `IFileSystemWatcherFactory` | Explicit seam for `FileSystemWatcher` creation so watch mode stays injectable. |
-| `IRepositoryWorkspaceFactory` | Builds repository workspaces from working directories without leaking static creation helpers into callers. |
-| `IWorkspaceLoader` | Owns MSBuild-backed workspace loading, caching, and document refresh for C# Targets. |
-| `ITargetAnalysisEngine` | Analyzes already-loaded Roslyn models without opening Targets from disk itself. |
-| `IMarkdownIndexer` | Converts raw Markdown plus canonical relative paths into document nodes and edges. |
-| `SharpSenseConfigurationExtensions` | Reads `sharpsense.yaml` through `IFileSystem` and leaves change-token watching overrideable for tests. |
-| `PersistenceServiceCollectionExtensions` | Keeps SQLite directory creation at the persistence boundary rather than inside `RepositoryWorkspace`. |
-
-## Strict Rules
-
-1. Register the default `IFileSystem` boundary in Infrastructure extension methods, not in `Program.cs` and not in CLI route composition.
-2. Long-lived infrastructure collaborators must take filesystem, watcher, workspace-factory, loader, or indexer dependencies through constructor injection; do not hide them behind `new`.
-3. Treat direct `File`, `Directory`, `FileInfo`, and `DirectoryInfo` calls in long-lived services as architectural violations. Route them through `IFileSystem`.
-4. Physical-edge exceptions such as `PhysicalFileProvider`, `FileSystemWatcher`, and SQLite file paths are allowed only at explicit boundaries and must remain replaceable in the default test suite.
-5. Stateless tests use `MockFileSystem`, manual `IOptionsChangeTokenSource<SharpSenseConfig>` implementations, Moq, and Roslyn `AdhocWorkspace` instead of temp directories or copied fixture trees.
+See [host composition](host-composition.md), [source discovery](file-discovery.md), and [C# extraction](../extractors/csharp.md).

@@ -27,7 +27,7 @@ description: "Use when the user wants to know what will break if they change som
 6. Assess risk and report the likely breakage surface
 ```
 
-> If the index is stale or missing the changed area, run `sharpsense analyze <target>` in the terminal first.
+> If the index is stale or missing the changed area, run `sharpsense analyze --workspace <name-or-id>` in the terminal first.
 
 ## Memory hygiene
 

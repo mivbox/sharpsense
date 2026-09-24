@@ -10,8 +10,9 @@
 
 # Project Context
 
-* The standard logging directory for this application is:
-  `Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".SharpSense", "logs");`
+* Runtime storage belongs under `SHARPSENSE_HOME` when set to an absolute directory, otherwise `~/.sharpsense`.
+  Resolve this location with `SharpSenseHome.Resolve`; logs live in its `logs` subdirectory and named workspaces
+  in `workspaces/<workspace-id>`. Never read or create repository-local `sharpsense.yaml` files.
 
 # General
 

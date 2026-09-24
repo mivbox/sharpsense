@@ -3,7 +3,7 @@ title: "Application Vertical Slice Layout"
 type: architecture
 tags: [cqrs, csharp, implemented]
 created: 2026-04-27
-updated: 2026-04-27
+updated: 2026-09-24
 confidence: high
 ---
 
@@ -13,7 +13,7 @@ The Application layer had drifted into a generic `Features/` root with inconsist
 
 ## The Approach
 
-SharpSense now treats each Application feature as a first-class Vertical Slice rooted directly under `src/SharpSense.Application/{FeatureName}/`. Shared boundaries live in `Abstractions/`, shared feature records live in `Models/`, and each command/query owns its own folder containing the handler plus a local `Models/` directory for payloads that should not leak across the slice. This keeps CQRS entrypoints physically close to their models, preserves modular DI via `{FeatureName}ServiceCollectionExtensions.cs`, and aligns feature structure with [[architecture/cqrs-pipeline]] and [[architecture/host-composition]].
+SharpSense now treats each Application feature as a first-class Vertical Slice rooted directly under `src/SharpSense.Application/{FeatureName}/`. Shared boundaries live in `Abstractions/`, shared feature records live in `Models/`, and each command/query owns its own folder containing the handler plus a local `Models/` directory for payloads that should not leak across the slice. This keeps CQRS entrypoints physically close to their models, preserves modular DI via `{FeatureName}ServiceCollectionExtensions.cs`, and aligns feature structure with [cqrs pipeline](cqrs-pipeline.md) and [host composition](host-composition.md).
 
 ## Components Involved
 
@@ -32,4 +32,4 @@ SharpSense now treats each Application feature as a first-class Vertical Slice r
 3. Put shared feature records in `Models/`; do not use `Contracts/` for Application slice records.
 4. Keep command/query payloads in the owning command/query folder under `Models/`.
 5. Keep orchestration in the handler for that command/query unless there is a clear cross-slice abstraction boundary.
-6. Keep feature registration in `{FeatureName}ServiceCollectionExtensions.cs` and compose it through the host as described in [[architecture/host-composition]].
+6. Keep feature registration in `{FeatureName}ServiceCollectionExtensions.cs` and compose it through the host as described in [host composition](host-composition.md).

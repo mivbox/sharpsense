@@ -1,34 +1,14 @@
----
-title: "Context Command"
-type: cli
-tags: [spectre, mcp, implemented]
-created: 2026-05-02
-updated: 2026-05-12
-confidence: high
----
+# Context
 
-## Command
+Context returns a compact snapshot of one indexed node's immediate callers, callees, and inheritance relationships:
 
-`sharp-sense context --node-id <node-id>` returns the immediate architectural breadth around a persisted node: target metadata plus incoming callers/implementers, outgoing callees/inherits, and separate structural parents/children buckets for `ParentOf` hierarchy edges. It is the CLI counterpart to MCP `context` on [[cli/mcp-command]], and both routes now dispatch the same `GetNodeContextQuery` read slice described in [[architecture/cqrs-pipeline]] and bootstrapped through [[architecture/host-composition]].
+```bash
+sharpsense context --workspace product --node-id 42
+sharpsense context --workspace product --node-id 42 --include-memories
+```
 
-## Options
+Obtain the positive integer node ID from [search](search-command.md) or the UI. IDs are local to a workspace.
 
-| Setting | Source | Purpose |
-| --- | --- | --- |
-| `NodeId` | `--node-id <NODE_ID>` | Persisted integer code-node id whose immediate breadth should be loaded. |
-| `RepositoryRoot` | `--repo-root <path>` | Resolves the repository workspace that owns the SQLite index. |
-| `IsVerbose` | `-v\|--verbose` | Enables verbose command-host logging. |
+Output uses TOON and bounds related-node breadth. It separates functional and structural relationships where available; it does not traverse an entire dependency graph. Use [trace](trace-command.md) when you need a particular direction.
 
-`ContextCommand.Configure()` copies `RepositoryRoot` into `IOptions<SharpSenseCliOptions>`, loads `SharpSenseConfig`, and registers the Context360 Application slice, Context360 Infrastructure slice, and persistence.
-
-## Execution Flow
-
-1. `Program.CommandApp.cs` routes `context` to `ContextCommand`.
-2. Spectre binds `--node-id` and rejects non-positive values during validation.
-3. `AbstractAsyncCommand<TSettings>` builds the host using the shared rules in [[architecture/host-composition]].
-4. `Configure()` resolves the repository root and registers `AddContext360()`, `AddContext360Infrastructure()`, and `AddPersistence()`.
-5. `Execute()` resolves `IQueryHandler<GetNodeContextQuery, Context360Result>` and dispatches a query containing the persisted node id plus the fixed related-node cap.
-6. `GetNodeContextQueryHandler` validates the node id, clamps `MaxRelated`, and delegates to `IContextRepository`.
-7. `ContextRepository` uses one DbContext to load the target node plus immediate incoming callers/implementers, outgoing callees/inherits, and separate structural parents/children buckets, stripping related-method parameter lists inside the EF projection.
-8. Structural `ParentOf` edges are excluded from the functional callers/callees buckets so hierarchy does not pollute behavioral breadth.
-9. `TokenObjectNotation.SerializeContext360()` renders the YAML-like TOON block written directly to the terminal.
+With `--include-memories`, attached notes appear as compact metadata, including their IDs and stale state. Fetch full content with [memory get](memory-command.md). The MCP equivalent is `context`, with an optional edge-category mask.

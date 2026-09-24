@@ -1,33 +1,37 @@
----
-title: "Ui Command"
-type: cli
-tags: [spectre, cqrs, implemented]
-created: 2026-04-26
-updated: 2026-04-30
-confidence: high
----
+# Browser UI
 
-## Command
+`sharpsense ui` starts the global workspace UI at `http://localhost:50069`. It can start with no registered workspaces and also lists existing registrations.
 
-`sharp-sense ui` starts the embedded SharpSense web host. It serves bundled UI assets, exposes the lazy workspace-tree API from [[architecture/workspace-tree]], and exposes the opt-in dependency-graph APIs backed by the query boundary described in [[architecture/cqrs-pipeline]]. Shared bootstrapping follows [[architecture/host-composition]].
+```bash
+sharpsense ui
+sharpsense ui --workspace product
+sharpsense ui --url http://localhost:50100
+```
 
-## Options
+The optional workspace selects the initial view; the server remains a global catalog. The listen URL must be a loopback HTTP(S) address.
 
-| Setting | Source | Purpose |
-| --- | --- | --- |
-| `Url` | `--url <url>` | HTTP address used by the embedded web host. |
-| `RepositoryRoot` | `--repo-root <path>` | Resolves the repository workspace that owns the persisted graph. |
-| `IsVerbose` | `-v\|--verbose` | Enables verbose web-host logging. |
+## Workspace workflow
 
-`UiCommand.ConfigureServices()` writes `RepositoryRoot` into `IOptions<SharpSenseCliOptions>`, loads `SharpSenseConfig`, and registers the dependency-graph, workspace-explorer, and persistence slices before the web app starts.
+Use Workspaces to create or edit a source selection, discover available sources, or merge existing definitions. Open a workspace to run analysis, start/stop watch, inspect index diagnostics, browse the graph, search, try tools, and manage memories.
 
-## Execution Flow
+The explorer loads persisted directories and documents on demand. Graph nodes and optional relationships load progressively without a total-result cap. Progress counts and Pause/Resume controls stay available while loading. Projects, classes, interfaces, components, documents, and external dependencies are visible by default; the type menu can also show methods, properties, and fields. Choose a smaller folder or use Search to focus on a symbol. The UI uses Material UI, TanStack Router and React Query, and a Kiota-generated API client. Query state and clients are isolated by workspace.
 
-1. `Program.CommandApp.cs` routes `ui` to `UiCommand`.
-2. `AbstractWebAsyncCommand<TSettings>` builds a `WebApplication`, configures Serilog request logging, and applies the shared bootstrapping rules from [[architecture/host-composition]].
-3. `ConfigureServices()` resolves the repository root and registers `AddDependencyGraph()`, `AddDependencyGraphInfrastructure()`, `AddWorkspaceExplorer()`, `AddWorkspaceExplorerInfrastructure()`, and `AddPersistence()`.
-4. `ConfigureApp()` binds the requested URL and opens the embedded asset namespace.
-5. `/api/tree` resolves `IQueryHandler<GetWorkspaceTreeQuery, WorkspaceTreeResult>` and returns the immediate children for the requested workspace-tree path.
-6. `/api/graph/nodes` resolves `IQueryHandler<GetDependencyGraphNodesQuery, IAsyncEnumerable<GraphNode>>` and streams only the selected node scope plus one-hop boundary ghost nodes.
-7. `/api/graph/edges` resolves `IQueryHandler<GetDependencyGraphEdgesQuery, IAsyncEnumerable<GraphEdge>>` and streams the internal and boundary edges only after the UI opts into edge hydration.
-8. Static files and the fallback route serve the embedded UI assets, with a 500 response if the packaged `index.html` asset is missing.
+An active indexing/watch job blocks source edits for that workspace. Stop the job, edit, and analyze again. Jobs belong to the running UI server; stopping the server cancels its jobs.
+
+## HTTP contract
+
+| Route | Scope |
+| --- | --- |
+| `GET/POST /api/workspaces` | Global catalog listing and creation. |
+| `GET/PUT /api/workspaces/{workspaceId}` | Definition selected by route ID. |
+| `POST /api/workspaces/discover` | Candidate sources for a repository root. |
+| `POST /api/workspaces/merge` | Create an independent merged definition. |
+| `GET/POST/DELETE /api/workspaces/{workspaceId}/indexing` | Read status, start analysis/watch, or stop a job. |
+| `GET /api/tools` | Global tool catalog. |
+| `GET /api/graph/nodes/page`, `GET /api/graph/edges/page` | Cursor pages for selected directory IDs, tied to one graph revision. |
+| `GET /api/graph/nodes/{nodeId}/connections` | Selected node summary and paged distinct connected peers, independent of canvas scope and edge visibility. |
+| Graph, tree, overview, tool execution, statistics, and memory routes | Require `X-SharpSense-Workspace: <workspace-guid>`. |
+
+The required workspace header is declared in OpenAPI and generated into the client contract. Each request or job binds a fixed workspace scope; there is no mutable server-wide current workspace. The server validates Host and Origin against its loopback binding.
+
+See the [UI development guide](../../../src/SharpSense.UI/README.md) for pnpm commands and API client generation, and [workspace explorer architecture](../architecture/workspace-tree.md) for graph loading.
