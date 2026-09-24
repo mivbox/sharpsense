@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using SharpSense.Application.Indexing;
 using SharpSense.Infrastructure.Storage;
 using SharpSense.Cli.Ui.Indexing;
+using SharpSense.Cli.Workspaces;
 
 namespace SharpSense.Cli.Ui.Api;
 
@@ -63,7 +64,11 @@ internal static class WorkspaceCatalogEndpoints
         }).WithName("MergeWorkspaces").WithTags("Workspaces").Produces<WorkspaceSummary>(201).ProducesProblem(400);
 
         app.MapPost("/api/workspaces/discover", (DiscoverWorkspaceRequest request, WorkspaceSourceDiscovery discovery, CancellationToken ct) =>
-                discovery.Discover(request.RepositoryRoot, ct))
+        {
+            var result = discovery.Discover(request.RepositoryRoot, ct);
+            return new WorkspaceDiscoveryResponse(result.RepositoryRoot, result.Sources.Select(static source =>
+                new WorkspaceSourceOverview(source.Kind.ToString(), source.Path)).ToArray());
+        })
             .WithName("DiscoverWorkspaceSources").WithTags("Workspaces").Produces<WorkspaceDiscoveryResponse>().ProducesProblem(400);
     }
 

@@ -1,3 +1,4 @@
+using SharpSense.Cli.Workspaces;
 using JetBrains.Annotations;
 using System.IO.Compression;
 using Microsoft.AspNetCore.Builder;

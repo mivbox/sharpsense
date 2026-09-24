@@ -1,7 +1,9 @@
 using System.IO.Abstractions;
 using SharpSense.Application.Indexing;
 
-namespace SharpSense.Cli.Ui.Api;
+namespace SharpSense.Cli.Workspaces;
+
+internal sealed record DiscoveredWorkspaceSources(string RepositoryRoot, IReadOnlyList<WorkspaceSource> Sources);
 
 /// <summary>
 /// Offers bounded source candidates without interpreting project files or executing build tooling.
@@ -13,7 +15,7 @@ internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
         ".git", ".sharpsense", "node_modules", "bin", "obj", "dist", "build", ".next", ".turbo", "coverage", "vendor"
     };
 
-    public WorkspaceDiscoveryResponse Discover(string repositoryRoot, CancellationToken ct)
+    public DiscoveredWorkspaceSources Discover(string repositoryRoot, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRoot);
         if (!fileSystem.Path.IsPathRooted(repositoryRoot) || !fileSystem.Directory.Exists(repositoryRoot))
@@ -24,7 +26,7 @@ internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
         var root = fileSystem.Path.GetFullPath(repositoryRoot);
         var pending = new Queue<string>();
         pending.Enqueue(root);
-        var candidates = new List<WorkspaceSourceOverview>();
+        var candidates = new List<WorkspaceSource>();
         var markdownDirectories = new HashSet<string>(StringComparer.Ordinal);
         var visited = 0;
         var visitedFiles = 0;
@@ -49,11 +51,11 @@ internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
                 var relative = fileSystem.Path.GetRelativePath(root, file).Replace('\\', '/');
                 if (new[] { ".csproj", ".sln", ".slnx" }.Contains(extension, StringComparer.OrdinalIgnoreCase))
                 {
-                    candidates.Add(new(WorkspaceSourceKind.CSharp.ToString(), relative));
+                    candidates.Add(new(WorkspaceSourceKind.CSharp, relative));
                 }
                 else if (name.StartsWith("tsconfig", StringComparison.OrdinalIgnoreCase) && extension.Equals(".json", StringComparison.OrdinalIgnoreCase))
                 {
-                    candidates.Add(new(WorkspaceSourceKind.TypeScript.ToString(), relative));
+                    candidates.Add(new(WorkspaceSourceKind.TypeScript, relative));
                 }
                 else if (extension.Equals(".md", StringComparison.OrdinalIgnoreCase))
                 {
@@ -72,7 +74,7 @@ internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
             }
         }
 
-        candidates.AddRange(markdownDirectories.Select(static path => new WorkspaceSourceOverview(WorkspaceSourceKind.Markdown.ToString(), path)));
-        return new WorkspaceDiscoveryResponse(root, candidates.OrderBy(static source => source.Kind).ThenBy(static source => source.Path).ToArray());
+        candidates.AddRange(markdownDirectories.Select(static path => new WorkspaceSource(WorkspaceSourceKind.Markdown, path)));
+        return new DiscoveredWorkspaceSources(root, candidates.OrderBy(static source => source.Kind).ThenBy(static source => source.Path).ToArray());
     }
 }

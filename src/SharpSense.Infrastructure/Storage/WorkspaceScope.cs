@@ -14,7 +14,9 @@ public sealed class WorkspaceScope
 
     public bool SkipEmbeddings { get; private set; }
 
-    public void Bind(WorkspaceSelection selection, bool watch = false, bool skipEmbeddings = false)
+    public bool DisableEmbeddingCache { get; private set; }
+
+    public void Bind(WorkspaceSelection selection, bool watch = false, bool skipEmbeddings = false, bool disableEmbeddingCache = false)
     {
         ArgumentNullException.ThrowIfNull(selection);
         if (_selection is not null)
@@ -25,5 +27,6 @@ public sealed class WorkspaceScope
         _selection = selection;
         Watch = watch;
         SkipEmbeddings = skipEmbeddings;
+        DisableEmbeddingCache = disableEmbeddingCache;
     }
 }
