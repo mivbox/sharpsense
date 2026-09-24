@@ -6,6 +6,8 @@ on:
 jobs:
   build-test-publish:
     runs-on: ubuntu-24.04
+    env:
+      PUPPETEER_CACHE_DIR: ${{ runner.temp }}/puppeteer
     permissions:
       contents: write
     steps:
@@ -20,10 +22,31 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          bun-version: 'latest'
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: '11.8.0'
+          package_json_file: src/SharpSense.UI/package.json
+          run_install: false
+
+      - name: Install frontend dependencies
+        working-directory: src/SharpSense.UI
+        run: pnpm install --frozen-lockfile
+
+      - name: UI lint and formatting
+        working-directory: src/SharpSense.UI
+        run: |
+          pnpm run lint
+          pnpm run format:check
+
+      - name: Install browser and system dependencies
+        working-directory: src/SharpSense.UI
+        run: sudo env "PATH=$PATH" "PUPPETEER_CACHE_DIR=$PUPPETEER_CACHE_DIR" pnpm exec puppeteer browsers install chrome --install-deps
 
       - name: Calculate Semantic Version
         id: versioning
@@ -33,17 +56,28 @@ jobs:
           minor_pattern: "feat:"
           version_format: "${major}.${minor}.${patch}"
           bump_each_commit: false
+          search_commit_body: true
 
-      - name: Build Project
+      - name: Build & Test
         run: >
-          dotnet build ./src/SharpSense.Cli/SharpSense.Cli.csproj
-          -c Release
+          dotnet test SharpSense.sln -c Release
+          -p:GeneratePackageOnBuild=false
+          /p:Version=${{ steps.versioning.outputs.version }}
+
+      - name: Query transport tests
+        working-directory: src/SharpSense.UI
+        run: pnpm run test:unit
+
+      - name: Browser workflows
+        working-directory: src/SharpSense.UI
+        run: pnpm run test:e2e
 
       - name: Pack NuGet Tool
         run: >
           dotnet pack ./src/SharpSense.Cli/SharpSense.Cli.csproj
           -c Release
-          /p:PackageVersion=${{ steps.versioning.outputs.version }}
+          --no-build
+          /p:Version=${{ steps.versioning.outputs.version }}
           -o ./artifacts
 
       - name: Publish to NuGet.org

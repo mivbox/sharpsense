@@ -1,41 +1,34 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
+import { CssBaseline, ThemeProvider } from "@mui/material";
 import App from "./App";
+import { theme } from "./app/theme";
+import { shouldRetryWorkspaceRequest } from "./shared/api/transport";
+import { AppErrorBoundary } from "./shared/ui/AppErrorBoundary";
 
-const queryClient = new QueryClient();
-const theme = createTheme({
-  palette: {
-    mode: "dark",
-    background: {
-      default: "#05070d",
-      paper: "#111827"
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      retry: shouldRetryWorkspaceRequest,
+      retryDelay: 1000,
+      refetchOnWindowFocus: false,
     },
-    primary: {
-      main: "#60a5fa"
-    },
-    secondary: {
-      main: "#22c55e"
-    }
+    mutations: { retry: false },
   },
-  shape: {
-    borderRadius: 16
-  }
 });
-
-const rootElement = document.getElementById("root");
-if (!rootElement) {
-  throw new Error("The UI root element was not found.");
-}
-
-createRoot(rootElement).render(
+const root = document.getElementById("root");
+if (!root) throw new Error("Workspace root element is missing.");
+createRoot(root).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <App />
-      </ThemeProvider>
-    </QueryClientProvider>
-  </StrictMode>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <AppErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </AppErrorBoundary>
+    </ThemeProvider>
+  </StrictMode>,
 );

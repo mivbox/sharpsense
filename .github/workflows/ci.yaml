@@ -17,6 +17,8 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-24.04
+    env:
+      PUPPETEER_CACHE_DIR: ${{ runner.temp }}/puppeteer
     steps:
       - name: Checkout Code
         uses: actions/checkout@v5
@@ -28,10 +30,39 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          bun-version: 'latest'
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: '11.8.0'
+          package_json_file: src/SharpSense.UI/package.json
+          run_install: false
+
+      - name: Install frontend dependencies
+        working-directory: src/SharpSense.UI
+        run: pnpm install --frozen-lockfile
+
+      - name: UI lint and formatting
+        working-directory: src/SharpSense.UI
+        run: |
+          pnpm run lint
+          pnpm run format:check
+
+      - name: Install browser and system dependencies
+        working-directory: src/SharpSense.UI
+        run: sudo env "PATH=$PATH" "PUPPETEER_CACHE_DIR=$PUPPETEER_CACHE_DIR" pnpm exec puppeteer browsers install chrome --install-deps
 
       - name: Build & Test
-        run: dotnet test -c Release
+        run: dotnet test SharpSense.sln -c Release -p:GeneratePackageOnBuild=false
+
+      - name: Query transport tests
+        working-directory: src/SharpSense.UI
+        run: pnpm run test:unit
+
+      - name: Browser workflows
+        working-directory: src/SharpSense.UI
+        run: pnpm run test:e2e
