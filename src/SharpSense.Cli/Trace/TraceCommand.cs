@@ -46,8 +46,6 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
         [CommandOption("--include-memories")]
         public bool IncludeMemories { get; init; }
 
-        [CommandOption("--repo-root <path>")]
-        public string? RepositoryRoot { get; init; }
 
         public override ValidationResult Validate()
             => string.IsNullOrWhiteSpace(Identifier) ?
@@ -61,14 +59,7 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
         Settings settings,
         IServiceCollection services)
     {
-        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-
-        services.Configure<SharpSenseCliOptions>(options =>
-        {
-            options.RepositoryRoot = rawRoot;
-        });
-        services.AddRepositoryWorkspace(rawRoot);
-        services.AddSharpSenseConfiguration(rawRoot);
+        services.AddSelectedWorkspace(settings);
         services.AddImpactAnalysis();
         services.AddImpactAnalysisInfrastructure();
         services.AddTrace();

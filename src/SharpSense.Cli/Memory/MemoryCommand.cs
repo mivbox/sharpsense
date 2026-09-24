@@ -51,8 +51,6 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
         [CommandOption("--intent-filter <INTENT>")]
         public string[]? IntentFilterRaw { get; init; }
 
-        [CommandOption("--repo-root <path>")]
-        public string? RepositoryRoot { get; init; }
 
         public override ValidationResult Validate()
         {
@@ -107,14 +105,7 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
 
     protected override void Configure(Settings settings, IServiceCollection services)
     {
-        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-
-        services.Configure<SharpSenseCliOptions>(options =>
-        {
-            options.RepositoryRoot = rawRoot;
-        });
-        services.AddRepositoryWorkspace(rawRoot);
-        services.AddSharpSenseConfiguration(rawRoot);
+        services.AddSelectedWorkspace(settings);
         services.AddMemory();
         services.AddMemoryInfrastructure();
         services.AddPersistence();

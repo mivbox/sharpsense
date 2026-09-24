@@ -30,8 +30,6 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
         [CommandOption("--include-memories")]
         public bool IncludeMemories { get; init; }
 
-        [CommandOption("--repo-root <path>")]
-        public string? RepositoryRoot { get; init; }
 
         public override ValidationResult Validate()
             => NodeId <= 0
@@ -43,14 +41,7 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
         Settings settings,
         IServiceCollection services)
     {
-        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-
-        services.Configure<SharpSenseCliOptions>(options =>
-        {
-            options.RepositoryRoot = rawRoot;
-        });
-        services.AddRepositoryWorkspace(rawRoot);
-        services.AddSharpSenseConfiguration(rawRoot);
+        services.AddSelectedWorkspace(settings);
         services.AddContext360();
         services.AddContext360Infrastructure();
         services.AddMemory();

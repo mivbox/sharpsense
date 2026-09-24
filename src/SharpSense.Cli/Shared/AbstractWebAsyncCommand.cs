@@ -69,6 +69,7 @@ public abstract class AbstractWebAsyncCommand<TSettings> : AsyncCommand<TSetting
         catch (Exception ex)
         {
             Logger.Error(ex, "Web command execution failed for {SettingsType}", typeof(TSettings).FullName);
+            CommandOutput.WriteError(context, ex.GetBaseException().Message);
             return 1;
         }
         finally

@@ -15,6 +15,7 @@ using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Embeddings;
+using SharpSense.Infrastructure.GraphStats;
 using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
@@ -36,10 +37,6 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
     public sealed class Settings : GlobalSettings
     {
-        [CommandArgument(0, "<target-path>")]
-        public string TargetPath { get; init; } = string.Empty;
-
-        [CommandOption("--repo-root <path>")] public string? RepositoryRoot { get; init; }
 
         [CommandOption("--watch")] public bool Watch { get; init; }
 
@@ -47,33 +44,25 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
 
         [CommandOption("--no-cache")] public bool DisableEmbeddingCache { get; init; }
 
-        public override ValidationResult Validate()
-            => string.IsNullOrWhiteSpace(TargetPath)
-                ? ValidationResult.Error("A target path is required.")
-                : ValidationResult.Success();
     }
 
     protected override void Configure(
         Settings settings,
         IServiceCollection services)
     {
-        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-        var targetDirectory = CommandPathResolver.ResolveTargetDirectory(rawRoot, settings.TargetPath);
-
+        services.AddSelectedWorkspace(settings);
         services.Configure<SharpSenseCliOptions>(options =>
         {
-            options.TargetPath = settings.TargetPath;
-            options.RepositoryRoot = rawRoot;
             options.Watch = settings.Watch;
             options.SkipEmbeddings = settings.SkipEmbeddings;
             options.DisableEmbeddingCache = settings.DisableEmbeddingCache;
         });
-        services.AddRepositoryWorkspace(rawRoot);
-        services.AddSharpSenseConfiguration(targetDirectory);
         services.AddIndexing();
         services.AddEmbeddingsInfrastructure();
         services.AddIndexingInfrastructure();
+        services.AddHostedService<WorkspaceIndexLeaseHostedService>();
         services.AddPersistence();
+        services.AddIndexRunRecording();
     }
 
     protected override async Task<int> Execute(
@@ -82,24 +71,29 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
         IHost host,
         CancellationToken ct)
     {
+        await using var workspaceScope = host.Services.CreateAsyncScope();
+        var services = workspaceScope.ServiceProvider;
         try
         {
-            await IndexTarget(settings, host, ct);
-
             if (!settings.Watch)
             {
-                AnsiConsole.WriteLine($"Indexed {settings.TargetPath}.");
+                await IndexTarget(settings, services, ct);
+                var workspace = services.GetRequiredService<WorkspaceSelection>();
+                CommandOutput.Write(context, $"Indexed workspace '{workspace.Definition.Name}'.{Environment.NewLine}");
                 return 0;
             }
 
-            var watchPath = GetWatchPath(host);
-            AnsiConsole.WriteLine($"Watching {watchPath} for C# and Markdown changes...");
-            await WatchWorkspace(settings, host, watchPath, ct);
+            var watchPath = GetWatchPath(services);
+            await WatchWorkspace(settings, services, watchPath, ct);
             return 0;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             return 0;
+        }
+        catch (IndexingFailedException)
+        {
+            return 1;
         }
     }
 
@@ -133,7 +127,7 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
 
     private static async Task IndexTarget(
         Settings settings,
-        IHost host,
+        IServiceProvider services,
         CancellationToken ct)
     {
         await AnsiConsole.Console.Progress()
@@ -163,7 +157,7 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
                     embeddingsTask.Value = CalculateEmbeddingsProgressPercentage(update);
                 });
 
-                await RunIndex(settings, host, progress, embeddingProgress, ct);
+                await RunIndex(settings, services, progress, embeddingProgress, ct);
 
                 indexingTask.Description = "Indexing complete.";
                 indexingTask.Value = 100;
@@ -179,13 +173,12 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
 
     private static async Task RunIndex(
         Settings settings,
-        IHost host,
+        IServiceProvider services,
         IProgress<IndexingProgress>? progress,
         IProgress<EmbeddingGenerationProgress>? embeddingProgress,
         CancellationToken ct)
     {
-        await using var scope = host.Services.CreateAsyncScope();
-        var handler = scope.ServiceProvider.GetRequiredService<ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>>();
+        var handler = services.GetRequiredService<ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>>();
 
         var result = await handler.Handle(
             new IndexTargetCommand(
@@ -193,47 +186,56 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
                 embeddingProgress),
             ct);
 
+        ct.ThrowIfCancellationRequested();
         if (result.IsFailed)
         {
             foreach (var error in result.Errors)
             {
-                if (error is ServiceError serviceError)
-                {
-                    AnsiConsole.MarkupLine($"[red]ERROR[/]: {serviceError.Message}");
-                    continue;
-                }
-                AnsiConsole.MarkupLine($"[red]ERROR[/]: {error}");
+                AnsiConsole.MarkupLine($"[red]ERROR[/]: {Markup.Escape(error.Message)}");
             }
+            throw new IndexingFailedException();
         }
     }
 
     private static async Task WatchWorkspace(
         Settings settings,
-        IHost host,
+        IServiceProvider services,
         string repositoryRoot,
         CancellationToken ct)
     {
-        var watcher = host.Services.GetRequiredService<IWorkspaceWatcher>();
+        var watcher = services.GetRequiredService<IWorkspaceWatcher>();
+        var recovering = false;
 
         while (!ct.IsCancellationRequested)
         {
+            var subscribed = false;
             try
             {
-                await watcher.Watch(repositoryRoot, ApplyBatchUpdate, ct);
+                await watcher.Watch(repositoryRoot, ApplyBatchUpdate, ct,
+                    initialize: token =>
+                    {
+                        subscribed = true;
+                        return recovering
+                            ? RecoverWithFullReindex(settings, services,
+                                "Watch mode detected file system watcher errors. Rebuilding the full index...", token)
+                            : IndexTarget(settings, services, token);
+                    },
+                    onReady: () => AnsiConsole.WriteLine(
+                        $"Watching {repositoryRoot} for C#, TypeScript, and Markdown changes..."));
                 return;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 throw;
             }
-            catch (Exception ex)
+            catch (IndexingFailedException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (subscribed)
             {
                 Logger.Warning(ex, "Workspace watcher failed.");
-                await RecoverWithFullReindex(
-                    settings,
-                    host,
-                    "Watch mode detected file system watcher errors. Rebuilding the full index...",
-                    ct);
+                recovering = true;
                 AnsiConsole.WriteLine("Restarting watch mode...");
             }
         }
@@ -246,7 +248,7 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
         {
             try
             {
-                await ApplyIncrementalUpdate(settings, host, changedFiles, token);
+                await ApplyIncrementalUpdate(settings, services, changedFiles, token);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -257,7 +259,7 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
                 Logger.Warning(ex, "Incremental watch update failed.");
                 await RecoverWithFullReindex(
                     settings,
-                    host,
+                    services,
                     "Watch mode incremental update failed. Rebuilding the full index...",
                     token);
             }
@@ -266,12 +268,11 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
 
     private static async Task ApplyIncrementalUpdate(
         Settings settings,
-        IHost host,
+        IServiceProvider services,
         IReadOnlyList<WorkspaceFileChange> changedFiles,
         CancellationToken ct)
     {
-        await using var scope = host.Services.CreateAsyncScope();
-        var handler = scope.ServiceProvider.GetRequiredService<ICommandHandler<UpdateWorkspaceFilesCommand>>();
+        var handler = services.GetRequiredService<ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>>();
 
         await AnsiConsole.Progress()
             .AutoClear(true)
@@ -295,9 +296,15 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
                     }
                 });
 
-                await handler.Handle(
+                var result = await handler.Handle(
                     new UpdateWorkspaceFilesCommand(changedFiles, progress),
                     ct);
+
+                ct.ThrowIfCancellationRequested();
+                if (result.IsFailed)
+                {
+                    throw new InvalidOperationException(string.Join("; ", result.Errors.Select(error => error.Message)));
+                }
 
                 updateTask.Value = 100;
             });
@@ -308,26 +315,28 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
 
     private static async Task RecoverWithFullReindex(
         Settings settings,
-        IHost host,
+        IServiceProvider services,
         string message,
         CancellationToken ct)
     {
         AnsiConsole.WriteLine(message);
-        await RunIndex(settings, host, progress: null, embeddingProgress: null, ct);
+        await RunIndex(settings, services, progress: null, embeddingProgress: null, ct);
         AnsiConsole.WriteLine("Watch mode recovery completed.");
     }
 
-    private static string GetWatchPath(IHost host)
+    private static string GetWatchPath(IServiceProvider services)
     {
-        var repositoryWorkspace = host.Services.GetService<IRepositoryWorkspace>();
+        var repositoryWorkspace = services.GetService<IRepositoryWorkspace>();
         if (repositoryWorkspace is not null)
         {
             return repositoryWorkspace.RootPath;
         }
 
-        var options = host.Services.GetRequiredService<IOptions<SharpSenseCliOptions>>().Value;
+        var options = services.GetRequiredService<IOptions<SharpSenseCliOptions>>().Value;
         return string.IsNullOrWhiteSpace(options.RepositoryRoot)
             ? throw new InvalidOperationException("A repository root must be configured before watch mode can start.")
             : options.RepositoryRoot;
     }
+
+    private sealed class IndexingFailedException : Exception;
 }

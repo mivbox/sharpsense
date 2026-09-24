@@ -1,6 +1,8 @@
 using System.Text;
+using System.IO.Abstractions;
 using Serilog;
 using Serilog.Events;
+using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Cli.Shared;
 
@@ -35,11 +37,8 @@ internal static class SharpSenseLogging
     public static string GetLogFilePath(string? commandName)
     {
         var loggingDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".SharpSense",
+            SharpSenseHome.Resolve(new FileSystem()),
             "logs");
-
-        Directory.CreateDirectory(loggingDirectory);
 
         var safeCommandName = CreateSafeFileNameSegment(commandName);
         return Path.Combine(loggingDirectory, $"{safeCommandName}.log");

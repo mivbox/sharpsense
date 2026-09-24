@@ -7,6 +7,8 @@ using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Context360.GetNodeContext.Models;
 using SharpSense.Application.Context360.Models;
+using SharpSense.Application.GraphStats.GetGraphStats;
+using SharpSense.Application.GraphStats.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
@@ -18,7 +20,6 @@ using SharpSense.Application.Memory.DeleteMemory.Models;
 using SharpSense.Application.Memory.GetMemory.Models;
 using SharpSense.Application.Memory.GetMemories.Models;
 using SharpSense.Application.Memory.GetNodeMemories.Models;
-using SharpSense.Application.Refactoring.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Application.Shared.Models;
@@ -35,6 +36,25 @@ namespace SharpSense.Cli.Mcp;
 [SuppressMessage("ReSharper", "InconsistentNaming")]
 internal sealed class SharpSenseMcpTools
 {
+    [McpServerTool(ReadOnly = true), Description("Read repository graph statistics, language and embedding coverage, the last successful index, indexing phase timings, and actionable diagnostics. Does not modify the graph. No node ID is required.")]
+    public static async Task<GraphStatsSnapshot> graph_stats(
+        IQueryHandler<GetGraphStatsQuery, GraphStatsSnapshot> handler,
+        CancellationToken ct = default)
+    {
+        using var activity = SharpSenseTraceSpan.Start("mcp.tool.graph_stats");
+        activity.AddTag("mcp.tool", "graph_stats");
+
+        try
+        {
+            return await handler.Handle(new GetGraphStatsQuery(), ct);
+        }
+        catch (Exception exception)
+        {
+            activity.RecordExceptionAndErrorStatus(exception);
+            throw;
+        }
+    }
+
     [McpServerTool, Description("Run a local command, index its streamed output with a transient full-text search index, and return compact reduced context blocks for the supplied query.")]
     public static async Task<string> ctx_execute(
         ICommandProcessRunner processRunner,
@@ -335,34 +355,6 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool, Description("Acts like Ctrl+R, R in JetBrains Rider. Use this to semantically rename a method, class, or property. It automatically updates all callers and references across the entire codebase. Provide ONLY the new identifier name (e.g., 'ProcessPaymentAsync'), not a full signature.")]
-    public static async Task<string> refactor_symbol(
-        IRefactorSymbolService refactorSymbolService,
-        [Description("The persisted integer ID of the symbol to rename.")] int nodeId,
-        [Description("The new identifier name only, such as 'ProcessPaymentAsync'. Do not provide a signature or code block.")] string newName,
-        CancellationToken ct = default)
-    {
-        using var activity = SharpSenseTraceSpan.Start("mcp.tool.refactor_symbol");
-        activity.AddTag("mcp.tool", "refactor_symbol");
-        activity.AddTag("refactor.node_id", nodeId);
-
-        try
-        {
-            var result = await refactorSymbolService.RenameSymbol(
-                nodeId,
-                newName,
-                ct: ct);
-
-            activity.AddTag("refactor.success", result.Success);
-            activity.AddTag("refactor.modified_file.count", result.ModifiedFilePaths.Length);
-            return TokenObjectNotation.SerializeRefactorResult(result);
-        }
-        catch (Exception ex)
-        {
-            activity.RecordExceptionAndErrorStatus(ex);
-            throw;
-        }
-    }
 
     [McpServerTool, Description("Find direct derived classes or interface implementers for a persisted node ID.")]
     public static async Task<string> get_inheritors(

@@ -26,4 +26,17 @@ internal static class CommandOutput
         Spectre.Console.AnsiConsole.Console.Profile.Out.Writer.Write(output);
         Spectre.Console.AnsiConsole.Console.Profile.Out.Writer.Flush();
     }
+
+    public static void WriteError(CommandContext context, string message)
+    {
+        var console = GetExecutionContext(context)?.Console;
+        if (console is not null)
+        {
+            console.Profile.Out.Writer.WriteLine($"Error: {message}");
+            console.Profile.Out.Writer.Flush();
+            return;
+        }
+
+        Console.Error.WriteLine($"Error: {message}");
+    }
 }

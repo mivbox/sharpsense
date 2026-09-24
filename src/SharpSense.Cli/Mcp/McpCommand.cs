@@ -6,25 +6,24 @@ using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SharpSense.Application.Context360;
+using SharpSense.Application.GraphStats;
 using Serilog;
 using SharpSense.Application.Inheritors;
-using SharpSense.Application.Refactoring;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Application.HybridSearch;
 using SharpSense.Application.ImpactAnalysis;
 using SharpSense.Application.Memory;
 using SharpSense.Application.Trace;
 using SharpSense.Infrastructure.Context360;
+using SharpSense.Infrastructure.GraphStats;
 using SharpSense.Infrastructure.CommandExecution;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.HybridSearch;
 using SharpSense.Infrastructure.Inheritors;
 using SharpSense.Infrastructure.ImpactAnalysis;
-using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
-using SharpSense.Infrastructure.Refactoring;
 using SharpSense.Infrastructure.Storage;
 using SharpSense.Infrastructure.Trace;
 using Spectre.Console.Cli;
@@ -41,8 +40,6 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
     public sealed class Settings : GlobalSettings
     {
-        [CommandOption("--repo-root <path>")]
-        public string? RepositoryRoot { get; init; }
     }
 
     protected override void Configure(Settings settings, IServiceCollection services)
@@ -50,27 +47,18 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
         Logger.Debug("Configuring MCP command with repository root: {RepositoryRoot}",
             settings.RepositoryRoot);
 
-        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-
-        services.Configure<SharpSenseCliOptions>(options =>
-        {
-            options.RepositoryRoot = rawRoot;
-        });
-        services.AddRepositoryWorkspace(rawRoot);
-        services.AddSharpSenseConfiguration(rawRoot);
+        services.AddSelectedWorkspace(settings);
         services.AddCommandExecutionInfrastructure();
         services.AddContext360();
         services.AddContext360Infrastructure();
+        services.AddGraphStats().AddGraphStatsInfrastructure();
         services.AddHybridSearch();
         services.AddHybridSearchInfrastructure();
         services.AddMemory();
         services.AddMemoryInfrastructure();
         services.AddEmbeddingsInfrastructure();
-        services.AddRefactoring();
-        services.AddRefactoringInfrastructure();
         services.AddInheritors();
         services.AddInheritorsInfrastructure();
-        services.AddIndexingInfrastructure();
         services.AddImpactAnalysis();
         services.AddImpactAnalysisInfrastructure();
         services.AddTrace();

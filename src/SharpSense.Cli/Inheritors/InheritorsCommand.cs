@@ -25,8 +25,6 @@ internal sealed class InheritorsCommand : AbstractAsyncCommand<InheritorsCommand
         [CommandArgument(0, "<node-id>")]
         public int NodeId { get; init; }
 
-        [CommandOption("--repo-root <path>")]
-        public string? RepositoryRoot { get; init; }
 
         [CommandOption("--toon")]
         public bool UseToonFormat { get; init; }
@@ -41,14 +39,7 @@ internal sealed class InheritorsCommand : AbstractAsyncCommand<InheritorsCommand
         Settings settings,
         IServiceCollection services)
     {
-        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-
-        services.Configure<SharpSenseCliOptions>(options =>
-        {
-            options.RepositoryRoot = rawRoot;
-        });
-        services.AddRepositoryWorkspace(rawRoot);
-        services.AddSharpSenseConfiguration(rawRoot);
+        services.AddSelectedWorkspace(settings);
         services.AddInheritors();
         services.AddInheritorsInfrastructure();
         services.AddPersistence();

@@ -26,8 +26,6 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
         [CommandOption("-q|--query <QUERY>")]
         public string? Query { get; init; }
 
-        [CommandOption("--repo-root <path>")]
-        public string? RepositoryRoot { get; init; }
 
         [CommandOption("--toon")]
         public bool UseToonFormat { get; init; }
@@ -42,13 +40,7 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
         Settings settings,
         IServiceCollection services)
     {
-        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-
-        services.Configure<SharpSenseCliOptions>(options =>
-        {
-            options.RepositoryRoot = rawRoot;
-        });
-        services.AddSharpSenseConfiguration(rawRoot);
+        services.AddSelectedWorkspace(settings);
         services.AddCommandExecutionInfrastructure();
     }
 

@@ -1,16 +1,18 @@
 using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
 using SharpSense.Cli.Analyze;
 using SharpSense.Cli.Context;
+using SharpSense.Cli.Doctor;
 using SharpSense.Cli.Execute;
 using SharpSense.Cli.Inheritors;
 using SharpSense.Cli.Mcp;
 using SharpSense.Cli.Memory;
-using SharpSense.Cli.Refactor;
 using SharpSense.Cli.Search;
 using SharpSense.Cli.Shared;
 using SharpSense.Cli.Skills;
 using SharpSense.Cli.Trace;
 using SharpSense.Cli.Ui;
+using SharpSense.Cli.Workspaces;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -45,17 +47,40 @@ public partial class Program
                 config.Settings.Console = console;
             }
 
-            config.SetApplicationName("sharp-sense");
+            config.SetApplicationName("sharpsense");
+            config.SetApplicationVersion(
+                typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                ?? typeof(Program).Assembly.GetName().Version?.ToString()
+                ?? "unknown");
 
-            var index = config
-                .AddCommand<AnalyzeCommand>("index")
-                .WithDescription("Legacy alias for analyze.");
-            AttachData(index, executionContext);
+            AttachData(config.AddCommand<ConfigureCommand>("configure")
+                .WithDescription("Create a named workspace with explicit C#, TypeScript, and Markdown sources."), executionContext);
+            config.AddBranch("workspace", workspace =>
+            {
+                workspace.SetDescription("Create and manage named workspaces stored under ~/.sharpsense.");
+                AttachData(workspace.AddCommand<WorkspaceCreateCommand>("create")
+                    .WithDescription("Create a workspace from explicit source paths."), executionContext);
+                AttachData(workspace.AddCommand<WorkspaceListCommand>("list")
+                    .WithDescription("List registered workspaces without opening their databases."), executionContext);
+                AttachData(workspace.AddCommand<WorkspaceShowCommand>("show")
+                    .WithDescription("Show workspace sources and storage locations."), executionContext);
+                AttachData(workspace.AddCommand<WorkspaceAddCommand>("add")
+                    .WithDescription("Add sources to an existing workspace."), executionContext);
+                AttachData(workspace.AddCommand<WorkspaceRemoveCommand>("remove")
+                    .WithDescription("Remove selected sources; preserve the workspace and its database."), executionContext);
+                AttachData(workspace.AddCommand<WorkspaceMergeCommand>("merge")
+                    .WithDescription("Create a workspace combining sources from existing workspaces in the same repository."), executionContext);
+            });
 
             var analyze = config
                 .AddCommand<AnalyzeCommand>("analyze")
-                .WithDescription("Analyze and index a target.");
+                .WithDescription("Analyze every source in the selected registered workspace.");
             AttachData(analyze, executionContext);
+
+            var doctor = config
+                .AddCommand<DoctorCommand>("doctor")
+                .WithDescription("Check local indexing prerequisites and inspect the repository index without changing its database.");
+            AttachData(doctor, executionContext);
 
             var contextCommand = config
                 .AddCommand<ContextCommand>("context")
@@ -82,10 +107,6 @@ public partial class Program
                 .WithDescription("Manage semantic memories: add <node-id>, remove <memory-id>, or list <node-id>.");
             AttachData(memory, executionContext);
 
-            var refactor = config
-                .AddCommand<RefactorSymbolCommand>("refactor")
-                .WithDescription("Semantically rename a persisted symbol and update references.");
-            AttachData(refactor, executionContext);
 
             var skills = config
                 .AddCommand<SkillsCommand>("skills")

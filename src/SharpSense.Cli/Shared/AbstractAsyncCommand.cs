@@ -63,12 +63,18 @@ public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
                 Log.Information("Host stopped for {SettingsType}", typeof(TSettings).Name);
             }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return 0;
+        }
         catch (Exception e)
         {
             Log.Error(
                 e,
                 "Command execution failed for {SettingsType}",
                 typeof(TSettings).FullName);
+
+            CommandOutput.WriteError(context, e.GetBaseException().Message);
 
             return 1;
         }

@@ -27,8 +27,6 @@ internal sealed class SearchCommand : AbstractAsyncCommand<SearchCommand.Setting
         [CommandArgument(0, "<query>")]
         public string Query { get; init; } = string.Empty;
 
-        [CommandOption("--repo-root <path>")]
-        public string? RepositoryRoot { get; init; }
 
         [CommandOption("--toon")]
         public bool UseToonFormat { get; init; }
@@ -44,14 +42,7 @@ internal sealed class SearchCommand : AbstractAsyncCommand<SearchCommand.Setting
 
     protected override void Configure(Settings settings, IServiceCollection services)
     {
-        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-
-        services.Configure<SharpSenseCliOptions>(options =>
-        {
-            options.RepositoryRoot = rawRoot;
-        });
-        services.AddRepositoryWorkspace(rawRoot);
-        services.AddSharpSenseConfiguration(rawRoot);
+        services.AddSelectedWorkspace(settings);
         services.AddHybridSearch();
         services.AddHybridSearchInfrastructure();
         services.AddEmbeddingsInfrastructure();
