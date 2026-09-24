@@ -141,6 +141,16 @@ register separate server entries to expose multiple workspaces. The global UI se
 
 Tools include semantic search, symbol context, dependency tracing, impact analysis, memories, and `graph_stats`.
 
+## Install agent skills
+
+The `sharpsense` plugin provides the existing exploration, impact-analysis, and context-mode skills for Codex,
+Copilot CLI, and Copilot in VS Code. Install it separately after configuring the CLI, workspace, and MCP connection.
+The plugin contains skills and metadata only; it does not install or configure the MCP server.
+
+See the [plugin installation guide](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/cli/skills-command.md)
+for local-checkout and GitHub installation, VS Code settings, and migration from the removed `sharpsense skills` command.
+Skill names and instructions are unchanged.
+
 ## Index diagnostics
 
 `doctor` checks the selected home-owned configuration, SDK discovery, native TypeScript/TSX parsers, embedding assets,

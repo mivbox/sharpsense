@@ -1,0 +1,34 @@
+{
+  "name": "sharpsense",
+  "version": "1.0.0",
+  "description": "Explore code, assess change impact, and reduce command output with SharpSense skills.",
+  "author": {
+    "name": "Mitchel Box"
+  },
+  "homepage": "https://github.com/mivbox/sharpsense",
+  "repository": "https://github.com/mivbox/sharpsense",
+  "license": "MIT",
+  "keywords": [
+    "sharpsense",
+    "code-analysis",
+    "skills"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "SharpSense",
+    "shortDescription": "Explore code and dependencies with SharpSense.",
+    "longDescription": "Skills for exploring indexed code, assessing change impact, and reducing large command output. Requires a separately configured SharpSense MCP server.",
+    "developerName": "Mitchel Box",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/mivbox/sharpsense",
+    "defaultPrompt": [
+      "Explore this workspace with SharpSense.",
+      "Assess the impact of this change with SharpSense.",
+      "Reduce this command output with SharpSense."
+    ]
+  }
+}

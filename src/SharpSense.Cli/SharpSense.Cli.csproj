@@ -4,7 +4,8 @@
     <FrontendProjectDir>../SharpSense.UI</FrontendProjectDir>
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
-    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+    <!-- No-build packaging reuses the manifest already embedded in the assembly. -->
+    <GenerateEmbeddedFilesManifest Condition="'$(NoBuild)' != 'true'">true</GenerateEmbeddedFilesManifest>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
@@ -29,13 +30,6 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\"/>
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedSkillFile Include="../../.agents/skills/**/SKILL.md" Exclude="../../.agents/skills/terse/**">
-      <TargetPath>SharpSense.Skills/%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
-    </EmbeddedSkillFile>
-    <EmbeddedResource Include="@(EmbeddedSkillFile)"/>
   </ItemGroup>
 
   <ItemGroup>

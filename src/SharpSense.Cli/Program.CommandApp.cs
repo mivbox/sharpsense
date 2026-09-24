@@ -9,7 +9,6 @@ using SharpSense.Cli.Mcp;
 using SharpSense.Cli.Memory;
 using SharpSense.Cli.Search;
 using SharpSense.Cli.Shared;
-using SharpSense.Cli.Skills;
 using SharpSense.Cli.Trace;
 using SharpSense.Cli.Ui;
 using SharpSense.Cli.Workspaces;
@@ -114,12 +113,6 @@ public partial class Program
                 .AddCommand<MemoryCommand>("memory")
                 .WithDescription("Manage semantic memories: add <node-id>, remove <memory-id>, or list <node-id>.");
             AttachData(memory, executionContext);
-
-
-            var skills = config
-                .AddCommand<SkillsCommand>("skills")
-                .WithDescription("Write the embedded SharpSense skills into .agents/skills.");
-            AttachData(skills, executionContext);
 
             var search = config
                 .AddCommand<SearchCommand>("search")

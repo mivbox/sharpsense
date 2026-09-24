@@ -19,7 +19,7 @@ Start with the [project README](../../README.md) for installation and prerequisi
 | [Memories](cli/memory-command.md) | Attach and retrieve persistent notes about indexed nodes. |
 | [MCP](cli/mcp-command.md) | Expose one workspace to an MCP client over stdio. |
 | [Command execution](cli/execute-command.md) | Return bounded excerpts from local command output. |
-| [Agent skills](cli/skills-command.md) | Install the bundled exploration, impact-analysis, and context-mode guides. |
+| [Skills plugin](cli/skills-command.md) | Install the existing SharpSense skills for Codex, Copilot CLI, or Copilot in VS Code. |
 
 ## Architecture
 

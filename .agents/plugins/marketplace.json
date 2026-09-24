@@ -1,0 +1,20 @@
+{
+  "name": "sharpsense-marketplace",
+  "interface": {
+    "displayName": "Sharpsense Marketplace"
+  },
+  "plugins": [
+    {
+      "name": "sharpsense",
+      "source": {
+        "source": "local",
+        "path": "./plugins/sharpsense"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -31,4 +31,4 @@ Start with graph statistics if index state is uncertain. Search for a relevant n
 
 `ctx_execute` runs real local commands with the server process's filesystem permissions. It launches an executable without a shell, so shell operators are not interpreted. Its optional FTS query selects context windows; an omitted or unmatched query returns a summary. See [command execution](execute-command.md).
 
-`--skills` exports the bundled [agent skills](skills-command.md) on startup. Install or configure skills according to the MCP client's conventions.
+Install the [SharpSense skills plugin](skills-command.md) separately through Codex or Copilot. The plugin supplies agent instructions; the MCP connection remains configured in your client.

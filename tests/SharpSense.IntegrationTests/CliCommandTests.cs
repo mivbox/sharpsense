@@ -256,58 +256,46 @@ public sealed class CliCommandTests
             $"  -> [D] `{CliCommandTestDatabase.LinkedDocumentRootNodeId}` Reference @ docs/Reference.md:L1");
     }
 
-    [Fact]
-    public async Task WhenSkillsRunsWithoutPath_ThenItInstallsEmbeddedSkillsUnderCurrentRoot()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("/exported-skills")]
+    public async Task WhenLegacySkillsCommandRuns_ThenItFailsWithoutWritingFiles(string? destination)
     {
-        await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
         var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
         {
             ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
         }, RepositoryRoot);
-        var app = CreateCommandApp(console, database, fileSystem);
+        var app = Cli.Program.CreateCommandApp(
+            console,
+            services => services.AddSingleton<IFileSystem>(fileSystem),
+            enableFileLogging: false);
 
         var exitCode = await app.RunAsync(
-            ["skills"],
+            destination is null ? ["skills"] : ["skills", destination],
             TestContext.Current.CancellationToken);
 
-        exitCode.Should().Be(0);
-        fileSystem.FileExists("/repo/.agents/skills/sharpsense/SKILL.md").Should().BeFalse();
-        fileSystem.FileExists("/repo/.agents/skills/sharpsense-exploring/SKILL.md").Should().BeTrue();
-        fileSystem.FileExists("/repo/.agents/skills/sharpsense-impact-analysis/SKILL.md").Should().BeTrue();
-        fileSystem.GetFile("/repo/.agents/skills/sharpsense-exploring/SKILL.md").TextContents.Should().Contain("name: sharpsense-exploring");
-        fileSystem.GetFile("/repo/.agents/skills/sharpsense-impact-analysis/SKILL.md").TextContents.Should().Contain("name: sharpsense-impact-analysis");
-        console.Output.Should().Contain("/repo/.agents/skills");
-        console.Output.Should().NotContain("sharpsense/SKILL.md");
-        console.Output.Should().Contain("sharpsense-exploring/SKILL.md");
-        console.Output.Should().Contain("sharpsense-impact-analysis/SKILL.md");
+        exitCode.Should().NotBe(0);
+        console.Output.Should().Contain("skills");
+        fileSystem.AllFiles.Should().BeEquivalentTo(new[] { "/repo/.git/HEAD" });
+        fileSystem.Directory.Exists("/repo/.agents").Should().BeFalse();
+        fileSystem.Directory.Exists("/exported-skills").Should().BeFalse();
     }
 
     [Fact]
-    public async Task WhenSkillsRunsWithCustomPath_ThenItInstallsEmbeddedSkillsUnderChosenRoot()
+    public async Task WhenHelpRuns_ThenItDoesNotAdvertiseLegacySkillsInstallation()
     {
-        await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
-        }, RepositoryRoot);
-        var app = CreateCommandApp(console, database, fileSystem);
+        var app = Cli.Program.CreateCommandApp(console, enableFileLogging: false);
 
         var exitCode = await app.RunAsync(
-            ["skills", "/exported-skills"],
+            ["--help"],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
-        fileSystem.FileExists("/exported-skills/.agents/skills/sharpsense/SKILL.md").Should().BeFalse();
-        fileSystem.FileExists("/exported-skills/.agents/skills/sharpsense-exploring/SKILL.md").Should().BeTrue();
-        fileSystem.FileExists("/exported-skills/.agents/skills/sharpsense-impact-analysis/SKILL.md").Should().BeTrue();
-        fileSystem.GetFile("/exported-skills/.agents/skills/sharpsense-exploring/SKILL.md").TextContents.Should().Contain("name: sharpsense-exploring");
-        fileSystem.GetFile("/exported-skills/.agents/skills/sharpsense-impact-analysis/SKILL.md").TextContents.Should().Contain("name: sharpsense-impact-analysis");
-        console.Output.Should().Contain("/exported-skills/.agents/skills");
-        console.Output.Should().NotContain("sharpsense/SKILL.md");
-        console.Output.Should().Contain("sharpsense-exploring/SKILL.md");
-        console.Output.Should().Contain("sharpsense-impact-analysis/SKILL.md");
+        console.Output.Should().Contain("workspace");
+        console.Output.Should().Contain("ui");
+        console.Output.Should().NotContain("skills");
     }
 
     [Fact]

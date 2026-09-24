@@ -1,0 +1,17 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "sharpsense",
+  "version": "1.0.0",
+  "description": "Explore code, assess change impact, and reduce command output with SharpSense skills.",
+  "author": {
+    "name": "Mitchel Box"
+  },
+  "homepage": "https://github.com/mivbox/sharpsense",
+  "repository": "https://github.com/mivbox/sharpsense",
+  "license": "MIT",
+  "keywords": [
+    "sharpsense",
+    "code-analysis",
+    "skills"
+  ]
+}

@@ -4,6 +4,8 @@ Historical implementation notes follow. Each dated entry describes behavior at t
 
 ## Version 1
 
+- `2026-09-25` — Replaced embedded skill installation with a skills-only plugin for Codex and Copilot. Preserved all three skill files unchanged, documented marketplace and local-checkout installation, and added manual migration guidance. Pages updated: [skills plugin](cli/skills-command.md), [MCP server](cli/mcp-command.md), [documentation index](index.md), and both READMEs.
+
 - `2026-09-24` — Updated public guides for home-owned named workspaces, C#/TypeScript/Markdown source plans, the global UI, cross-process indexing locks, project-qualified node identity, and current query tools. Removed unsupported token-savings claims and links to removed refactoring documentation.
 
 ## Historical entries
