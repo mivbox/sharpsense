@@ -17,11 +17,12 @@ public sealed class DocumentDiscoverer(
 {
     public async Task<MarkdownIndexResult> Discover(
         string targetPath,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlyList<string>? includePatterns = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
 
-        var includePaths = GetIncludePaths();
+        var includePaths = includePatterns?.ToArray() ?? GetIncludePaths();
         if (includePaths.Length == 0)
         {
             return new MarkdownIndexResult([], []);

@@ -1,4 +1,5 @@
 using FluentResults;
+using SharpSense.Application.Indexing;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Domain.KnowledgeGraph.Edges;
@@ -8,6 +9,8 @@ namespace SharpSense.Infrastructure.Indexing.Markdown;
 
 public sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDiscoverer) : ILanguageExtractor
 {
+    public WorkspaceSourceKind? SourceKind => WorkspaceSourceKind.Markdown;
+
     public string ExtractorName => "markdown";
 
     public async Task<Result<ExtractedNodes>> Extract(
@@ -17,7 +20,7 @@ public sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDiscove
         ArgumentNullException.ThrowIfNull(context);
         ArgumentException.ThrowIfNullOrWhiteSpace(context.TargetPath);
 
-        var discoveredDocuments = await documentDiscoverer.Discover(context.TargetPath, ct);
+        var discoveredDocuments = await documentDiscoverer.Discover(context.TargetPath, ct, context.IncludePatterns);
 
         return Result.Ok(new ExtractedNodes(
             [],

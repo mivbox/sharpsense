@@ -1,0 +1,206 @@
+using System.IO.Abstractions;
+using SharpSense.Application.Indexing;
+using SharpSense.Application.Indexing.Abstractions;
+using SharpSense.Application.Indexing.Models;
+using TreeSitter;
+using FluentResults;
+using SharpSense.Application.Shared.Errors;
+
+namespace SharpSense.Infrastructure.Indexing.TypeScript;
+
+public sealed class TypeScriptLanguageExtractor(
+    TypeScriptSourceDiscoverer sourceDiscoverer,
+    IFileSystem fileSystem,
+    IEnumerable<ITypeScriptExtractionPass> extractionPasses)
+    : ILanguageExtractor
+{
+    public WorkspaceSourceKind? SourceKind => WorkspaceSourceKind.TypeScript;
+
+    public string ExtractorName => "TypeScript TreeSitter";
+
+    public async Task<Result<ExtractedNodes>> Extract(
+        ExtractionContext context,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrWhiteSpace(context.TargetPath);
+
+        try
+        {
+            if (!fileSystem.Directory.Exists(context.TargetPath) && !fileSystem.File.Exists(context.TargetPath))
+            {
+                throw new FileNotFoundException($"Selected TypeScript source '{context.TargetPath}' does not exist.", context.TargetPath);
+            }
+
+            context.Progress?.Report(new Application.Shared.Models.IndexingProgress("Discovering TypeScript files...", 0, 1));
+            var discoveredFiles = await sourceDiscoverer.Discover(context.TargetPath, ct);
+            return Result.Ok(await ExecutePasses(context.TargetPath, context.Progress, discoveredFiles, false, ct));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            sourceDiscoverer.ClearCache();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            var error = new ServiceError(ServiceErrorCode.ThirdPartyError,
+                $"TypeScript extraction failed for '{context.TargetPath}': {exception.Message}");
+            if (exception is TypeScriptSourceException sourceException)
+            {
+                error.Metadata["filePath"] = sourceException.FilePath;
+            }
+
+            return Result.Fail(error);
+        }
+    }
+
+    public async Task<Result<ExtractedNodes>> ExtractIncremental(
+        IncrementalExtractionContext context,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrWhiteSpace(context.TargetPath);
+        ArgumentNullException.ThrowIfNull(context.ChangedFiles);
+
+        // Rebuild consumers as well as changed modules. Coordinator supplies previously
+        // indexed TypeScript paths so deletions and config exclusions are also replaced.
+        if (!context.ChangedFiles.Any(static change => change.ActionType is WorkspaceFileChangeAction.DirectoryDeleted or WorkspaceFileChangeAction.DirectoryRenamed) &&
+            !context.ChangedFiles.SelectMany(static change => change.GetAffectedPaths())
+                .Any(sourceDiscoverer.IsRelevantChange))
+        {
+            return Result.Ok(new ExtractedNodes([], [], [], []));
+        }
+        return await Extract(new ExtractionContext(context.TargetPath, context.Progress), ct);
+    }
+
+    private async Task<ExtractedNodes> ExecutePasses(
+        string targetPath,
+        IProgress<Application.Shared.Models.IndexingProgress>? progress,
+        IReadOnlyList<DiscoveredFile> discoveredFiles,
+        bool isIncremental,
+        CancellationToken ct)
+    {
+        if (discoveredFiles.Count == 0)
+        {
+            return new ExtractedNodes([], [], [], []);
+        }
+
+        using var typeScriptLanguage = new Language("TypeScript");
+        using var tsxLanguage = new Language("TSX");
+        using var typeScriptParser = new Parser(typeScriptLanguage);
+        using var tsxParser = new Parser(tsxLanguage);
+        var parsedFiles = new List<TypeScriptParsedFile>(discoveredFiles.Count);
+        var orderedPasses = extractionPasses.OrderBy(GetPassOrder).ToArray();
+        var totalSteps = discoveredFiles.Count + orderedPasses.Length;
+        var completedSteps = 0;
+
+        try
+        {
+            foreach (var discoveredFile in discoveredFiles)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                string sourceText;
+                try
+                {
+                    sourceText = await fileSystem.File.ReadAllTextAsync(discoveredFile.AbsolutePath, ct);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    throw new TypeScriptSourceException(discoveredFile.RelativeFilePath, exception.Message, exception);
+                }
+                var parser = discoveredFile.RelativeFilePath.EndsWith(".tsx", StringComparison.OrdinalIgnoreCase)
+                    ? tsxParser
+                    : typeScriptParser;
+                var syntaxTree = parser.Parse(sourceText)
+                    ?? throw new InvalidOperationException($"Tree-sitter returned no syntax tree for '{discoveredFile.RelativeFilePath}'.");
+
+                if (syntaxTree.RootNode.HasError)
+                {
+                    syntaxTree.Dispose();
+                    throw new TypeScriptSourceException(discoveredFile.RelativeFilePath,
+                        $"TypeScript syntax errors in '{discoveredFile.RelativeFilePath}'; previous index preserved.");
+                }
+
+                parsedFiles.Add(new TypeScriptParsedFile(
+                    discoveredFile,
+                    sourceText,
+                    syntaxTree));
+                completedSteps++;
+                progress?.Report(new Application.Shared.Models.IndexingProgress(
+                    $"Parsing {discoveredFile.RelativeFilePath}...",
+                    completedSteps,
+                    totalSteps));
+            }
+
+            var passContext = new TypeScriptPassContext(targetPath, parsedFiles, isIncremental, progress, ct);
+            foreach (var extractionPass in orderedPasses)
+            {
+                ct.ThrowIfCancellationRequested();
+                extractionPass.Execute(passContext);
+                completedSteps++;
+                progress?.Report(new Application.Shared.Models.IndexingProgress(
+                    GetPassDescription(extractionPass),
+                    completedSteps,
+                    totalSteps));
+            }
+
+            return new ExtractedNodes(
+            [
+                .. passContext.Projects
+                    .OrderBy(static project => project.Name, StringComparer.Ordinal)
+                    .ThenBy(static project => project.Id, StringComparer.Ordinal)
+            ],
+            [
+                .. passContext.CodeNodes
+                    .OrderBy(static codeNode => codeNode.FullyQualifiedName, StringComparer.Ordinal)
+                    .ThenBy(static codeNode => codeNode.CanonicalId, StringComparer.Ordinal)
+            ],
+            [
+                .. passContext.Edges
+                    .OrderBy(static edge => edge.CallerId, StringComparer.Ordinal)
+                    .ThenBy(static edge => edge.CalleeId, StringComparer.Ordinal)
+                    .ThenBy(static edge => edge.EdgeType)
+            ],
+            [.. passContext.Diagnostics],
+            [.. discoveredFiles.Select(static file => file.AbsolutePath)
+                .Concat(sourceDiscoverer.ResolutionInputPaths)
+                .Distinct(GetPathComparer())],
+            CanReuseForDocumentationChanges: true);
+        }
+        finally
+        {
+            foreach (var parsedFile in parsedFiles)
+            {
+                parsedFile.Dispose();
+            }
+        }
+    }
+
+    private static StringComparer GetPathComparer()
+        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+    private sealed class TypeScriptSourceException(string filePath, string message, Exception? innerException = null)
+        : Exception(message, innerException)
+    {
+        public string FilePath { get; } = filePath;
+    }
+
+    private static int GetPassOrder(ITypeScriptExtractionPass extractionPass)
+        => extractionPass switch
+        {
+            CodeNodeExtractionPass => 0,
+            ImportDependencyPass => 1,
+            HttpEdgeExtractionPass => 2,
+            _ => 100
+        };
+
+    private static string GetPassDescription(ITypeScriptExtractionPass extractionPass)
+        => extractionPass switch
+        {
+            CodeNodeExtractionPass => "Extracting TypeScript nodes...",
+            ImportDependencyPass => "Resolving TypeScript imports...",
+            HttpEdgeExtractionPass => "Extracting TypeScript HTTP edges...",
+            _ => $"Running {extractionPass.GetType().Name}..."
+        };
+}

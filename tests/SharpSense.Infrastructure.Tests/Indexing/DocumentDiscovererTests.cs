@@ -16,6 +16,27 @@ namespace SharpSense.Infrastructure.Tests.Indexing;
 public sealed class DocumentDiscovererTests
 {
     [Fact]
+    public async Task ExplicitWorkspacePatternsOverrideLegacySettingsAndUseRepositoryRoot()
+    {
+        var workspace = CreateRepositoryWorkspace("/repo", "/repo");
+        var discoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
+        string[] patterns = ["docs/**/*.md", "README.md"];
+        discoverer.Setup(candidate => candidate.GetAllowedFiles("/repo", patterns, TestContext.Current.CancellationToken))
+            .ReturnsAsync([]);
+        var subject = new DocumentDiscoverer(
+            workspace.Object,
+            new Mock<IOptionsMonitor<SharpSenseConfig>>(MockBehavior.Strict).Object,
+            discoverer.Object,
+            new Mock<IMarkdownIndexer>(MockBehavior.Strict).Object,
+            FileSystemMockFactory.Create());
+
+        var result = await subject.Discover("/repo", TestContext.Current.CancellationToken, patterns);
+
+        result.CodeNodes.Should().BeEmpty();
+        discoverer.VerifyAll();
+    }
+
+    [Fact]
     public async Task WhenDiscoveringTargetDocuments_ThenAnchorsGlobsToTargetDirectoryAndEmitsDocumentEdges()
     {
         const string targetPath = "/repo/src/Sample/Sample.sln";
