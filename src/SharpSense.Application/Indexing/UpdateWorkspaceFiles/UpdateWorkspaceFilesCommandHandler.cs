@@ -5,6 +5,7 @@ using SharpSense.Application.GraphStats.Abstractions;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.IndexTarget.Models;
 using SharpSense.Application.Indexing.Models;
+using SharpSense.Application.Indexing.Notifications;
 using SharpSense.Application.Indexing.UpdateWorkspaceFiles.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Diagnostics;
@@ -41,7 +42,17 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
             return await UpdateNamedWorkspace(command, ct);
         }
 
-        var absoluteTargetPath = workspacePaths.GetRequiredTargetPath(GetRequiredTargetPath());
+        var analysis = command.Notifier is null ? null : new AnalysisOperation(command.Notifier, AnalysisOperationKind.Incremental);
+        string absoluteTargetPath;
+        try
+        {
+            absoluteTargetPath = workspacePaths.GetRequiredTargetPath(GetRequiredTargetPath());
+        }
+        catch (Exception exception)
+        {
+            analysis?.Failed(exception.Message);
+            throw;
+        }
 
         using var trace = SharpSenseTraceSpan.Start("index.target.incremental");
         trace.AddTag("target.path", absoluteTargetPath);
@@ -51,6 +62,7 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
 
         try
         {
+            analysis?.Phase(AnalysisPhase.Discovery, "Checking changed files...");
             IReadOnlyList<WorkspaceFileChange> expandedChangedFiles;
             using (run.Measure("discovery"))
             {
@@ -64,6 +76,7 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
 
             if (expandedChangedFiles.Count == 0 || (changedFilePaths.Length == 0 && !refreshTypeScript && !refreshWorkspace))
             {
+                analysis?.Ignored();
                 return Result.Ok(new UpdateWorkspaceFilesOutcome(0, 0, 0, IndexCommitted: false));
             }
 
@@ -84,11 +97,13 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
             Result<ExtractedNodes> extractionResult;
             using (run.Measure("extraction"))
             {
+                analysis?.Phase(AnalysisPhase.Extraction, "Analyzing changed sources...");
                 extractionResult = await Extract(
                     new IncrementalExtractionContext(absoluteTargetPath, expandedChangedFiles, command.Progress),
                     extractActivity,
                     refreshWorkspace,
-                    ct);
+                    ct,
+                    analysis);
             }
 
             if (extractionResult.IsFailed)
@@ -96,11 +111,13 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
                 ct.ThrowIfCancellationRequested();
                 trace.SetError();
                 run.Failed(extractionResult.Errors);
+                analysis?.Failed(string.Join(Environment.NewLine, extractionResult.Errors.Take(20).Select(error => error.Message)));
                 return Result.Fail(extractionResult.Errors);
             }
 
             var extractedNodes = extractionResult.Value;
             run.Extracted(extractedNodes);
+            analysis?.Diagnostics(extractedNodes.Diagnostics);
             extractedNodes = NormalizePersistedPaths(extractedNodes);
             // Extractors may expand a partial declaration into its complete sibling documents.
             // Include those paths when loading cached vectors as well as when replacing graph data.
@@ -112,6 +129,8 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
             if (extractedNodes.CodeNodes.Count > 0)
             {
                 using var embeddingTiming = run.Measure("embeddings");
+                analysis?.Phase(AnalysisPhase.Embeddings, _cliOptions.SkipEmbeddings
+                    ? "Reusing available embeddings..." : "Preparing embeddings...");
                 if (!_cliOptions.SkipEmbeddings)
                 {
                     command.Progress?.Report(new IndexingProgress("Embedding phase...", changedFilePaths.Length, changedFilePaths.Length));
@@ -130,12 +149,17 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
                         _cliOptions.SkipEmbeddings,
                         _cliOptions.DisableEmbeddingCache,
                         embeddingGenerator,
-                        progress: null,
+                        analysis?.EmbeddingProgress(command.EmbeddingProgress) ?? command.EmbeddingProgress,
                         ct,
-                        run.Embeddings)
+                        (reused, generated) =>
+                        {
+                            run.Embeddings(reused, generated);
+                            analysis?.Embeddings(reused, generated);
+                        })
                 };
             }
 
+            analysis?.Phase(AnalysisPhase.Persistence, "Saving updated graph...");
             command.Progress?.Report(new IndexingProgress("Persisting incremental index...", changedFilePaths.Length, changedFilePaths.Length));
 
             using (run.Measure("persistence"))
@@ -152,6 +176,7 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
                 }
             }
             run.Succeeded();
+            analysis?.Committed(extractedNodes);
 
             trace.AddTag("index.code_node.count", extractedNodes.CodeNodes.Count);
             trace.AddTag("index.dependency.count", extractedNodes.Edges.Count);
@@ -166,6 +191,7 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
         {
             trace.SetError();
             run.Cancelled();
+            analysis?.Cancelled();
             return Result.Fail(new ServiceError(
                 ServiceErrorCode.FailedPrecondition,
                 $"Incremental update of '{absoluteTargetPath}' was cancelled."));
@@ -174,6 +200,7 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
         {
             trace.RecordExceptionAndErrorStatus(exception);
             run.Failed(exception);
+            analysis?.Failed(exception.Message);
             return Result.Fail(new ServiceError(
                 ServiceErrorCode.InternalError,
                 $"Incremental update of '{absoluteTargetPath}' failed: {exception.Message}"));
@@ -188,11 +215,20 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
 
         if (command.ChangedFiles.Count == 0 || workspaceChangeFilter?.IsRelevant(command.ChangedFiles) == false)
         {
+            if (command.Notifier is not null)
+            {
+                new AnalysisOperation(command.Notifier, AnalysisOperationKind.Incremental).Ignored();
+            }
             return Result.Ok(new UpdateWorkspaceFilesOutcome(0, 0, 0, IndexCommitted: false));
         }
 
         if (workspaceIndexer is null)
         {
+            if (command.Notifier is not null)
+            {
+                new AnalysisOperation(command.Notifier, AnalysisOperationKind.Incremental)
+                    .Failed("Workspace indexing handler is not registered. Register the complete indexing feature.");
+            }
             return Result.Fail(new ServiceError(
                 ServiceErrorCode.FailedPrecondition,
                 "Workspace indexing handler is not registered. Register the complete indexing feature."));
@@ -203,7 +239,9 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
         // still reuse their loaded Roslyn workspaces through ChangedFiles.
         var result = await workspaceIndexer.Handle(new IndexTargetCommand(
             Progress: command.Progress,
-            ChangedFiles: command.ChangedFiles), ct);
+            EmbeddingProgress: command.EmbeddingProgress,
+            ChangedFiles: command.ChangedFiles,
+            Notifier: command.Notifier), ct);
         return result.IsFailed
             ? Result.Fail(result.Errors)
             : Result.Ok(new UpdateWorkspaceFilesOutcome(
@@ -216,7 +254,8 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
         IncrementalExtractionContext context,
         SharpSenseTraceSpan extractActivity,
         bool refreshWorkspace,
-        CancellationToken ct)
+        CancellationToken ct,
+        AnalysisOperation? analysis)
     {
         var aggregatedProjects = new List<IndexedProject>();
         var aggregatedCodeNodes = new List<IndexedCodeNode>();
@@ -226,9 +265,17 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
 
         foreach (var extractor in extractors)
         {
+            var source = analysis is not null && extractor.SourceKind is { } kind
+                ? new AnalysisSource(kind, context.TargetPath) : null;
+            if (source is not null)
+            {
+                analysis?.SourceStarted(source);
+            }
+
+            var sourceProgress = analysis?.SourceProgress(source, context.Progress) ?? context.Progress;
             var extractionResult = refreshWorkspace
-                ? await extractor.Extract(new ExtractionContext(context.TargetPath, context.Progress, context.ChangedFiles), ct)
-                : await extractor.ExtractIncremental(context, ct);
+                ? await extractor.Extract(new ExtractionContext(context.TargetPath, sourceProgress, context.ChangedFiles), ct)
+                : await extractor.ExtractIncremental(context with { Progress = sourceProgress }, ct);
 
             if (extractionResult.IsFailed)
             {
@@ -238,6 +285,7 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
             }
 
             var extractedNodes = extractionResult.Value;
+            analysis?.SourceCompleted(source);
 
             aggregatedProjects.AddRange(extractedNodes.Projects);
             aggregatedCodeNodes.AddRange(extractedNodes.CodeNodes);

@@ -5,6 +5,7 @@ using SharpSense.Application.GraphStats.Abstractions;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.IndexTarget.Models;
 using SharpSense.Application.Indexing.Models;
+using SharpSense.Application.Indexing.Notifications;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Application.Shared.Errors;
@@ -34,16 +35,29 @@ public sealed class IndexTargetCommandHandler(
     {
         ArgumentNullException.ThrowIfNull(command);
 
+        var analysis = command.Notifier is null ? null : new AnalysisOperation(command.Notifier,
+            command.ChangedFiles is null ? AnalysisOperationKind.Full : AnalysisOperationKind.Incremental);
+
         if (!string.IsNullOrWhiteSpace(_cliOptions.WorkspaceId) && _cliOptions.WorkspaceSources.Count == 0)
         {
+            analysis?.Failed("Workspace has no selected sources. Add projects, TypeScript sources, or documentation before indexing.");
             return Result.Fail(new ServiceError(
                 ServiceErrorCode.FailedPrecondition,
                 "Workspace has no selected sources. Add projects, TypeScript sources, or documentation before indexing."));
         }
 
-        var absoluteTargetPath = _cliOptions.WorkspaceSources.Count > 0
-            ? workspacePaths.RootPath
-            : workspacePaths.GetRequiredTargetPath(GetRequiredTargetPath());
+        string absoluteTargetPath;
+        try
+        {
+            absoluteTargetPath = _cliOptions.WorkspaceSources.Count > 0
+                ? workspacePaths.RootPath
+                : workspacePaths.GetRequiredTargetPath(GetRequiredTargetPath());
+        }
+        catch (Exception exception)
+        {
+            analysis?.Failed(exception.Message);
+            throw;
+        }
 
         using var trace = SharpSenseTraceSpan.Start("index.target");
         trace.AddTag("target.path", absoluteTargetPath);
@@ -57,6 +71,7 @@ public sealed class IndexTargetCommandHandler(
 
         try
         {
+            analysis?.Phase(AnalysisPhase.Discovery, "Preparing workspace sources...");
             using var extractionLease = _cliOptions.WorkspaceSources.Count > 0
                 ? await _workspaceExtraction.Acquire(ct)
                 : null;
@@ -65,16 +80,17 @@ public sealed class IndexTargetCommandHandler(
             Result<ExtractedNodes> extractionResult;
             using (run.Measure("extraction"))
             {
+                analysis?.Phase(AnalysisPhase.Extraction, "Analyzing workspace sources...");
                 var context = new ExtractionContext(absoluteTargetPath, command.Progress, command.ChangedFiles);
                 if (_cliOptions.WorkspaceSources.Count > 0)
                 {
-                    var extraction = await _workspaceExtraction.Extract(_cliOptions.WorkspaceId, _cliOptions.WorkspaceSources, context, ct);
+                    var extraction = await _workspaceExtraction.Extract(_cliOptions.WorkspaceId, _cliOptions.WorkspaceSources, context, ct, analysis);
                     workspaceBatch = extraction.IsSuccess ? extraction.Value : null;
                     extractionResult = extraction.IsSuccess ? Result.Ok(extraction.Value.Graph) : Result.Fail(extraction.Errors);
                 }
                 else
                 {
-                    extractionResult = await Extract(context, extractActivity, ct);
+                    extractionResult = await Extract(context, extractActivity, ct, analysis);
                 }
             }
 
@@ -83,11 +99,13 @@ public sealed class IndexTargetCommandHandler(
                 ct.ThrowIfCancellationRequested();
                 trace.SetError();
                 run.Failed(extractionResult.Errors);
+                analysis?.Failed(string.Join(Environment.NewLine, extractionResult.Errors.Take(20).Select(error => error.Message)));
                 return Result.Fail(extractionResult.Errors);
             }
 
             var extractedNodes = extractionResult.Value;
             run.Extracted(extractedNodes);
+            analysis?.Diagnostics(extractedNodes.Diagnostics);
             var projectCount = extractedNodes.Projects.Count;
             var documentNodeCount = extractedNodes.CodeNodes.Count(static codeNode => codeNode.NodeType == NodeType.Document);
 
@@ -100,6 +118,8 @@ public sealed class IndexTargetCommandHandler(
             if (extractedNodes.CodeNodes.Count > 0)
             {
                 using var embeddingTiming = run.Measure("embeddings");
+                analysis?.Phase(AnalysisPhase.Embeddings, _cliOptions.SkipEmbeddings
+                    ? "Reusing available embeddings..." : "Preparing embeddings...");
                 if (!_cliOptions.SkipEmbeddings)
                 {
                     command.Progress?.Report(new IndexingProgress("Embedding phase...", projectCount, projectCount));
@@ -116,13 +136,18 @@ public sealed class IndexTargetCommandHandler(
                         _cliOptions.SkipEmbeddings,
                         _cliOptions.DisableEmbeddingCache,
                         embeddingGenerator,
-                        command.EmbeddingProgress,
+                        analysis?.EmbeddingProgress(command.EmbeddingProgress) ?? command.EmbeddingProgress,
                         ct,
-                        run.Embeddings)
+                        (reused, generated) =>
+                        {
+                            run.Embeddings(reused, generated);
+                            analysis?.Embeddings(reused, generated);
+                        })
                 };
             }
 
             extractedNodes = NormalizePersistedPaths(extractedNodes);
+            analysis?.Phase(AnalysisPhase.Persistence, "Saving graph...");
             command.Progress?.Report(new IndexingProgress("Persisting index...", projectCount, projectCount));
 
             using (run.Measure("persistence"))
@@ -134,6 +159,7 @@ public sealed class IndexTargetCommandHandler(
                 _workspaceExtraction.Commit(workspaceBatch);
             }
             run.Succeeded();
+            analysis?.Committed(extractedNodes);
 
             trace.AddTag("index.project.count", extractedNodes.Projects.Count);
             trace.AddTag("index.code_node.count", extractedNodes.CodeNodes.Count);
@@ -151,6 +177,7 @@ public sealed class IndexTargetCommandHandler(
         {
             trace.SetError();
             run.Cancelled();
+            analysis?.Cancelled();
             return Result.Fail(new ServiceError(
                 ServiceErrorCode.FailedPrecondition,
                 $"Indexing of '{absoluteTargetPath}' was cancelled."));
@@ -159,6 +186,7 @@ public sealed class IndexTargetCommandHandler(
         {
             trace.RecordExceptionAndErrorStatus(exception);
             run.Failed(exception);
+            analysis?.Failed(exception.Message);
             return Result.Fail(new ServiceError(
                 ServiceErrorCode.InternalError,
                 $"Indexing of '{absoluteTargetPath}' failed: {exception.Message}"));
@@ -168,7 +196,8 @@ public sealed class IndexTargetCommandHandler(
     private async Task<Result<ExtractedNodes>> Extract(
         ExtractionContext context,
         SharpSenseTraceSpan extractActivity,
-        CancellationToken ct)
+        CancellationToken ct,
+        AnalysisOperation? analysis)
     {
         var aggregatedProjects = new List<IndexedProject>();
         var aggregatedCodeNodes = new List<IndexedCodeNode>();
@@ -177,13 +206,24 @@ public sealed class IndexTargetCommandHandler(
 
         foreach (var extractor in extractors)
         {
-            var extractionResult = await extractor.Extract(context, ct);
+            var source = analysis is not null && extractor.SourceKind is { } kind
+                ? new AnalysisSource(kind, context.TargetPath) : null;
+            if (source is not null)
+            {
+                analysis?.SourceStarted(source);
+            }
+
+            var extractionResult = await extractor.Extract(context with
+            {
+                Progress = analysis?.SourceProgress(source, context.Progress) ?? context.Progress
+            }, ct);
             if (extractionResult.IsFailed)
             {
                 return extractionResult;
             }
 
             var extractedNodes = extractionResult.Value;
+            analysis?.SourceCompleted(source);
 
             aggregatedProjects.AddRange(extractedNodes.Projects);
             aggregatedCodeNodes.AddRange(extractedNodes.CodeNodes);

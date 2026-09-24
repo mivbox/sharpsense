@@ -4,6 +4,7 @@ using FluentResults;
 using Microsoft.Extensions.Logging;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
+using SharpSense.Application.Indexing.Notifications;
 using SharpSense.Application.Shared.Models;
 
 namespace SharpSense.Application.Indexing;
@@ -32,7 +33,8 @@ public sealed class WorkspaceExtractionCoordinator(
         string? workspaceId,
         IReadOnlyList<WorkspaceSource> sources,
         ExtractionContext context,
-        CancellationToken ct)
+        CancellationToken ct,
+        AnalysisOperation? analysis = null)
     {
         var key = JsonSerializer.Serialize(new { workspaceId, paths.RootPath, sources });
         var previous = _committed?.Key == key && IsDocumentationOnly(context.ChangedFiles)
@@ -66,14 +68,20 @@ public sealed class WorkspaceExtractionCoordinator(
                     foreach (var (step, index) in group)
                     {
                         token.ThrowIfCancellationRequested();
+                        var source = new AnalysisSource(step.Source.Kind, step.Source.Path);
                         if (previous is not null && CanReuse(step, previous.Contributions[index], context.ChangedFiles!))
                         {
                             contributions[index] = previous.Contributions[index];
                             progress?.Report(new IndexingProgress($"Reusing {step.Source.Kind} source '{step.Source.Path}'...", 0, 1));
+                            analysis?.SourceCompleted(source, reused: true);
                             continue;
                         }
 
-                        var result = await step.Extractor.Extract(step.Context, token);
+                        analysis?.SourceStarted(source);
+                        var result = await step.Extractor.Extract(step.Context with
+                        {
+                            Progress = analysis?.SourceProgress(source, step.Context.Progress) ?? step.Context.Progress
+                        }, token);
                         results[index] = result;
                         if (result.IsFailed)
                         {
@@ -82,6 +90,7 @@ public sealed class WorkspaceExtractionCoordinator(
                         }
 
                         contributions[index] = Normalize(WorkspaceExtractionPlan.SelectEmittedProjects(step, result.Value, paths));
+                        analysis?.SourceCompleted(source);
                     }
                 }
                 catch (Exception exception)
