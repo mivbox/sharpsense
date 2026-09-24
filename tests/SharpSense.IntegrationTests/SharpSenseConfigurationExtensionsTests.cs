@@ -1,9 +1,8 @@
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
-using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Primitives;
+using SharpSense.Application.Indexing;
 using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.IntegrationTests;
@@ -11,107 +10,64 @@ namespace SharpSense.IntegrationTests;
 public sealed class SharpSenseConfigurationExtensionsTests
 {
     [Fact]
-    public void WhenLoadingTargetDirectoryConfig_ThenReturnsTrimmedIncludePaths()
+    public void ConfigurationUsesSelectedHomeWorkspaceAndIgnoresRepositoryYaml()
     {
-        const string targetDirectory = "/repo/src/Sample";
         var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
         {
-            ["/repo/src/Sample/sharpsense.yaml"] = new(
-                """
-                includePaths:
-                  - docs/**/*.md
-                  - " README.md "
-                """)
+            ["/repo/.git/HEAD"] = new("ref: refs/heads/main"),
+            ["/repo/sharpsense.yaml"] = new("invalid: [ yaml")
         }, "/repo");
+        var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
+        var selection = catalog.Create("product", "/repo",
+            [new(WorkspaceSourceKind.Markdown, "README.md"), new(WorkspaceSourceKind.Markdown, "docs/**/*.md")]);
         var services = new ServiceCollection();
         services.AddSingleton<IFileSystem>(fileSystem);
-        services.AddSingleton<IOptionsChangeTokenSource<SharpSenseConfig>, ManualSharpSenseConfigChangeTokenSource>();
-        services.AddSharpSenseConfiguration(targetDirectory);
+        services.AddSharpSenseConfiguration(selection);
 
-        using var serviceProvider = services.BuildServiceProvider();
-        var monitor = serviceProvider.GetRequiredService<IOptionsMonitor<SharpSenseConfig>>();
+        using var provider = services.BuildServiceProvider();
 
-        monitor.CurrentValue.IncludePaths.Should().Equal("docs/**/*.md", "README.md");
+        Assert.Equal(["README.md", "docs/**/*.md"], provider.GetRequiredService<IOptions<SharpSenseConfig>>().Value.IncludePaths);
+        Assert.Same(selection.Workspace, provider.GetRequiredService<IRepositoryWorkspace>());
     }
 
     [Fact]
-    public void WhenLoadingConfigWithoutFile_ThenReturnsEmptyConfig()
+    public void WorkspaceResolutionIsDeferredAndAllowsInjectedCatalog()
     {
-        const string targetDirectory = "/repo/src/Sample";
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>(), "/repo");
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+        }, "/repo");
+        var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
+        var expected = catalog.Create("product", "/repo", []);
         var services = new ServiceCollection();
+        services.AddRepositoryWorkspace("/repo", "product");
+        services.AddSharpSenseConfiguration();
         services.AddSingleton<IFileSystem>(fileSystem);
-        services.AddSingleton<IOptionsChangeTokenSource<SharpSenseConfig>, ManualSharpSenseConfigChangeTokenSource>();
-        services.AddSharpSenseConfiguration(targetDirectory);
+        services.AddSingleton(catalog);
 
-        using var serviceProvider = services.BuildServiceProvider();
-        var monitor = serviceProvider.GetRequiredService<IOptionsMonitor<SharpSenseConfig>>();
+        using var provider = services.BuildServiceProvider();
 
-        monitor.CurrentValue.IncludePaths.Should().BeEmpty();
+        Assert.Equal(expected.Definition.Id, provider.GetRequiredService<IRepositoryWorkspace>().WorkspaceId);
+        Assert.Empty(provider.GetRequiredService<IOptions<SharpSenseConfig>>().Value.IncludePaths);
     }
 
     [Fact]
-    public async Task WhenConfigChanges_ThenOptionsMonitorReturnsUpdatedConfig()
+    public void RunningHostKeepsConfigurationSnapshotUntilWorkspaceIsResolvedAgain()
     {
-        const string targetDirectory = "/repo/src/Sample";
-        const string configPath = "/repo/src/Sample/sharpsense.yaml";
         var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
         {
-            [configPath] = new(
-                """
-                includePaths:
-                  - docs/**/*.md
-                """)
+            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
         }, "/repo");
-        var changeTokenSource = new ManualSharpSenseConfigChangeTokenSource();
+        var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
+        var selection = catalog.Create("product", "/repo", [new(WorkspaceSourceKind.Markdown, "docs/**/*.md")]);
         var services = new ServiceCollection();
-        services.AddSingleton<IFileSystem>(fileSystem);
-        services.AddSingleton<IOptionsChangeTokenSource<SharpSenseConfig>>(changeTokenSource);
-        services.AddSharpSenseConfiguration(targetDirectory);
+        services.AddSharpSenseConfiguration(selection);
+        using var provider = services.BuildServiceProvider();
+        var monitor = provider.GetRequiredService<IOptionsMonitor<SharpSenseConfig>>();
 
-        using var serviceProvider = services.BuildServiceProvider();
-        var monitor = serviceProvider.GetRequiredService<IOptionsMonitor<SharpSenseConfig>>();
-        var updatedConfigSource = new TaskCompletionSource<SharpSenseConfig>(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var changeRegistration = monitor.OnChange(updatedConfig =>
-        {
-            if (updatedConfig.IncludePaths.SequenceEqual(["notes/**/*.md"]))
-            {
-                updatedConfigSource.TrySetResult(updatedConfig);
-            }
-        });
+        catalog.AddSources("product", [new(WorkspaceSourceKind.Markdown, "notes/**/*.md")]);
 
-        monitor.CurrentValue.IncludePaths.Should().Equal("docs/**/*.md");
-        fileSystem.File.WriteAllText(
-            configPath,
-            """
-            includePaths:
-              - notes/**/*.md
-            """);
-        changeTokenSource.SignalChange();
-
-        var updatedConfig = await updatedConfigSource.Task.WaitAsync(
-            TimeSpan.FromSeconds(10),
-            TestContext.Current.CancellationToken);
-
-        updatedConfig.IncludePaths.Should().Equal("notes/**/*.md");
-        monitor.CurrentValue.IncludePaths.Should().Equal("notes/**/*.md");
-    }
-
-    private sealed class ManualSharpSenseConfigChangeTokenSource : IOptionsChangeTokenSource<SharpSenseConfig>
-    {
-        private CancellationTokenSource _cts = new();
-
-        public string Name => Options.DefaultName;
-
-        public IChangeToken GetChangeToken()
-            => new CancellationChangeToken(_cts.Token);
-
-        public void SignalChange()
-        {
-            var next = new CancellationTokenSource();
-            var current = Interlocked.Exchange(ref _cts, next);
-            current.Cancel();
-            current.Dispose();
-        }
+        Assert.Equal(["docs/**/*.md"], monitor.CurrentValue.IncludePaths);
+        Assert.Equal(2, catalog.Resolve("product", "/repo").Definition.Sources.Length);
     }
 }

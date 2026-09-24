@@ -1,5 +1,7 @@
 using FluentResults;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
+using SharpSense.Application.GraphStats.Abstractions;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.IndexTarget.Models;
 using SharpSense.Application.Indexing.Models;
@@ -17,37 +19,75 @@ public sealed class IndexTargetCommandHandler(
     IEmbeddingGenerator embeddingGenerator,
     IKnowledgeGraphRepository knowledgeGraphRepository,
     IIndexingWorkspacePaths workspacePaths,
-    IOptions<SharpSenseCliOptions> cliOptions)
+    IOptions<SharpSenseCliOptions> cliOptions,
+    IIndexRunStore? indexRunStore = null,
+    ILogger<IndexTargetCommandHandler>? logger = null,
+    IWorkspaceChangeFilter? workspaceChangeFilter = null,
+    WorkspaceExtractionCoordinator? workspaceExtraction = null)
     : ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>
 {
     private readonly SharpSenseCliOptions _cliOptions = cliOptions?.Value ?? throw new ArgumentNullException(nameof(cliOptions));
+
+    private readonly WorkspaceExtractionCoordinator _workspaceExtraction = workspaceExtraction ?? new(extractors, workspacePaths, workspaceChangeFilter);
 
     public async Task<Result<IndexTargetOutcome>> Handle(IndexTargetCommand command, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var absoluteTargetPath = workspacePaths.GetRequiredTargetPath(GetRequiredTargetPath());
+        if (!string.IsNullOrWhiteSpace(_cliOptions.WorkspaceId) && _cliOptions.WorkspaceSources.Count == 0)
+        {
+            return Result.Fail(new ServiceError(
+                ServiceErrorCode.FailedPrecondition,
+                "Workspace has no selected sources. Add projects, TypeScript sources, or documentation before indexing."));
+        }
+
+        var absoluteTargetPath = _cliOptions.WorkspaceSources.Count > 0
+            ? workspacePaths.RootPath
+            : workspacePaths.GetRequiredTargetPath(GetRequiredTargetPath());
 
         using var trace = SharpSenseTraceSpan.Start("index.target");
         trace.AddTag("target.path", absoluteTargetPath);
         trace.AddTag("repository.root", workspacePaths.RootPath);
         trace.AddTag("index.include_embeddings", !_cliOptions.SkipEmbeddings);
+        await using var run = new IndexingRunDiagnostics(
+            indexRunStore,
+            command.ChangedFiles is null ? "full" : "incremental",
+            absoluteTargetPath,
+            logger);
 
         try
         {
+            using var extractionLease = _cliOptions.WorkspaceSources.Count > 0
+                ? await _workspaceExtraction.Acquire(ct)
+                : null;
+            WorkspaceExtractionBatch? workspaceBatch = null;
             using var extractActivity = SharpSenseTraceSpan.Start("index.extract");
-            var extractionResult = await Extract(
-                new ExtractionContext(absoluteTargetPath, command.Progress),
-                extractActivity,
-                ct);
+            Result<ExtractedNodes> extractionResult;
+            using (run.Measure("extraction"))
+            {
+                var context = new ExtractionContext(absoluteTargetPath, command.Progress, command.ChangedFiles);
+                if (_cliOptions.WorkspaceSources.Count > 0)
+                {
+                    var extraction = await _workspaceExtraction.Extract(_cliOptions.WorkspaceId, _cliOptions.WorkspaceSources, context, ct);
+                    workspaceBatch = extraction.IsSuccess ? extraction.Value : null;
+                    extractionResult = extraction.IsSuccess ? Result.Ok(extraction.Value.Graph) : Result.Fail(extraction.Errors);
+                }
+                else
+                {
+                    extractionResult = await Extract(context, extractActivity, ct);
+                }
+            }
 
             if (extractionResult.IsFailed)
             {
+                ct.ThrowIfCancellationRequested();
                 trace.SetError();
+                run.Failed(extractionResult.Errors);
                 return Result.Fail(extractionResult.Errors);
             }
 
             var extractedNodes = extractionResult.Value;
+            run.Extracted(extractedNodes);
             var projectCount = extractedNodes.Projects.Count;
             var documentNodeCount = extractedNodes.CodeNodes.Count(static codeNode => codeNode.NodeType == NodeType.Document);
 
@@ -59,6 +99,7 @@ public sealed class IndexTargetCommandHandler(
 
             if (extractedNodes.CodeNodes.Count > 0)
             {
+                using var embeddingTiming = run.Measure("embeddings");
                 if (!_cliOptions.SkipEmbeddings)
                 {
                     command.Progress?.Report(new IndexingProgress("Embedding phase...", projectCount, projectCount));
@@ -76,14 +117,23 @@ public sealed class IndexTargetCommandHandler(
                         _cliOptions.DisableEmbeddingCache,
                         embeddingGenerator,
                         command.EmbeddingProgress,
-                        ct)
+                        ct,
+                        run.Embeddings)
                 };
             }
 
             extractedNodes = NormalizePersistedPaths(extractedNodes);
             command.Progress?.Report(new IndexingProgress("Persisting index...", projectCount, projectCount));
 
-            await knowledgeGraphRepository.ReplaceTarget(extractedNodes, ct);
+            using (run.Measure("persistence"))
+            {
+                await knowledgeGraphRepository.ReplaceTarget(extractedNodes, ct);
+            }
+            if (workspaceBatch is not null)
+            {
+                _workspaceExtraction.Commit(workspaceBatch);
+            }
+            run.Succeeded();
 
             trace.AddTag("index.project.count", extractedNodes.Projects.Count);
             trace.AddTag("index.code_node.count", extractedNodes.CodeNodes.Count);
@@ -100,6 +150,7 @@ public sealed class IndexTargetCommandHandler(
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             trace.SetError();
+            run.Cancelled();
             return Result.Fail(new ServiceError(
                 ServiceErrorCode.FailedPrecondition,
                 $"Indexing of '{absoluteTargetPath}' was cancelled."));
@@ -107,6 +158,7 @@ public sealed class IndexTargetCommandHandler(
         catch (Exception exception)
         {
             trace.RecordExceptionAndErrorStatus(exception);
+            run.Failed(exception);
             return Result.Fail(new ServiceError(
                 ServiceErrorCode.InternalError,
                 $"Indexing of '{absoluteTargetPath}' failed: {exception.Message}"));

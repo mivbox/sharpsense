@@ -1,6 +1,9 @@
 using FluentResults;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
+using SharpSense.Application.GraphStats.Abstractions;
 using SharpSense.Application.Indexing.Abstractions;
+using SharpSense.Application.Indexing.IndexTarget.Models;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Indexing.UpdateWorkspaceFiles.Models;
 using SharpSense.Application.Shared.Abstractions;
@@ -17,11 +20,15 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
     IKnowledgeGraphRepository knowledgeGraphRepository,
     IIndexingWorkspacePaths workspacePaths,
     IWorkspaceFileDiscoverer workspaceFileDiscoverer,
-    IOptions<SharpSenseCliOptions> cliOptions)
+    IOptions<SharpSenseCliOptions> cliOptions,
+    IIndexRunStore? indexRunStore = null,
+    ILogger<UpdateWorkspaceFilesCommandHandler>? logger = null,
+    ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>? workspaceIndexer = null,
+    IWorkspaceChangeFilter? workspaceChangeFilter = null)
     : ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>
 {
     private static readonly string[] MarkdownExtensions = [".md", ".markdown", ".mdown", ".mkd"];
-    private static readonly string[] IncrementalDiscoveryGlobs = ["**/*.cs", "**/*.md", "**/*.markdown", "**/*.mdown", "**/*.mkd"];
+    private static readonly string[] IncrementalDiscoveryGlobs = ["**/*.cs", .. TypeScriptIndexingPathRules.IncludeGlobs, "**/*.md", "**/*.markdown", "**/*.mdown", "**/*.mkd"];
     private readonly SharpSenseCliOptions _cliOptions = cliOptions?.Value ?? throw new ArgumentNullException(nameof(cliOptions));
 
     public async Task<Result<UpdateWorkspaceFilesOutcome>> Handle(UpdateWorkspaceFilesCommand command, CancellationToken ct)
@@ -29,39 +36,82 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(command.ChangedFiles);
 
+        if (_cliOptions.WorkspaceSources.Count > 0 || !string.IsNullOrWhiteSpace(_cliOptions.WorkspaceId))
+        {
+            return await UpdateNamedWorkspace(command, ct);
+        }
+
         var absoluteTargetPath = workspacePaths.GetRequiredTargetPath(GetRequiredTargetPath());
-        var expandedChangedFiles = await ExpandDirectoryChanges(command.ChangedFiles, ct);
-        var changedFilePaths = GetAffectedRelativePaths(expandedChangedFiles);
 
         using var trace = SharpSenseTraceSpan.Start("index.target.incremental");
         trace.AddTag("target.path", absoluteTargetPath);
         trace.AddTag("repository.root", workspacePaths.RootPath);
         trace.AddTag("index.change.count", command.ChangedFiles.Count);
-        trace.AddTag("index.expanded_change.count", expandedChangedFiles.Count);
+        await using var run = new IndexingRunDiagnostics(indexRunStore, "incremental", absoluteTargetPath, logger);
 
         try
         {
-            if (expandedChangedFiles.Count == 0 || changedFilePaths.Length == 0)
+            IReadOnlyList<WorkspaceFileChange> expandedChangedFiles;
+            using (run.Measure("discovery"))
             {
-                return Result.Ok(new UpdateWorkspaceFilesOutcome(0, 0, 0));
+                expandedChangedFiles = await ExpandDirectoryChanges(command.ChangedFiles, ct);
+            }
+            var changedFilePaths = GetAffectedRelativePaths(expandedChangedFiles);
+            var refreshWorkspace = CSharpIndexingPathRules.IsWorkspaceTarget(absoluteTargetPath) &&
+                RequiresCSharpRefresh(expandedChangedFiles);
+            var refreshTypeScript = !refreshWorkspace && RequiresTypeScriptRefresh(expandedChangedFiles);
+            trace.AddTag("index.expanded_change.count", expandedChangedFiles.Count);
+
+            if (expandedChangedFiles.Count == 0 || (changedFilePaths.Length == 0 && !refreshTypeScript && !refreshWorkspace))
+            {
+                return Result.Ok(new UpdateWorkspaceFilesOutcome(0, 0, 0, IndexCommitted: false));
+            }
+
+            if (refreshTypeScript)
+            {
+                // TypeScript imports, aliases, and shared synthetic dependencies can change
+                // consumers outside the changed file. Replace the previous complete TS scope,
+                // including files now deleted, excluded, or no longer reachable.
+                var persistedPaths = await knowledgeGraphRepository.GetPersistedDocumentPathsUnderDirectory(string.Empty, ct);
+                changedFilePaths = changedFilePaths
+                    .Concat(persistedPaths.Where(TypeScriptIndexingPathRules.IsTypeScriptFilePath))
+                    .Distinct(GetPathComparer())
+                    .OrderBy(static path => path, GetPathComparer())
+                    .ToArray();
             }
 
             using var extractActivity = SharpSenseTraceSpan.Start("index.extract.incremental");
-            var extractionResult = await Extract(
-                new IncrementalExtractionContext(absoluteTargetPath, expandedChangedFiles, command.Progress),
-                extractActivity,
-                ct);
+            Result<ExtractedNodes> extractionResult;
+            using (run.Measure("extraction"))
+            {
+                extractionResult = await Extract(
+                    new IncrementalExtractionContext(absoluteTargetPath, expandedChangedFiles, command.Progress),
+                    extractActivity,
+                    refreshWorkspace,
+                    ct);
+            }
 
             if (extractionResult.IsFailed)
             {
+                ct.ThrowIfCancellationRequested();
                 trace.SetError();
+                run.Failed(extractionResult.Errors);
                 return Result.Fail(extractionResult.Errors);
             }
 
             var extractedNodes = extractionResult.Value;
+            run.Extracted(extractedNodes);
             extractedNodes = NormalizePersistedPaths(extractedNodes);
+            // Extractors may expand a partial declaration into its complete sibling documents.
+            // Include those paths when loading cached vectors as well as when replacing graph data.
+            changedFilePaths = changedFilePaths
+                .Concat(extractedNodes.CodeNodes.Select(static node => node.RelativeFilePath))
+                .Distinct(GetPathComparer())
+                .OrderBy(static path => path, GetPathComparer())
+                .ToArray();
             if (extractedNodes.CodeNodes.Count > 0)
             {
+                using var embeddingTiming = run.Measure("embeddings");
                 if (!_cliOptions.SkipEmbeddings)
                 {
                     command.Progress?.Report(new IndexingProgress("Embedding phase...", changedFilePaths.Length, changedFilePaths.Length));
@@ -69,7 +119,9 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
 
                 var persistedCodeNodes = _cliOptions.DisableEmbeddingCache
                     ? []
-                    : await knowledgeGraphRepository.GetPersistedCodeNodes(changedFilePaths, ct);
+                    : refreshWorkspace
+                        ? await knowledgeGraphRepository.GetPersistedCodeNodes(ct)
+                        : await knowledgeGraphRepository.GetPersistedCodeNodes(changedFilePaths, ct);
                 extractedNodes = extractedNodes with
                 {
                     CodeNodes = await CodeNodeEmbeddingCoordinator.Populate(
@@ -79,13 +131,27 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
                         _cliOptions.DisableEmbeddingCache,
                         embeddingGenerator,
                         progress: null,
-                        ct)
+                        ct,
+                        run.Embeddings)
                 };
             }
 
             command.Progress?.Report(new IndexingProgress("Persisting incremental index...", changedFilePaths.Length, changedFilePaths.Length));
 
-            await knowledgeGraphRepository.ReplaceWorkspaceFiles(changedFilePaths, extractedNodes, ct);
+            using (run.Measure("persistence"))
+            {
+                if (refreshWorkspace)
+                {
+                    // Project membership and semantic dependencies may change in untouched files.
+                    // Commit one complete snapshot so removed projects and their consumers reconcile together.
+                    await knowledgeGraphRepository.ReplaceTarget(extractedNodes, ct);
+                }
+                else
+                {
+                    await knowledgeGraphRepository.ReplaceWorkspaceFiles(changedFilePaths, extractedNodes, ct);
+                }
+            }
+            run.Succeeded();
 
             trace.AddTag("index.code_node.count", extractedNodes.CodeNodes.Count);
             trace.AddTag("index.dependency.count", extractedNodes.Edges.Count);
@@ -99,6 +165,7 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             trace.SetError();
+            run.Cancelled();
             return Result.Fail(new ServiceError(
                 ServiceErrorCode.FailedPrecondition,
                 $"Incremental update of '{absoluteTargetPath}' was cancelled."));
@@ -106,15 +173,49 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
         catch (Exception exception)
         {
             trace.RecordExceptionAndErrorStatus(exception);
+            run.Failed(exception);
             return Result.Fail(new ServiceError(
                 ServiceErrorCode.InternalError,
                 $"Incremental update of '{absoluteTargetPath}' failed: {exception.Message}"));
         }
     }
 
+    private async Task<Result<UpdateWorkspaceFilesOutcome>> UpdateNamedWorkspace(
+        UpdateWorkspaceFilesCommand command,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(command.ChangedFiles);
+
+        if (command.ChangedFiles.Count == 0 || workspaceChangeFilter?.IsRelevant(command.ChangedFiles) == false)
+        {
+            return Result.Ok(new UpdateWorkspaceFilesOutcome(0, 0, 0, IndexCommitted: false));
+        }
+
+        if (workspaceIndexer is null)
+        {
+            return Result.Fail(new ServiceError(
+                ServiceErrorCode.FailedPrecondition,
+                "Workspace indexing handler is not registered. Register the complete indexing feature."));
+        }
+
+        // Reconcile the complete selected graph. A change in one contribution must not
+        // replace another source or leave reverse links stale. C# source-only edits can
+        // still reuse their loaded Roslyn workspaces through ChangedFiles.
+        var result = await workspaceIndexer.Handle(new IndexTargetCommand(
+            Progress: command.Progress,
+            ChangedFiles: command.ChangedFiles), ct);
+        return result.IsFailed
+            ? Result.Fail(result.Errors)
+            : Result.Ok(new UpdateWorkspaceFilesOutcome(
+                result.Value.ProjectsIndexed,
+                result.Value.CodeNodesPersisted,
+                result.Value.DependencyEdgesPersisted));
+    }
+
     private async Task<Result<ExtractedNodes>> Extract(
         IncrementalExtractionContext context,
         SharpSenseTraceSpan extractActivity,
+        bool refreshWorkspace,
         CancellationToken ct)
     {
         var aggregatedProjects = new List<IndexedProject>();
@@ -125,14 +226,14 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
 
         foreach (var extractor in extractors)
         {
-            var extractionResult = await extractor.ExtractIncremental(context, ct);
+            var extractionResult = refreshWorkspace
+                ? await extractor.Extract(new ExtractionContext(context.TargetPath, context.Progress, context.ChangedFiles), ct)
+                : await extractor.ExtractIncremental(context, ct);
 
             if (extractionResult.IsFailed)
             {
                 allErrors.AddRange(extractionResult.Errors.Select(error =>
-                    error is ServiceError serviceError
-                        ? serviceError
-                        : new ServiceError(ServiceErrorCode.ThirdPartyError, error.Message)));
+                    ToServiceError(error)));
                 continue;
             }
 
@@ -174,6 +275,22 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
             aggregatedDiagnostics));
     }
 
+    private static ServiceError ToServiceError(IError error)
+    {
+        if (error is ServiceError serviceError)
+        {
+            return serviceError;
+        }
+
+        var converted = new ServiceError(ServiceErrorCode.ThirdPartyError, error.Message);
+        foreach (var entry in error.Metadata)
+        {
+            converted.Metadata[entry.Key] = entry.Value;
+        }
+
+        return converted;
+    }
+
     private async Task<IReadOnlyList<WorkspaceFileChange>> ExpandDirectoryChanges(
         IReadOnlyList<WorkspaceFileChange> changedFiles,
         CancellationToken ct)
@@ -185,9 +302,11 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
             switch (changedFile.ActionType)
             {
                 case WorkspaceFileChangeAction.DirectoryDeleted:
+                    expandedChanges.Add(changedFile);
                     expandedChanges.AddRange(await ExpandDeletedDirectory(changedFile, ct));
                     break;
                 case WorkspaceFileChangeAction.DirectoryRenamed:
+                    expandedChanges.Add(changedFile);
                     expandedChanges.AddRange(await ExpandRenamedDirectory(changedFile, ct));
                     break;
                 default:
@@ -322,8 +441,33 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
         return [.. relativePaths.OrderBy(static path => path, pathComparer)];
     }
 
+    private bool RequiresCSharpRefresh(IReadOnlyList<WorkspaceFileChange> changes)
+        => changes.Any(change => change.GetAffectedPaths().Any(path =>
+            workspacePaths.TryToRepositoryRelativePath(path, out var relativePath) &&
+            !WorkspaceIndexingPathRules.IsIgnoredPath(relativePath) &&
+            (change.ActionType is WorkspaceFileChangeAction.DirectoryDeleted or WorkspaceFileChangeAction.DirectoryRenamed ||
+             CSharpIndexingPathRules.IsRelevantChangePath(relativePath))));
+
+    private bool RequiresTypeScriptRefresh(IReadOnlyList<WorkspaceFileChange> changes)
+        => changes.Any(change => change.GetAffectedPaths().Any(path =>
+            workspacePaths.TryToRepositoryRelativePath(path, out var relativePath) &&
+            !WorkspaceIndexingPathRules.IsIgnoredPath(relativePath) &&
+            (string.IsNullOrEmpty(relativePath) || !TypeScriptIndexingPathRules.IsIgnoredPath(relativePath)) &&
+            (change.ActionType is WorkspaceFileChangeAction.DirectoryDeleted or WorkspaceFileChangeAction.DirectoryRenamed ||
+             TypeScriptIndexingPathRules.IsRelevantChangePath(relativePath))));
+
     private static bool IsIncrementalTargetPath(string path)
     {
+        if (WorkspaceIndexingPathRules.IsIgnoredPath(path))
+        {
+            return false;
+        }
+
+        if (TypeScriptIndexingPathRules.IsTypeScriptFilePath(path))
+        {
+            return TypeScriptIndexingPathRules.IsIndexedPath(path);
+        }
+
         var extension = Path.GetExtension(path);
 
         return string.Equals(extension, ".cs", StringComparison.OrdinalIgnoreCase) ||
@@ -344,7 +488,7 @@ public sealed class UpdateWorkspaceFilesCommandHandler(
         [
             .. discoveredFiles
                 .Select(static discoveredFile => discoveredFile.RelativeFilePath)
-                .Where(path => !WorkspaceIndexingPathRules.IsIgnoredPath(path))
+                .Where(IsIncrementalTargetPath)
                 .Distinct(GetPathComparer())
                 .OrderBy(static path => path, GetPathComparer())
         ];

@@ -1,87 +1,32 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Primitives;
-using System.IO.Abstractions;
-using YamlDotNet.Serialization;
-using YamlDotNet.Serialization.NamingConventions;
+using SharpSense.Application.Indexing;
 
 namespace SharpSense.Infrastructure.Storage;
 
 public static class SharpSenseConfigurationExtensions
 {
-    private static readonly IDeserializer _yamlDeserializer = new DeserializerBuilder()
-        .IgnoreUnmatchedProperties()
-        .WithNamingConvention(CamelCaseNamingConvention.Instance)
-        .Build();
-
-    public static IServiceCollection AddSharpSenseConfiguration(
-        this IServiceCollection services,
-        string targetDirectory)
+    /// <summary>
+    /// Binds a configuration snapshot for the selected workspace. Changes are picked up by the next command or host.
+    /// No project-local configuration files are read or watched.
+    /// </summary>
+    public static IServiceCollection AddSharpSenseConfiguration(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetDirectory);
 
-        var normalizedPhysicalTargetDirectory = NormalizePhysicalTargetDirectory(targetDirectory);
-
-        services.AddFileSystem();
         services.AddOptions<SharpSenseConfig>()
-            .Configure<IFileSystem>((options, fileSystem) =>
+            .Configure<WorkspaceSelection>((options, selection) =>
             {
-                var configPath = fileSystem.Path.Combine(normalizedPhysicalTargetDirectory, "sharpsense.yaml");
-                if (!fileSystem.File.Exists(configPath))
-                {
-                    return;
-                }
-
-                using var configReader = fileSystem.File.OpenText(configPath);
-                var config = _yamlDeserializer.Deserialize<SharpSenseConfig>(configReader) ?? new SharpSenseConfig();
-                var includePaths = config.IncludePaths ?? [];
-
-                options.IncludePaths =
-                [
-                    .. includePaths
-                        .Where(static includePath => !string.IsNullOrWhiteSpace(includePath))
-                        .Select(static includePath => includePath.Trim())
-                ];
+                options.IncludePaths = selection.Definition.Sources
+                    .Where(static source => source.Kind == WorkspaceSourceKind.Markdown)
+                    .Select(static source => source.Path)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
             });
-
-        services.TryAddSingleton<IOptionsChangeTokenSource<SharpSenseConfig>>(
-            _ => new SharpSenseConfigChangeTokenSource(normalizedPhysicalTargetDirectory));
 
         return services;
     }
 
-    private sealed class SharpSenseConfigChangeTokenSource(string targetDirectory)
-        : IOptionsChangeTokenSource<SharpSenseConfig>, IDisposable
-    {
-        private readonly PhysicalFileProvider _fileProvider = CreateFileProvider(targetDirectory);
-
-        public string Name => Options.DefaultName;
-
-        public IChangeToken GetChangeToken()
-            => _fileProvider.Watch("sharpsense.yaml");
-
-        public void Dispose()
-            => _fileProvider.Dispose();
-
-        private static PhysicalFileProvider CreateFileProvider(string targetDirectory)
-            => new(targetDirectory) // It's already normalized by the time it gets here
-            {
-                UsePollingFileWatcher = true
-            };
-    }
-
-    private static string NormalizePhysicalTargetDirectory(string targetDirectory)
-    {
-        var fullPath = Path.GetFullPath(targetDirectory);
-
-        if (File.Exists(fullPath))
-        {
-            fullPath = Path.GetDirectoryName(fullPath) ?? fullPath;
-        }
-
-        return Path.TrimEndingDirectorySeparator(fullPath);
-    }
+    public static IServiceCollection AddSharpSenseConfiguration(
+        this IServiceCollection services,
+        WorkspaceSelection selection) => services.AddRepositoryWorkspace(selection).AddSharpSenseConfiguration();
 }

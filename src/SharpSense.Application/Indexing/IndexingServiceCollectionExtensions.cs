@@ -14,6 +14,7 @@ public static class IndexingServiceCollectionExtensions
     public static IServiceCollection AddIndexing(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
+        services.TryAddScoped<WorkspaceExtractionCoordinator>();
         services.TryAddTransient<ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>, IndexTargetCommandHandler>();
         services.TryAddTransient<ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>, UpdateWorkspaceFilesCommandHandler>();
         return services;

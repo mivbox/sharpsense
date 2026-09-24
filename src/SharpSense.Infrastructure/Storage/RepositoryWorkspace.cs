@@ -9,16 +9,24 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
     internal RepositoryWorkspace(
         string rootPath,
         string databasePath,
-        IFileSystem fileSystem)
+        IFileSystem fileSystem,
+        WorkspaceDefinition? definition = null)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         RootPath = NormalizeRootPath(rootPath, _fileSystem);
         DatabasePath = _fileSystem.Path.GetFullPath(databasePath);
+        Definition = definition;
     }
 
     public string RootPath { get; }
 
     public string DatabasePath { get; }
+
+    public Guid? WorkspaceId => Definition?.Id;
+
+    public string? WorkspaceName => Definition?.Name;
+
+    public WorkspaceDefinition? Definition { get; }
 
     public string ToRepositoryRelativePath(string? filePath) =>
         !TryToRepositoryRelativePath(filePath, out var relativePath) ?
@@ -134,7 +142,7 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
         return NormalizeRootPath(workingDirectory, fileSystem);
     }
 
-    private static string NormalizeRootPath(
+    internal static string NormalizeRootPath(
         string path,
         IFileSystem fileSystem)
     {

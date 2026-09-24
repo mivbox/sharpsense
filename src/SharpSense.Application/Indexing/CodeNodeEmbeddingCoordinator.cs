@@ -13,7 +13,8 @@ internal static class CodeNodeEmbeddingCoordinator
         bool disableCache,
         IEmbeddingGenerator embeddingGenerator,
         IProgress<EmbeddingGenerationProgress>? progress,
-        CancellationToken ct)
+        CancellationToken ct,
+        Action<int, int>? reportStatistics = null)
     {
         ArgumentNullException.ThrowIfNull(codeNodes);
         ArgumentNullException.ThrowIfNull(persistedCodeNodes);
@@ -21,6 +22,7 @@ internal static class CodeNodeEmbeddingCoordinator
 
         if (codeNodes.Count == 0)
         {
+            reportStatistics?.Invoke(0, 0);
             return [];
         }
 
@@ -31,6 +33,7 @@ internal static class CodeNodeEmbeddingCoordinator
                 StringComparer.Ordinal);
         var updatedCodeNodes = new IndexedCodeNode[codeNodes.Count];
         var embeddingRequests = new List<(int Index, string SearchText)>();
+        var reusedEmbeddingCount = 0;
 
         for (var index = 0; index < codeNodes.Count; index++)
         {
@@ -43,6 +46,7 @@ internal static class CodeNodeEmbeddingCoordinator
                 {
                     VectorEmbedding = persistedCodeNode.VectorEmbedding
                 };
+                reusedEmbeddingCount++;
                 continue;
             }
 
@@ -61,6 +65,7 @@ internal static class CodeNodeEmbeddingCoordinator
 
         if (embeddingRequests.Count == 0)
         {
+            reportStatistics?.Invoke(reusedEmbeddingCount, 0);
             return updatedCodeNodes;
         }
 
@@ -82,6 +87,7 @@ internal static class CodeNodeEmbeddingCoordinator
             };
         }
 
+        reportStatistics?.Invoke(reusedEmbeddingCount, embeddings.Count);
         return updatedCodeNodes;
     }
 

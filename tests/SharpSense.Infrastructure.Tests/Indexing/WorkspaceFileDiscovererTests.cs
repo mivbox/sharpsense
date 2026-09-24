@@ -17,7 +17,7 @@ public sealed class WorkspaceFileDiscovererTests
             ["/repo/src/Sample/docs/Guide.md"] = new("# Guide"),
             ["/repo/src/Sample/docs/Ignored.md"] = new("# Ignored")
         }, "/repo");
-        var workspace = new RepositoryWorkspaceFactory(fileSystem).CreateFromWorkingDirectory("/repo");
+        var workspace = new RepositoryWorkspace("/repo", "/test-storage/index.db", fileSystem);
         var discoverer = new WorkspaceFileDiscoverer(workspace, fileSystem);
 
         var files = await discoverer.GetAllowedFiles(
@@ -39,7 +39,7 @@ public sealed class WorkspaceFileDiscovererTests
             ["/repo/src/Sample/docs/Guide.md"] = new("# Guide"),
             ["/repo/src/Sample/docs/Reference.md"] = new("# Reference")
         }, "/repo");
-        var workspace = new RepositoryWorkspaceFactory(fileSystem).CreateFromWorkingDirectory("/repo");
+        var workspace = new RepositoryWorkspace("/repo", "/test-storage/index.db", fileSystem);
         var discoverer = new WorkspaceFileDiscoverer(workspace, fileSystem);
 
         var files = await discoverer.GetAllowedFiles(

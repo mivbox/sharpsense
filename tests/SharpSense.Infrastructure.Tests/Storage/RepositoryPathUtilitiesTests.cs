@@ -56,17 +56,13 @@ public sealed class RepositoryWorkspaceTests
     }
 
     [Fact]
-    public void WhenCreatingWorkspaceFromWorkingDirectory_ThenUsesRepositoryHashDatabasePath()
+    public void WhenCreatingRegisteredWorkspace_ThenUsesWorkspaceOwnedDatabasePath()
     {
         var fileSystem = CreateRepositoryFileSystem();
-        var workspace = CreateWorkspace(fileSystem, "/repo");
-        var expectedHash = RepositoryHashCalculator.ComputeHash(workspace.RootPath);
-        var expectedPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".SharpSense",
-            $"{expectedHash}.db");
+        var selection = new WorkspaceCatalog(fileSystem, "/workspace-home").Create("test", "/repo", []);
+        var expectedPath = Path.Combine("/workspace-home", "workspaces", selection.Definition.Id.ToString("D"), "index.db");
 
-        workspace.DatabasePath.Should().Be(expectedPath);
+        selection.Workspace.DatabasePath.Should().Be(expectedPath);
     }
 
     [Fact]
@@ -116,5 +112,8 @@ public sealed class RepositoryWorkspaceTests
     private static IRepositoryWorkspace CreateWorkspace(
         MockFileSystem fileSystem,
         string workingDirectory)
-        => new RepositoryWorkspaceFactory(fileSystem).CreateFromWorkingDirectory(workingDirectory);
+        => new RepositoryWorkspace(
+            RepositoryWorkspace.ResolveRootPathFromWorkingDirectory(workingDirectory, fileSystem),
+            "/test-storage/index.db",
+            fileSystem);
 }

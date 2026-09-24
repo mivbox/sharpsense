@@ -1,3 +1,4 @@
+using FluentResults;
 using Microsoft.Extensions.Options;
 using Moq;
 using SharpSense.Application.Indexing.Abstractions;
@@ -16,7 +17,6 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
     [Fact]
     public async Task WhenHandleWithValidCommand_ThenPersistsNormalizedIncrementalGraph()
     {
-        var expectedChangedPaths = new[] { "src/SharpSense.Infrastructure/Indexing/KnowledgeGraphRepository.cs" };
         var expectedEmbedding = new[] { 1f, 2f };
         const string expectedSearchText = "Feature.Run()\nRuns the feature.";
         var command = new UpdateWorkspaceFilesCommand(
@@ -28,8 +28,8 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
         var extractor = new Mock<ILanguageExtractor>(MockBehavior.Strict);
         extractor.SetupGet(candidate => candidate.ExtractorName)
             .Returns("csharp");
-        extractor.Setup(candidate => candidate.ExtractIncremental(
-                It.IsAny<IncrementalExtractionContext>(),
+        extractor.Setup(candidate => candidate.Extract(
+                It.IsAny<ExtractionContext>(),
                 CancellationToken.None))
             .ReturnsAsync(new ExtractedNodes(
                 [],
@@ -56,11 +56,9 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
             .ReturnsAsync([new TextEmbedding(expectedSearchText, expectedEmbedding)]);
         var repository = new Mock<IKnowledgeGraphRepository>(MockBehavior.Strict);
         repository.Setup(candidate => candidate.GetPersistedCodeNodes(
-                It.Is<IReadOnlyList<string>>(paths => paths.SequenceEqual(expectedChangedPaths)),
                 CancellationToken.None))
             .ReturnsAsync([]);
-        repository.Setup(candidate => candidate.ReplaceWorkspaceFiles(
-                It.Is<IReadOnlyList<string>>(paths => paths.SequenceEqual(expectedChangedPaths)),
+        repository.Setup(candidate => candidate.ReplaceTarget(
                 It.Is<ExtractedNodes>(payload =>
                     payload.CodeNodes.Single().RelativeFilePath == "src/App/Feature.cs" &&
                     payload.CodeNodes.Single().VectorEmbedding!.SequenceEqual(expectedEmbedding)),
@@ -82,15 +80,14 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
         await handler.Handle(command, CancellationToken.None);
 
         embeddingGenerator.Verify(candidate => candidate.GenerateBatch(It.IsAny<IEnumerable<string>>(), null, CancellationToken.None), Times.Once);
-        repository.Verify(candidate => candidate.GetPersistedCodeNodes(It.IsAny<IReadOnlyList<string>>(), CancellationToken.None), Times.Once);
-        repository.Verify(candidate => candidate.ReplaceWorkspaceFiles(It.IsAny<IReadOnlyList<string>>(), It.IsAny<ExtractedNodes>(), CancellationToken.None), Times.Once);
+        repository.Verify(candidate => candidate.GetPersistedCodeNodes(CancellationToken.None), Times.Once);
+        repository.Verify(candidate => candidate.ReplaceTarget(It.IsAny<ExtractedNodes>(), CancellationToken.None), Times.Once);
     }
 
     [Fact]
     public async Task WhenHandleWithRenamedDirectory_ThenExpandsDirectoryChangeBeforePersisting()
     {
-        var expectedDiscoveryGlobs = new[] { "**/*.cs", "**/*.md", "**/*.markdown", "**/*.mdown", "**/*.mkd" };
-        var expectedChangedPaths = new[] { "docs/New/Guide.md", "docs/Old/Guide.md" };
+        var expectedDiscoveryGlobs = new[] { "**/*.cs", "**/*.ts", "**/*.tsx", "**/*.md", "**/*.markdown", "**/*.mdown", "**/*.mkd" };
         const string expectedSearchText = "Guide\nGuide content.";
         var command = new UpdateWorkspaceFilesCommand(
             [
@@ -102,8 +99,8 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
         var extractor = new Mock<ILanguageExtractor>(MockBehavior.Strict);
         extractor.SetupGet(candidate => candidate.ExtractorName)
             .Returns("markdown");
-        extractor.Setup(candidate => candidate.ExtractIncremental(
-                It.Is<IncrementalExtractionContext>(context => context.ChangedFiles.Single().ActionType == WorkspaceFileChangeAction.Renamed),
+        extractor.Setup(candidate => candidate.Extract(
+                It.IsAny<ExtractionContext>(),
                 CancellationToken.None))
             .ReturnsAsync(new ExtractedNodes(
                 [],
@@ -132,11 +129,9 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
         repository.Setup(candidate => candidate.GetPersistedDocumentPathsUnderDirectory("docs/Old", CancellationToken.None))
             .ReturnsAsync(["docs/Old/Guide.md"]);
         repository.Setup(candidate => candidate.GetPersistedCodeNodes(
-                It.Is<IReadOnlyList<string>>(paths => paths.SequenceEqual(expectedChangedPaths)),
                 CancellationToken.None))
             .ReturnsAsync([]);
-        repository.Setup(candidate => candidate.ReplaceWorkspaceFiles(
-                It.Is<IReadOnlyList<string>>(paths => paths.SequenceEqual(expectedChangedPaths)),
+        repository.Setup(candidate => candidate.ReplaceTarget(
                 It.Is<ExtractedNodes>(payload => payload.CodeNodes.Single().RelativeFilePath == "docs/New/Guide.md"),
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -176,7 +171,6 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
     [Fact]
     public async Task WhenHandleWithMatchingPersistedFingerprint_ThenReusesStoredVector()
     {
-        var expectedChangedPaths = new[] { "src/App/Feature.cs" };
         var expectedEmbedding = new[] { 4f, 2f };
         const string bodyHash = "hash-1";
         const string expectedSearchText = "Feature.Run()\nRuns the feature.";
@@ -189,8 +183,8 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
         var extractor = new Mock<ILanguageExtractor>(MockBehavior.Strict);
         extractor.SetupGet(candidate => candidate.ExtractorName)
             .Returns("csharp");
-        extractor.Setup(candidate => candidate.ExtractIncremental(
-                It.IsAny<IncrementalExtractionContext>(),
+        extractor.Setup(candidate => candidate.Extract(
+                It.IsAny<ExtractionContext>(),
                 CancellationToken.None))
             .ReturnsAsync(new ExtractedNodes(
                 [],
@@ -213,7 +207,6 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
         var embeddingGenerator = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
         var repository = new Mock<IKnowledgeGraphRepository>(MockBehavior.Strict);
         repository.Setup(candidate => candidate.GetPersistedCodeNodes(
-                It.Is<IReadOnlyList<string>>(paths => paths.SequenceEqual(expectedChangedPaths)),
                 CancellationToken.None))
             .ReturnsAsync(
             [
@@ -231,8 +224,7 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
                     bodyHash,
                     expectedEmbedding)
             ]);
-        repository.Setup(candidate => candidate.ReplaceWorkspaceFiles(
-                It.Is<IReadOnlyList<string>>(paths => paths.SequenceEqual(expectedChangedPaths)),
+        repository.Setup(candidate => candidate.ReplaceTarget(
                 It.Is<ExtractedNodes>(payload => payload.CodeNodes.Single().VectorEmbedding!.SequenceEqual(expectedEmbedding)),
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -251,14 +243,13 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
         await handler.Handle(command, CancellationToken.None);
 
         embeddingGenerator.Verify(candidate => candidate.GenerateBatch(It.IsAny<IEnumerable<string>>(), null, CancellationToken.None), Times.Never);
-        repository.Verify(candidate => candidate.GetPersistedCodeNodes(It.IsAny<IReadOnlyList<string>>(), CancellationToken.None), Times.Once);
-        repository.Verify(candidate => candidate.ReplaceWorkspaceFiles(It.IsAny<IReadOnlyList<string>>(), It.IsAny<ExtractedNodes>(), CancellationToken.None), Times.Once);
+        repository.Verify(candidate => candidate.GetPersistedCodeNodes(CancellationToken.None), Times.Once);
+        repository.Verify(candidate => candidate.ReplaceTarget(It.IsAny<ExtractedNodes>(), CancellationToken.None), Times.Once);
     }
 
     [Fact]
     public async Task WhenHandleWithNoCacheAndMatchingPersistedFingerprint_ThenRegeneratesEmbedding()
     {
-        var expectedChangedPaths = new[] { "src/App/Feature.cs" };
         var expectedEmbedding = new[] { 5f, 1f };
         const string bodyHash = "hash-1";
         const string expectedSearchText = "Feature.Run()\nRuns the feature.";
@@ -271,8 +262,8 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
         var extractor = new Mock<ILanguageExtractor>(MockBehavior.Strict);
         extractor.SetupGet(candidate => candidate.ExtractorName)
             .Returns("csharp");
-        extractor.Setup(candidate => candidate.ExtractIncremental(
-                It.IsAny<IncrementalExtractionContext>(),
+        extractor.Setup(candidate => candidate.Extract(
+                It.IsAny<ExtractionContext>(),
                 CancellationToken.None))
             .ReturnsAsync(new ExtractedNodes(
                 [],
@@ -299,8 +290,7 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
                 CancellationToken.None))
             .ReturnsAsync([new TextEmbedding(expectedSearchText, expectedEmbedding)]);
         var repository = new Mock<IKnowledgeGraphRepository>(MockBehavior.Strict);
-        repository.Setup(candidate => candidate.ReplaceWorkspaceFiles(
-                It.Is<IReadOnlyList<string>>(paths => paths.SequenceEqual(expectedChangedPaths)),
+        repository.Setup(candidate => candidate.ReplaceTarget(
                 It.Is<ExtractedNodes>(payload => payload.CodeNodes.Single().VectorEmbedding!.SequenceEqual(expectedEmbedding)),
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -320,14 +310,13 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
         await handler.Handle(command, CancellationToken.None);
 
         embeddingGenerator.Verify(candidate => candidate.GenerateBatch(It.IsAny<IEnumerable<string>>(), null, CancellationToken.None), Times.Once);
-        repository.Verify(candidate => candidate.GetPersistedCodeNodes(It.IsAny<IReadOnlyList<string>>(), CancellationToken.None), Times.Never);
-        repository.Verify(candidate => candidate.ReplaceWorkspaceFiles(It.IsAny<IReadOnlyList<string>>(), It.IsAny<ExtractedNodes>(), CancellationToken.None), Times.Once);
+        repository.Verify(candidate => candidate.GetPersistedCodeNodes(CancellationToken.None), Times.Never);
+        repository.Verify(candidate => candidate.ReplaceTarget(It.IsAny<ExtractedNodes>(), CancellationToken.None), Times.Once);
     }
 
     [Fact]
     public async Task WhenHandleWithChangedSearchTextButMatchingBodyHash_ThenRegeneratesEmbedding()
     {
-        var expectedChangedPaths = new[] { "src/App/Feature.cs" };
         var expectedEmbedding = new[] { 6f, 3f };
         const string bodyHash = "hash-1";
         const string persistedSearchText = "Feature.Run()\nRuns the feature.";
@@ -341,8 +330,8 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
         var extractor = new Mock<ILanguageExtractor>(MockBehavior.Strict);
         extractor.SetupGet(candidate => candidate.ExtractorName)
             .Returns("csharp");
-        extractor.Setup(candidate => candidate.ExtractIncremental(
-                It.IsAny<IncrementalExtractionContext>(),
+        extractor.Setup(candidate => candidate.Extract(
+                It.IsAny<ExtractionContext>(),
                 CancellationToken.None))
             .ReturnsAsync(new ExtractedNodes(
                 [],
@@ -370,7 +359,6 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
             .ReturnsAsync([new TextEmbedding(updatedSearchText, expectedEmbedding)]);
         var repository = new Mock<IKnowledgeGraphRepository>(MockBehavior.Strict);
         repository.Setup(candidate => candidate.GetPersistedCodeNodes(
-                It.Is<IReadOnlyList<string>>(paths => paths.SequenceEqual(expectedChangedPaths)),
                 CancellationToken.None))
             .ReturnsAsync(
             [
@@ -388,8 +376,7 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
                     bodyHash,
                     [1f])
             ]);
-        repository.Setup(candidate => candidate.ReplaceWorkspaceFiles(
-                It.Is<IReadOnlyList<string>>(paths => paths.SequenceEqual(expectedChangedPaths)),
+        repository.Setup(candidate => candidate.ReplaceTarget(
                 It.Is<ExtractedNodes>(payload => payload.CodeNodes.Single().VectorEmbedding!.SequenceEqual(expectedEmbedding)),
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
@@ -408,7 +395,101 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
         await handler.Handle(command, CancellationToken.None);
 
         embeddingGenerator.Verify(candidate => candidate.GenerateBatch(It.IsAny<IEnumerable<string>>(), null, CancellationToken.None), Times.Once);
-        repository.Verify(candidate => candidate.ReplaceWorkspaceFiles(It.IsAny<IReadOnlyList<string>>(), It.IsAny<ExtractedNodes>(), CancellationToken.None), Times.Once);
+        repository.Verify(candidate => candidate.ReplaceTarget(It.IsAny<ExtractedNodes>(), CancellationToken.None), Times.Once);
+    }
+
+    [Fact]
+    public async Task WhenExtractorExpandsPartialSiblingsAndEmbeddingsAreSkipped_ThenRetainsSiblingVectors()
+    {
+        var sibling = new IndexedCodeNode("code:shared", "project:app", "Shared", "Shared", NodeType.Class,
+            "src/App/PartA.cs", 1, 5, "Shared type", "Shared type", "same-body");
+        var vector = new[] { 1f, 2f };
+        var extractor = new Mock<ILanguageExtractor>(MockBehavior.Strict);
+        extractor.SetupGet(candidate => candidate.ExtractorName).Returns("csharp");
+        extractor.Setup(candidate => candidate.Extract(It.IsAny<ExtractionContext>(), CancellationToken.None))
+            .ReturnsAsync(new ExtractedNodes([], [sibling], [], []));
+        var repository = new Mock<IKnowledgeGraphRepository>(MockBehavior.Strict);
+        repository.Setup(candidate => candidate.GetPersistedCodeNodes(
+                CancellationToken.None))
+            .ReturnsAsync([sibling with { VectorEmbedding = vector }]);
+        repository.Setup(candidate => candidate.ReplaceTarget(
+                It.Is<ExtractedNodes>(nodes => nodes.CodeNodes.Single().VectorEmbedding!.SequenceEqual(vector)),
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        var handler = CreateHandler([extractor.Object], repository: repository.Object,
+            workspacePaths: CreateWorkspacePaths().Object,
+            options: new SharpSenseCliOptions { TargetPath = "SharpSense.sln", RepositoryRoot = "/repo", SkipEmbeddings = true });
+
+        var result = await handler.Handle(new UpdateWorkspaceFilesCommand(
+            [new(WorkspaceFileChangeAction.Modified, NewPath: "/repo/src/App/PartB.cs")]), CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        repository.VerifyAll();
+    }
+
+    [Theory]
+    [InlineData("src/deleted.ts", WorkspaceFileChangeAction.Deleted)]
+    [InlineData("tsconfig.app.json", WorkspaceFileChangeAction.Modified)]
+    [InlineData("package.json", WorkspaceFileChangeAction.Modified)]
+    public async Task WhenTypeScriptScopeChanges_ThenReplacesPreviousScopeAndRefreshedConsumers(
+        string changedPath, WorkspaceFileChangeAction action)
+    {
+        var survivor = new IndexedCodeNode("code:ts:src/consumer.ts:consumer", null, "consumer", "consumer",
+            NodeType.Method, "/repo/src/consumer.ts", 1, 1, "", "consumer");
+        var extractor = new Mock<ILanguageExtractor>(MockBehavior.Strict);
+        extractor.SetupGet(candidate => candidate.ExtractorName).Returns("TypeScript TreeSitter");
+        extractor.Setup(candidate => candidate.ExtractIncremental(It.IsAny<IncrementalExtractionContext>(), CancellationToken.None))
+            .ReturnsAsync(new ExtractedNodes([], [survivor], [], []));
+        var repository = new Mock<IKnowledgeGraphRepository>(MockBehavior.Strict);
+        repository.Setup(candidate => candidate.GetPersistedDocumentPathsUnderDirectory(string.Empty, CancellationToken.None))
+            .ReturnsAsync(["src/consumer.ts", "src/deleted.ts", "shared/excluded.tsx", "Backend/Keep.cs", "docs/Keep.md"]);
+        var expectedPaths = new[] { "shared/excluded.tsx", "src/consumer.ts", "src/deleted.ts" };
+        repository.Setup(candidate => candidate.ReplaceWorkspaceFiles(
+                It.Is<IReadOnlyList<string>>(paths => paths.SequenceEqual(expectedPaths)),
+                It.Is<ExtractedNodes>(nodes => nodes.CodeNodes.Single().RelativeFilePath == "src/consumer.ts"),
+                CancellationToken.None)).Returns(Task.CompletedTask);
+        var handler = CreateHandler([extractor.Object], repository: repository.Object,
+            workspacePaths: CreateWorkspacePaths().Object,
+            options: new SharpSenseCliOptions
+            {
+                TargetPath = "SharpSense.sln", RepositoryRoot = "/repo",
+                SkipEmbeddings = true, DisableEmbeddingCache = true
+            });
+        var change = action == WorkspaceFileChangeAction.Deleted
+            ? new WorkspaceFileChange(action, OldPath: "/repo/" + changedPath)
+            : new WorkspaceFileChange(action, NewPath: "/repo/" + changedPath);
+
+        var result = await handler.Handle(new UpdateWorkspaceFilesCommand([change]), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, string.Join("; ", result.Errors.Select(error => error.Message)));
+        repository.VerifyAll();
+    }
+
+    [Theory]
+    [InlineData("Feature.cs")]
+    [InlineData("App.csproj")]
+    [InlineData("App.slnx")]
+    [InlineData("Directory.Build.props")]
+    [InlineData("Directory.Build.targets")]
+    [InlineData("Directory.Packages.props")]
+    [InlineData("global.json")]
+    [InlineData(".editorconfig")]
+    public async Task WhenFullWorkspaceExtractionFails_ThenPreservesPreviouslyPersistedSnapshot(string changedPath)
+    {
+        var extractor = new Mock<ILanguageExtractor>(MockBehavior.Strict);
+        extractor.SetupGet(candidate => candidate.ExtractorName).Returns("csharp");
+        extractor.Setup(candidate => candidate.Extract(It.IsAny<ExtractionContext>(), CancellationToken.None))
+            .ReturnsAsync(Result.Fail<ExtractedNodes>("Cannot reload changed workspace"));
+        var repository = new Mock<IKnowledgeGraphRepository>(MockBehavior.Strict);
+        var handler = CreateHandler([extractor.Object], repository: repository.Object,
+            workspacePaths: CreateWorkspacePaths().Object);
+
+        var result = await handler.Handle(new UpdateWorkspaceFilesCommand(
+            [new(WorkspaceFileChangeAction.Modified, NewPath: "/repo/" + changedPath)]), CancellationToken.None);
+
+        Assert.True(result.IsFailed);
+        Assert.Contains(result.Errors, error => error.Message == "Cannot reload changed workspace");
+        repository.VerifyNoOtherCalls();
     }
 
     private static Mock<IIndexingWorkspacePaths> CreateWorkspacePaths()
