@@ -26,6 +26,14 @@ public static class WorkspaceIndexingEndpoints
             return TypedResults.Ok(coordinator.GetStatus(workspaceId));
         }).WithName("GetWorkspaceIndexingStatus");
 
+        group.MapGet("/events", (Guid workspaceId, WorkspaceCatalog catalog, WorkspaceIndexingCoordinator coordinator, CancellationToken ct) =>
+        {
+            _ = WorkspaceCatalogEndpoints.Resolve(catalog, workspaceId);
+            return TypedResults.ServerSentEvents(coordinator.Events(workspaceId, ct));
+        }).WithName("StreamWorkspaceIndexingStatus")
+            .WithSummary("Stream current workspace indexing status; reconnects start with a complete snapshot.")
+            .Produces<WorkspaceIndexingStatus>(StatusCodes.Status200OK, "text/event-stream");
+
         group.MapPost("", (Guid workspaceId, StartWorkspaceIndexingRequest request, WorkspaceCatalog catalog, WorkspaceIndexingCoordinator coordinator) =>
         {
             var status = coordinator.Start(

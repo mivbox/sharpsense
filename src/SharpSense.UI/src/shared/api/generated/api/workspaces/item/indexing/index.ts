@@ -4,12 +4,18 @@
 // @ts-ignore
 import { createWorkspaceIndexingStatusFromDiscriminatorValue, serializeStartWorkspaceIndexingRequest, serializeWorkspaceIndexingStatus, type StartWorkspaceIndexingRequest, type WorkspaceIndexingStatus } from '../../../../models/index.js';
 // @ts-ignore
-import { type BaseRequestBuilder, type Parsable, type ParsableFactory, type RequestConfiguration, type RequestInformation, type RequestsMetadata } from '@microsoft/kiota-abstractions';
+import { EventsRequestBuilderRequestsMetadata, type EventsRequestBuilder } from './events/index.js';
+// @ts-ignore
+import { type BaseRequestBuilder, type KeysToExcludeForNavigationMetadata, type NavigationMetadata, type Parsable, type ParsableFactory, type RequestConfiguration, type RequestInformation, type RequestsMetadata } from '@microsoft/kiota-abstractions';
 
 /**
  * Builds and executes requests for operations under /api/workspaces/{workspaceId}/indexing
  */
 export interface IndexingRequestBuilder extends BaseRequestBuilder<IndexingRequestBuilder> {
+    /**
+     * The events property
+     */
+    get events(): EventsRequestBuilder;
     /**
      * @param requestConfiguration Configuration for the request such as headers, query parameters, and middleware options.
      * @returns {Promise<WorkspaceIndexingStatus>}
@@ -47,6 +53,14 @@ export interface IndexingRequestBuilder extends BaseRequestBuilder<IndexingReque
  * Uri template for the request builder.
  */
 export const IndexingRequestBuilderUriTemplate = "{+baseurl}/api/workspaces/{workspaceId}/indexing";
+/**
+ * Metadata for all the navigation properties in the request builder.
+ */
+export const IndexingRequestBuilderNavigationMetadata: Record<Exclude<keyof IndexingRequestBuilder, KeysToExcludeForNavigationMetadata>, NavigationMetadata> = {
+    events: {
+        requestsMetadata: EventsRequestBuilderRequestsMetadata,
+    },
+};
 /**
  * Metadata for all the requests in the request builder.
  */

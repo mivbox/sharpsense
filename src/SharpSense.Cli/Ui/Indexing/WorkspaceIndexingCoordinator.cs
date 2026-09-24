@@ -9,7 +9,7 @@ namespace SharpSense.Cli.Ui.Indexing;
 /// Owns one cancellable indexing/watch session per workspace for the lifetime of the UI host.
 /// Jobs never depend on a browser request or its mutable current workspace selection.
 /// </summary>
-public sealed class WorkspaceIndexingCoordinator : IHostedService, IAsyncDisposable
+public sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAsyncDisposable
 {
     private readonly object _gate = new();
     private readonly Dictionary<Guid, Job> _jobs = [];
@@ -44,7 +44,7 @@ public sealed class WorkspaceIndexingCoordinator : IHostedService, IAsyncDisposa
         {
             return _jobs.TryGetValue(workspaceId, out var job)
                 ? job.Status
-                : new WorkspaceIndexingStatus(workspaceId, null, "idle", false, null, null, null, null, null, [], 0);
+                : new WorkspaceIndexingStatus(workspaceId, null, "idle", false, null, null, null, null, null, [], 0, StreamId: _streamId, UpdatedAt: _streamStartedAt);
         }
     }
 
@@ -78,8 +78,9 @@ public sealed class WorkspaceIndexingCoordinator : IHostedService, IAsyncDisposa
             var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_applicationStopping);
             var job = new Job(cancellation, new WorkspaceIndexingStatus(
                 workspaceId, Guid.NewGuid(), "indexing", request.Watch, DateTimeOffset.UtcNow, null,
-                "Preparing workspace index...", null, null, [], existing?.Status.Revision ?? 0));
+                "Preparing workspace index...", null, null, [], existing?.Status.Revision ?? 0, existing?.Status.Sequence ?? 0));
             _jobs[workspaceId] = job;
+            Publish(job);
             job.Task = Task.Run(() => Execute(job, selection, request), CancellationToken.None);
             return job.Status;
         }
@@ -110,6 +111,7 @@ public sealed class WorkspaceIndexingCoordinator : IHostedService, IAsyncDisposa
             }
 
             job.Status = job.Status with { State = "stopping", Message = "Stopping workspace indexing..." };
+            Publish(job);
             job.Cancellation.Cancel();
             task = job.Task;
         }
@@ -133,13 +135,21 @@ public sealed class WorkspaceIndexingCoordinator : IHostedService, IAsyncDisposa
             foreach (var job in _jobs.Values.Where(static job => IsActive(job.Status.State)))
             {
                 job.Status = job.Status with { State = "stopping", Message = "UI host is stopping..." };
+                Publish(job);
                 job.Cancellation.Cancel();
             }
 
             tasks = [.. _jobs.Values.Select(static job => job.Task).OfType<Task>()];
         }
 
-        await Task.WhenAll(tasks).WaitAsync(cancellationToken);
+        try
+        {
+            await Task.WhenAll(tasks).WaitAsync(cancellationToken);
+        }
+        finally
+        {
+            CompleteSubscriptions();
+        }
     }
 
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None);
@@ -181,9 +191,15 @@ public sealed class WorkspaceIndexingCoordinator : IHostedService, IAsyncDisposa
             {
                 // Cancellation may arrive just after an atomic graph commit. Preserve its
                 // revision even while suppressing late progress/state updates.
-                if (update.IndexCommitted)
+                if (update.IndexCommitted || update.Analysis is { State: not "running" })
                 {
-                    job.Status = job.Status with { Revision = job.Status.Revision + 1 };
+                    job.Status = job.Status with
+                    {
+                        Revision = job.Status.Revision + (update.IndexCommitted ? 1 : 0),
+                        Analysis = update.Analysis ?? job.Status.Analysis,
+                        Diagnostics = update.Diagnostics is null ? job.Status.Diagnostics : Bound(update.Diagnostics)
+                    };
+                    Publish(job);
                 }
 
                 return;
@@ -196,8 +212,10 @@ public sealed class WorkspaceIndexingCoordinator : IHostedService, IAsyncDisposa
                 CompletedItems = update.CompletedItems,
                 TotalItems = update.TotalItems,
                 Diagnostics = update.Diagnostics is null ? job.Status.Diagnostics : Bound(update.Diagnostics),
-                Revision = job.Status.Revision + (update.IndexCommitted ? 1 : 0)
+                Revision = job.Status.Revision + (update.IndexCommitted ? 1 : 0),
+                Analysis = update.Analysis ?? job.Status.Analysis
             };
+            Publish(job);
         }
     }
 
@@ -210,8 +228,9 @@ public sealed class WorkspaceIndexingCoordinator : IHostedService, IAsyncDisposa
                 State = state,
                 Message = message,
                 CompletedAt = DateTimeOffset.UtcNow,
-                Diagnostics = Bound(diagnostics)
+                Diagnostics = Bound(diagnostics.Count == 0 ? job.Status.Diagnostics : diagnostics)
             };
+            Publish(job);
         }
     }
 

@@ -45,6 +45,228 @@
         ],
         "type": "object"
       },
+      "AnalysisOperationKind": {
+        "enum": [
+          "Full",
+          "Incremental"
+        ]
+      },
+      "AnalysisPhase": {
+        "enum": [
+          "Discovery",
+          "Extraction",
+          "Embeddings",
+          "Persistence",
+          null
+        ]
+      },
+      "AnalysisSnapshot": {
+        "properties": {
+          "completedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "completedItems": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "diagnostics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "lastCommittedSummary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AnalysisSummary"
+              }
+            ]
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "operationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "operationKind": {
+            "$ref": "#/components/schemas/AnalysisOperationKind"
+          },
+          "phase": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AnalysisPhase"
+              }
+            ]
+          },
+          "sequence": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisSourceStatus"
+            },
+            "type": "array"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "summary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AnalysisSummary"
+              }
+            ]
+          },
+          "totalItems": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "sequence",
+          "operationKind",
+          "state",
+          "phase",
+          "startedAt",
+          "updatedAt",
+          "completedAt",
+          "message",
+          "completedItems",
+          "totalItems",
+          "sources",
+          "diagnostics",
+          "summary",
+          "lastCommittedSummary"
+        ],
+        "type": "object"
+      },
+      "AnalysisSourceStatus": {
+        "properties": {
+          "completedItems": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WorkspaceSourceKind"
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "totalItems": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "path",
+          "state",
+          "completedItems",
+          "totalItems",
+          "message"
+        ],
+        "type": "object"
+      },
+      "AnalysisSummary": {
+        "properties": {
+          "diagnosticCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "documents": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "edges": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "extractedSources": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "generatedEmbeddings": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "nodes": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "projects": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "reusedEmbeddings": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "reusedSources": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "projects",
+          "nodes",
+          "edges",
+          "documents",
+          "extractedSources",
+          "reusedSources",
+          "reusedEmbeddings",
+          "generatedEmbeddings",
+          "diagnosticCount"
+        ],
+        "type": "object"
+      },
       "CodeNodeResult": {
         "properties": {
           "canonicalId": {
@@ -1318,6 +1540,16 @@
       },
       "WorkspaceIndexingStatus": {
         "properties": {
+          "analysis": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AnalysisSnapshot"
+              }
+            ]
+          },
           "completedAt": {
             "format": "date-time",
             "type": [
@@ -1355,6 +1587,11 @@
             "format": "int64",
             "type": "integer"
           },
+          "sequence": {
+            "default": 0,
+            "format": "int64",
+            "type": "integer"
+          },
           "startedAt": {
             "format": "date-time",
             "type": [
@@ -1365,11 +1602,25 @@
           "state": {
             "type": "string"
           },
+          "streamId": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "totalItems": {
             "format": "int32",
             "type": [
               "null",
               "integer"
+            ]
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
             ]
           },
           "watch": {
@@ -2952,6 +3203,38 @@
             "description": "Accepted"
           }
         },
+        "tags": [
+          "Workspace indexing"
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}/indexing/events": {
+      "get": {
+        "operationId": "StreamWorkspaceIndexingStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceIndexingStatus"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Stream current workspace indexing status; reconnects start with a complete snapshot.",
         "tags": [
           "Workspace indexing"
         ]

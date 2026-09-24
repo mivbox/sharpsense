@@ -4,7 +4,7 @@
 // @ts-ignore
 import { createProblemDetailsFromDiscriminatorValue, createWorkspaceSummaryFromDiscriminatorValue, serializeUpdateWorkspaceRequest, serializeWorkspaceSummary, type ProblemDetails, type UpdateWorkspaceRequest, type WorkspaceSummary } from '../../../models/index.js';
 // @ts-ignore
-import { IndexingRequestBuilderRequestsMetadata, type IndexingRequestBuilder } from './indexing/index.js';
+import { IndexingRequestBuilderNavigationMetadata, IndexingRequestBuilderRequestsMetadata, type IndexingRequestBuilder } from './indexing/index.js';
 // @ts-ignore
 import { type BaseRequestBuilder, type KeysToExcludeForNavigationMetadata, type NavigationMetadata, type Parsable, type ParsableFactory, type RequestConfiguration, type RequestInformation, type RequestsMetadata } from '@microsoft/kiota-abstractions';
 
@@ -53,6 +53,7 @@ export const WithWorkspaceItemRequestBuilderUriTemplate = "{+baseurl}/api/worksp
 export const WithWorkspaceItemRequestBuilderNavigationMetadata: Record<Exclude<keyof WithWorkspaceItemRequestBuilder, KeysToExcludeForNavigationMetadata>, NavigationMetadata> = {
     indexing: {
         requestsMetadata: IndexingRequestBuilderRequestsMetadata,
+        navigationMetadata: IndexingRequestBuilderNavigationMetadata,
     },
 };
 /**

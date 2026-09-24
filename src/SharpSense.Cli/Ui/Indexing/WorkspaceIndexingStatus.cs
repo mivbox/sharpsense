@@ -1,3 +1,5 @@
+using SharpSense.Application.Indexing.Notifications;
+
 namespace SharpSense.Cli.Ui.Indexing;
 
 public sealed record WorkspaceIndexingStatus(
@@ -11,7 +13,11 @@ public sealed record WorkspaceIndexingStatus(
     int? CompletedItems,
     int? TotalItems,
     IReadOnlyList<string> Diagnostics,
-    long Revision);
+    long Revision,
+    long Sequence = 0,
+    Guid? StreamId = null,
+    DateTimeOffset? UpdatedAt = null,
+    AnalysisSnapshot? Analysis = null);
 
 public sealed record StartWorkspaceIndexingRequest(bool Watch = false, bool SkipEmbeddings = false);
 
@@ -21,4 +27,5 @@ internal sealed record WorkspaceIndexingUpdate(
     int? CompletedItems = null,
     int? TotalItems = null,
     IReadOnlyList<string>? Diagnostics = null,
-    bool IndexCommitted = false);
+    bool IndexCommitted = false,
+    AnalysisSnapshot? Analysis = null);

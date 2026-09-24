@@ -32,6 +32,134 @@ export interface AddMemoryResponse extends AdditionalDataHolder, Parsable {
      */
     ok?: boolean | null;
 }
+export type AnalysisOperationKind = (typeof AnalysisOperationKindObject)[keyof typeof AnalysisOperationKindObject];
+export type AnalysisPhase = (typeof AnalysisPhaseObject)[keyof typeof AnalysisPhaseObject];
+export interface AnalysisSnapshot extends AdditionalDataHolder, Parsable {
+    /**
+     * The completedAt property
+     */
+    completedAt?: Date | null;
+    /**
+     * The completedItems property
+     */
+    completedItems?: number | null;
+    /**
+     * The diagnostics property
+     */
+    diagnostics?: string[] | null;
+    /**
+     * The lastCommittedSummary property
+     */
+    lastCommittedSummary?: AnalysisSummary | null;
+    /**
+     * The message property
+     */
+    message?: string | null;
+    /**
+     * The operationId property
+     */
+    operationId?: Guid | null;
+    /**
+     * The operationKind property
+     */
+    operationKind?: AnalysisOperationKind | null;
+    /**
+     * The phase property
+     */
+    phase?: AnalysisPhase | null;
+    /**
+     * The sequence property
+     */
+    sequence?: number | null;
+    /**
+     * The sources property
+     */
+    sources?: AnalysisSourceStatus[] | null;
+    /**
+     * The startedAt property
+     */
+    startedAt?: Date | null;
+    /**
+     * The state property
+     */
+    state?: string | null;
+    /**
+     * The summary property
+     */
+    summary?: AnalysisSummary | null;
+    /**
+     * The totalItems property
+     */
+    totalItems?: number | null;
+    /**
+     * The updatedAt property
+     */
+    updatedAt?: Date | null;
+}
+export interface AnalysisSourceStatus extends AdditionalDataHolder, Parsable {
+    /**
+     * The completedItems property
+     */
+    completedItems?: number | null;
+    /**
+     * The kind property
+     */
+    kind?: WorkspaceSourceKind | null;
+    /**
+     * The message property
+     */
+    message?: string | null;
+    /**
+     * The path property
+     */
+    path?: string | null;
+    /**
+     * The state property
+     */
+    state?: string | null;
+    /**
+     * The totalItems property
+     */
+    totalItems?: number | null;
+}
+export interface AnalysisSummary extends AdditionalDataHolder, Parsable {
+    /**
+     * The diagnosticCount property
+     */
+    diagnosticCount?: number | null;
+    /**
+     * The documents property
+     */
+    documents?: number | null;
+    /**
+     * The edges property
+     */
+    edges?: number | null;
+    /**
+     * The extractedSources property
+     */
+    extractedSources?: number | null;
+    /**
+     * The generatedEmbeddings property
+     */
+    generatedEmbeddings?: number | null;
+    /**
+     * The nodes property
+     */
+    nodes?: number | null;
+    /**
+     * The projects property
+     */
+    projects?: number | null;
+    /**
+     * The reusedEmbeddings property
+     */
+    reusedEmbeddings?: number | null;
+    /**
+     * The reusedSources property
+     */
+    reusedSources?: number | null;
+}
 export interface CodeNodeResult extends AdditionalDataHolder, Parsable {
     /**
      * The canonicalId property
@@ -171,6 +299,33 @@ export function createAddMemoryRequestFromDiscriminatorValue(parseNode: ParseNod
 // @ts-ignore
 export function createAddMemoryResponseFromDiscriminatorValue(parseNode: ParseNode | undefined) : ((instance?: Parsable) => Record<string, (node: ParseNode) => void>) {
     return deserializeIntoAddMemoryResponse;
+}
+/**
+ * Creates a new instance of the appropriate class based on discriminator value
+ * @param parseNode The parse node to use to read the discriminator value and create the object
+ * @returns {AnalysisSnapshot}
+ */
+// @ts-ignore
+export function createAnalysisSnapshotFromDiscriminatorValue(parseNode: ParseNode | undefined) : ((instance?: Parsable) => Record<string, (node: ParseNode) => void>) {
+    return deserializeIntoAnalysisSnapshot;
+}
+/**
+ * Creates a new instance of the appropriate class based on discriminator value
+ * @param parseNode The parse node to use to read the discriminator value and create the object
+ * @returns {AnalysisSourceStatus}
+ */
+// @ts-ignore
+export function createAnalysisSourceStatusFromDiscriminatorValue(parseNode: ParseNode | undefined) : ((instance?: Parsable) => Record<string, (node: ParseNode) => void>) {
+    return deserializeIntoAnalysisSourceStatus;
+}
+/**
+ * Creates a new instance of the appropriate class based on discriminator value
+ * @param parseNode The parse node to use to read the discriminator value and create the object
+ * @returns {AnalysisSummary}
+ */
+// @ts-ignore
+export function createAnalysisSummaryFromDiscriminatorValue(parseNode: ParseNode | undefined) : ((instance?: Parsable) => Record<string, (node: ParseNode) => void>) {
+    return deserializeIntoAnalysisSummary;
 }
 /**
  * Creates a new instance of the appropriate class based on discriminator value
@@ -643,6 +798,66 @@ export function deserializeIntoAddMemoryResponse(addMemoryResponse: Partial<AddM
         "intent": n => { addMemoryResponse.intent = n.getEnumValue<MemoryIntent>(MemoryIntentObject); },
         "nodeId": n => { addMemoryResponse.nodeId = n.getNumberValue(); },
         "ok": n => { addMemoryResponse.ok = n.getBooleanValue(); },
+    }
+}
+/**
+ * The deserialization information for the current model
+ * @param AnalysisSnapshot The instance to deserialize into.
+ * @returns {Record<string, (node: ParseNode) => void>}
+ */
+// @ts-ignore
+export function deserializeIntoAnalysisSnapshot(analysisSnapshot: Partial<AnalysisSnapshot> | undefined = {}) : Record<string, (node: ParseNode) => void> {
+    return {
+        "completedAt": n => { analysisSnapshot.completedAt = n.getDateValue(); },
+        "completedItems": n => { analysisSnapshot.completedItems = n.getNumberValue(); },
+        "diagnostics": n => { analysisSnapshot.diagnostics = n.getCollectionOfPrimitiveValues<string>("string"); },
+        "lastCommittedSummary": n => { analysisSnapshot.lastCommittedSummary = n.getObjectValue<AnalysisSummary>(createAnalysisSummaryFromDiscriminatorValue); },
+        "message": n => { analysisSnapshot.message = n.getStringValue(); },
+        "operationId": n => { analysisSnapshot.operationId = n.getGuidValue(); },
+        "operationKind": n => { analysisSnapshot.operationKind = n.getEnumValue<AnalysisOperationKind>(AnalysisOperationKindObject); },
+        "phase": n => { analysisSnapshot.phase = n.getEnumValue<AnalysisPhase>(AnalysisPhaseObject); },
+        "sequence": n => { analysisSnapshot.sequence = n.getNumberValue(); },
+        "sources": n => { analysisSnapshot.sources = n.getCollectionOfObjectValues<AnalysisSourceStatus>(createAnalysisSourceStatusFromDiscriminatorValue); },
+        "startedAt": n => { analysisSnapshot.startedAt = n.getDateValue(); },
+        "state": n => { analysisSnapshot.state = n.getStringValue(); },
+        "summary": n => { analysisSnapshot.summary = n.getObjectValue<AnalysisSummary>(createAnalysisSummaryFromDiscriminatorValue); },
+        "totalItems": n => { analysisSnapshot.totalItems = n.getNumberValue(); },
+        "updatedAt": n => { analysisSnapshot.updatedAt = n.getDateValue(); },
+    }
+}
+/**
+ * The deserialization information for the current model
+ * @param AnalysisSourceStatus The instance to deserialize into.
+ * @returns {Record<string, (node: ParseNode) => void>}
+ */
+// @ts-ignore
+export function deserializeIntoAnalysisSourceStatus(analysisSourceStatus: Partial<AnalysisSourceStatus> | undefined = {}) : Record<string, (node: ParseNode) => void> {
+    return {
+        "completedItems": n => { analysisSourceStatus.completedItems = n.getNumberValue(); },
+        "kind": n => { analysisSourceStatus.kind = n.getEnumValue<WorkspaceSourceKind>(WorkspaceSourceKindObject); },
+        "message": n => { analysisSourceStatus.message = n.getStringValue(); },
+        "path": n => { analysisSourceStatus.path = n.getStringValue(); },
+        "state": n => { analysisSourceStatus.state = n.getStringValue(); },
+        "totalItems": n => { analysisSourceStatus.totalItems = n.getNumberValue(); },
+    }
+}
+/**
+ * The deserialization information for the current model
+ * @param AnalysisSummary The instance to deserialize into.
+ * @returns {Record<string, (node: ParseNode) => void>}
+ */
+// @ts-ignore
+export function deserializeIntoAnalysisSummary(analysisSummary: Partial<AnalysisSummary> | undefined = {}) : Record<string, (node: ParseNode) => void> {
+    return {
+        "diagnosticCount": n => { analysisSummary.diagnosticCount = n.getNumberValue(); },
+        "documents": n => { analysisSummary.documents = n.getNumberValue(); },
+        "edges": n => { analysisSummary.edges = n.getNumberValue(); },
+        "extractedSources": n => { analysisSummary.extractedSources = n.getNumberValue(); },
+        "generatedEmbeddings": n => { analysisSummary.generatedEmbeddings = n.getNumberValue(); },
+        "nodes": n => { analysisSummary.nodes = n.getNumberValue(); },
+        "projects": n => { analysisSummary.projects = n.getNumberValue(); },
+        "reusedEmbeddings": n => { analysisSummary.reusedEmbeddings = n.getNumberValue(); },
+        "reusedSources": n => { analysisSummary.reusedSources = n.getNumberValue(); },
     }
 }
 /**
@@ -1235,15 +1450,19 @@ export function deserializeIntoWorkspaceDiscoveryResponse(workspaceDiscoveryResp
 // @ts-ignore
 export function deserializeIntoWorkspaceIndexingStatus(workspaceIndexingStatus: Partial<WorkspaceIndexingStatus> | undefined = {}) : Record<string, (node: ParseNode) => void> {
     return {
+        "analysis": n => { workspaceIndexingStatus.analysis = n.getObjectValue<AnalysisSnapshot>(createAnalysisSnapshotFromDiscriminatorValue); },
         "completedAt": n => { workspaceIndexingStatus.completedAt = n.getDateValue(); },
         "completedItems": n => { workspaceIndexingStatus.completedItems = n.getNumberValue(); },
         "diagnostics": n => { workspaceIndexingStatus.diagnostics = n.getCollectionOfPrimitiveValues<string>("string"); },
         "jobId": n => { workspaceIndexingStatus.jobId = n.getGuidValue(); },
         "message": n => { workspaceIndexingStatus.message = n.getStringValue(); },
         "revision": n => { workspaceIndexingStatus.revision = n.getNumberValue(); },
+        "sequence": n => { workspaceIndexingStatus.sequence = n.getNumberValue() ?? 0; },
         "startedAt": n => { workspaceIndexingStatus.startedAt = n.getDateValue(); },
         "state": n => { workspaceIndexingStatus.state = n.getStringValue(); },
+        "streamId": n => { workspaceIndexingStatus.streamId = n.getGuidValue(); },
         "totalItems": n => { workspaceIndexingStatus.totalItems = n.getNumberValue(); },
+        "updatedAt": n => { workspaceIndexingStatus.updatedAt = n.getDateValue(); },
         "watch": n => { workspaceIndexingStatus.watch = n.getBooleanValue(); },
         "workspaceId": n => { workspaceIndexingStatus.workspaceId = n.getGuidValue(); },
     }
@@ -1939,6 +2158,69 @@ export function serializeAddMemoryResponse(writer: SerializationWriter, addMemor
 }
 /**
  * Serializes information the current object
+ * @param AnalysisSnapshot The instance to serialize from.
+ * @param isSerializingDerivedType A boolean indicating whether the serialization is for a derived type.
+ * @param writer Serialization writer to use to serialize this model
+ */
+// @ts-ignore
+export function serializeAnalysisSnapshot(writer: SerializationWriter, analysisSnapshot: Partial<AnalysisSnapshot> | undefined | null = {}, isSerializingDerivedType: boolean = false) : void {
+    if (!analysisSnapshot || isSerializingDerivedType) { return; }
+    writer.writeDateValue("completedAt", analysisSnapshot.completedAt);
+    writer.writeNumberValue("completedItems", analysisSnapshot.completedItems);
+    writer.writeCollectionOfPrimitiveValues<string>("diagnostics", analysisSnapshot.diagnostics);
+    writer.writeObjectValue<AnalysisSummary>("lastCommittedSummary", analysisSnapshot.lastCommittedSummary, serializeAnalysisSummary);
+    writer.writeStringValue("message", analysisSnapshot.message);
+    writer.writeGuidValue("operationId", analysisSnapshot.operationId);
+    writer.writeEnumValue<AnalysisOperationKind>("operationKind", analysisSnapshot.operationKind);
+    writer.writeEnumValue<AnalysisPhase>("phase", analysisSnapshot.phase);
+    writer.writeNumberValue("sequence", analysisSnapshot.sequence);
+    writer.writeCollectionOfObjectValues<AnalysisSourceStatus>("sources", analysisSnapshot.sources, serializeAnalysisSourceStatus);
+    writer.writeDateValue("startedAt", analysisSnapshot.startedAt);
+    writer.writeStringValue("state", analysisSnapshot.state);
+    writer.writeObjectValue<AnalysisSummary>("summary", analysisSnapshot.summary, serializeAnalysisSummary);
+    writer.writeNumberValue("totalItems", analysisSnapshot.totalItems);
+    writer.writeDateValue("updatedAt", analysisSnapshot.updatedAt);
+    writer.writeAdditionalData(analysisSnapshot.additionalData);
+}
+/**
+ * Serializes information the current object
+ * @param AnalysisSourceStatus The instance to serialize from.
+ * @param isSerializingDerivedType A boolean indicating whether the serialization is for a derived type.
+ * @param writer Serialization writer to use to serialize this model
+ */
+// @ts-ignore
+export function serializeAnalysisSourceStatus(writer: SerializationWriter, analysisSourceStatus: Partial<AnalysisSourceStatus> | undefined | null = {}, isSerializingDerivedType: boolean = false) : void {
+    if (!analysisSourceStatus || isSerializingDerivedType) { return; }
+    writer.writeNumberValue("completedItems", analysisSourceStatus.completedItems);
+    writer.writeEnumValue<WorkspaceSourceKind>("kind", analysisSourceStatus.kind);
+    writer.writeStringValue("message", analysisSourceStatus.message);
+    writer.writeStringValue("path", analysisSourceStatus.path);
+    writer.writeStringValue("state", analysisSourceStatus.state);
+    writer.writeNumberValue("totalItems", analysisSourceStatus.totalItems);
+    writer.writeAdditionalData(analysisSourceStatus.additionalData);
+}
+/**
+ * Serializes information the current object
+ * @param AnalysisSummary The instance to serialize from.
+ * @param isSerializingDerivedType A boolean indicating whether the serialization is for a derived type.
+ * @param writer Serialization writer to use to serialize this model
+ */
+// @ts-ignore
+export function serializeAnalysisSummary(writer: SerializationWriter, analysisSummary: Partial<AnalysisSummary> | undefined | null = {}, isSerializingDerivedType: boolean = false) : void {
+    if (!analysisSummary || isSerializingDerivedType) { return; }
+    writer.writeNumberValue("diagnosticCount", analysisSummary.diagnosticCount);
+    writer.writeNumberValue("documents", analysisSummary.documents);
+    writer.writeNumberValue("edges", analysisSummary.edges);
+    writer.writeNumberValue("extractedSources", analysisSummary.extractedSources);
+    writer.writeNumberValue("generatedEmbeddings", analysisSummary.generatedEmbeddings);
+    writer.writeNumberValue("nodes", analysisSummary.nodes);
+    writer.writeNumberValue("projects", analysisSummary.projects);
+    writer.writeNumberValue("reusedEmbeddings", analysisSummary.reusedEmbeddings);
+    writer.writeNumberValue("reusedSources", analysisSummary.reusedSources);
+    writer.writeAdditionalData(analysisSummary.additionalData);
+}
+/**
+ * Serializes information the current object
  * @param CodeNodeResult The instance to serialize from.
  * @param isSerializingDerivedType A boolean indicating whether the serialization is for a derived type.
  * @param writer Serialization writer to use to serialize this model
@@ -2568,15 +2850,19 @@ export function serializeWorkspaceDiscoveryResponse(writer: SerializationWriter,
 // @ts-ignore
 export function serializeWorkspaceIndexingStatus(writer: SerializationWriter, workspaceIndexingStatus: Partial<WorkspaceIndexingStatus> | undefined | null = {}, isSerializingDerivedType: boolean = false) : void {
     if (!workspaceIndexingStatus || isSerializingDerivedType) { return; }
+    writer.writeObjectValue<AnalysisSnapshot>("analysis", workspaceIndexingStatus.analysis, serializeAnalysisSnapshot);
     writer.writeDateValue("completedAt", workspaceIndexingStatus.completedAt);
     writer.writeNumberValue("completedItems", workspaceIndexingStatus.completedItems);
     writer.writeCollectionOfPrimitiveValues<string>("diagnostics", workspaceIndexingStatus.diagnostics);
     writer.writeGuidValue("jobId", workspaceIndexingStatus.jobId);
     writer.writeStringValue("message", workspaceIndexingStatus.message);
     writer.writeNumberValue("revision", workspaceIndexingStatus.revision);
+    writer.writeNumberValue("sequence", workspaceIndexingStatus.sequence ?? 0);
     writer.writeDateValue("startedAt", workspaceIndexingStatus.startedAt);
     writer.writeStringValue("state", workspaceIndexingStatus.state);
+    writer.writeGuidValue("streamId", workspaceIndexingStatus.streamId);
     writer.writeNumberValue("totalItems", workspaceIndexingStatus.totalItems);
+    writer.writeDateValue("updatedAt", workspaceIndexingStatus.updatedAt);
     writer.writeBooleanValue("watch", workspaceIndexingStatus.watch);
     writer.writeGuidValue("workspaceId", workspaceIndexingStatus.workspaceId);
     writer.writeAdditionalData(workspaceIndexingStatus.additionalData);
@@ -2773,6 +3059,10 @@ export interface WorkspaceDiscoveryResponse extends AdditionalDataHolder, Parsab
 }
 export interface WorkspaceIndexingStatus extends AdditionalDataHolder, Parsable {
     /**
+     * The analysis property
+     */
+    analysis?: AnalysisSnapshot | null;
+    /**
      * The completedAt property
      */
     completedAt?: Date | null;
@@ -2797,6 +3087,10 @@ export interface WorkspaceIndexingStatus extends AdditionalDataHolder, Parsable 
      */
     revision?: number | null;
     /**
+     * The sequence property
+     */
+    sequence?: number | null;
+    /**
      * The startedAt property
      */
     startedAt?: Date | null;
@@ -2805,9 +3099,17 @@ export interface WorkspaceIndexingStatus extends AdditionalDataHolder, Parsable 
      */
     state?: string | null;
     /**
+     * The streamId property
+     */
+    streamId?: Guid | null;
+    /**
      * The totalItems property
      */
     totalItems?: number | null;
+    /**
+     * The updatedAt property
+     */
+    updatedAt?: Date | null;
     /**
      * The watch property
      */
@@ -2950,6 +3252,17 @@ export interface WorkspaceTreeResult extends AdditionalDataHolder, Parsable {
      */
     parentPath?: string | null;
 }
+export const AnalysisOperationKindObject = {
+    Full: "Full",
+    Incremental: "Incremental",
+} as const;
+export const AnalysisPhaseObject = {
+    Discovery: "Discovery",
+    Extraction: "Extraction",
+    Embeddings: "Embeddings",
+    Persistence: "Persistence",
+    OpenapiJsonNullSentinelValue2BF936000FE44250987AE5DDB203E464: "openapi-json-null-sentinel-value-2BF93600-0FE4-4250-987A-E5DDB203E464",
+} as const;
 export const EdgeTypeObject = {
     ProjectReference: "ProjectReference",
     ParentOf: "ParentOf",
