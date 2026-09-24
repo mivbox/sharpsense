@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using SharpSense.Application.Indexing;
 using SharpSense.Cli.Shared;
+using SharpSense.Cli.Analyze;
 using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -18,6 +19,9 @@ internal abstract class WorkspaceCatalogCommand<TSettings> : AbstractAsyncComman
     protected override void Configure(TSettings settings, IServiceCollection services)
     {
         services.AddFileSystem();
+        services.TryAddSingleton<WorkspaceSourceDiscovery>();
+        services.TryAddSingleton<IAnalyzeInteractions, SpectreAnalyzeInteractions>();
+        services.TryAddSingleton<WorkspaceManagement>();
         services.TryAddSingleton(provider => new WorkspaceCatalog(provider.GetRequiredService<IFileSystem>()));
     }
 }
@@ -228,44 +232,62 @@ internal sealed class ConfigureCommand : WorkspaceCatalogCommand<ConfigureComman
         public string? Name { get; init; }
     }
 
-    protected override Task<int> Execute(CommandContext context, Settings settings, IHost host, CancellationToken ct)
+    protected override async Task<int> Execute(CommandContext context, Settings settings, IHost host, CancellationToken ct)
     {
-        var console = CommandOutput.GetExecutionContext(context)?.Console ?? AnsiConsole.Console;
         var root = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
         var name = settings.Name ?? settings.Workspace;
-        var sources = settings.GetSources(root).ToList();
-        if ((string.IsNullOrWhiteSpace(name) || sources.Count == 0) && !console.Profile.Capabilities.Interactive)
-        {
-            throw new InvalidOperationException("Provide a workspace name and --csharp, --typescript, or --markdown sources, or run configure in an interactive terminal.");
-        }
+        var sources = settings.GetSources(root);
+        // Fully specified commands, including JSON mode, remain suitable for automation.
+        var selection = !string.IsNullOrWhiteSpace(name) && sources.Length > 0
+            ? host.Services.GetRequiredService<WorkspaceCatalog>().Create(name, root, sources)
+            : settings.Json
+                ? throw new InvalidOperationException("JSON mode requires a workspace name and explicit sources.")
+                : await host.Services.GetRequiredService<WorkspaceManagement>().Create(name, root, sources, ct);
+        if (selection is not null) WorkspaceOutput.Write(context, selection, settings.Json, "Created");
+        return 0;
+    }
+}
 
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            name = console.Prompt(new TextPrompt<string>("Workspace name:"));
-        }
-        if (sources.Count == 0)
-        {
-            root = Path.GetFullPath(console.Prompt(new TextPrompt<string>("Repository directory:").DefaultValue(root)), root);
-            do
-            {
-                ct.ThrowIfCancellationRequested();
-                var kind = console.Prompt(new SelectionPrompt<WorkspaceSourceKind>()
-                    .Title("Source language:")
-                    .AddChoices(WorkspaceSourceKind.CSharp, WorkspaceSourceKind.TypeScript, WorkspaceSourceKind.Markdown));
-                var label = kind switch
-                {
-                    WorkspaceSourceKind.CSharp => "Solution or project path (.sln, .slnx, .csproj):",
-                    WorkspaceSourceKind.TypeScript => "TypeScript project path (tsconfig.json or directory):",
-                    _ => "Markdown file, directory, or glob:"
-                };
-                var path = console.Prompt(new TextPrompt<string>(label));
-                sources.Add(new(kind, Path.GetFullPath(path, root)));
-            }
-            while (console.Confirm("Add another source?", defaultValue: false));
-        }
+internal sealed class WorkspaceRenameCommand : WorkspaceCatalogCommand<WorkspaceRenameCommand.Settings>
+{
+    public sealed class Settings : GlobalSettings
+    {
+        [CommandArgument(0, "<name-or-id>")]
+        public string Name { get; init; } = string.Empty;
 
-        var selection = host.Services.GetRequiredService<WorkspaceCatalog>().Create(name, root, sources);
-        WorkspaceOutput.Write(context, selection, settings.Json, "Created");
+        [CommandArgument(1, "<new-name>")]
+        public string NewName { get; init; } = string.Empty;
+
+        [CommandOption("--json")]
+        public bool Json { get; init; }
+    }
+
+    protected override Task<int> Execute(CommandContext context, Settings settings, IHost host, CancellationToken ct)
+    {
+        var catalog = host.Services.GetRequiredService<WorkspaceCatalog>();
+        var selection = catalog.Resolve(settings.Name, CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot));
+        var updated = catalog.Rename(selection.Definition.Id.ToString(), settings.NewName);
+        WorkspaceOutput.Write(context, updated, settings.Json, "Renamed");
         return Task.FromResult(0);
+    }
+}
+
+internal sealed class WorkspaceManagerCommand : WorkspaceCatalogCommand<WorkspaceManagerCommand.Settings>
+{
+    public sealed class Settings : GlobalSettings;
+
+    protected override void Configure(Settings settings, IServiceCollection services)
+    {
+        base.Configure(settings, services);
+        services.AddAnalyzeExecution();
+    }
+
+    protected override async Task<int> Execute(CommandContext context, Settings settings, IHost host, CancellationToken ct)
+    {
+        var runner = host.Services.GetRequiredService<WorkspaceAnalysisRunner>();
+        await host.Services.GetRequiredService<WorkspaceManagement>().Manage(settings.Workspace,
+            CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot),
+            (selection, watch, token) => runner.Run(selection, new AnalyzeCommand.Settings { Watch = watch }, token), ct);
+        return 0;
     }
 }

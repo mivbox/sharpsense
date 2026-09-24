@@ -47,6 +47,11 @@ public partial class Program
                 config.Settings.Console = console;
             }
 
+            if (executionContext is not null)
+            {
+                config.SetInterceptor(new CliExecutionContextInterceptor(executionContext));
+            }
+
             config.SetApplicationName("sharpsense");
             config.SetApplicationVersion(
                 typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
@@ -57,6 +62,7 @@ public partial class Program
                 .WithDescription("Create a named workspace with explicit C#, TypeScript, and Markdown sources."), executionContext);
             config.AddBranch("workspace", workspace =>
             {
+                workspace.SetDefaultCommand<WorkspaceManagerCommand>();
                 workspace.SetDescription("Create and manage named workspaces stored under ~/.sharpsense.");
                 AttachData(workspace.AddCommand<WorkspaceCreateCommand>("create")
                     .WithDescription("Create a workspace from explicit source paths."), executionContext);
@@ -64,6 +70,8 @@ public partial class Program
                     .WithDescription("List registered workspaces without opening their databases."), executionContext);
                 AttachData(workspace.AddCommand<WorkspaceShowCommand>("show")
                     .WithDescription("Show workspace sources and storage locations."), executionContext);
+                AttachData(workspace.AddCommand<WorkspaceRenameCommand>("rename")
+                    .WithDescription("Rename a workspace while preserving its identity and index."), executionContext);
                 AttachData(workspace.AddCommand<WorkspaceAddCommand>("add")
                     .WithDescription("Add sources to an existing workspace."), executionContext);
                 AttachData(workspace.AddCommand<WorkspaceRemoveCommand>("remove")

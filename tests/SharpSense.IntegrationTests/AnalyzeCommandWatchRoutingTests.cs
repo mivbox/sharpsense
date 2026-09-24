@@ -2,6 +2,8 @@ using FluentResults;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using SharpSense.Cli.Analyze;
+using SharpSense.Infrastructure.Storage;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.IndexTarget.Models;
 using SharpSense.Application.Indexing.Models;
@@ -34,6 +36,7 @@ public sealed class AnalyzeCommandWatchRoutingTests
             var app = Cli.Program.CreateCommandApp(console, services =>
             {
                 services.AddWorkspaceFixture(root);
+                services.AddScoped<IAnalysisDatabaseInitializer, NoDatabaseInitializer>();
                 services.RemoveAll<IHostedService>();
                 services.RemoveAll<ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>>();
                 services.RemoveAll<ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>>();
@@ -68,6 +71,7 @@ public sealed class AnalyzeCommandWatchRoutingTests
             var app = Cli.Program.CreateCommandApp(console, services =>
             {
                 services.AddWorkspaceFixture(root);
+                services.AddScoped<IAnalysisDatabaseInitializer, NoDatabaseInitializer>();
                 services.RemoveAll<IHostedService>();
                 services.RemoveAll<ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>>();
                 services.AddSingleton<ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>>(new IndexHandler(true, false));
@@ -78,6 +82,79 @@ public sealed class AnalyzeCommandWatchRoutingTests
             Assert.DoesNotContain("Indexed workspace", console.Output);
         }
         finally { AnsiConsole.Console = previous; }
+    }
+
+    [Fact]
+    public async Task HostShutdownCancelsWatchAndReleasesWorkspaceLease()
+    {
+        using var console = new TestConsole();
+        using var commandCancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
+        WorkspaceCatalog? catalog = null;
+        WorkspaceSelection? selection = null;
+        StoppingWatcher? watcher = null;
+        var app = Cli.Program.CreateCommandApp(console, services =>
+        {
+            selection = services.AddWorkspaceFixture(root);
+            services.AddScoped<IAnalysisDatabaseInitializer, NoDatabaseInitializer>();
+            services.RemoveAll<IHostedService>();
+            services.RemoveAll<ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>>();
+            services.RemoveAll<IWorkspaceWatcher>();
+            services.AddSingleton<ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>>(new IndexHandler(false, false));
+            services.AddSingleton<IWorkspaceWatcher>(provider =>
+            {
+                catalog = provider.GetRequiredService<WorkspaceCatalog>();
+                watcher = new StoppingWatcher(provider.GetRequiredService<IHostApplicationLifetime>(), catalog, selection);
+                return watcher;
+            });
+        }, enableFileLogging: false);
+        var run = app.RunAsync(["analyze", "--workspace", "fixture", "--watch", "--no-embeddings"], commandCancellation.Token);
+        try
+        {
+            var exit = await run.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal(0, exit);
+            Assert.False(commandCancellation.IsCancellationRequested);
+            Assert.NotNull(watcher);
+            Assert.True(watcher.CleanedUp);
+            Assert.Contains("Analysis stopped.", console.Output);
+            using var reacquiredLease = catalog!.AcquireIndexLease(selection!);
+        }
+        finally
+        {
+            // Also clean up a failed regression instead of leaving its simulated watcher running.
+            await commandCancellation.CancelAsync();
+            await run.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        }
+    }
+
+    private sealed class StoppingWatcher(IHostApplicationLifetime lifetime, WorkspaceCatalog catalog, WorkspaceSelection selection) : IWorkspaceWatcher
+    {
+        public bool CleanedUp { get; private set; }
+
+        public async Task Watch(string repositoryRoot, Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task> onBatchChanged,
+            CancellationToken ct, Func<CancellationToken, Task>? initialize = null, Action? onReady = null)
+        {
+            try
+            {
+                if (initialize is not null)
+                {
+                    await initialize(ct);
+                }
+                onReady?.Invoke();
+                Assert.Throws<WorkspaceIndexBusyException>(() => catalog.AcquireIndexLease(selection));
+                lifetime.StopApplication();
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            }
+            finally
+            {
+                CleanedUp = true;
+            }
+        }
+    }
+
+    private sealed class NoDatabaseInitializer : IAnalysisDatabaseInitializer
+    {
+        public Task Initialize(CancellationToken ct) => Task.CompletedTask;
     }
 
     private sealed class IndexHandler(bool initialFailure, bool recoveryFailure) : ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>

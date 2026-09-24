@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Moq;
 using SharpSense.Application.Indexing;
 using SharpSense.Cli.Ui.Api;
+using SharpSense.Cli.Analyze;
 using SharpSense.Cli.Ui.Indexing;
 using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.GraphStats;
@@ -119,9 +120,17 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
         fixture.Catalog.Update(fixture.Selection.Definition.Id.ToString(), "workspace",
             [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/second.md")]);
 
-        var staleCli = await RunAnalyze(fixture.Catalog, fixture.Selection);
-        Assert.Equal(1, staleCli.ExitCode);
-        Assert.Contains("changed after this command selected it", staleCli.Output);
+        using var console = new TestConsole();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IAnsiConsole>(console);
+        services.AddAnalyzeExecution();
+        services.AddSingleton(fixture.Catalog);
+        await using var cliProvider = services.BuildServiceProvider();
+        var staleCli = await Assert.ThrowsAsync<WorkspaceDefinitionChangedException>(() =>
+            cliProvider.GetRequiredService<WorkspaceAnalysisRunner>().Run(fixture.Selection,
+                new AnalyzeCommand.Settings { SkipEmbeddings = true }, TestContext.Current.CancellationToken));
+        Assert.Contains("changed after this command selected it", staleCli.Message);
         Assert.Equal(["docs/first.md"], await DocumentPaths(fixture.Selection));
 
         await using var provider = CreateUiServices(fixture.Catalog, fixture.RepositoryRoot);

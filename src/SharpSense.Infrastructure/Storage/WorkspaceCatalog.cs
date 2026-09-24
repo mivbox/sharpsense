@@ -194,6 +194,19 @@ public sealed class WorkspaceCatalog
         return CreateSelection(selection.Definition);
     }
 
+    public WorkspaceSelection Rename(string nameOrId, string name)
+    {
+        ValidateName(name);
+        using var catalogLock = AcquireWriteLock();
+        var existing = List();
+        var selection = ResolveExplicit(existing, nameOrId);
+        using var indexLease = AcquireIndexLease(selection);
+        EnsureNameAvailable(name.Trim(), existing.Where(item => item.Definition.Id != selection.Definition.Id).ToArray());
+        selection.Definition.Name = name.Trim();
+        Write(selection.Definition);
+        return CreateSelection(selection.Definition);
+    }
+
     public WorkspaceSelection Update(string nameOrId, string name, IEnumerable<WorkspaceSource> sources)
     {
         ValidateName(name);

@@ -351,17 +351,19 @@ public sealed class CliCommandTests
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
         var ct = TestContext.Current.CancellationToken;
+        CancellationToken executionToken = default;
         var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
         var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
         var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
 
-        executeLogIndexFactory.Setup(candidate => candidate.Create(ct))
+        executeLogIndexFactory.Setup(candidate => candidate.Create(It.Is<CancellationToken>(token => token.CanBeCanceled)))
+            .Callback<CancellationToken>(token => executionToken = token)
             .ReturnsAsync(executeLogIndex.Object);
-        executeLogIndex.Setup(candidate => candidate.AppendLine("Build succeeded in 13.7s", ct))
+        executeLogIndex.Setup(candidate => candidate.AppendLine("Build succeeded in 13.7s", It.Is<CancellationToken>(token => token == executionToken)))
             .ReturnsAsync(Result.Ok(1));
-        executeLogIndex.Setup(candidate => candidate.FindMatches("Build succeeded", ct))
+        executeLogIndex.Setup(candidate => candidate.FindMatches("Build succeeded", It.Is<CancellationToken>(token => token == executionToken)))
             .ReturnsAsync(Result.Ok<int[]>([1]));
-        executeLogIndex.Setup(candidate => candidate.ReadRange(new ExecutionLineRange(1, 1), ct))
+        executeLogIndex.Setup(candidate => candidate.ReadRange(new ExecutionLineRange(1, 1), It.Is<CancellationToken>(token => token == executionToken)))
             .ReturnsAsync(Result.Ok<ExecutionLogLine[]>(
             [
                 new ExecutionLogLine(1, "Build succeeded in 13.7s")
@@ -373,7 +375,7 @@ public sealed class CliCommandTests
                     request.Command == "dotnet build SharpSense.sln" &&
                     request.WorkingDirectory == RepositoryRoot),
                 It.IsAny<Func<string, CancellationToken, Task>>(),
-                ct))
+                It.Is<CancellationToken>(token => token == executionToken)))
             .Returns(async (
                 CommandProcessRequest _,
                 Func<string, CancellationToken, Task> onOutput,
@@ -422,11 +424,13 @@ public sealed class CliCommandTests
         await using var database = await CliCommandTestDatabase.Create();
         using var console = new TestConsole();
         var ct = TestContext.Current.CancellationToken;
+        CancellationToken executionToken = default;
         var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
         var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
         var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
 
-        executeLogIndexFactory.Setup(candidate => candidate.Create(ct))
+        executeLogIndexFactory.Setup(candidate => candidate.Create(It.Is<CancellationToken>(token => token.CanBeCanceled)))
+            .Callback<CancellationToken>(token => executionToken = token)
             .ReturnsAsync(executeLogIndex.Object);
         executeLogIndex.Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
@@ -435,7 +439,7 @@ public sealed class CliCommandTests
                     request.Command == "missing-command" &&
                     request.WorkingDirectory == RepositoryRoot),
                 It.IsAny<Func<string, CancellationToken, Task>>(),
-                ct))
+                It.Is<CancellationToken>(token => token == executionToken)))
             .ReturnsAsync(Result.Fail<CommandProcessResult>("Failed to start command 'missing-command'."));
         var app = CreateCommandApp(
             console,

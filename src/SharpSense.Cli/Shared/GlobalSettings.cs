@@ -4,6 +4,8 @@ namespace SharpSense.Cli.Shared;
 
 public abstract class GlobalSettings : CommandSettings
 {
+    internal CliCommandExecutionContext? ExecutionContext { get; set; }
+
     [CommandOption("-v|--verbose")]
     public bool IsVerbose { get; init; }
 

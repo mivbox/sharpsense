@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
+using Spectre.Console;
 using Spectre.Console.Cli;
 
 namespace SharpSense.Cli.Shared;
@@ -21,7 +22,11 @@ public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
         TSettings settings,
         CancellationToken ct)
     {
-        var executionContext = CommandOutput.GetExecutionContext(context);
+        var executionContext = CommandOutput.GetExecutionContext(context) ?? settings.ExecutionContext;
+        if (context.Data is null && executionContext is not null)
+        {
+            context = new CommandContext(context.Arguments, context.Remaining, context.Name, executionContext);
+        }
         var enableFileLogging = executionContext?.EnableFileLogging ?? true;
         var previousLogger = Log.Logger;
         SharpSenseLogging.UseGlobalLogger(settings.IsVerbose, context.Name, enableConsoleLogging: false, enableFileLogging);
@@ -39,11 +44,15 @@ public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
                 context.Name,
                 typeof(TSettings).FullName,
                 logFilePath ?? "<disabled>");
+            builder.Services.AddSingleton(executionContext?.Console ?? AnsiConsole.Console);
             Configure(settings, builder.Services);
             executionContext?.ConfigureServices?.Invoke(builder.Services);
             Log.Information("Finished configuring services for {SettingsType}", typeof(TSettings).FullName);
 
             using var host = builder.Build();
+            using var commandCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                ct, host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping);
+            ct = commandCancellation.Token;
             Log.Information("Service provider built successfully for {SettingsType}", typeof(TSettings).FullName);
             await host.StartAsync(ct);
             Log.Information("Host started for {SettingsType}", typeof(TSettings).FullName);
