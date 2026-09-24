@@ -4,7 +4,7 @@ public sealed class MemoryNodeRecord
 {
     public Guid Id { get; set; }
 
-    public string TargetFullyQualifiedName { get; set; } = string.Empty;
+    public int TargetCodeNodeId { get; set; }
 
     public string TargetCodeHash { get; set; } = string.Empty;
 

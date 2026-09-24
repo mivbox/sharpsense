@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using System.IO.Abstractions;
+using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Infrastructure.Persistence;
 
@@ -8,12 +10,15 @@ public sealed class SharpSenseDesignTimeDbContextFactory : IDesignTimeDbContextF
     public SharpSenseDbContext CreateDbContext(string[] args)
     {
         var optionsBuilder = new DbContextOptionsBuilder<SharpSenseDbContext>();
+        var homeOverride = Environment.GetEnvironmentVariable("SHARPSENSE_HOME");
+        var designTimeDirectory = string.IsNullOrWhiteSpace(homeOverride)
+            ? Path.GetTempPath()
+            : SharpSenseHome.Resolve(new FileSystem(), homeOverride);
         var designTimeDatabasePath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".SharpSense",
-            "design-time.db");
+            designTimeDirectory,
+            "sharpsense-design-time.db");
 
-        Directory.CreateDirectory(Path.GetDirectoryName(designTimeDatabasePath)!);
+        Directory.CreateDirectory(designTimeDirectory);
 
         optionsBuilder.UseSqlite(
             $"Data Source={designTimeDatabasePath};Mode=ReadWriteCreate;Cache=Shared",

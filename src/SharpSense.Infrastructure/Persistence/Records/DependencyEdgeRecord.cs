@@ -9,4 +9,6 @@ public sealed class DependencyEdgeRecord
     public int CalleeNodeId { get; set; }
 
     public EdgeType EdgeType { get; set; } = EdgeType.ProjectReference;
+
+    public string? Metadata { get; set; }
 }

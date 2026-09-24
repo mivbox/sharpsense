@@ -14,7 +14,10 @@ public static class PersistenceServiceCollectionExtensions
 {
     private static readonly ILogger _logger = Log.ForContext(typeof(PersistenceServiceCollectionExtensions));
 
-    public static IServiceCollection AddPersistence(this IServiceCollection services)
+    public static IServiceCollection AddPersistence(
+        this IServiceCollection services,
+        bool initializeOnStartup = true,
+        ServiceLifetime factoryLifetime = ServiceLifetime.Singleton)
     {
         ArgumentNullException.ThrowIfNull(services);
 
@@ -32,9 +35,13 @@ public static class PersistenceServiceCollectionExtensions
                         $"Data Source={repositoryWorkspace.DatabasePath};Mode=ReadWriteCreate;Cache=Shared",
                         b => b.MigrationsAssembly(typeof(SharpSenseDbContext).Assembly.FullName))
                     .AddInterceptors(serviceProvider.GetRequiredService<SqlitePragmaInterceptor>());
-            });
+            }, factoryLifetime);
 
-        services.AddHostedService<EfCoreEnsureDatabase>();
+        services.AddScoped<WorkspaceDatabaseInitializer>();
+        if (initializeOnStartup)
+        {
+            services.AddHostedService<EfCoreEnsureDatabase>();
+        }
 
         return services;
     }
@@ -49,6 +56,16 @@ public static class PersistenceServiceCollectionExtensions
         {
             await using var scope = serviceProvider.CreateAsyncScope();
             var repositoryWorkspace = scope.ServiceProvider.GetRequiredService<IRepositoryWorkspace>();
+            var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<SharpSenseDbContext>>();
+            await InitializeAsync(repositoryWorkspace, dbContextFactory, fileSystem, ct);
+        }
+
+        internal static async Task InitializeAsync(
+            IRepositoryWorkspace repositoryWorkspace,
+            IDbContextFactory<SharpSenseDbContext> dbContextFactory,
+            IFileSystem fileSystem,
+            CancellationToken ct)
+        {
             var databasePath = repositoryWorkspace.DatabasePath;
 
             var directory = fileSystem.Path.GetDirectoryName(databasePath);
@@ -57,18 +74,13 @@ public static class PersistenceServiceCollectionExtensions
                 fileSystem.Directory.CreateDirectory(directory);
             }
 
-            var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<SharpSenseDbContext>>();
-            var resetReason = await GetResetReason(dbContextFactory, databasePath, ct);
+            var resetReason = await GetResetReason(dbContextFactory, databasePath, fileSystem, ct);
             if (resetReason is not null)
             {
-                _logger.Warning(
-                    "Deleting incompatible SQLite database at {DatabasePath}: {Reason}",
-                    databasePath,
-                    resetReason);
-
-                SqliteConnection.ClearAllPools();
-                DeleteDatabaseFiles(databasePath);
-                SqliteConnection.ClearAllPools();
+                throw new InvalidOperationException(
+                    $"SQLite database '{databasePath}' is incompatible with this version ({resetReason}). " +
+                    "The database has been preserved. Use a compatible SharpSense version, or back up " +
+                    "the database and export any authored memories before rebuilding the index.");
             }
 
             await using var dbContext = await dbContextFactory.CreateDbContextAsync(ct);
@@ -77,9 +89,10 @@ public static class PersistenceServiceCollectionExtensions
 
         public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
 
-        private async Task<string?> GetResetReason(
+        private static async Task<string?> GetResetReason(
             IDbContextFactory<SharpSenseDbContext> dbContextFactory,
             string databasePath,
+            IFileSystem fileSystem,
             CancellationToken ct)
         {
             if (!fileSystem.File.Exists(databasePath))
@@ -127,24 +140,6 @@ public static class PersistenceServiceCollectionExtensions
             return unknownMigrationIds.Length == 0
                 ? null
                 : $"database contains migration ids not present in the current assembly: {string.Join(", ", unknownMigrationIds)}";
-        }
-
-        private void DeleteDatabaseFiles(string databasePath)
-        {
-            foreach (var candidatePath in GetDatabaseFilePaths(databasePath))
-            {
-                if (fileSystem.File.Exists(candidatePath))
-                {
-                    fileSystem.File.Delete(candidatePath);
-                }
-            }
-        }
-
-        private static IEnumerable<string> GetDatabaseFilePaths(string databasePath)
-        {
-            yield return databasePath;
-            yield return $"{databasePath}-wal";
-            yield return $"{databasePath}-shm";
         }
 
         private static async Task<HashSet<string>> GetUserTableNames(

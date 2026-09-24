@@ -75,12 +75,13 @@ public static class CodeNodeNavigationQueries
         => from dependencyEdge in query
            join callerNode in context.GraphNodes.AsNoTracking() on dependencyEdge.CallerNodeId equals callerNode.Id
            join calleeNode in context.GraphNodes.AsNoTracking() on dependencyEdge.CalleeNodeId equals calleeNode.Id
-           select new DependencyEdge
-           {
-               CallerId = callerNode.CanonicalId,
-               CalleeId = calleeNode.CanonicalId,
-               EdgeType = dependencyEdge.EdgeType
-           };
+            select new DependencyEdge
+            {
+                CallerId = callerNode.CanonicalId,
+                CalleeId = calleeNode.CanonicalId,
+                EdgeType = dependencyEdge.EdgeType,
+                Metadata = dependencyEdge.Metadata
+            };
 
     public static async Task<CodeNode?> FindRootNode(
         SharpSenseDbContext context,

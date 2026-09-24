@@ -14,7 +14,7 @@ namespace SharpSense.Infrastructure.Tests.Persistence;
 public sealed class PersistenceServiceCollectionExtensionsTests
 {
     [Fact]
-    public async Task WhenStartingWithLegacyMigrationHistory_ThenResetsAndAppliesCurrentSchema()
+    public async Task WhenStartingWithUnknownMigrationHistory_ThenPreservesDatabaseAndReportsIncompatibility()
     {
         var tempDirectory = Directory.CreateTempSubdirectory("sharp-sense-persistence-");
 
@@ -23,7 +23,7 @@ public sealed class PersistenceServiceCollectionExtensionsTests
             var databasePath = Path.Combine(tempDirectory.FullName, "sharpsense.db");
 
             await CreateLegacyDatabase(databasePath, includeMigrationHistory: true);
-            await AssertDatabaseWasResetAndMigrated(databasePath);
+            await AssertDatabaseWasPreserved(databasePath);
         }
         finally
         {
@@ -32,7 +32,7 @@ public sealed class PersistenceServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public async Task WhenStartingWithUserTablesWithoutMigrationHistory_ThenResetsAndAppliesCurrentSchema()
+    public async Task WhenStartingWithUserTablesWithoutMigrationHistory_ThenPreservesDatabase()
     {
         var tempDirectory = Directory.CreateTempSubdirectory("sharp-sense-persistence-");
 
@@ -41,7 +41,7 @@ public sealed class PersistenceServiceCollectionExtensionsTests
             var databasePath = Path.Combine(tempDirectory.FullName, "sharpsense.db");
 
             await CreateLegacyDatabase(databasePath, includeMigrationHistory: false);
-            await AssertDatabaseWasResetAndMigrated(databasePath);
+            await AssertDatabaseWasPreserved(databasePath);
         }
         finally
         {
@@ -49,59 +49,38 @@ public sealed class PersistenceServiceCollectionExtensionsTests
         }
     }
 
-    private static async Task AssertDatabaseWasResetAndMigrated(string databasePath)
+    private static async Task AssertDatabaseWasPreserved(string databasePath)
     {
         using var serviceProvider = CreateServiceProvider(databasePath);
         var ensureDatabase = new PersistenceServiceCollectionExtensions.EfCoreEnsureDatabase(
             serviceProvider,
             new FileSystem());
-        var expectedMigrationIds = await GetExpectedMigrationIds(serviceProvider);
+        var start = () => ensureDatabase.StartAsync(TestContext.Current.CancellationToken);
+        await start.Should().ThrowAsync<InvalidOperationException>().WithMessage("*has been preserved*");
+        (await ReadScalarInt(databasePath, "SELECT COUNT(*) FROM pragma_table_info('CodeNodes') WHERE name = 'RelativeFilePath';"))
+            .Should().Be(1);
+        (await ReadStrings(databasePath, "SELECT Content FROM MemoryNodes;"))
+            .Should().Equal("Irreplaceable authored context");
+    }
 
-        await ensureDatabase.StartAsync(TestContext.Current.CancellationToken);
-
-        var appliedMigrationIds = await ReadStrings(
-            databasePath,
-            """
-            SELECT "MigrationId"
-            FROM "__EFMigrationsHistory"
-            ORDER BY "MigrationId";
-            """);
-        var hasDocumentIdColumn = await ReadScalarInt(
-            databasePath,
-            """
-            SELECT COUNT(*)
-            FROM pragma_table_info('CodeNodes')
-            WHERE name = 'DocumentId';
-            """);
-        var hasRelativeFilePathColumn = await ReadScalarInt(
-            databasePath,
-            """
-            SELECT COUNT(*)
-            FROM pragma_table_info('CodeNodes')
-            WHERE name = 'RelativeFilePath';
-            """);
-        var hasGraphNodesTable = await ReadScalarInt(
-            databasePath,
-            """
-            SELECT COUNT(*)
-            FROM sqlite_master
-            WHERE type = 'table'
-              AND name = 'GraphNodes';
-            """);
-        var hasSearchTable = await ReadScalarInt(
-            databasePath,
-            """
-            SELECT COUNT(*)
-            FROM sqlite_master
-            WHERE type = 'table'
-              AND name = 'CodeNodeSearch';
-            """);
-
-        appliedMigrationIds.Should().BeEquivalentTo(expectedMigrationIds);
-        hasDocumentIdColumn.Should().Be(1);
-        hasRelativeFilePathColumn.Should().Be(0);
-        hasGraphNodesTable.Should().Be(1);
-        hasSearchTable.Should().Be(1);
+    [Fact]
+    public async Task WhenStartingWithNewDatabase_ThenAppliesCurrentMigrations()
+    {
+        var tempDirectory = Directory.CreateTempSubdirectory("sharp-sense-persistence-");
+        try
+        {
+            var databasePath = Path.Combine(tempDirectory.FullName, "sharpsense.db");
+            using var serviceProvider = CreateServiceProvider(databasePath);
+            var ensureDatabase = new PersistenceServiceCollectionExtensions.EfCoreEnsureDatabase(serviceProvider, new FileSystem());
+            await ensureDatabase.StartAsync(TestContext.Current.CancellationToken);
+            await ensureDatabase.StartAsync(TestContext.Current.CancellationToken);
+            (await ReadStrings(databasePath, "SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId;"))
+                .Should().Equal(await GetExpectedMigrationIds(serviceProvider));
+        }
+        finally
+        {
+            tempDirectory.Delete(recursive: true);
+        }
     }
 
     private static ServiceProvider CreateServiceProvider(string databasePath)
@@ -163,6 +142,8 @@ public sealed class PersistenceServiceCollectionExtensionsTests
                 );
                 """;
 
+        await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        command.CommandText = "CREATE TABLE MemoryNodes (Content TEXT NOT NULL); INSERT INTO MemoryNodes VALUES ('Irreplaceable authored context');";
         await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
     }
 

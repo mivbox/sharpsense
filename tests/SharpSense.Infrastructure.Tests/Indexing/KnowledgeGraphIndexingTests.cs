@@ -326,7 +326,7 @@ public sealed class KnowledgeGraphIndexingTests
     [Fact]
     public async Task WhenUpdatingWorkspaceFilesForRenamedDirectory_ThenReplacesContainedDocumentPaths()
     {
-        var expectedDiscoveryGlobs = new[] { "**/*.cs", "**/*.md", "**/*.markdown", "**/*.mdown", "**/*.mkd" };
+        var expectedDiscoveryGlobs = new[] { "**/*.cs", "**/*.ts", "**/*.tsx", "**/*.md", "**/*.markdown", "**/*.mdown", "**/*.mkd" };
         await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
             UseMigrations: true,
             LoadVectorExtension: true));
@@ -567,8 +567,8 @@ public sealed class KnowledgeGraphIndexingTests
         var workspacePaths = new Mock<IIndexingWorkspacePaths>(MockBehavior.Strict);
         workspacePaths.SetupGet(candidate => candidate.RootPath)
             .Returns("/repo");
-        workspacePaths.Setup(candidate => candidate.GetRequiredTargetPath("SharpSense.sln"))
-            .Returns("/repo/SharpSense.sln");
+        workspacePaths.Setup(candidate => candidate.GetRequiredTargetPath("docs"))
+            .Returns("/repo/docs");
         workspacePaths.Setup(candidate => candidate.ToRepositoryRelativePath(It.IsAny<string>()))
             .Returns((string? path) => NormalizeRepositoryPath(path));
         workspacePaths.Setup(candidate => candidate.TryToRepositoryRelativePath(It.IsAny<string>(), out It.Ref<string>.IsAny))
@@ -633,7 +633,7 @@ public sealed class KnowledgeGraphIndexingTests
             Options.Create(new SharpSenseCliOptions
             {
                 RepositoryRoot = "/repo",
-                TargetPath = "SharpSense.sln",
+                TargetPath = "docs",
                 SkipEmbeddings = true
             }));
     }

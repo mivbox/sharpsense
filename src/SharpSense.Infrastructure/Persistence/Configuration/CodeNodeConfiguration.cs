@@ -67,7 +67,6 @@ public sealed class CodeNodeConfiguration : IEntityTypeConfiguration<CodeNodeRec
 
         builder.HasIndex(codeNode => codeNode.ProjectNodeId);
         builder.HasIndex(codeNode => codeNode.DocumentId);
-        builder.HasIndex(codeNode => codeNode.FullyQualifiedName)
-            .IsUnique();
+        builder.HasIndex(codeNode => codeNode.FullyQualifiedName);
     }
 }

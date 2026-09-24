@@ -28,6 +28,8 @@ public sealed class DependencyEdgeConfiguration : IEntityTypeConfiguration<Depen
             .HasConversion<string>()
             .HasMaxLength(64);
 
+        builder.Property(dependencyEdge => dependencyEdge.Metadata);
+
         builder.HasOne<GraphNodeRecord>()
             .WithMany()
             .HasForeignKey(dependencyEdge => dependencyEdge.CallerNodeId)

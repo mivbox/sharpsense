@@ -3,6 +3,7 @@ using Serilog;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Diagnostics;
+using SharpSense.Infrastructure.Indexing.TypeScript;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Infrastructure.Shared;
@@ -13,6 +14,8 @@ public sealed class KnowledgeGraphRepository(
     IDbContextFactory<SharpSenseDbContext> dbContextFactory)
     : IKnowledgeGraphRepository
 {
+    // Index-sized collections use EF.Parameter so SQLite receives one JSON parameter,
+    // not EF Core 10's default scalar parameter per value, which can exceed its limit.
     private static readonly ILogger _logger = Log.ForContext<KnowledgeGraphRepository>();
 
     public async Task ReplaceTarget(
@@ -41,10 +44,12 @@ public sealed class KnowledgeGraphRepository(
                 DescribeSnapshotDifference(currentSnapshot, normalizedExtractedNodes));
 
             var identityMaps = await LoadIdentityMaps(context, ct);
+            identityMaps = MatchMovedProjectIdentities(currentSnapshot, normalizedExtractedNodes, identityMaps);
             var persistedGraph = BuildPersistedGraph(normalizedExtractedNodes, identityMaps);
 
             AddTraceCounts(trace, persistedGraph, normalizedExtractedNodes.Diagnostics.Count);
             await ReplacePersistedGraph(context, persistedGraph, identityMaps, ct);
+            await AdvanceGraphRevision(context, ct);
             await transaction.CommitAsync(ct);
         }
         catch (Exception exception)
@@ -63,6 +68,7 @@ public sealed class KnowledgeGraphRepository(
         ArgumentNullException.ThrowIfNull(extractedNodes);
 
         var changedFilePaths = relativeFilePaths
+            .Concat(extractedNodes.CodeNodes.Select(static node => node.RelativeFilePath))
             .Where(static path => !string.IsNullOrWhiteSpace(path))
             .Select(NormalizeRelativePath)
             .Distinct(GetPathComparer())
@@ -102,6 +108,7 @@ public sealed class KnowledgeGraphRepository(
             trace.AddTag("index.code_node.count", normalizedExtractedNodes.CodeNodes.Count);
             trace.AddTag("index.dependency.count", normalizedExtractedNodes.Edges.Count);
             trace.AddTag("index.diagnostic.count", normalizedExtractedNodes.Diagnostics.Count);
+            await AdvanceGraphRevision(context, ct);
             await transaction.CommitAsync(ct);
         }
         catch (Exception exception)
@@ -115,6 +122,16 @@ public sealed class KnowledgeGraphRepository(
     {
         await using var context = await dbContextFactory.CreateDbContextAsync(ct);
         return await LoadPersistedCodeNodes(context, relativeFilePaths: null, ct);
+    }
+
+    private static Task AdvanceGraphRevision(SharpSenseDbContext context, CancellationToken ct)
+    {
+        // Page cursors must observe the same commit as graph rows, not the later run summary.
+        var revision = Guid.NewGuid().ToString("N");
+        return context.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO IndexRunState (Id, GraphRevision) VALUES (1, {revision})
+            ON CONFLICT (Id) DO UPDATE SET GraphRevision = excluded.GraphRevision;
+            """, ct);
     }
 
     public async Task<IReadOnlyList<IndexedCodeNode>> GetPersistedCodeNodes(
@@ -206,7 +223,8 @@ public sealed class KnowledgeGraphRepository(
                 static edge => new IndexedDependency(
                     edge.CallerId,
                     edge.CalleeId,
-                    edge.EdgeType))
+                    edge.EdgeType,
+                    edge.Metadata))
             .ToArrayAsync(ct))
             .OrderBy(static edge => edge.CallerId, StringComparer.Ordinal)
             .ThenBy(static edge => edge.CalleeId, StringComparer.Ordinal)
@@ -231,7 +249,7 @@ public sealed class KnowledgeGraphRepository(
         var relativePathSet = normalizedPaths.ToHashSet(pathComparer);
         var documentIds = await context.Documents
             .AsNoTracking()
-            .Where(document => relativePathSet.Contains(document.RelativePath))
+            .Where(document => EF.Parameter(relativePathSet).Contains(document.RelativePath))
             .Select(static document => document.Id)
             .ToArrayAsync(ct);
         if (documentIds.Length == 0)
@@ -242,7 +260,7 @@ public sealed class KnowledgeGraphRepository(
         var codeNodes = await LoadPersistedCodeNodes(context, normalizedPaths, ct);
         var callerNodeIds = await context.CodeNodes
             .AsNoTracking()
-            .Where(codeNode => documentIds.Contains(codeNode.DocumentId))
+            .Where(codeNode => EF.Parameter(documentIds).Contains(codeNode.DocumentId))
             .Select(static codeNode => codeNode.Id)
             .ToArrayAsync(ct);
         var edges = callerNodeIds.Length == 0
@@ -251,7 +269,7 @@ public sealed class KnowledgeGraphRepository(
                         context,
                         context.DependencyEdges
                             .AsNoTracking()
-                            .Where(edge => callerNodeIds.Contains(edge.CallerNodeId))
+                            .Where(edge => EF.Parameter(callerNodeIds).Contains(edge.CallerNodeId))
                             .OrderBy(static edge => edge.CallerNodeId)
                             .ThenBy(static edge => edge.CalleeNodeId)
                             .ThenBy(static edge => edge.EdgeType))
@@ -259,7 +277,8 @@ public sealed class KnowledgeGraphRepository(
                         static edge => new IndexedDependency(
                             edge.CallerId,
                             edge.CalleeId,
-                            edge.EdgeType))
+                            edge.EdgeType,
+                            edge.Metadata))
                     .ToArrayAsync(ct))
                 .OrderBy(static edge => edge.CallerId, StringComparer.Ordinal)
                 .ThenBy(static edge => edge.CalleeId, StringComparer.Ordinal)
@@ -283,7 +302,7 @@ public sealed class KnowledgeGraphRepository(
             var normalizedPaths = relativeFilePaths.ToHashSet(GetPathComparer());
             var documentIds = await context.Documents
                 .AsNoTracking()
-                .Where(document => normalizedPaths.Contains(document.RelativePath))
+                .Where(document => EF.Parameter(normalizedPaths).Contains(document.RelativePath))
                 .Select(static document => document.Id)
                 .ToArrayAsync(ct);
             if (documentIds.Length == 0)
@@ -291,7 +310,7 @@ public sealed class KnowledgeGraphRepository(
                 return [];
             }
 
-            codeNodeQuery = codeNodeQuery.Where(codeNode => documentIds.Contains(codeNode.DocumentId));
+            codeNodeQuery = codeNodeQuery.Where(codeNode => EF.Parameter(documentIds).Contains(codeNode.DocumentId));
         }
 
         return await CodeNodeNavigationQueries.ProjectCodeNodes(context, codeNodeQuery)
@@ -344,7 +363,10 @@ public sealed class KnowledgeGraphRepository(
             .Select(static project => project.Id)
             .Concat(normalizedCodeNodes.Select(static codeNode => codeNode.CanonicalId))
             .ToHashSet(StringComparer.Ordinal);
-        var persistedNodeIds = knownNodeIds ?? callerNodeIds;
+        var syntheticNodeIds = GetSyntheticNodeIds(extractedNodes.Edges);
+        var persistedNodeIds = knownNodeIds is null
+            ? callerNodeIds.Concat(syntheticNodeIds).ToHashSet(StringComparer.Ordinal)
+            : knownNodeIds;
         var normalizedEdges = extractedNodes.Edges
             .Where(edge => callerNodeIds.Contains(edge.CallerId) && persistedNodeIds.Contains(edge.CalleeId))
             .GroupBy(static edge => (edge.CallerId, edge.CalleeId, edge.EdgeType))
@@ -369,7 +391,56 @@ public sealed class KnowledgeGraphRepository(
             .ToHashSet(StringComparer.Ordinal);
         knownNodeIds.UnionWith(extractedNodes.Projects.Select(static project => project.Id));
         knownNodeIds.UnionWith(extractedNodes.CodeNodes.Select(static codeNode => codeNode.CanonicalId));
+        knownNodeIds.UnionWith(GetSyntheticNodeIds(extractedNodes.Edges));
         return knownNodeIds;
+    }
+
+    private static PersistedIdentityMaps MatchMovedProjectIdentities(
+        ExtractedNodes current,
+        ExtractedNodes updated,
+        PersistedIdentityMaps identities)
+    {
+        var currentProjectIds = current.Projects.Select(project => project.Id).ToHashSet(StringComparer.Ordinal);
+        var updatedProjectIds = updated.Projects.Select(project => project.Id).ToHashSet(StringComparer.Ordinal);
+        var removedProjects = current.Projects.Where(project => !updatedProjectIds.Contains(project.Id)).ToArray();
+        var addedProjects = updated.Projects.Where(project => !currentProjectIds.Contains(project.Id)).ToArray();
+        var graphNodeIds = new Dictionary<string, int>(identities.GraphNodeIdsByCanonicalId, StringComparer.Ordinal);
+
+        foreach (var added in addedProjects)
+        {
+            // A declaration name alone is never enough to move authored memories between projects.
+            // Preserve an unambiguous project move only when project content and all declarations match.
+            if (string.IsNullOrEmpty(added.ContentHash) ||
+                addedProjects.Count(project => project.Name == added.Name && project.ContentHash == added.ContentHash) != 1)
+            {
+                continue;
+            }
+
+            var candidates = removedProjects.Where(project =>
+                project.Name == added.Name && project.ContentHash == added.ContentHash).ToArray();
+            if (candidates.Length != 1)
+            {
+                continue;
+            }
+
+            var before = current.CodeNodes.Where(node => node.ProjectId == candidates[0].Id).ToArray();
+            var after = updated.CodeNodes.Where(node => node.ProjectId == added.Id).ToArray();
+            var beforeByDeclaration = before.ToLookup(node => (node.FullyQualifiedName, node.BodyHash));
+            if (before.Length != after.Length || after.Any(node =>
+                    string.IsNullOrEmpty(node.BodyHash) ||
+                    beforeByDeclaration[(node.FullyQualifiedName, node.BodyHash)].Count() != 1))
+            {
+                continue;
+            }
+
+            foreach (var node in after)
+            {
+                var original = beforeByDeclaration[(node.FullyQualifiedName, node.BodyHash)].Single();
+                graphNodeIds.TryAdd(node.CanonicalId, identities.GraphNodeIdsByCanonicalId[original.CanonicalId]);
+            }
+        }
+
+        return identities with { GraphNodeIdsByCanonicalId = graphNodeIds };
     }
 
     private static PersistedGraph BuildPersistedGraph(
@@ -410,7 +481,7 @@ public sealed class KnowledgeGraphRepository(
             static document => document.Id,
             GetPathComparer());
         var directoryClosures = BuildDirectoryClosures(directories, directoryIdsByPath);
-        var graphNodes = BuildGraphNodeRecords(normalizedProjects, normalizedCodeNodes, identityMaps);
+        var graphNodes = BuildGraphNodeRecords(normalizedProjects, normalizedCodeNodes, normalizedEdges, identityMaps);
         var graphNodeIdsByCanonicalId = graphNodes.ToDictionary(
             static graphNode => graphNode.CanonicalId,
             static graphNode => graphNode.Id,
@@ -452,7 +523,8 @@ public sealed class KnowledgeGraphRepository(
                 {
                     CallerNodeId = graphNodeIdsByCanonicalId[edge.CallerId],
                     CalleeNodeId = graphNodeIdsByCanonicalId[edge.CalleeId],
-                    EdgeType = edge.EdgeType
+                    EdgeType = edge.EdgeType,
+                    Metadata = edge.Metadata
                 })
             .DistinctBy(static edge => (edge.CallerNodeId, edge.CalleeNodeId, edge.EdgeType))
             .OrderBy(static edge => edge.CallerNodeId)
@@ -601,9 +673,11 @@ public sealed class KnowledgeGraphRepository(
     private static GraphNodeRecord[] BuildGraphNodeRecords(
         IReadOnlyCollection<IndexedProject> projects,
         IReadOnlyCollection<IndexedCodeNode> codeNodes,
+        IReadOnlyCollection<IndexedDependency> edges,
         PersistedIdentityMaps identityMaps)
     {
         var nextGraphNodeId = GetNextId(identityMaps.GraphNodeIdsByCanonicalId.Values);
+        var syntheticNodeKindsByCanonicalId = GetSyntheticGraphNodeKinds(GetSyntheticNodeIds(edges));
         var graphNodes = projects
             .Select(
                 project => new GraphNodeRecord
@@ -620,6 +694,15 @@ public sealed class KnowledgeGraphRepository(
                         CanonicalId = codeNode.CanonicalId,
                         Kind = GraphNodeKind.Code
                     }))
+            .Concat(
+                GetSyntheticNodeIds(edges)
+                    .Select(
+                        syntheticNodeId => new GraphNodeRecord
+                        {
+                            Id = identityMaps.GraphNodeIdsByCanonicalId.GetValueOrDefault(syntheticNodeId),
+                            CanonicalId = syntheticNodeId,
+                            Kind = syntheticNodeKindsByCanonicalId[syntheticNodeId]
+                        }))
             .OrderBy(static graphNode => graphNode.CanonicalId, StringComparer.Ordinal)
             .ToArray();
 
@@ -632,6 +715,42 @@ public sealed class KnowledgeGraphRepository(
         }
 
         return graphNodes;
+    }
+
+    private static string[] GetSyntheticNodeIds(IReadOnlyCollection<IndexedDependency> edges)
+        => edges
+            .Where(static edge =>
+                HttpNodeIdentity.IsPlaceholderId(edge.CalleeId) ||
+                PackageNodeIdentity.IsPlaceholderId(edge.CalleeId))
+            .Select(static edge => edge.CalleeId)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(static edge => edge, StringComparer.Ordinal)
+            .ToArray();
+
+    private static IReadOnlyDictionary<string, GraphNodeKind> GetSyntheticGraphNodeKinds(
+        IEnumerable<string> syntheticNodeIds)
+        => syntheticNodeIds
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(static syntheticNodeId => syntheticNodeId, StringComparer.Ordinal)
+            .ToDictionary(
+                syntheticNodeId => syntheticNodeId,
+                static syntheticNodeId => GetSyntheticGraphNodeKind(syntheticNodeId),
+                StringComparer.Ordinal);
+
+    private static GraphNodeKind GetSyntheticGraphNodeKind(
+        string canonicalId)
+    {
+        if (HttpNodeIdentity.IsPlaceholderId(canonicalId))
+        {
+            return GraphNodeKind.Http;
+        }
+
+        if (PackageNodeIdentity.IsPlaceholderId(canonicalId))
+        {
+            return GraphNodeKind.Package;
+        }
+
+        throw new InvalidOperationException($"Unsupported synthetic node id '{canonicalId}'.");
     }
 
     private static async Task<PersistedIdentityMaps> LoadIdentityMaps(
@@ -664,15 +783,17 @@ public sealed class KnowledgeGraphRepository(
         PersistedIdentityMaps identityMaps,
         CancellationToken ct)
     {
-        // Memory tables (MemoryNodes) and their FK target (CodeNodes / GraphNodes, shared PK) MUST NOT be
-        // bulk-deleted here: an ON DELETE CASCADE foreign key from MemoryNodeRecord.TargetFullyQualifiedName to
-        // CodeNodeRecord.FullyQualifiedName would silently destroy every persistent memory. We instead
-        // surgically wipe only the tables that have no memory dependency and no incoming FKs from rows we
-        // intend to preserve, and UPSERT the rest so the existing CodeNode / GraphNode / Document / ProjectNode
-        // identity survives a full workspace re-parse.
+        // Preserve every surviving FK target, including directories and documents: deleting any
+        // ancestor would cascade through CodeNodes and destroy their authored memories.
         await context.DependencyEdges.ExecuteDeleteAsync(ct);
         await context.DirectoryClosures.ExecuteDeleteAsync(ct);
-        await context.Directories.ExecuteDeleteAsync(ct);
+        var graphNodeIds = graph.GraphNodes.Select(static node => node.Id).ToArray();
+        await context.GraphNodes.Where(node => !EF.Parameter(graphNodeIds).Contains(node.Id)).ExecuteDeleteAsync(ct);
+        var documentIds = graph.Documents.Select(static document => document.Id).ToArray();
+        // Documents and directories are pruned after surviving nodes have been moved to new files.
+        var directoryIds = graph.Directories.Select(static directory => directory.Id).ToArray();
+        var persistedCodeNodeIds = await context.CodeNodes.Select(static node => node.Id).ToHashSetAsync(ct);
+        var persistedProjectNodeIds = await context.ProjectNodes.Select(static node => node.Id).ToHashSetAsync(ct);
         context.ChangeTracker.Clear();
 
         UpsertDirectories(context, graph.Directories, identityMaps);
@@ -682,8 +803,8 @@ public sealed class KnowledgeGraphRepository(
         }
         UpsertDocuments(context, graph.Documents, identityMaps);
         UpsertGraphNodes(context, graph.GraphNodes, identityMaps);
-        UpsertCodeNodes(context, graph.CodeNodes);
-        UpsertProjectNodes(context, graph.ProjectNodes, identityMaps);
+        UpsertCodeNodes(context, graph.CodeNodes, persistedCodeNodeIds);
+        UpsertProjectNodes(context, graph.ProjectNodes, persistedProjectNodeIds);
 
         if (graph.DependencyEdges.Length > 0)
         {
@@ -691,6 +812,8 @@ public sealed class KnowledgeGraphRepository(
         }
 
         await context.SaveChangesAsync(ct);
+        await context.Documents.Where(document => !EF.Parameter(documentIds).Contains(document.Id)).ExecuteDeleteAsync(ct);
+        await context.Directories.Where(directory => !EF.Parameter(directoryIds).Contains(directory.Id)).ExecuteDeleteAsync(ct);
         await RefreshSearchIndex(context, ct);
     }
 
@@ -754,7 +877,7 @@ public sealed class KnowledgeGraphRepository(
         }
     }
 
-    private static void UpsertCodeNodes(SharpSenseDbContext context, CodeNodeRecord[] codeNodes)
+    private static void UpsertCodeNodes(SharpSenseDbContext context, CodeNodeRecord[] codeNodes, IReadOnlySet<int> persistedIds)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(codeNodes);
@@ -764,24 +887,20 @@ public sealed class KnowledgeGraphRepository(
             return;
         }
 
-        // The Roslyn extractor (NodeExtractor) keys its emissions by FullyQualifiedName so a
-        // symbol visible in more than one .csproj compilation produces a single CodeNodeRecord.
-        // The in-batch dedup below is a defence-in-depth safety net: if a future change to the
-        // extractor reintroduces duplicate FQDNs, EF Core's change tracker will not throw
-        // "another instance with the key value for {'FullyQualifiedName'} is already being tracked".
-        var attachedFullyQualifiedNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var codeNode in codeNodes)
         {
-            if (!attachedFullyQualifiedNames.Add(codeNode.FullyQualifiedName))
+            if (persistedIds.Contains(codeNode.Id))
             {
-                continue;
+                context.CodeNodes.Update(codeNode);
             }
-
-            context.CodeNodes.Add(codeNode);
+            else
+            {
+                context.CodeNodes.Add(codeNode);
+            }
         }
     }
 
-    private static void UpsertProjectNodes(SharpSenseDbContext context, ProjectNodeRecord[] projectNodes, PersistedIdentityMaps identityMaps)
+    private static void UpsertProjectNodes(SharpSenseDbContext context, ProjectNodeRecord[] projectNodes, IReadOnlySet<int> persistedIds)
     {
         if (projectNodes.Length == 0)
         {
@@ -790,7 +909,7 @@ public sealed class KnowledgeGraphRepository(
 
         foreach (var projectNode in projectNodes)
         {
-            if (identityMaps.GraphNodeIdsByCanonicalId.ContainsKey(projectNode.Name))
+            if (persistedIds.Contains(projectNode.Id))
             {
                 context.ProjectNodes.Update(projectNode);
             }
@@ -830,15 +949,19 @@ public sealed class KnowledgeGraphRepository(
             StringComparer.Ordinal);
         var currentCodeNodeIds = currentSnapshot.CodeNodes
             .Select(codeNode => graphNodeIdsByCanonicalId[codeNode.CanonicalId])
+            .Concat(updatedSnapshot.CodeNodes
+                .Where(codeNode => graphNodeIdsByCanonicalId.ContainsKey(codeNode.CanonicalId))
+                .Select(codeNode => graphNodeIdsByCanonicalId[codeNode.CanonicalId]))
+            .Distinct()
             .ToArray();
         var codeNodeRecordsById = currentCodeNodeIds.Length == 0
             ? new Dictionary<int, CodeNodeRecord>()
             : (await context.CodeNodes
-                    .Where(codeNode => currentCodeNodeIds.Contains(codeNode.Id))
+                    .Where(codeNode => EF.Parameter(currentCodeNodeIds).Contains(codeNode.Id))
                     .ToArrayAsync(ct))
                 .ToDictionary(static codeNode => codeNode.Id);
         var currentDocuments = await context.Documents
-            .Where(document => normalizedChangedPaths.Contains(document.RelativePath))
+            .Where(document => EF.Parameter(normalizedChangedPaths).Contains(document.RelativePath))
             .ToArrayAsync(ct);
         var documentsByPath = currentDocuments.ToDictionary(
             static document => document.RelativePath,
@@ -930,14 +1053,52 @@ public sealed class KnowledgeGraphRepository(
             .ToArray();
         var currentChangedCallerIds = currentSnapshot.CodeNodes
             .Select(codeNode => graphNodeIdsByCanonicalId[codeNode.CanonicalId])
+            .Concat(updatedSnapshot.CodeNodes.Select(codeNode => graphNodeIdsByCanonicalId[codeNode.CanonicalId]))
+            .Distinct()
             .ToArray();
         if (currentChangedCallerIds.Length > 0 || removedCodeNodeIds.Length > 0)
         {
             await context.DependencyEdges
                 .Where(edge =>
-                    currentChangedCallerIds.Contains(edge.CallerNodeId) ||
-                    removedCodeNodeIds.Contains(edge.CalleeNodeId))
+                    EF.Parameter(currentChangedCallerIds).Contains(edge.CallerNodeId) ||
+                    EF.Parameter(removedCodeNodeIds).Contains(edge.CalleeNodeId))
                 .ExecuteDeleteAsync(ct);
+        }
+
+        var affectedSyntheticNodeIds = GetSyntheticNodeIds(currentSnapshot.Edges)
+            .Concat(GetSyntheticNodeIds(updatedSnapshot.Edges))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(static syntheticNodeId => syntheticNodeId, StringComparer.Ordinal)
+            .ToArray();
+        var syntheticNodeKindsByCanonicalId = GetSyntheticGraphNodeKinds(affectedSyntheticNodeIds);
+        var existingSyntheticNodesByCanonicalId = syntheticNodeKindsByCanonicalId.Count == 0
+            ? new Dictionary<string, GraphNodeRecord>(StringComparer.Ordinal)
+            : await context.GraphNodes
+                .Where(graphNode => EF.Parameter(syntheticNodeKindsByCanonicalId.Keys).Contains(graphNode.CanonicalId))
+                .ToDictionaryAsync(graphNode => graphNode.CanonicalId, StringComparer.Ordinal, ct);
+
+        foreach (var (syntheticNodeId, syntheticNodeKind) in syntheticNodeKindsByCanonicalId)
+        {
+            if (existingSyntheticNodesByCanonicalId.TryGetValue(syntheticNodeId, out var existingSyntheticNode))
+            {
+                if (existingSyntheticNode.Kind != syntheticNodeKind)
+                {
+                    existingSyntheticNode.Kind = syntheticNodeKind;
+                }
+
+                continue;
+            }
+
+            var syntheticNodeGraphId = nextGraphNodeId++;
+            graphNodeIdsByCanonicalId[syntheticNodeId] = syntheticNodeGraphId;
+            await context.GraphNodes.AddAsync(
+                new GraphNodeRecord
+                {
+                    Id = syntheticNodeGraphId,
+                    CanonicalId = syntheticNodeId,
+                    Kind = syntheticNodeKind
+                },
+                ct);
         }
 
         var dependencyEdges = updatedSnapshot.Edges
@@ -949,7 +1110,8 @@ public sealed class KnowledgeGraphRepository(
                 {
                     CallerNodeId = graphNodeIdsByCanonicalId[edge.CallerId],
                     CalleeNodeId = graphNodeIdsByCanonicalId[edge.CalleeId],
-                    EdgeType = edge.EdgeType
+                    EdgeType = edge.EdgeType,
+                    Metadata = edge.Metadata
                 })
             .DistinctBy(static edge => (edge.CallerNodeId, edge.CalleeNodeId, edge.EdgeType))
             .ToArray();
@@ -970,7 +1132,7 @@ public sealed class KnowledgeGraphRepository(
             }
 
             var removedGraphNodes = await context.GraphNodes
-                .Where(graphNode => removedCodeNodeIds.Contains(graphNode.Id))
+                .Where(graphNode => EF.Parameter(removedCodeNodeIds).Contains(graphNode.Id))
                 .ToArrayAsync(ct);
             if (removedGraphNodes.Length > 0)
             {
@@ -980,8 +1142,20 @@ public sealed class KnowledgeGraphRepository(
 
         await context.SaveChangesAsync(ct);
 
+        var orphanHttpGraphNodes = await context.GraphNodes
+            .Where(graphNode =>
+                graphNode.Kind == GraphNodeKind.Http ||
+                graphNode.Kind == GraphNodeKind.Package)
+            .Where(graphNode => !context.DependencyEdges.Any(edge => edge.CalleeNodeId == graphNode.Id))
+            .ToArrayAsync(ct);
+        if (orphanHttpGraphNodes.Length > 0)
+        {
+            context.GraphNodes.RemoveRange(orphanHttpGraphNodes);
+            await context.SaveChangesAsync(ct);
+        }
+
         var orphanDocuments = await context.Documents
-            .Where(document => normalizedChangedPaths.Contains(document.RelativePath))
+            .Where(document => EF.Parameter(normalizedChangedPaths).Contains(document.RelativePath))
             .Where(document =>
                 !context.CodeNodes.Any(codeNode => codeNode.DocumentId == document.Id) &&
                 !context.ProjectNodes.Any(projectNode => projectNode.ProjectDocumentId == document.Id))
@@ -1478,6 +1652,11 @@ public sealed class KnowledgeGraphRepository(
             if (currentEdge.EdgeType != updatedEdge.EdgeType)
             {
                 return $"edge[{index}] type differs: persisted='{currentEdge.EdgeType}', updated='{updatedEdge.EdgeType}'";
+            }
+
+            if (!string.Equals(currentEdge.Metadata, updatedEdge.Metadata, StringComparison.Ordinal))
+            {
+                return $"edge[{index}] metadata differs: persisted='{currentEdge.Metadata}', updated='{updatedEdge.Metadata}'";
             }
         }
 

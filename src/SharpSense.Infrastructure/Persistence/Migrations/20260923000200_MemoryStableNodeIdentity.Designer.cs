@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SharpSense.Infrastructure.Persistence;
 
@@ -10,9 +11,10 @@ using SharpSense.Infrastructure.Persistence;
 namespace SharpSense.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SharpSenseDbContext))]
-    partial class SharpSenseDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260923000200_MemoryStableNodeIdentity")]
+    partial class MemoryStableNodeIdentity
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.6");
@@ -68,7 +70,8 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("DocumentId");
 
-                    b.HasIndex("FullyQualifiedName");
+                    b.HasIndex("FullyQualifiedName")
+                        .IsUnique();
 
                     b.HasIndex("ProjectNodeId");
 
@@ -218,31 +221,6 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
                     b.HasIndex("Kind");
 
                     b.ToTable("GraphNodes", (string)null);
-                });
-
-            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.IndexRunStateRecord", b =>
-                {
-                    b.Property<int>("Id")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("GraphRevision")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT")
-                        .HasDefaultValue("initial");
-
-                    b.Property<string>("LastAttemptJson")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("LastSuccessfulIndexJson")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("IndexRunState", null, t =>
-                        {
-                            t.HasCheckConstraint("CK_IndexRunState_Singleton", "Id = 1");
-                        });
                 });
 
             modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.MemoryNodeRecord", b =>

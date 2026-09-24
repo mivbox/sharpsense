@@ -51,7 +51,7 @@ public sealed class UpsertProtectionTests
         dbContext.MemoryNodes.Add(new MemoryNodeRecord
         {
             Id = Guid.NewGuid(),
-            TargetFullyQualifiedName = fqdn,
+            TargetCodeNodeId = nodeId,
             TargetCodeHash = "hash-v1",
             Content = "Always greet politely.",
             ContentHash = "content-hash",

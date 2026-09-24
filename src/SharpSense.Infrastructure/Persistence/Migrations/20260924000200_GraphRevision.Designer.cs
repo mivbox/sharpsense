@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SharpSense.Infrastructure.Persistence;
 
@@ -10,9 +11,10 @@ using SharpSense.Infrastructure.Persistence;
 namespace SharpSense.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SharpSenseDbContext))]
-    partial class SharpSenseDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260924000200_GraphRevision")]
+    partial class GraphRevision
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.6");

@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using Moq;
+using Microsoft.EntityFrameworkCore;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.Memory.Abstractions;
@@ -84,7 +85,7 @@ public sealed class HybridSearcherTests
             new MemoryNodeRecord
             {
                 Id = Guid.NewGuid(),
-                TargetFullyQualifiedName = KnowledgeGraphFixture.DirectCallerFullyQualifiedName,
+                TargetCodeNodeId = KnowledgeGraphFixture.DirectCallerNodeId,
                 TargetCodeHash = "hash-1",
                 Content = "Security review note",
                 ContentHash = "memory-hash-1",
@@ -113,5 +114,32 @@ public sealed class HybridSearcherTests
         result.Hits.Should().NotBeEmpty();
         result.Hits.Select(static hit => hit.Id).Should().Contain(KnowledgeGraphFixture.DirectCallerNodeId);
         embeddings.VerifyAll();
+    }
+
+    [Theory]
+    [InlineData("security")]
+    [InlineData("\"Security review\"")]
+    public async Task WhenMemoryMatchesWithoutVectors_ThenLexicalSearchFindsItsOwner(string searchText)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var factory = new InMemoryContextFactory(new(UseMigrations: true, LoadVectorExtension: true));
+        await using var context = await factory.GetContext<SharpSenseDbContext>(ct);
+        await KnowledgeGraphFixture.SeedAsync(context);
+        await context.CodeNodes.ExecuteUpdateAsync(setters => setters.SetProperty(node => node.VectorEmbedding, (float[]?)null), ct);
+        context.MemoryNodes.Add(new MemoryNodeRecord
+        {
+            Id = Guid.NewGuid(), TargetCodeNodeId = KnowledgeGraphFixture.DirectCallerNodeId,
+            TargetCodeHash = "hash-1", Content = "Security review note", ContentHash = "memory-hash",
+            TagsJson = "[\"security\"]", CreatedAt = DateTimeOffset.UtcNow
+        });
+        await context.SaveChangesAsync(ct);
+        var embeddings = new Mock<IEmbeddingGenerator>();
+        embeddings.Setup(generator => generator.Generate(searchText, ct)).ReturnsAsync(new TextEmbedding(searchText, [1f, 0f]));
+        var searcher = new HybridSearcher(factory.CreateDbContextFactory<SharpSenseDbContext>(), embeddings.Object,
+            new SqliteKeywordCandidateProvider());
+
+        var result = await searcher.Search(new HybridSearchQuery(searchText, IncludeMemories: true, TagFilters: ["security"]), ct);
+
+        result.Hits.Should().ContainSingle().Which.Id.Should().Be(KnowledgeGraphFixture.DirectCallerNodeId);
     }
 }

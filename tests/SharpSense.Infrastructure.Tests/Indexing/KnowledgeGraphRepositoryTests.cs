@@ -334,7 +334,7 @@ public sealed class KnowledgeGraphRepositoryTests
     }
 
     [Fact]
-    public async Task WhenReplacingTargetWithDuplicateFullyQualifiedNames_ThenPersistsFirstSeenEntry()
+    public async Task WhenReplacingTargetWithDistinctIdentitiesAndMatchingNames_ThenPersistsBoth()
     {
         await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
             UseMigrations: true,
@@ -386,7 +386,9 @@ public sealed class KnowledgeGraphRepositoryTests
             TestContext.Current.CancellationToken);
 
         var persistedCodeNodes = await repository.GetPersistedCodeNodes(TestContext.Current.CancellationToken);
-        persistedCodeNodes.Should().ContainSingle();
-        persistedCodeNodes[0].FullyQualifiedName.Should().Be("Fixture.Processor");
+        persistedCodeNodes.Should().HaveCount(2);
+        persistedCodeNodes.Select(node => node.CanonicalId)
+            .Should().BeEquivalentTo(firstCanonicalId, secondCanonicalId);
+        persistedCodeNodes.Should().OnlyContain(node => node.FullyQualifiedName == "Fixture.Processor");
     }
 }

@@ -15,9 +15,8 @@ public sealed class MemoryNodeConfiguration : IEntityTypeConfiguration<MemoryNod
         builder.Property(memoryNode => memoryNode.Id)
             .ValueGeneratedNever();
 
-        builder.Property(memoryNode => memoryNode.TargetFullyQualifiedName)
-            .IsRequired()
-            .HasMaxLength(2048);
+        builder.Property(memoryNode => memoryNode.TargetCodeNodeId)
+            .IsRequired();
 
         builder.Property(memoryNode => memoryNode.TargetCodeHash)
             .IsRequired()
@@ -48,11 +47,10 @@ public sealed class MemoryNodeConfiguration : IEntityTypeConfiguration<MemoryNod
 
         builder.HasOne<CodeNodeRecord>()
             .WithMany()
-            .HasPrincipalKey(codeNode => codeNode.FullyQualifiedName)
-            .HasForeignKey(memoryNode => memoryNode.TargetFullyQualifiedName)
+            .HasForeignKey(memoryNode => memoryNode.TargetCodeNodeId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(memoryNode => memoryNode.TargetFullyQualifiedName);
+        builder.HasIndex(memoryNode => memoryNode.TargetCodeNodeId);
         builder.HasIndex(memoryNode => memoryNode.ContentHash);
         builder.HasIndex(memoryNode => memoryNode.CreatedAt);
     }

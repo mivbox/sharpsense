@@ -9,5 +9,7 @@ public enum EdgeType
     Instantiates,
     FieldAccess,
     ServiceRegistration,
-    DocumentLink
+    DocumentLink,
+    Import,
+    HttpRequest
 }

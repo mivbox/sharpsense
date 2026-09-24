@@ -74,6 +74,7 @@ public sealed class HybridSearcher(
         var rankedIds = await ExecuteHybridRankingAsync(
             context,
             matchQuery,
+            query.SearchText,
             queryVector,
             projectNodeId,
             query.IncludedNodeTypes ?? [],
@@ -107,6 +108,7 @@ public sealed class HybridSearcher(
     private static async Task<int[]> ExecuteHybridRankingAsync(
         SharpSenseDbContext context,
         string matchQuery,
+        string searchText,
         float[] queryVector,
         int? projectNodeId,
         IReadOnlyCollection<NodeType> includedNodeTypes,
@@ -133,7 +135,7 @@ public sealed class HybridSearcher(
         AddParameter(command, "@candidateLimit", candidateLimit);
         AddParameter(command, "@resultLimit", resultLimit);
         AddParameter(command, "@rrf", RrfConstant);
-        AddParameter(command, "@memorySearchText", matchQuery.ToLowerInvariant());
+        AddParameter(command, "@memorySearchText", searchText.Trim().Trim('"').ToLowerInvariant());
 
         MemorySearchSql.AddTagFilterParameters(command, tagFilters);
 
@@ -163,17 +165,18 @@ public sealed class HybridSearcher(
             memory_bm25 AS (
                 SELECT c.Id AS Id, ROW_NUMBER() OVER (ORDER BY memory_hits.score DESC) AS rank
                 FROM (
-                    SELECT m.TargetFullyQualifiedName AS fqn,
+                    SELECT m.TargetCodeNodeId AS node_id,
                            (CASE WHEN instr(lower(m.Content), @memorySearchText) > 0 THEN 12 ELSE 0 END
-                            + CASE WHEN instr(lower(m.TargetFullyQualifiedName), @memorySearchText) > 0 THEN 8 ELSE 0 END
+                            + CASE WHEN instr(lower(owner.FullyQualifiedName), @memorySearchText) > 0 THEN 8 ELSE 0 END
                             + CASE WHEN EXISTS (SELECT 1 FROM json_each(m.TagsJson) AS tag WHERE instr(lower(CAST(tag.value AS TEXT)), @memorySearchText) > 0) THEN 10 ELSE 0 END
                            ) AS score
                     FROM MemoryNodes m
+                    INNER JOIN CodeNodes owner ON owner.Id = m.TargetCodeNodeId
                     WHERE (instr(lower(m.Content), @memorySearchText) > 0
-                           OR instr(lower(m.TargetFullyQualifiedName), @memorySearchText) > 0
+                           OR instr(lower(owner.FullyQualifiedName), @memorySearchText) > 0
                            OR EXISTS (SELECT 1 FROM json_each(m.TagsJson) AS tag WHERE instr(lower(CAST(tag.value AS TEXT)), @memorySearchText) > 0)){{memoryTagFilterClause}}
                 ) memory_hits
-                INNER JOIN CodeNodes c ON c.FullyQualifiedName = memory_hits.fqn
+                INNER JOIN CodeNodes c ON c.Id = memory_hits.node_id
                 WHERE (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
                   AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))
                 ORDER BY memory_hits.score DESC
@@ -182,7 +185,7 @@ public sealed class HybridSearcher(
             memory_vec AS (
                 SELECT c.Id AS Id, ROW_NUMBER() OVER (ORDER BY vec_distance_cosine(m.VectorEmbedding, vec_f32(@queryVector)) ASC) AS rank
                 FROM MemoryNodes m
-                INNER JOIN CodeNodes c ON c.FullyQualifiedName = m.TargetFullyQualifiedName
+                INNER JOIN CodeNodes c ON c.Id = m.TargetCodeNodeId
                 WHERE m.VectorEmbedding IS NOT NULL{{memoryTagFilterClause}}
                   AND (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
                   AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))

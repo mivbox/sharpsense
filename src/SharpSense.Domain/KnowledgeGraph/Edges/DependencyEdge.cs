@@ -9,4 +9,6 @@ public class DependencyEdge
     public string CalleeId { get; set; } = string.Empty;
 
     public EdgeType EdgeType { get; set; } = EdgeType.ProjectReference;
+
+    public string? Metadata { get; set; }
 }
