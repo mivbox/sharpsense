@@ -70,7 +70,7 @@ public sealed class WorkspaceTreeRepository(SharpSenseDbContext context)
             .ThenBy(node => node.Path)
             .ToArray();
 
-        return new WorkspaceTreeResult(normalizedPath, nodes);
+        return new WorkspaceTreeResult(normalizedPath, nodes, parentDirectory.Id);
     }
 
     private async Task<DirectoryRecord?> ResolveParentDirectory(

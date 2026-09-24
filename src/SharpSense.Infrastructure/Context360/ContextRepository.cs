@@ -142,7 +142,8 @@ public sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> dbC
                 codeNode.Id,
                 codeNode.NodeType == NodeType.Method && codeNode.DisplayName.Contains("(")
                     ? codeNode.DisplayName.Substring(0, codeNode.DisplayName.IndexOf("("))
-                    : codeNode.DisplayName))
+                    : codeNode.DisplayName,
+                codeNode.Id))
             .ToArrayAsync(ct);
     }
 
@@ -169,7 +170,8 @@ public sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> dbC
                 codeNode.Id,
                 Name = codeNode.NodeType == NodeType.Method && codeNode.DisplayName.Contains("(")
                     ? codeNode.DisplayName.Substring(0, codeNode.DisplayName.IndexOf("("))
-                    : codeNode.DisplayName
+                    : codeNode.DisplayName,
+                CodeNodeId = (int?)codeNode.Id
             });
         var projectNodes = context.ProjectNodes
             .AsNoTracking()
@@ -177,7 +179,8 @@ public sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> dbC
             .Select(static projectNode => new
             {
                 projectNode.Id,
-                Name = projectNode.Name
+                Name = projectNode.Name,
+                CodeNodeId = (int?)null
             });
 
         return codeNodes
@@ -187,7 +190,8 @@ public sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> dbC
             .Take(maxRelated)
             .Select(static node => new Context360RelatedNode(
                 node.Id,
-                node.Name))
+                node.Name,
+                node.CodeNodeId))
             .ToArrayAsync(ct);
     }
 }

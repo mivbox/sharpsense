@@ -19,6 +19,7 @@ public sealed class WorkspaceTreeRepositoryTests
         var result = await repository.GetTree("/", CancellationToken.None);
 
         result.ParentPath.Should().Be("/");
+        result.ParentDirectoryId.Should().Be(1);
         result.Nodes.Select(static node => node.Path)
             .Should()
             .Equal("docs", "root", "SharpSense.App.csproj", "README.md");
@@ -35,6 +36,7 @@ public sealed class WorkspaceTreeRepositoryTests
         var result = await repository.GetTree("docs", CancellationToken.None);
 
         result.ParentPath.Should().Be("docs");
+        result.ParentDirectoryId.Should().Be(2);
         result.Nodes.Should().ContainSingle();
         result.Nodes[0].Path.Should().Be("docs/Guide.md");
         result.Nodes[0].Kind.Should().Be("file");

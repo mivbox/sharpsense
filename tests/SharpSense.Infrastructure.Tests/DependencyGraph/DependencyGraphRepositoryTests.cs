@@ -1,3 +1,6 @@
+using System.IO.Abstractions;
+using Microsoft.EntityFrameworkCore;
+using SharpSense.Infrastructure.Storage;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.DependencyGraph;
 using SharpSense.Infrastructure.Persistence;
@@ -25,15 +28,15 @@ public sealed class DependencyGraphRepositoryTests
         await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(ct: TestContext.Current.CancellationToken);
 
         await SeedGraph(context);
-        var service = new DependencyGraphRepository(context);
+        var service = Repository(context);
 
-        var result = await Materialize(service.GetGraphNodes([AppDirectoryId], CancellationToken.None));
+        var result = (await service.GetNodesPage(new([AppDirectoryId]), TestContext.Current.CancellationToken)).Items.ToArray();
 
         Assert.Contains(
             result,
             static node => node is
                 {
-                    Id: "project:MyCompany.App/MyCompany.App.csproj",
+                    Id: AppProjectNodeId,
                     Label: "MyCompany.App",
                     Type: "project",
                     Scope: "selected",
@@ -43,7 +46,7 @@ public sealed class DependencyGraphRepositoryTests
             result,
             static node => node is
                 {
-                    Id: "node-user-service",
+                    Id: UserServiceNodeId,
                     Label: "MyCompany.App.UserService.LoadUser()",
                     Type: "method",
                     Scope: "selected",
@@ -53,7 +56,7 @@ public sealed class DependencyGraphRepositoryTests
             result,
             static node => node is
                 {
-                    Id: "project:MyCompany.Core/MyCompany.Core.csproj",
+                    Id: CoreProjectNodeId,
                     Label: "MyCompany.Core",
                     Type: "project",
                     Scope: "external",
@@ -63,7 +66,7 @@ public sealed class DependencyGraphRepositoryTests
             result,
             static node => node is
                 {
-                    Id: "node-user",
+                    Id: UserNodeId,
                     Label: "MyCompany.Core.User",
                     Type: "class",
                     Scope: "external",
@@ -78,17 +81,16 @@ public sealed class DependencyGraphRepositoryTests
         await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(ct: TestContext.Current.CancellationToken);
 
         await SeedGraph(context);
-        var service = new DependencyGraphRepository(context);
+        var service = Repository(context);
 
-        var result = await Materialize(service.GetGraphEdges([AppDirectoryId], CancellationToken.None));
+        var result = (await service.GetEdgesPage(new([AppDirectoryId]), TestContext.Current.CancellationToken)).Items.ToArray();
 
         Assert.Contains(
             result,
             static edge => edge is
                 {
-                    Id: "node-user-service|node-app-helper|methodcall",
-                    Source: "node-user-service",
-                    Target: "node-app-helper",
+                    Source: UserServiceNodeId,
+                    Target: AppHelperNodeId,
                     Type: "methodcall",
                     Scope: "internal"
                 });
@@ -96,10 +98,8 @@ public sealed class DependencyGraphRepositoryTests
             result,
             static edge => edge is
                 {
-                    Id:
-                    "project:MyCompany.App/MyCompany.App.csproj|project:MyCompany.Core/MyCompany.Core.csproj|projectreference",
-                    Source: "project:MyCompany.App/MyCompany.App.csproj",
-                    Target: "project:MyCompany.Core/MyCompany.Core.csproj",
+                    Source: AppProjectNodeId,
+                    Target: CoreProjectNodeId,
                     Type: "projectreference",
                     Scope: "boundary"
                 });
@@ -107,9 +107,8 @@ public sealed class DependencyGraphRepositoryTests
             result,
             static edge => edge is
                 {
-                    Id: "node-user-service|node-user|methodcall",
-                    Source: "node-user-service",
-                    Target: "node-user",
+                    Source: UserServiceNodeId,
+                    Target: UserNodeId,
                     Type: "methodcall",
                     Scope: "boundary"
                 });
@@ -138,11 +137,11 @@ public sealed class DependencyGraphRepositoryTests
             });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        var service = new DependencyGraphRepository(context);
+        var service = Repository(context);
 
-        var result = await Materialize(service.GetGraphEdges([AppDirectoryId], CancellationToken.None));
+        var result = (await service.GetEdgesPage(new([AppDirectoryId]), TestContext.Current.CancellationToken)).Items.ToArray();
 
-        Assert.DoesNotContain(result, static edge => edge.Target == "missing-node");
+        Assert.DoesNotContain(result, static edge => edge.Target == 999);
         Assert.Equal(3, result.Length);
     }
 
@@ -154,16 +153,16 @@ public sealed class DependencyGraphRepositoryTests
 
         await SeedGraph(context);
         await SeedBoundaryImplementsScenario(context);
-        var service = new DependencyGraphRepository(context);
+        var service = Repository(context);
 
-        var nodes = await Materialize(service.GetGraphNodes([AppDirectoryId], CancellationToken.None));
-        var edges = await Materialize(service.GetGraphEdges([AppDirectoryId], CancellationToken.None));
+        var nodes = (await service.GetNodesPage(new([AppDirectoryId]), TestContext.Current.CancellationToken)).Items.ToArray();
+        var edges = (await service.GetEdgesPage(new([AppDirectoryId]), TestContext.Current.CancellationToken)).Items.ToArray();
 
         Assert.Contains(
             nodes,
             static node => node is
                 {
-                    Id: "node-user-repository-interface",
+                    Id: UserRepositoryInterfaceNodeId,
                     Label: "MyCompany.App.Abstractions.IUserRepository",
                     Type: "interface",
                     Scope: "selected",
@@ -173,7 +172,7 @@ public sealed class DependencyGraphRepositoryTests
             nodes,
             static node => node is
                 {
-                    Id: "node-user-repository-implementation",
+                    Id: UserRepositoryImplementationNodeId,
                     Label: "MyCompany.Core.UserRepository",
                     Type: "class",
                     Scope: "external",
@@ -183,9 +182,8 @@ public sealed class DependencyGraphRepositoryTests
             edges,
             static edge => edge is
                 {
-                    Id: "node-user-repository-implementation|node-user-repository-interface|implements",
-                    Source: "node-user-repository-implementation",
-                    Target: "node-user-repository-interface",
+                    Source: UserRepositoryImplementationNodeId,
+                    Target: UserRepositoryInterfaceNodeId,
                     Type: "implements",
                     Scope: "boundary"
                 });
@@ -459,15 +457,6 @@ public sealed class DependencyGraphRepositoryTests
         await db.SaveChangesAsync();
     }
 
-    private static async Task<T[]> Materialize<T>(IAsyncEnumerable<T> values)
-    {
-        List<T> results = [];
-
-        await foreach (var value in values.WithCancellation(TestContext.Current.CancellationToken))
-        {
-            results.Add(value);
-        }
-
-        return [.. results];
-    }
+    private static GraphPageRepository Repository(SharpSenseDbContext context)
+        => new(context, new RepositoryWorkspace("/repo", "/workspace-home/fixture/index.db", new FileSystem()));
 }
