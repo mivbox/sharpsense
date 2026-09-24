@@ -2,6 +2,12 @@
 
 A workspace is a named selection of sources from one repository checkout. Multiple workspaces can select different parts of the same monorepo; each has its own graph and memories.
 
+## Guided terminal manager
+
+Run `sharpsense workspace` to select, inspect, create, rename, add/remove sources, merge, analyze, or watch a workspace. The manager does not delete workspaces. `sharpsense` alone still shows command help. In redirected terminals use the explicit subcommands below.
+
+Setup is shared with `configure`: discover source candidates or enter manual paths/globs, review the proposed definition, then save. Discovery skips dependency/build directories and has bounded traversal; manual paths remain available if discovery cannot finish.
+
 ## Create a workspace
 
 Run `sharpsense configure` in an interactive terminal, or provide the full selection:
@@ -20,7 +26,7 @@ Replace the example paths with existing sources. The language flags are repeatab
 
 ## Select a workspace
 
-Use `--workspace <name-or-id>` on analyze, doctor, query, memory, execution, and MCP commands. Without it, SharpSense selects the single registered workspace matching the current repository. If none or more than one matches, the command asks you to configure or select one explicitly.
+Use `--workspace <name-or-id>` on analyze, doctor, query, memory, execution, and MCP commands. Without it, SharpSense selects the single registered workspace matching the current repository. Interactive `analyze` offers a picker or setup when none or more than one matches. Other commands and redirected execution report the required explicit selection. Invalid explicit names are always errors.
 
 `--repo-root <path>` changes the repository lookup or source-path base; it does not create an implicit workspace. Source paths are stored relative to the canonical repository root.
 
@@ -36,6 +42,7 @@ Numeric node IDs belong to their workspace. Keep the same workspace selected whe
 ## Change or combine sources
 
 ```bash
+sharpsense workspace rename old-name product
 sharpsense workspace add product --markdown 'runbooks/**/*.md'
 sharpsense workspace remove product --markdown 'runbooks/**/*.md'
 sharpsense workspace merge combined backend frontend

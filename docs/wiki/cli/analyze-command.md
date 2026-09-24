@@ -11,12 +11,16 @@ The command takes no positional solution or directory. Configure C# projects/sol
 
 | Option | Behavior |
 | --- | --- |
-| `--workspace <name-or-id>` | Select a registered workspace; otherwise use the unique match for the current repository. |
+| `--workspace <name-or-id>` | Select a registered workspace; otherwise use the unique repository match, or offer an interactive picker/setup. |
 | `--watch` | After the initial index, process relevant filesystem changes until stopped. |
 | `--no-embeddings` | Skip generating embeddings; structural graph queries remain available. |
 | `--no-cache` | Regenerate embeddings instead of reusing matching persisted vectors. |
 | `--repo-root <path>` | Use this directory when resolving an implicit workspace. |
 | `-v` / `--verbose` | Enable verbose logging. |
+
+Interactive output uses an injected Spectre console to show elapsed time, named phases, and concurrent language/source activity. Embedding and source counts appear when known; there is no estimated overall percentage. Completion summaries report committed node/edge/document counts and available source/embedding reuse. Bounded diagnostics remain visible. Redirected output uses concise milestones and never prompts.
+
+Watch output distinguishes initial reconciliation, idle watching, updates, full recovery, and stopping. Ctrl+C cancels work gracefully and releases the workspace lease. The manager and explicit `analyze` command use the same runner.
 
 Extraction combines selected sources before committing a complete graph snapshot. A required source failure preserves the previous graph. Unchanged nodes can retain their identities and embeddings; newly missing nodes are removed, including memories attached to removed nodes.
 

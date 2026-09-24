@@ -36,3 +36,13 @@ Filesystem subscriptions start before the initial index. Edits queued during tha
 The lease is an open OS handle on `.index.lock`; a leftover file does not indicate a running watcher. UI job status describes jobs owned by that UI host, while [graph statistics](../cli/doctor-command.md) describe persisted indexing outcomes.
 
 See [analyze](../cli/analyze-command.md), [source discovery](file-discovery.md), and [SQLite persistence](../persistence/sqlite-schema.md).
+
+## Shared analysis notifications
+
+Full and incremental handlers publish typed notifications through `IAnalysisNotifier`: operation start, phase transitions, source activity/reuse, embedding progress, diagnostics, committed summaries, ignored batches, failure, and cancellation. Operation IDs and ordered sequences keep parallel source reports attributable without deriving state from display messages.
+
+`AnalysisSnapshotStore` reduces these notifications into bounded immutable presentation state. It retains the current source for each language, bounded diagnostics, and the last committed summary; late progress cannot reopen a finished operation. Existing extractor progress reporters are adapted at the indexing boundary.
+
+The Spectre CLI renders snapshots from one presenter loop. UI-owned sessions project them into workspace job status and publish bounded SSE snapshots. Neither presentation layer controls the indexing commit or blocks language workers on terminal/network output. CLI prompts remain separate in `IAnalyzeInteractions`.
+
+Graph revision advances only on a persisted commit; status sequence advances on progress and lifecycle changes. Cancellation can arrive just after persistence, so the UI retains a committed revision while stopping. Closing an SSE subscription never cancels its workspace job.

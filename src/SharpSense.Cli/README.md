@@ -54,8 +54,10 @@ an existing MCP session to a different graph.
 ## Manage workspaces
 
 ```bash
+sharpsense workspace                         # Guided terminal manager
 sharpsense workspace list
 sharpsense workspace show commerce --json
+sharpsense workspace rename old-name commerce
 sharpsense workspace add commerce --markdown "design/**/*.md"
 sharpsense workspace remove commerce --markdown "design/**/*.md"
 
@@ -63,6 +65,10 @@ sharpsense workspace create api --repo-root /path/to/monorepo --csharp src/Api/A
 sharpsense workspace create web --repo-root /path/to/monorepo --typescript frontend/tsconfig.json
 sharpsense workspace merge product api web
 ```
+
+The guided manager selects, creates, inspects, renames, edits, and merges workspaces, and can start analysis or watch.
+Setup offers bounded source discovery, manual paths/globs, and a review before saving. Explicit commands and JSON
+output remain suitable for scripts. Running `sharpsense` without a command still shows help.
 
 `remove` removes selected sources from a definition; it does not delete the workspace or its database. `merge` creates
 a new workspace from the source sets of existing workspaces in the same repository, preserving the originals.
@@ -81,7 +87,8 @@ Configuration and data live outside the repository:
 Set `SHARPSENSE_HOME` to an absolute directory to use another storage location. Configuration schema version 1 contains
 `version`, `id`, `name`, `repositoryRoot`, and explicit `sources`. Commands accept `--workspace <name-or-id>`.
 Without that option, graph commands resolve a single registered workspace for the current repository. When several
-workspaces match, select one explicitly. `--repo-root` is a lookup hint and never implicitly creates a workspace.
+workspaces match, select one explicitly. Interactive `analyze` also offers a workspace picker or setup; redirected
+commands never prompt, and an invalid explicit selection remains an error. `--repo-root` is a lookup hint and never implicitly creates a workspace.
 
 ## Analyze and query
 
@@ -94,6 +101,10 @@ sharpsense trace 42 --direction caller --workspace commerce
 sharpsense doctor --workspace commerce --json
 sharpsense mcp --workspace commerce
 ```
+
+Interactive analysis shows elapsed time, phase, per-language source activity, embeddings, saving, and a committed
+summary. Watch mode distinguishes reconciliation, idle, updates, recovery, and stopping. Redirected output uses
+concise milestones. Unknown totals stay indeterminate rather than presenting an overall percentage.
 
 An analysis builds the union of the configured sources and commits it together. Failed extraction preserves the previous
 graph. Watch mode first indexes the workspace, then processes changes; failed incremental work gets one full recovery
