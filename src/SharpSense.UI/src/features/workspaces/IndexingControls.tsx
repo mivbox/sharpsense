@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Alert,
   Box,
@@ -16,47 +16,43 @@ import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import StopRoundedIcon from "@mui/icons-material/StopRounded";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import { useWorkspace } from "../../shared/workspace/context";
-import { getIndexingStatus, startIndexing, stopIndexing } from "./api";
-
-const activeStates = new Set(["indexing", "watching", "stopping"]);
+import { startIndexing, stopIndexing } from "./api";
+import { AnalysisProgress } from "./AnalysisProgress";
+import { activeIndexingStates } from "./indexingStatus";
+import { useIndexingStatus } from "./useIndexingStatus";
 
 export function IndexingControls({ onIndexed }: { onIndexed: () => void }) {
   const { workspace } = useWorkspace();
   const client = useQueryClient();
   const [embeddings, setEmbeddings] = useState(true);
-  const lastRevision = useRef(0);
-  const status = useQuery({
-    queryKey: ["indexing", workspace.id],
-    queryFn: ({ signal }) => getIndexingStatus(workspace.id, signal),
-    refetchInterval: (query) =>
-      activeStates.has(query.state.data?.state ?? "") ? 1500 : 5000,
-    staleTime: 0,
-  });
+  const lastRevision = useRef("");
+  const { status, connected, updateStatus } = useIndexingStatus(workspace.id);
   const revision = status.data?.revision ?? 0;
+  const streamId = status.data?.streamId;
   useEffect(() => {
-    if (revision === lastRevision.current) return;
-    lastRevision.current = revision;
+    const identity = `${streamId ?? ""}:${revision}`;
+    if (identity === lastRevision.current) return;
+    lastRevision.current = identity;
     if (revision === 0) return;
     void client.invalidateQueries({
       predicate: (query) => query.queryKey[0] !== "indexing",
     });
     onIndexed();
-  }, [revision, client, onIndexed]);
+  }, [revision, streamId, client, onIndexed]);
   const start = useMutation({
     mutationFn: (watch: boolean) =>
       startIndexing(workspace.id, watch, !embeddings),
-    onSuccess: (value) =>
-      client.setQueryData(["indexing", workspace.id], value),
+    onSuccess: updateStatus,
   });
   const stop = useMutation({
     mutationFn: () => stopIndexing(workspace.id),
-    onSuccess: (value) =>
-      client.setQueryData(["indexing", workspace.id], value),
+    onSuccess: updateStatus,
   });
   const state = status.data?.state ?? "idle";
-  const active = activeStates.has(state);
+  const active = activeIndexingStates.has(state);
   const pending = start.isPending || stop.isPending || state === "stopping";
-  const error = start.error ?? stop.error ?? status.error;
+  const error = start.error ?? stop.error ?? (!connected ? status.error : null);
+  const diagnostics = status.data?.diagnostics ?? [];
   const labels: Record<string, string> = {
     idle: "Ready",
     indexing: "Indexing",
@@ -119,7 +115,7 @@ export function IndexingControls({ onIndexed }: { onIndexed: () => void }) {
                 disabled={pending}
                 onClick={() => stop.mutate()}
               >
-                Stop
+                {state === "stopping" ? "Stopping…" : "Stop"}
               </Button>
             ) : (
               <>
@@ -142,21 +138,31 @@ export function IndexingControls({ onIndexed }: { onIndexed: () => void }) {
             )}
           </Stack>
         </Stack>
+        {!connected && active && (
+          <Typography variant="caption" color="text.secondary" role="status">
+            Reconnecting to live updates. Checking analysis status periodically.
+          </Typography>
+        )}
+        {status.data?.analysis && (
+          <AnalysisProgress analysis={status.data.analysis} />
+        )}
         {error && <Alert severity="error">{error.message}</Alert>}
         {state === "failed" && (
           <Alert severity="error">
-            {status.data?.diagnostics?.join(" ") ||
+            {diagnostics.slice(0, 3).join(" ") ||
               status.data?.message ||
               "Indexing failed. The previous graph is preserved."}
           </Alert>
         )}
+        {state !== "failed" && diagnostics.length > 0 && (
+          <Alert severity="warning">
+            {diagnostics.slice(0, 3).join(" ")}
+            {diagnostics.length > 3 &&
+              ` Plus ${diagnostics.length - 3} more diagnostics. View index status for details.`}
+          </Alert>
+        )}
         {state === "watching" && (
           <Box>
-            {Boolean(status.data?.diagnostics?.length) && (
-              <Alert severity="warning" sx={{ mb: 1 }}>
-                {status.data?.diagnostics?.slice(0, 3).join(" ")}
-              </Alert>
-            )}
             <Typography variant="caption" color="text.secondary">
               Changes to this workspace’s selected sources will refresh its
               graph automatically.
@@ -164,7 +170,9 @@ export function IndexingControls({ onIndexed }: { onIndexed: () => void }) {
           </Box>
         )}
       </Stack>
-      {(state === "indexing" || pending) && <LinearProgress />}
+      {(state === "indexing" ||
+        status.data?.analysis?.state === "running" ||
+        pending) && <LinearProgress aria-label="Analysis activity" />}
     </Paper>
   );
 }
