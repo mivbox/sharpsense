@@ -11,6 +11,7 @@ import puppeteer, {
   type Page,
 } from "puppeteer";
 import { preview } from "vite";
+import { idleIndexingStatus } from "./indexingFixture";
 
 const uiRoot = fileURLToPath(new URL("../", import.meta.url));
 assert.ok(
@@ -328,6 +329,10 @@ function node(id: number, beta: boolean) {
 
 async function respond(request: HTTPRequest) {
   const url = new URL(request.url());
+  if (url.pathname.endsWith("/indexing/events")) {
+    await request.respond({ status: 204 });
+    return;
+  }
   if (!url.pathname.startsWith("/api/")) {
     await request.continue();
     return;
@@ -340,13 +345,7 @@ async function respond(request: HTTPRequest) {
   if (url.pathname === "/api/workspaces")
     body = { workspaces, initialWorkspaceId: null };
   else if (/^\/api\/workspaces\/[^/]+\/indexing$/.test(url.pathname))
-    body = {
-      workspaceId: selectedWorkspace.id,
-      state: "idle",
-      watch: false,
-      revision: 0,
-      diagnostics: [],
-    };
+    body = idleIndexingStatus(url.pathname.split("/")[3]!);
   else {
     assert.ok(
       workspaces.some((item) => item.id === workspace),

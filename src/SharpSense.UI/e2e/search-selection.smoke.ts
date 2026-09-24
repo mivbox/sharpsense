@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer, { type Browser, type HTTPRequest } from "puppeteer";
 import { preview } from "vite";
+import { idleIndexingStatus } from "./indexingFixture";
 
 const uiRoot = fileURLToPath(new URL("../", import.meta.url));
 assert.ok(
@@ -125,6 +126,10 @@ try {
 
 async function respond(request: HTTPRequest) {
   const pathname = new URL(request.url()).pathname;
+  if (pathname.endsWith("/indexing/events")) {
+    await request.respond({ status: 204 });
+    return;
+  }
   if (!pathname.startsWith("/api/")) {
     await request.continue();
     return;
@@ -133,13 +138,7 @@ async function respond(request: HTTPRequest) {
     pathname === "/api/workspaces"
       ? { workspaces: [workspace], initialWorkspaceId: null }
       : pathname === "/api/workspaces/" + workspace.id + "/indexing"
-        ? {
-            workspaceId: workspace.id,
-            state: "idle",
-            watch: false,
-            revision: 0,
-            diagnostics: [],
-          }
+        ? idleIndexingStatus(workspace.id)
         : pathname === "/api/overview"
           ? {
               name: workspace.name,

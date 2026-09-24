@@ -140,7 +140,7 @@ try {
     }
   });
   await page.goto(workspaceUrl(baseUrl, "/explorer"), {
-    waitUntil: "networkidle0",
+    waitUntil: "domcontentloaded",
   });
   await page.waitForSelector("[data-tree-path]");
   await page.waitForSelector('[data-testid="graph-empty-state"]');
@@ -237,7 +237,7 @@ try {
     new URL(explorerUrl).searchParams.has("selected"),
     "Graph selection must be shareable in the URL.",
   );
-  await page.reload({ waitUntil: "networkidle0" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForFunction(
     (id) =>
       document.querySelector('[data-testid="selected-node-id"]')
@@ -379,15 +379,20 @@ try {
   assert.equal((await searched).status(), 200);
   await page.waitForSelector("[data-search-node-id]");
   assert.equal(new URL(page.url()).searchParams.get("q"), "MessageConsumer");
-  await page.goBack({ waitUntil: "networkidle0" });
+  await page.goBack({ waitUntil: "domcontentloaded" });
+  await page.waitForFunction(
+    () =>
+      new URL(window.location.href).searchParams.get("q") === null &&
+      document.querySelector('[data-testid="run-search"]') !== null,
+  );
   assert.equal(
     new URL(page.url()).searchParams.get("q"),
     null,
     "Back must restore the unsubmitted search route.",
   );
-  await page.goForward({ waitUntil: "networkidle0" });
+  await page.goForward({ waitUntil: "domcontentloaded" });
   await page.waitForSelector("[data-search-node-id]");
-  await page.reload({ waitUntil: "networkidle0" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForSelector("[data-search-node-id]");
   await page.click("[data-search-node-id]");
   await page.screenshot({
@@ -572,7 +577,7 @@ try {
         selectedNode.codeNodeId +
         "&depth=2&direction=caller",
     ),
-    { waitUntil: "networkidle0" },
+    { waitUntil: "domcontentloaded" },
   );
   await page.waitForFunction(
     (id) =>
@@ -587,7 +592,17 @@ try {
     traceCount,
     "Tool deep links must not execute automatically.",
   );
-  await page.reload({ waitUntil: "networkidle0" });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForFunction(
+    (id) =>
+      [...document.querySelectorAll("input")].some(
+        (input) => input.value === String(id),
+      ) &&
+      document.querySelector<HTMLButtonElement>('[data-testid="run-tool"]')
+        ?.disabled === false,
+    {},
+    selectedNode.codeNodeId,
+  );
   assert.equal(new URL(page.url()).searchParams.get("depth"), "2");
   const deepLinkRun = page.waitForResponse(
     (response) =>
@@ -617,7 +632,7 @@ try {
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
   await page.click('[data-testid="mobile-nav-explorer"]');
   await page.waitForSelector('[data-testid="workspace-explorer-panel"]');
-  await page.goto(explorerUrl, { waitUntil: "networkidle0" });
+  await page.goto(explorerUrl, { waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="selected-node-id"]');
   assert.ok(
     await page.evaluate(
@@ -638,7 +653,7 @@ try {
   const graphClickUrl = new URL(explorerUrl);
   graphClickUrl.searchParams.delete("selected");
   graphClickUrl.searchParams.delete("mode");
-  await page.goto(graphClickUrl.href, { waitUntil: "networkidle0" });
+  await page.goto(graphClickUrl.href, { waitUntil: "domcontentloaded" });
   await page.waitForSelector('[data-testid="graph-canvas"] canvas');
   await page.waitForSelector('[data-testid="graph-canvas"][aria-busy="false"]');
   await delay(700);
@@ -655,7 +670,7 @@ try {
     "Settled graph and actual canvas-node click captured: " + screenshotDir,
   );
   await page.goto(workspaceUrl(baseUrl, "/explorer"), {
-    waitUntil: "networkidle0",
+    waitUntil: "domcontentloaded",
   });
   await page.waitForSelector('[data-tree-checkbox-trigger="/"] input');
   assert.equal(
@@ -709,7 +724,7 @@ try {
     (response) =>
       response.url().includes("/api/graph/nodes/page") && response.ok(),
   );
-  await page.reload({ waitUntil: "networkidle0" });
+  await page.reload({ waitUntil: "domcontentloaded" });
   assert.ok(
     ((await (await reloadedRootGraph).json()) as GraphNodesPage).items.some(
       (node) => node.label.endsWith("RootWorkspaceSymbol"),
@@ -1014,7 +1029,7 @@ async function verifyProgressiveGraph(
     });
 
     scenario = "conflict";
-    await page.goto(route(false), { waitUntil: "networkidle0" });
+    await page.goto(route(false), { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() =>
       document
         .querySelector('[data-testid="graph-loading-state"]')
