@@ -12,6 +12,27 @@ namespace SharpSense.Infrastructure.Tests.Indexing.CSharp;
 
 public sealed class CSharpLanguageExtractorTests
 {
+    [Theory]
+    [InlineData("/repo/tsconfig.json")]
+    [InlineData("/repo/client")]
+    public async Task WhenNonCSharpTargetReceivesCSharpChange_ThenDoesNotLoadRoslyn(string target)
+    {
+        var loader = new Mock<IWorkspaceLoader>(MockBehavior.Strict);
+        var resolver = new Mock<ICSharpWorkspaceTargetResolver>(MockBehavior.Strict);
+        resolver.Setup(candidate => candidate.ResolveTargetPath(target)).Returns((string?)null);
+        var extractor = new CSharpLanguageExtractor(loader.Object,
+            new Mock<ITargetAnalysisEngine>(MockBehavior.Strict).Object,
+            new Mock<IRepositoryWorkspace>(MockBehavior.Strict).Object, resolver.Object);
+
+        var result = await extractor.ExtractIncremental(new IncrementalExtractionContext(target,
+            [new(WorkspaceFileChangeAction.Modified, NewPath: "/repo/Backend/Feature.cs")]),
+            TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value.CodeNodes);
+        loader.VerifyNoOtherCalls();
+    }
+
     [Fact]
     public async Task WhenIncrementalExtractionStartsCold_ThenMergesLoaderDiagnostics()
     {
@@ -26,10 +47,13 @@ public sealed class CSharpLanguageExtractorTests
                 WorkspaceFileChangeAction.Modified,
                 NewPath: "/repo/src/Feature.cs")
         ];
+        var targetResolver = new Mock<ICSharpWorkspaceTargetResolver>(MockBehavior.Strict);
+        targetResolver.Setup(resolver => resolver.ResolveTargetPath("/repo/SharpSense.sln")).Returns("/repo/SharpSense.sln");
         var extractor = new CSharpLanguageExtractor(
             workspaceLoader.Object,
             analysisEngine.Object,
-            repositoryWorkspace.Object);
+            repositoryWorkspace.Object,
+            targetResolver.Object);
 
         workspaceLoader.Setup(loader => loader.Load(
                 "/repo/SharpSense.sln",

@@ -48,14 +48,8 @@ public sealed class RoslynTargetAnalysisEngineTests
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "Contracts.IMessageProvider");
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "App.MessageProvider");
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "App.MessageConsumer.Render()");
-        // One symbol = one CodeNode. The persisted IX_CodeNodes_FullyQualifiedName unique index
-        // enforces this invariant, so the extractor payload must never carry a duplicate FQDN.
-        // If a future fixture starts sharing a symbol across projects (which currently nothing
-        // here does) the failing assertion below is the first line of defence.
-        payload.CodeNodes
-            .Select(static codeNode => codeNode.FullyQualifiedName)
-            .Distinct(StringComparer.Ordinal)
-            .Should().HaveCount(payload.CodeNodes.Count);
+        payload.CodeNodes.Select(node => node.CanonicalId)
+            .Should().OnlyHaveUniqueItems();
         AssertContainsEdge(
             payload.Edges,
             fullyQualifiedNamesById,
@@ -84,6 +78,52 @@ public sealed class RoslynTargetAnalysisEngineTests
             edge.CallerId == "project:App/App.csproj" &&
             edge.CalleeId == "project:Contracts/Contracts.csproj" &&
             edge.EdgeType == EdgeType.ProjectReference);
+    }
+
+    [Fact]
+    public async Task WhenProjectsDeclareMatchingNames_ThenKeepsTheirNodesAndCallsSeparate()
+    {
+        var fileSystem = CreateRepositoryFileSystem();
+        var workspace = CreateRepositoryWorkspace(fileSystem);
+        await using var services = CreateServiceProvider(fileSystem);
+        var engine = services.GetRequiredService<ITargetAnalysisEngine>();
+        var solution = CreateFixtureSolution().Solution;
+        const string source = """
+            namespace Shared;
+            public class Options
+            {
+                public void Save() { }
+                public void Run() { Save(); }
+            }
+            """;
+
+        foreach (var project in solution.Projects.ToArray())
+        {
+            solution = solution.AddDocument(
+                DocumentId.CreateNewId(project.Id),
+                "Options.cs",
+                SourceText.From(source),
+                filePath: $"/repo/{project.Name}/Options.cs");
+        }
+
+        var result = await engine.Extract(
+            "/repo/CommandPipelineFixture.sln", solution, workspace,
+            ct: TestContext.Current.CancellationToken);
+
+        var options = result.CodeNodes.Where(node => node.FullyQualifiedName == "Shared.Options").ToArray();
+        options.Should().HaveCount(2);
+        options.Select(node => node.ProjectId).Should().OnlyHaveUniqueItems();
+        foreach (var option in options)
+        {
+            var caller = result.CodeNodes.Single(node =>
+                node.ProjectId == option.ProjectId && node.FullyQualifiedName == "Shared.Options.Run()");
+            var callee = result.CodeNodes.Single(node =>
+                node.ProjectId == option.ProjectId && node.FullyQualifiedName == "Shared.Options.Save()");
+            result.Edges.Should().Contain(edge => edge.EdgeType == EdgeType.MethodCall &&
+                edge.CallerId == caller.CanonicalId && edge.CalleeId == callee.CanonicalId);
+            result.Edges.Should().NotContain(edge => edge.EdgeType == EdgeType.MethodCall &&
+                edge.CallerId == caller.CanonicalId && edge.CalleeId != callee.CanonicalId);
+        }
     }
 
     [Fact]
@@ -405,7 +445,7 @@ public sealed class RoslynTargetAnalysisEngineTests
     }
 
     private static IRepositoryWorkspace CreateRepositoryWorkspace(MockFileSystem fileSystem)
-        => new RepositoryWorkspaceFactory(fileSystem).CreateFromWorkingDirectory("/repo");
+        => new RepositoryWorkspace("/repo", "/test-storage/index.db", fileSystem);
 
     private static ServiceProvider CreateServiceProvider(IFileSystem fileSystem)
     {

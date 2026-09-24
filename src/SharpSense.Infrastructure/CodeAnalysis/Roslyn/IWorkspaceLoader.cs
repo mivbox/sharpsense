@@ -27,6 +27,9 @@ public interface IWorkspaceLoader : IDisposable
         string targetPath,
         CancellationToken ct = default);
 
+    /// <summary>Reopens the target from disk, discarding cached project evaluation and document snapshots.</summary>
+    Task<Result<WorkspaceLoadResult>> Reload(string targetPath, CancellationToken ct = default);
+
     Task<Result<WorkspaceLoadResult>> UpdateDocuments(
         string targetPath,
         IReadOnlyList<WorkspaceFileChange> changedFiles)

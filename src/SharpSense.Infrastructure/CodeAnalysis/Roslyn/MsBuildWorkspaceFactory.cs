@@ -20,7 +20,12 @@ public sealed class MsBuildWorkspaceFactory : IMsBuildWorkspaceFactory
             ["SkipCompilerExecution"] = "true",
             ["ProvideCommandLineArgs"] = "true",
             ["DesignCheck"] = "false",
-            ["CheckForSystemRuntimeDependency"] = "true"
+            ["CheckForSystemRuntimeDependency"] = "true",
+            // Analysis can use partial semantic models. Keep warnings (including NuGet
+            // audit findings) visible without promoting them to project-load failures.
+            ["TreatWarningsAsErrors"] = "false",
+            ["WarningsAsErrors"] = string.Empty,
+            ["MSBuildWarningsAsErrors"] = string.Empty
         };
         var workspace = MSBuildWorkspace.Create(properties, _hostServices.Value);
 

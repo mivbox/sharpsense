@@ -127,7 +127,8 @@ internal sealed class RoslynTargetAnalysisEngine : ITargetAnalysisEngine
 
         try
         {
-            var changedDocuments = GetChangedDocuments(solution, absoluteChanges);
+            var expandedChanges = await PartialDeclarationChanges.Expand(solution, absoluteChanges, ct);
+            var changedDocuments = GetChangedDocuments(solution, expandedChanges);
             if (changedDocuments.Count == 0)
             {
                 return new KnowledgeGraphExtractionPayload(
