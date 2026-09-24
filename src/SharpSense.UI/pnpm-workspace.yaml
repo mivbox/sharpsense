@@ -1,0 +1,7 @@
+packages:
+  - .
+
+allowBuilds:
+  esbuild: true
+  # Browser installation is explicit in CI and local browser-test instructions.
+  puppeteer: false

@@ -427,6 +427,9 @@ test-results/
 *.dmg
 *.app
 
+# The integration fixture is a .NET project, not a macOS app bundle.
+!tests/SharpSense.IntegrationTests/Assets/CommandPipelineFixture/CommandPipelineFixture.App/
+
 # content below from: https://github.com/github/gitignore/blob/main/Global/macOS.gitignore
 # General
 .DS_Store
