@@ -7,4 +7,5 @@ namespace SharpSense.Application.Indexing.Models;
 public sealed record IndexedDependency(
     string CallerId,
     string CalleeId,
-    EdgeType EdgeType);
+    EdgeType EdgeType,
+    string? Metadata = null);

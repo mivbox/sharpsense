@@ -13,6 +13,8 @@ namespace SharpSense.Application.Indexing.Abstractions;
 [PublicAPI]
 public interface ILanguageExtractor
 {
+    WorkspaceSourceKind? SourceKind => null;
+
     /// <summary>
     /// Gets the stable extractor identifier used by the indexing orchestrator to attribute tracing, progress, and
     /// diagnostics to the extractor that produced a given batch of results.

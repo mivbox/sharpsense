@@ -6,6 +6,12 @@ public interface IRepositoryWorkspace
 
     string DatabasePath { get; }
 
+    Guid? WorkspaceId => null;
+
+    string? WorkspaceName => null;
+
+    WorkspaceDefinition? Definition => null;
+
     string ToRepositoryRelativePath(string? filePath);
 
     string GetRequiredTargetDirectoryPath(string targetPath);
