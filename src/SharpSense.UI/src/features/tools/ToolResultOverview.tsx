@@ -129,7 +129,7 @@ function SymbolResultGroup({
 
   return (
     <Box>
-      <Stack direction="row" spacing={1} alignItems="center">
+      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
         <Typography variant="subtitle2">{group.title}</Typography>
         <Chip size="small" label={group.items.length} />
       </Stack>

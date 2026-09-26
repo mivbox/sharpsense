@@ -195,12 +195,15 @@ export default function ExplorerPage({
         >
           <Stack
             direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-            sx={{ px: 2, py: 1.5 }}
+            sx={{
+              alignItems: "center",
+              justifyContent: "space-between",
+              px: 2,
+              py: 1.5,
+            }}
             spacing={1}
           >
-            <Stack direction="row" spacing={1} alignItems="center">
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
               <HubOutlinedIcon color="primary" fontSize="small" />
               <Typography variant="subtitle2">Dependency graph</Typography>
               {graph.fetching && <CircularProgress size={14} />}
@@ -229,8 +232,7 @@ export default function ExplorerPage({
           <Divider />
           <Stack
             direction={{ xs: "column", sm: "row" }}
-            alignItems={{ sm: "center" }}
-            sx={{ p: 1.5 }}
+            sx={{ alignItems: { sm: "center" }, p: 1.5 }}
             spacing={1}
           >
             <TextField
@@ -250,7 +252,7 @@ export default function ExplorerPage({
                 htmlInput: { "aria-label": "Filter graph nodes" },
               }}
             />
-            <Stack direction="row" alignItems="center" sx={{ flexShrink: 0 }}>
+            <Stack direction="row" sx={{ alignItems: "center", flexShrink: 0 }}>
               <GraphTypeFilter
                 counts={typeCounts}
                 selected={state.types}
@@ -335,9 +337,12 @@ export default function ExplorerPage({
             ) : filtered.length === 0 ? (
               <Stack
                 spacing={1}
-                alignItems="center"
-                justifyContent="center"
-                sx={{ height: "100%", p: 2 }}
+                sx={{
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: "100%",
+                  p: 2,
+                }}
               >
                 <EmptyState
                   compact
@@ -375,10 +380,14 @@ export default function ExplorerPage({
           <Divider />
           <Stack
             direction="row"
-            flexWrap="wrap"
-            alignItems="center"
-            justifyContent="space-between"
-            sx={{ px: 2, py: 1.2, gap: 1 }}
+            sx={{
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+              px: 2,
+              py: 1.2,
+              gap: 1,
+            }}
           >
             <Typography
               variant="caption"
@@ -389,13 +398,13 @@ export default function ExplorerPage({
               {graph.loadedNodes.toLocaleString()} loaded nodes ·{" "}
               {visibleGraph.edges.length.toLocaleString()} visible edges
             </Typography>
-            <Stack direction="row" spacing={1.5} flexWrap="wrap">
+            <Stack direction="row" spacing={1.5} sx={{ flexWrap: "wrap" }}>
               {types.slice(0, 5).map((type) => (
                 <Stack
                   key={type}
                   direction="row"
                   spacing={0.5}
-                  alignItems="center"
+                  sx={{ alignItems: "center" }}
                 >
                   <Box
                     sx={{

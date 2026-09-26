@@ -174,7 +174,7 @@ export default function WorkspaceApp({
               </ListItemIcon>
               <ListItemText
                 primary={item.label}
-                primaryTypographyProps={{ variant: "body2" }}
+                slotProps={{ primary: { variant: "body2" } }}
               />
             </ListItemButton>
           ))}
@@ -216,8 +216,7 @@ export default function WorkspaceApp({
             <Stack
               direction="row"
               spacing={1.5}
-              alignItems="center"
-              sx={{ minWidth: 0 }}
+              sx={{ alignItems: "center", minWidth: 0 }}
             >
               <Typography
                 variant="body2"
@@ -232,7 +231,7 @@ export default function WorkspaceApp({
                 {current.label}
               </Typography>
             </Stack>
-            <Stack direction="row" spacing={1} alignItems="center">
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
               <Button
                 size="small"
                 onClick={onManage}
@@ -284,9 +283,11 @@ export default function WorkspaceApp({
           <IndexingControls onIndexed={onIndexed} />
           <Stack
             direction="row"
-            justifyContent="space-between"
-            alignItems="center"
-            sx={{ mb: 3 }}
+            sx={{
+              justifyContent: "space-between",
+              alignItems: "center",
+              mb: 3,
+            }}
             spacing={2}
           >
             <Box>

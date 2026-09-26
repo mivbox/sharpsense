@@ -50,8 +50,8 @@ export function WorkspacesPage({
         <Stack spacing={4}>
           <Stack
             direction={{ xs: "column", sm: "row" }}
-            justifyContent="space-between"
             spacing={2}
+            sx={{ justifyContent: "space-between" }}
           >
             <Box>
               <Typography variant="h4" component="h1">
@@ -61,7 +61,7 @@ export function WorkspacesPage({
                 Choose the code and documentation you want to explore together.
               </Typography>
             </Box>
-            <Stack direction="row" spacing={1} alignItems="center">
+            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
               <Button
                 startIcon={<MergeRoundedIcon />}
                 disabled={workspaces.length < 2}
@@ -116,7 +116,11 @@ export function WorkspacesPage({
                     }}
                   >
                     <CardContent sx={{ flexGrow: 1 }}>
-                      <Stack direction="row" alignItems="center" spacing={1.5}>
+                      <Stack
+                        direction="row"
+                        spacing={1.5}
+                        sx={{ alignItems: "center" }}
+                      >
                         <FolderOutlinedIcon color="primary" />
                         <Typography
                           variant="h6"
@@ -134,9 +138,7 @@ export function WorkspacesPage({
                       </Typography>
                       <Stack
                         direction="row"
-                        gap={1}
-                        flexWrap="wrap"
-                        sx={{ mt: 2 }}
+                        sx={{ gap: 1, flexWrap: "wrap", mt: 2 }}
                       >
                         <Chip
                           size="small"

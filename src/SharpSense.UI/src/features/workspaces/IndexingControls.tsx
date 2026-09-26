@@ -69,10 +69,9 @@ export function IndexingControls({ onIndexed }: { onIndexed: () => void }) {
         <Stack
           direction={{ xs: "column", lg: "row" }}
           spacing={2}
-          justifyContent="space-between"
-          alignItems={{ lg: "center" }}
+          sx={{ justifyContent: "space-between", alignItems: { lg: "center" } }}
         >
-          <Stack direction="row" spacing={1.5} alignItems="center">
+          <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
             <Chip
               size="small"
               label={labels[state] ?? state}
@@ -92,9 +91,8 @@ export function IndexingControls({ onIndexed }: { onIndexed: () => void }) {
           <Stack
             direction="row"
             spacing={1}
-            alignItems="center"
-            flexWrap="wrap"
             useFlexGap
+            sx={{ alignItems: "center", flexWrap: "wrap" }}
           >
             {!active && (
               <FormControlLabel

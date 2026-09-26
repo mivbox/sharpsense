@@ -55,9 +55,12 @@ export function WorkspaceTree({
     >
       <Stack
         direction="row"
-        alignItems="center"
-        justifyContent="space-between"
-        sx={{ p: 2, pb: 1 }}
+        sx={{
+          alignItems: "center",
+          justifyContent: "space-between",
+          p: 2,
+          pb: 1,
+        }}
       >
         <Typography variant="subtitle2">Workspace</Typography>
         <Tooltip title="Refresh workspace tree">
@@ -201,9 +204,11 @@ export function WorkspaceTree({
                       <ListItemText
                         primary={row.node.label}
                         title={row.node.path}
-                        primaryTypographyProps={{
-                          noWrap: true,
-                          variant: "caption",
+                        slotProps={{
+                          primary: {
+                            noWrap: true,
+                            variant: "caption",
+                          },
                         }}
                       />
                     </ListItemButton>

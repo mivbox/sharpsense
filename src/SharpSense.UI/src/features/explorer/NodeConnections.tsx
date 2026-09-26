@@ -41,12 +41,12 @@ export function NodeConnections({
       <Typography
         variant="caption"
         color="text.secondary"
-        display="block"
         data-testid="node-connections-state"
         data-loaded-count={query.connections.length}
         data-total-count={query.totalCount ?? undefined}
         data-complete={query.complete}
         aria-live="polite"
+        sx={{ display: "block" }}
       >
         {query.pending
           ? "Loading connections…"

@@ -109,7 +109,7 @@ try {
     "Switching must not stop another workspace job.",
   );
 
-  await page.click(await fieldSelector(page, "Selected workspace"));
+  await page.locator('::-p-aria(Selected workspace[role="combobox"])').click();
   await page.locator('::-p-aria(alpha[role="option"])').click();
   await page.waitForFunction(
     (id) => new URL(location.href).searchParams.get("workspace") === id,
@@ -272,7 +272,7 @@ async function createWorkspace(page: Page, name: string, sourcePath: string) {
   await clickButton(page, "New workspace");
   await fillField(page, "Workspace name", name);
   await fillField(page, "Repository directory", repository);
-  await page.click(await fieldSelector(page, "Source type"));
+  await page.locator('::-p-aria(Source type[role="combobox"])').click();
   await page.locator('::-p-aria(Documentation glob[role="option"])').click();
   await fillField(page, "Source path", sourcePath);
   await clickButton(page, "Create workspace");

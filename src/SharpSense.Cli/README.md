@@ -6,7 +6,7 @@ SQLite database, indexing history, and authored memories.
 
 ## Install from source
 
-The CLI requires the .NET 10 SDK. Building from source also requires Node.js 22.13+ and pnpm 11.8.0.
+The CLI requires the .NET 10 SDK. Building from source also requires Node.js 22.13+ and pnpm 12.6.0.
 Packaging builds and embeds the UI automatically; running the installed UI does not require Node.js or pnpm.
 
 ```bash

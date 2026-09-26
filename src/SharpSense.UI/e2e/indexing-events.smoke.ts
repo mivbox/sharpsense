@@ -200,14 +200,7 @@ try {
   await visibleText(page, "Stopping analysis safely");
   await visibleText(page, "Analysis stopped");
 
-  const workspaceSelector = await page.evaluate(() => {
-    const label = [...document.querySelectorAll("label")].find(
-      (item) => item.textContent === "Selected workspace",
-    );
-    if (!label?.htmlFor) throw new Error("Missing selected workspace field.");
-    return "#" + CSS.escape(label.htmlFor);
-  });
-  await page.click(workspaceSelector);
+  await page.locator('::-p-aria(Selected workspace[role="combobox"])').click();
   await page.locator('::-p-aria(Beta[role="option"])').click();
   await waitUntil(
     () =>

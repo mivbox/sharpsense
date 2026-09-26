@@ -17,9 +17,9 @@ export function EmptyState({
   return (
     <Stack
       spacing={compact ? 1 : 1.5}
-      alignItems="center"
-      justifyContent="center"
       sx={{
+        alignItems: "center",
+        justifyContent: "center",
         px: 3,
         py: compact ? 3 : 6,
         textAlign: "center",
@@ -85,7 +85,12 @@ export function LoadingRows({ count = 5 }: { count?: number }) {
       role="status"
     >
       {Array.from({ length: count }, (_, index) => (
-        <Stack key={index} direction="row" spacing={1.5} alignItems="center">
+        <Stack
+          key={index}
+          direction="row"
+          spacing={1.5}
+          sx={{ alignItems: "center" }}
+        >
           <Skeleton variant="rounded" width={28} height={28} />
           <Box sx={{ flex: 1 }}>
             <Skeleton width={`${72 - (index % 3) * 12}%`} height={16} />

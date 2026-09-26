@@ -296,20 +296,23 @@ try {
   await page.click('[data-testid="save-memory-button"]');
   const pendingMemoryRequest = await memoryRequest;
   try {
-    await page.waitForFunction(() =>
-      ["Memory content", "Intent", "Tags"].every((text) => {
-        const label = [...document.querySelectorAll("label")].find(
-          (element) => element.textContent === text,
-        );
-        const control = label?.htmlFor
-          ? document.getElementById(label.htmlFor)
-          : null;
-        return (
-          control?.matches(":disabled") ||
-          control?.getAttribute("aria-disabled") === "true"
-        );
-      }),
-    );
+    for (const selector of [
+      '::-p-aria(Memory content[role="textbox"])',
+      '::-p-aria(Intent[role="combobox"])',
+      '::-p-aria(Tags[role="textbox"])',
+    ]) {
+      const control = await page.waitForSelector(selector);
+      assert.ok(control, `Missing memory field: ${selector}`);
+      await page.waitForFunction(
+        (element) =>
+          element instanceof HTMLElement &&
+          (element.matches(":disabled") ||
+            element.getAttribute("aria-disabled") === "true"),
+        {},
+        control,
+      );
+      await control.dispose();
+    }
     assert.deepEqual(JSON.parse(pendingMemoryRequest.postData() ?? "{}"), {
       content: memoryContent,
       tags: ["browser-test", "invariant"],

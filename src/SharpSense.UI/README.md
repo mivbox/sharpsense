@@ -1,6 +1,6 @@
 # SharpSense workspace UI
 
-Use Node.js 22.13+ and pnpm 11.8.0. The repository includes `.nvmrc` for Node version selection and pins pnpm in `package.json`.
+Use Node.js 22.13+ and pnpm 12.6.0. The repository includes `.nvmrc` for Node version selection and pins pnpm in `package.json`.
 
 The UI uses native Material UI components and theme tokens, a Kiota-generated TypeScript API client, and TanStack React
 Query and TanStack Router. Features are organized as vertical slices: workspaces, graph exploration, search, tools,
@@ -89,6 +89,11 @@ through its standard `requestConfiguration.headers` bag. Catalog and indexing-co
 the workspace ID in their route.
 
 ## Validate
+
+Type checking uses the TypeScript 7 compiler through the `@typescript/native` package alias. ESLint still needs the
+TypeScript 6 compiler API, so the `typescript` alias points to `@typescript/typescript6`. Keep both aliases until
+typescript-eslint supports the newer API; this follows Microsoft's
+[side-by-side compatibility guidance](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0).
 
 Run these commands from the repository root:
 

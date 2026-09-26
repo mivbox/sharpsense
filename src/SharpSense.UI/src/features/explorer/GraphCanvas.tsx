@@ -110,7 +110,11 @@ export default function GraphCanvas({
           <Typography variant="caption" sx={{ overflowWrap: "anywhere" }}>
             {hover.node.label}
           </Typography>
-          <Typography variant="caption" color="text.secondary" display="block">
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: "block" }}
+          >
             {hover.node.type}
             {hover.node.codeNodeId ? ` · #${hover.node.codeNodeId}` : ""}
           </Typography>

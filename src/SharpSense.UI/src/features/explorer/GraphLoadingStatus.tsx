@@ -35,9 +35,8 @@ export function GraphLoadingStatus({
     >
       <Stack
         direction="row"
-        alignItems="center"
         spacing={1}
-        justifyContent="space-between"
+        sx={{ alignItems: "center", justifyContent: "space-between" }}
       >
         <Typography variant="caption" color="text.secondary" aria-live="polite">
           {status} {graph.loadedNodes.toLocaleString()}

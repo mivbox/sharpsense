@@ -36,14 +36,17 @@ export function ToolResultView({
     >
       <Stack
         direction="row"
-        alignItems="center"
-        justifyContent="space-between"
         spacing={1}
-        sx={{ px: 2.5, py: 2 }}
+        sx={{
+          alignItems: "center",
+          justifyContent: "space-between",
+          px: 2.5,
+          py: 2,
+        }}
       >
         <Typography variant="subtitle1">Result</Typography>
         {result && !loading && (
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
             <CheckCircleOutlineRoundedIcon color="success" fontSize="small" />
             <Typography variant="caption" color="text.secondary">
               {Math.round(result.elapsedMs).toLocaleString()} ms

@@ -154,8 +154,10 @@ export default function ToolsPage({
                   <ListItemText
                     primary={item.label}
                     secondary={item.description}
-                    primaryTypographyProps={{ variant: "subtitle2" }}
-                    secondaryTypographyProps={{ variant: "caption" }}
+                    slotProps={{
+                      primary: { variant: "subtitle2" },
+                      secondary: { variant: "caption" },
+                    }}
                   />
                 </ListItemButton>
               ))}
@@ -186,7 +188,7 @@ export default function ToolsPage({
             }}
             sx={{ p: { xs: 2, sm: 3 } }}
           >
-            <Stack direction="row" spacing={1.5} alignItems="center">
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: "center" }}>
               <TerminalRoundedIcon color="primary" />
               <Typography variant="h6">{definition.label}</Typography>
               <Chip label="Read only" size="small" variant="outlined" />
@@ -281,7 +283,7 @@ export default function ToolsPage({
                 </TextField>
               )}
             </Stack>
-            <Stack direction="row" justifyContent="flex-end" sx={{ mt: 2 }}>
+            <Stack direction="row" sx={{ justifyContent: "flex-end", mt: 2 }}>
               <Button
                 type="submit"
                 variant="contained"

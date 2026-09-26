@@ -68,7 +68,10 @@ export function MemoryPanel({ nodeId }: { nodeId: number }) {
   };
   return (
     <Stack spacing={2} sx={{ p: 2 }} data-testid="memory-panel">
-      <Stack direction="row" alignItems="center" justifyContent="space-between">
+      <Stack
+        direction="row"
+        sx={{ alignItems: "center", justifyContent: "space-between" }}
+      >
         <Typography variant="subtitle2">
           Team knowledge{" "}
           {memories.data?.length ? `(${memories.data.length})` : ""}
@@ -114,9 +117,8 @@ export function MemoryPanel({ nodeId }: { nodeId: number }) {
           >
             <Stack
               direction="row"
-              alignItems="center"
-              justifyContent="space-between"
               spacing={1}
+              sx={{ alignItems: "center", justifyContent: "space-between" }}
             >
               <Chip
                 size="small"
@@ -165,7 +167,7 @@ export function MemoryPanel({ nodeId }: { nodeId: number }) {
               </Alert>
             )}
             {memory.tags.length > 0 && (
-              <Stack direction="row" flexWrap="wrap" gap={0.5} sx={{ mt: 1 }}>
+              <Stack direction="row" sx={{ flexWrap: "wrap", gap: 0.5, mt: 1 }}>
                 {memory.tags.map((tag) => (
                   <Chip size="small" variant="outlined" label={tag} key={tag} />
                 ))}

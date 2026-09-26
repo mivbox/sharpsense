@@ -128,9 +128,7 @@ export default function SearchPage({
           <Stack
             direction="row"
             spacing={1}
-            flexWrap="wrap"
-            alignItems="center"
-            sx={{ mt: 2 }}
+            sx={{ flexWrap: "wrap", alignItems: "center", mt: 2 }}
           >
             <Typography variant="caption" color="text.secondary">
               Recent
@@ -162,9 +160,11 @@ export default function SearchPage({
         <Paper variant="outlined" sx={{ minHeight: 460, overflow: "hidden" }}>
           <Stack
             direction="row"
-            alignItems="center"
-            justifyContent="space-between"
-            sx={{ p: 2.5 }}
+            sx={{
+              alignItems: "center",
+              justifyContent: "space-between",
+              p: 2.5,
+            }}
           >
             <Typography variant="subtitle1">Search results</Typography>
             {search.data && !search.isLoading && (
@@ -204,9 +204,11 @@ export default function SearchPage({
                     <Box sx={{ minWidth: 0, flex: 1 }}>
                       <Stack
                         direction="row"
-                        justifyContent="space-between"
                         spacing={1}
-                        alignItems="flex-start"
+                        sx={{
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                        }}
                       >
                         <Typography
                           variant="subtitle2"

@@ -77,8 +77,7 @@ export function NodeList({
         <Typography
           variant="caption"
           color="text.secondary"
-          display="block"
-          sx={{ mb: 0.5 }}
+          sx={{ display: "block", mb: 0.5 }}
         >
           {start + 1}–{Math.min(start + PAGE_SIZE, nodes.length)} of{" "}
           {nodes.length.toLocaleString()} symbols

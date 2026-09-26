@@ -73,7 +73,7 @@ function IndexAttempt({ run }: { run: IndexRunSummary }) {
     <Stack spacing={2}>
       <Box>
         <Typography variant="subtitle2">Latest indexing attempt</Typography>
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center", mt: 1 }}>
           <Chip
             size="small"
             variant="outlined"
@@ -133,8 +133,8 @@ function IndexAttempt({ run }: { run: IndexRunSummary }) {
               <Stack
                 key={`${phase.name}-${index}`}
                 direction="row"
-                justifyContent="space-between"
                 spacing={2}
+                sx={{ justifyContent: "space-between" }}
               >
                 <Typography variant="body2">{phase.name}</Typography>
                 <Typography variant="body2" color="text.secondary">
@@ -273,7 +273,11 @@ export function GraphStatsView({ stats }: { stats: GraphStatsSnapshot }) {
                 <Typography variant="body2">Relationship types</Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Stack direction="row" useFlexGap flexWrap="wrap" gap={1}>
+                <Stack
+                  direction="row"
+                  useFlexGap
+                  sx={{ flexWrap: "wrap", gap: 1 }}
+                >
                   {stats.edgeTypes?.map((edge) => (
                     <Chip
                       key={edge.edgeType}

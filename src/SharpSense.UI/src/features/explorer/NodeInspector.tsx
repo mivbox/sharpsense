@@ -49,8 +49,7 @@ export function NodeInspector({
       <Stack
         direction="row"
         spacing={1}
-        alignItems="center"
-        sx={{ px: 2, py: 2 }}
+        sx={{ alignItems: "center", px: 2, py: 2 }}
       >
         <DataObjectRoundedIcon fontSize="small" color="primary" />
         <Typography variant="subtitle2">Symbol inspector</Typography>
@@ -76,10 +75,9 @@ export function NodeInspector({
             <Stack
               direction="row"
               spacing={1}
-              alignItems="center"
-              justifyContent="space-between"
+              sx={{ alignItems: "center", justifyContent: "space-between" }}
             >
-              <Stack direction="row" spacing={0.75} flexWrap="wrap">
+              <Stack direction="row" spacing={0.75} sx={{ flexWrap: "wrap" }}>
                 <Chip
                   label={node.type}
                   size="small"

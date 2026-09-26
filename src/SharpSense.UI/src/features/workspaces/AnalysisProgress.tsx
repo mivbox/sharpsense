@@ -46,12 +46,11 @@ export function AnalysisProgress({ analysis }: { analysis: AnalysisSnapshot }) {
       <Stack
         direction="row"
         spacing={1}
-        alignItems="center"
-        flexWrap="wrap"
         useFlexGap
+        sx={{ alignItems: "center", flexWrap: "wrap" }}
       >
         {running && analysis.phase && (
-          <Typography variant="body2" fontWeight={600}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
             {phaseLabels[analysis.phase] ?? analysis.phase}
           </Typography>
         )}
@@ -128,7 +127,7 @@ function SourceProgress({ source }: { source: AnalysisSourceStatus }) {
   const progress = indexingProgress(source.completedItems, source.totalItems);
   return (
     <Box>
-      <Stack direction="row" spacing={1} alignItems="center">
+      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
         <Chip size="small" variant="outlined" label={source.kind ?? "Source"} />
         <Typography variant="body2" sx={{ flex: 1, overflowWrap: "anywhere" }}>
           {source.path}

@@ -214,7 +214,7 @@ export function WorkspaceEditorDialog({
               key={index}
               direction={{ xs: "column", sm: "row" }}
               spacing={1.5}
-              alignItems="flex-start"
+              sx={{ alignItems: "flex-start" }}
             >
               <TextField
                 select
