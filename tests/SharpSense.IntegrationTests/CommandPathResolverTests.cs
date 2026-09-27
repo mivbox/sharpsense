@@ -5,24 +5,29 @@ namespace SharpSense.IntegrationTests;
 
 public sealed class CommandPathResolverTests
 {
-    [Fact]
-    public void WhenResolveRepositoryRootUsesRelativePath_ThenItUsesPwdAsTheBaseDirectory()
+    [Theory]
+    [InlineData(null)]
+    [InlineData("../tests")]
+    public void RepositoryPathsUseTheActualWorkingDirectoryDespiteStalePwd(string? repositoryRoot)
     {
-        var originalWorkingDirectory = Environment.GetEnvironmentVariable("PWD");
+        var previousDirectory = Environment.CurrentDirectory;
+        var previousPwd = Environment.GetEnvironmentVariable("PWD");
         var workingDirectory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src"));
-
-        Environment.SetEnvironmentVariable("PWD", workingDirectory);
 
         try
         {
-            var resolvedRepositoryRoot = CommandPathResolver.ResolveRepositoryRoot("../tests");
+            Environment.CurrentDirectory = workingDirectory;
+            Environment.SetEnvironmentVariable("PWD", Path.GetDirectoryName(workingDirectory));
+
+            var resolvedRepositoryRoot = CommandPathResolver.ResolveRepositoryRoot(repositoryRoot);
 
             resolvedRepositoryRoot.Should().Be(
-                Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.Combine(workingDirectory, "../tests"))));
+                Path.TrimEndingDirectorySeparator(Path.GetFullPath(repositoryRoot ?? ".", Environment.CurrentDirectory)));
         }
         finally
         {
-            Environment.SetEnvironmentVariable("PWD", originalWorkingDirectory);
+            Environment.CurrentDirectory = previousDirectory;
+            Environment.SetEnvironmentVariable("PWD", previousPwd);
         }
     }
 

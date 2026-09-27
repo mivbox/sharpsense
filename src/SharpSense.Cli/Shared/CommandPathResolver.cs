@@ -4,7 +4,7 @@ internal static class CommandPathResolver
 {
     public static string ResolveRepositoryRoot(string? repositoryRoot)
     {
-        var workingDirectory = ResolveWorkingDirectory();
+        var workingDirectory = Environment.CurrentDirectory;
         var rootCandidate = string.IsNullOrWhiteSpace(repositoryRoot)
             ? workingDirectory
             : ResolvePath(workingDirectory, repositoryRoot);
@@ -25,9 +25,6 @@ internal static class CommandPathResolver
 
         return Path.GetDirectoryName(absoluteTargetPath) ?? NormalizeDirectory(repositoryRoot);
     }
-
-    private static string ResolveWorkingDirectory()
-        => Environment.GetEnvironmentVariable("PWD") ?? Environment.CurrentDirectory;
 
     private static string ResolvePath(string basePath, string path)
         => Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(basePath, path));
