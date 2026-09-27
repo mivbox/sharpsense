@@ -7,12 +7,10 @@ using SharpSense.Application.Context360.Models;
 using SharpSense.Application.Memory;
 using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
-using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Context360;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
-using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
 
@@ -25,11 +23,16 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
     public sealed class Settings : GlobalSettings
     {
         [CommandOption("--node-id <NODE_ID>")]
-        public int NodeId { get; init; }
+        public int NodeId
+        {
+            get; init;
+        }
 
         [CommandOption("--include-memories")]
-        public bool IncludeMemories { get; init; }
-
+        public bool IncludeMemories
+        {
+            get; init;
+        }
 
         public override ValidationResult Validate()
             => NodeId <= 0
@@ -75,6 +78,7 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
         }
 
         CommandOutput.Write(context, TokenObjectNotation.SerializeContext360(result, semanticContext));
+
         return 0;
     }
 }

@@ -2,16 +2,14 @@ using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SharpSense.Application.HybridSearch;
-using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
+using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.Shared.Abstractions;
-using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.HybridSearch;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
-using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
 using System.Text.Json;
@@ -25,14 +23,22 @@ internal sealed class SearchCommand : AbstractAsyncCommand<SearchCommand.Setting
     public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "<query>")]
-        public string Query { get; init; } = string.Empty;
-
+        public string Query
+        {
+            get; init;
+        } = string.Empty;
 
         [CommandOption("--toon")]
-        public bool UseToonFormat { get; init; }
+        public bool UseToonFormat
+        {
+            get; init;
+        }
 
         [CommandOption("--include-memories")]
-        public bool IncludeMemories { get; init; }
+        public bool IncludeMemories
+        {
+            get; init;
+        }
 
         public override ValidationResult Validate()
             => string.IsNullOrWhiteSpace(Query)

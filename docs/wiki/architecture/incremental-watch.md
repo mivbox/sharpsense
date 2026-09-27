@@ -41,7 +41,7 @@ See [analyze](../cli/analyze-command.md), [source discovery](file-discovery.md),
 
 Full and incremental handlers publish typed notifications through `IAnalysisNotifier`: operation start, phase transitions, source activity/reuse, embedding progress, diagnostics, committed summaries, ignored batches, failure, and cancellation. Operation IDs and ordered sequences keep parallel source reports attributable without deriving state from display messages.
 
-`AnalysisSnapshotStore` reduces these notifications into bounded immutable presentation state. It retains the current source for each language, bounded diagnostics, and the last committed summary; late progress cannot reopen a finished operation. Existing extractor progress reporters are adapted at the indexing boundary.
+The internal CLI presentation reducer `AnalysisSnapshotStore` reduces these notifications into bounded immutable presentation state. It retains the current source for each language, bounded diagnostics, and the last committed summary; late progress cannot reopen a finished operation. Existing extractor progress reporters are adapted at the indexing boundary.
 
 The Spectre CLI renders snapshots from one presenter loop. UI-owned sessions project them into workspace job status and publish bounded SSE snapshots. Neither presentation layer controls the indexing commit or blocks language workers on terminal/network output. CLI prompts remain separate in `IWorkspaceInteractions`.
 

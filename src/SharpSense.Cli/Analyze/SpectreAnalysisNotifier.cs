@@ -1,7 +1,8 @@
-using System.Diagnostics;
 using SharpSense.Application.Indexing.Notifications;
+using SharpSense.Cli.Shared;
 using Spectre.Console;
 using Spectre.Console.Rendering;
+using System.Diagnostics;
 
 namespace SharpSense.Cli.Analyze;
 
@@ -25,7 +26,9 @@ internal sealed class SpectreAnalysisNotifier(IAnsiConsole console, string works
         {
             try
             {
-                await console.Live(Render()).AutoClear(true).StartAsync(async context =>
+                await console.Live(Render())
+                    .AutoClear(true)
+                    .StartAsync(async context =>
                 {
                     var operation = Task.Run(action);
                     try
@@ -76,7 +79,10 @@ internal sealed class SpectreAnalysisNotifier(IAnsiConsole console, string works
         {
             status += $" · {phase}";
         }
-        var table = new Table().Expand().AddColumn("Language").AddColumn("Source").AddColumn("Activity");
+        var table = new Table().Expand()
+            .AddColumn("Language")
+            .AddColumn("Source")
+            .AddColumn("Activity");
         if (snapshot is not null)
         {
             foreach (var source in snapshot.Sources)
@@ -107,6 +113,7 @@ internal sealed class SpectreAnalysisNotifier(IAnsiConsole console, string works
         {
             rows.Add(new Text(string.Join(Environment.NewLine, snapshot.Diagnostics.Take(3))));
         }
+
         return new Panel(new Rows(rows)).Header(Markup.Escape($"SharpSense · {workspaceName}"));
     }
 

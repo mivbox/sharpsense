@@ -5,11 +5,17 @@ namespace SharpSense.Infrastructure.Persistence.Configuration;
 
 internal static class VectorEmbeddingPersistence
 {
-    internal static ValueConverter<float[]?, byte[]?> Converter { get; } = new(
+    internal static ValueConverter<float[]?, byte[]?> Converter
+    {
+        get;
+    } = new(
         vectorEmbedding => ConvertToBytes(vectorEmbedding),
         bytes => ConvertToVectorEmbedding(bytes));
 
-    internal static ValueComparer<float[]?> Comparer { get; } = new(
+    internal static ValueComparer<float[]?> Comparer
+    {
+        get;
+    } = new(
         (left, right) =>
             left == null && right == null ||
             left != null && right != null && left.SequenceEqual(right),
@@ -25,6 +31,7 @@ internal static class VectorEmbeddingPersistence
 
         var bytes = new byte[vectorEmbedding.Length * sizeof(float)];
         Buffer.BlockCopy(vectorEmbedding, 0, bytes, 0, bytes.Length);
+
         return bytes;
     }
 
@@ -42,6 +49,7 @@ internal static class VectorEmbeddingPersistence
 
         var vectorEmbedding = new float[bytes.Length / sizeof(float)];
         Buffer.BlockCopy(bytes, 0, vectorEmbedding, 0, bytes.Length);
+
         return vectorEmbedding;
     }
 

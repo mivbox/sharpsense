@@ -1,7 +1,9 @@
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using SharpSense.Application.Indexing;
 using SharpSense.Application.Indexing.Notifications;
+using SharpSense.Cli.Shared;
 using SharpSense.Cli.Ui.Indexing;
 using SharpSense.Infrastructure.Storage;
 
@@ -10,7 +12,7 @@ namespace SharpSense.IntegrationTests;
 public sealed class WorkspaceIndexingEventsTests
 {
     [Fact]
-    public async Task SubscribersStartWithCurrentStateAndSlowReadersReceiveOnlyLatestState()
+    public async Task WhenSubscribers_ThenStartWithCurrentStateAndSlowReadersReceiveOnlyLatestState()
     {
         var selection = Selection();
         Action<WorkspaceIndexingUpdate>? publish = null;
@@ -22,37 +24,39 @@ public sealed class WorkspaceIndexingEventsTests
             await Task.Delay(Timeout.InfiniteTimeSpan, ct);
         });
         using var first = coordinator.Subscribe(selection.Definition.Id);
-        Assert.True(first.Reader.TryRead(out var initial));
-        Assert.Equal("idle", initial.State);
-        Assert.NotNull(initial.StreamId);
+        first.Reader.TryRead(out var initial).Should().BeTrue();
+        initial!.State.Should().Be("idle");
+        initial.StreamId.Should().NotBeNull();
         using var otherWorkspace = coordinator.Subscribe(Guid.NewGuid());
-        Assert.True(otherWorkspace.Reader.TryRead(out _));
+        otherWorkspace.Reader.TryRead(out _).Should().BeTrue();
 
         coordinator.Start(selection, new StartWorkspaceIndexingRequest(Watch: true));
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         for (var index = 0; index < 1000; index++)
         {
-            publish!(new WorkspaceIndexingUpdate("indexing", $"Progress {index}"));
+            publish!(new WorkspaceIndexingUpdate(
+                "indexing",
+                $"Progress {index}"));
         }
         publish!(new WorkspaceIndexingUpdate("watching", "Saved.", IndexCommitted: true));
-        Assert.True(first.Reader.TryRead(out var latest));
-        Assert.Equal(coordinator.GetStatus(selection.Definition.Id), latest);
-        Assert.Equal(1, latest.Revision);
-        Assert.True(latest.Sequence > 1000);
-        Assert.False(first.Reader.TryRead(out _));
-        Assert.False(otherWorkspace.Reader.TryRead(out _));
+        first.Reader.TryRead(out var latest).Should().BeTrue();
+        latest.Should().Be(coordinator.GetStatus(selection.Definition.Id));
+        latest.Revision.Should().Be(1);
+        (latest.Sequence > 1000).Should().BeTrue();
+        first.Reader.TryRead(out _).Should().BeFalse();
+        otherWorkspace.Reader.TryRead(out _).Should().BeFalse();
 
         using var reconnected = coordinator.Subscribe(selection.Definition.Id);
-        Assert.True(reconnected.Reader.TryRead(out var recovered));
-        Assert.Equal(latest, recovered);
+        reconnected.Reader.TryRead(out var recovered).Should().BeTrue();
+        recovered.Should().Be(latest);
         await coordinator.Stop(selection.Definition.Id, TestContext.Current.CancellationToken);
-        Assert.True(first.Reader.TryRead(out var stopped));
-        Assert.Equal("stopped", stopped.State);
-        Assert.True(stopped.Sequence > latest.Sequence);
+        first.Reader.TryRead(out var stopped).Should().BeTrue();
+        stopped!.State.Should().Be("stopped");
+        (stopped.Sequence > latest.Sequence).Should().BeTrue();
     }
 
     [Fact]
-    public async Task NewJobsKeepSequenceAndCommitRevisionAndDisposalDoesNotStopJob()
+    public async Task WhenNewJobs_ThenKeepSequenceAndCommitRevisionAndDisposalDoesNotStopJob()
     {
         var selection = Selection();
         var updated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -66,38 +70,41 @@ public sealed class WorkspaceIndexingEventsTests
         coordinator.Start(selection, new StartWorkspaceIndexingRequest(Watch: true));
         await updated.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         subscription.Dispose();
-        while (subscription.Reader.TryRead(out _)) { }
-        Assert.True(subscription.Reader.Completion.IsCompleted);
-        Assert.Equal("watching", coordinator.GetStatus(selection.Definition.Id).State);
+        while (subscription.Reader.TryRead(out _))
+        {
+        }
+        subscription.Reader.Completion.IsCompleted.Should().BeTrue();
+        coordinator.GetStatus(selection.Definition.Id).State.Should().Be("watching");
         var stopped = await coordinator.Stop(selection.Definition.Id, TestContext.Current.CancellationToken);
         var restarted = coordinator.Start(selection, new StartWorkspaceIndexingRequest(Watch: true));
-        Assert.NotEqual(stopped.JobId, restarted.JobId);
-        Assert.Equal(stopped.StreamId, restarted.StreamId);
-        Assert.True(restarted.Sequence > stopped.Sequence);
-        Assert.Equal(stopped.Revision, restarted.Revision);
+        (restarted.JobId != stopped.JobId).Should().BeTrue();
+        restarted.StreamId.Should().Be(stopped.StreamId);
+        (restarted.Sequence > stopped.Sequence).Should().BeTrue();
+        restarted.Revision.Should().Be(stopped.Revision);
     }
 
     [Fact]
-    public async Task EventStreamEmitsTypedSnapshotAndCancellingReaderLeavesJobAlive()
+    public async Task WhenEventStream_ThenEmitsTypedSnapshotAndCancellingReaderLeavesJobAlive()
     {
         var selection = Selection();
         await using var coordinator = Create((_, _, _, ct) => Task.Delay(Timeout.InfiniteTimeSpan, ct));
         using var reading = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        await using var events = coordinator.Events(selection.Definition.Id, reading.Token).GetAsyncEnumerator(reading.Token);
-        Assert.True(await events.MoveNextAsync());
-        Assert.Equal("status", events.Current.EventType);
-        Assert.Equal("idle", events.Current.Data.State);
-        Assert.Contains(":0", events.Current.EventId);
+        await using var events = coordinator.Events(selection.Definition.Id, reading.Token)
+            .GetAsyncEnumerator(reading.Token);
+        (await events.MoveNextAsync()).Should().BeTrue();
+        events.Current.EventType.Should().Be("status");
+        events.Current.Data.State.Should().Be("idle");
+        events.Current.EventId.Should().Contain(":0");
         coordinator.Start(selection, new StartWorkspaceIndexingRequest());
-        Assert.True(await events.MoveNextAsync());
-        Assert.Equal("indexing", events.Current.Data.State);
+        (await events.MoveNextAsync()).Should().BeTrue();
+        events.Current.Data.State.Should().Be("indexing");
         await reading.CancelAsync();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await events.MoveNextAsync());
-        Assert.Equal("indexing", coordinator.GetStatus(selection.Definition.Id).State);
+        await ((Func<Task>)(async () => await events.MoveNextAsync())).Should().ThrowAsync<OperationCanceledException>();
+        coordinator.GetStatus(selection.Definition.Id).State.Should().Be("indexing");
     }
 
     [Fact]
-    public async Task StopRetainsCancelledAnalysisWithoutAdvancingGraphRevision()
+    public async Task WhenStop_ThenRetainsCancelledAnalysisWithoutAdvancingGraphRevision()
     {
         var selection = Selection();
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -105,10 +112,19 @@ public sealed class WorkspaceIndexingEventsTests
         await using var coordinator = Create(async (_, _, update, ct) =>
         {
             var snapshots = new AnalysisSnapshotStore();
-            snapshots.Notify(new AnalysisNotification(operationId, 1, DateTimeOffset.UtcNow,
-                AnalysisNotificationKind.Started, AnalysisOperationKind.Full));
-            snapshots.Notify(new AnalysisNotification(operationId, 2, DateTimeOffset.UtcNow,
-                AnalysisNotificationKind.SourceStarted, AnalysisOperationKind.Full, AnalysisPhase.Extraction,
+            snapshots.Notify(new AnalysisNotification(
+                operationId,
+                1,
+                DateTimeOffset.UtcNow,
+                AnalysisNotificationKind.Started,
+                AnalysisOperationKind.Full));
+            snapshots.Notify(new AnalysisNotification(
+                operationId,
+                2,
+                DateTimeOffset.UtcNow,
+                AnalysisNotificationKind.SourceStarted,
+                AnalysisOperationKind.Full,
+                AnalysisPhase.Extraction,
                 new AnalysisSource(WorkspaceSourceKind.CSharp, "App.sln")));
             update(new WorkspaceIndexingUpdate("indexing", "Analyzing sources...", Analysis: snapshots.Snapshot));
             started.SetResult();
@@ -118,8 +134,12 @@ public sealed class WorkspaceIndexingEventsTests
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                snapshots.Notify(new AnalysisNotification(operationId, 3, DateTimeOffset.UtcNow,
-                    AnalysisNotificationKind.Cancelled, AnalysisOperationKind.Full));
+                snapshots.Notify(new AnalysisNotification(
+                    operationId,
+                    3,
+                    DateTimeOffset.UtcNow,
+                    AnalysisNotificationKind.Cancelled,
+                    AnalysisOperationKind.Full));
                 update(new WorkspaceIndexingUpdate("indexing", "Analysis cancelled.", Analysis: snapshots.Snapshot));
                 throw;
             }
@@ -130,20 +150,28 @@ public sealed class WorkspaceIndexingEventsTests
 
         var stopped = await coordinator.Stop(selection.Definition.Id, TestContext.Current.CancellationToken);
 
-        Assert.Equal("stopped", stopped.State);
-        Assert.Equal(0, stopped.Revision);
-        Assert.NotNull(stopped.Analysis);
-        Assert.Equal(operationId, stopped.Analysis.OperationId);
-        Assert.Equal("cancelled", stopped.Analysis.State);
-        Assert.NotNull(stopped.Analysis.CompletedAt);
-        Assert.Equal("cancelled", Assert.Single(stopped.Analysis.Sources).State);
-        Assert.True(subscription.Reader.TryRead(out var latest));
-        Assert.Equal(stopped, latest);
+        stopped!.State.Should().Be("stopped");
+        stopped.Revision.Should().Be(0);
+        stopped.Analysis.Should().NotBeNull();
+        stopped.Analysis.OperationId.Should().Be(operationId);
+        stopped.Analysis.State.Should().Be("cancelled");
+        stopped.Analysis.CompletedAt.Should().NotBeNull();
+        stopped.Analysis.Sources.Should().ContainSingle().Which.State.Should().Be("cancelled");
+        subscription.Reader.TryRead(out var latest).Should().BeTrue();
+        latest.Should().Be(stopped);
     }
 
     private static WorkspaceSelection Selection()
-        => new(new WorkspaceDefinition { Id = Guid.NewGuid(), Name = "test", RepositoryRoot = "/repo" },
-            "/home/workspace", "/home/workspace/workspace.yaml", Mock.Of<IRepositoryWorkspace>());
+        => new(
+            new WorkspaceDefinition
+            {
+                Id = Guid.NewGuid(),
+                Name = "test",
+                RepositoryRoot = "/repo"
+            },
+            "/home/workspace",
+            "/home/workspace/workspace.yaml",
+            Mock.Of<IRepositoryWorkspace>());
 
     private static WorkspaceIndexingCoordinator Create(
         Func<WorkspaceSelection, StartWorkspaceIndexingRequest, Action<WorkspaceIndexingUpdate>, CancellationToken, Task> run)

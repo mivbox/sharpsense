@@ -14,11 +14,13 @@ public sealed class TypeScriptLanguageExtractorTests
     [Fact]
     public async Task WhenExtractingTarget_ThenExecutesRegisteredPassesWithDiscoveredFiles()
     {
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/SharpSense.sln"] = new(""),
-            ["/repo/src/App.tsx"] = new("export const App = () => <div />;")
-        }, "/repo");
+        var fileSystem = new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/SharpSense.sln"] = new(""),
+                ["/repo/src/App.tsx"] = new("export const App = () => <div />;")
+            },
+            "/repo");
         var repositoryWorkspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);
         repositoryWorkspace.Setup(candidate => candidate.GetRequiredTargetDirectoryPath("/repo/SharpSense.sln"))
             .Returns("/repo");
@@ -26,9 +28,9 @@ public sealed class TypeScriptLanguageExtractorTests
             .Returns("/repo");
         var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
         fileDiscoverer.Setup(candidate => candidate.GetAllowedFiles(
-                "/repo",
-                It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
-                TestContext.Current.CancellationToken))
+            "/repo",
+            It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
+            TestContext.Current.CancellationToken))
             .ReturnsAsync(
             [
                 new DiscoveredFile("/repo/src/App.tsx", "src/App.tsx")
@@ -52,11 +54,13 @@ public sealed class TypeScriptLanguageExtractorTests
     [Fact]
     public async Task WhenExtractingTarget_ThenReportsTypeScriptProgressIncrementally()
     {
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/SharpSense.sln"] = new(""),
-            ["/repo/src/App.tsx"] = new("export const App = () => <div />;")
-        }, "/repo");
+        var fileSystem = new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/SharpSense.sln"] = new(""),
+                ["/repo/src/App.tsx"] = new("export const App = () => <div />;")
+            },
+            "/repo");
         var repositoryWorkspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);
         repositoryWorkspace.Setup(candidate => candidate.GetRequiredTargetDirectoryPath("/repo/SharpSense.sln"))
             .Returns("/repo");
@@ -64,9 +68,9 @@ public sealed class TypeScriptLanguageExtractorTests
             .Returns("/repo");
         var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
         fileDiscoverer.Setup(candidate => candidate.GetAllowedFiles(
-                "/repo",
-                It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
-                TestContext.Current.CancellationToken))
+            "/repo",
+            It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
+            TestContext.Current.CancellationToken))
             .ReturnsAsync(
             [
                 new DiscoveredFile("/repo/src/App.tsx", "src/App.tsx")
@@ -90,41 +94,9 @@ public sealed class TypeScriptLanguageExtractorTests
         progressUpdates.Select(static update => (update.CurrentTask, update.CompletedItems, update.TotalItems))
             .Should()
             .Equal(
-                ("Discovering TypeScript files...", 0, 1),
-                ("Parsing src/App.tsx...", 1, 2),
-                ("Running RecordingPass...", 2, 2));
-    }
-
-    [Fact]
-    public async Task WhenIncrementalChangesContainNoTypeScriptFiles_ThenReturnsEmptyWithoutDiscovery()
-    {
-        var fileSystem = new MockFileSystem();
-        var extractor = new TypeScriptLanguageExtractor(
-            new TypeScriptSourceDiscoverer(
-                new Mock<IRepositoryWorkspace>(MockBehavior.Strict).Object,
-                new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict).Object,
-                fileSystem,
-                new TsConfigResolver(new Mock<IRepositoryWorkspace>(MockBehavior.Strict).Object, fileSystem)),
-            fileSystem,
-            []);
-
-        var result = await extractor.ExtractIncremental(
-            new IncrementalExtractionContext(
-                "/repo/SharpSense.sln",
-                [
-                    new WorkspaceFileChange(
-                        WorkspaceFileChangeAction.Modified,
-                        NewPath: "/repo/src/Feature.cs"),
-                    new WorkspaceFileChange(
-                        WorkspaceFileChangeAction.Modified,
-                        NewPath: "/repo/docs/Guide.md")
-                ]),
-            TestContext.Current.CancellationToken);
-
-        result.Value.Projects.Should().BeEmpty();
-        result.Value.CodeNodes.Should().BeEmpty();
-        result.Value.Edges.Should().BeEmpty();
-        result.Value.Diagnostics.Should().BeEmpty();
+            ("Discovering TypeScript files...", 0, 1),
+            ("Parsing src/App.tsx...", 1, 2),
+            ("Running TypeScript extraction pass...", 2, 2));
     }
 
     [Fact]
@@ -133,23 +105,27 @@ public sealed class TypeScriptLanguageExtractorTests
         const string repositoryRoot = "/repo/build/worktree";
         const string targetPath = "/repo/build/worktree/SharpSense.sln";
         const string changedFilePath = "/repo/build/worktree/src/App.tsx";
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            [targetPath] = new(""),
-            [changedFilePath] = new("export const App = () => <div />;")
-        }, repositoryRoot);
+        var fileSystem = new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                [targetPath] = new(""),
+                [changedFilePath] = new("export const App = () => <div />;")
+            },
+            repositoryRoot);
         var repositoryWorkspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);
         repositoryWorkspace.Setup(candidate => candidate.GetRequiredTargetDirectoryPath(targetPath))
             .Returns(repositoryRoot);
         repositoryWorkspace.SetupGet(candidate => candidate.RootPath)
             .Returns(repositoryRoot);
-        repositoryWorkspace.Setup(candidate => candidate.IsSameOrSubPath(changedFilePath)).Returns(true);
-        repositoryWorkspace.Setup(candidate => candidate.ToRepositoryRelativePath(changedFilePath)).Returns("src/App.tsx");
+        repositoryWorkspace.Setup(candidate => candidate.IsSameOrSubPath(changedFilePath))
+            .Returns(true);
+        repositoryWorkspace.Setup(candidate => candidate.ToRepositoryRelativePath(changedFilePath))
+            .Returns("src/App.tsx");
         var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
         fileDiscoverer.Setup(candidate => candidate.GetAllowedFiles(
-                repositoryRoot,
-                It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
-                TestContext.Current.CancellationToken))
+            repositoryRoot,
+            It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
+            TestContext.Current.CancellationToken))
             .ReturnsAsync(
             [
                 new DiscoveredFile(changedFilePath, "src/App.tsx")
@@ -163,10 +139,11 @@ public sealed class TypeScriptLanguageExtractorTests
             fileSystem,
             [new RecordingPass()]);
 
-        var result = await extractor.ExtractIncremental(
-            new IncrementalExtractionContext(
+        var result = await extractor.Extract(
+            new ExtractionContext(
                 targetPath,
-                [
+                Progress: null,
+                ChangedFiles: [
                     new WorkspaceFileChange(
                         WorkspaceFileChangeAction.Modified,
                         NewPath: changedFilePath)
@@ -177,7 +154,7 @@ public sealed class TypeScriptLanguageExtractorTests
     }
 
     [Fact]
-    public async Task MissingSelectedDirectoryFailsInsteadOfReturningEmptyGraph()
+    public async Task WhenMissingSelectedDirectory_ThenFailsInsteadOfReturningEmptyGraph()
     {
         var fileSystem = new MockFileSystem();
         var repositoryWorkspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);

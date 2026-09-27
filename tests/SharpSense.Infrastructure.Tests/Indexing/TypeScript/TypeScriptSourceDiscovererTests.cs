@@ -20,9 +20,9 @@ public sealed class TypeScriptSourceDiscovererTests
             .Returns("/repo");
         var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
         fileDiscoverer.Setup(candidate => candidate.GetAllowedFiles(
-                "/repo",
-                It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
-                TestContext.Current.CancellationToken))
+            "/repo",
+            It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
+            TestContext.Current.CancellationToken))
             .ReturnsAsync(
             [
                 new DiscoveredFile("/repo/src/App.ts", "src/App.ts"),
@@ -32,11 +32,13 @@ public sealed class TypeScriptSourceDiscovererTests
                 new DiscoveredFile("/repo/src/node_modules/Generated.ts", "src/node_modules/Generated.ts"),
                 new DiscoveredFile("/repo/src/Styles.css", "src/Styles.css")
             ]);
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/src/App.ts"] = new("export const value = 42;"),
-            ["/repo/src/App.tsx"] = new("export function App() { return null; }")
-        }, "/repo");
+        var fileSystem = new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/src/App.ts"] = new("export const value = 42;"),
+                ["/repo/src/App.tsx"] = new("export function App() { return null; }")
+            },
+            "/repo");
         var discoverer = new TypeScriptSourceDiscoverer(
             repositoryWorkspace.Object,
             fileDiscoverer.Object,
@@ -48,46 +50,6 @@ public sealed class TypeScriptSourceDiscovererTests
         result.Select(static file => file.RelativeFilePath)
             .Should()
             .Equal("src/App.ts", "src/App.tsx");
-    }
-
-    [Fact]
-    public async Task WhenDiscoveringRequestedFiles_ThenReturnsOnlyMatchingExistingTypeScriptFiles()
-    {
-        var repositoryWorkspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);
-        repositoryWorkspace.Setup(candidate => candidate.GetRequiredTargetDirectoryPath("/repo/SharpSense.sln"))
-            .Returns("/repo");
-        repositoryWorkspace.SetupGet(candidate => candidate.RootPath)
-            .Returns("/repo");
-        var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
-        fileDiscoverer.Setup(candidate => candidate.GetAllowedFiles(
-                "/repo",
-                It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
-                TestContext.Current.CancellationToken))
-            .ReturnsAsync(
-            [
-                new DiscoveredFile("/repo/src/App.ts", "src/App.ts"),
-                new DiscoveredFile("/repo/src/App.tsx", "src/App.tsx"),
-                new DiscoveredFile("/repo/src/build/App.tsx", "src/build/App.tsx")
-            ]);
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/src/App.ts"] = new("export const value = 42;"),
-            ["/repo/src/App.tsx"] = new("export function App() { return null; }")
-        }, "/repo");
-        var discoverer = new TypeScriptSourceDiscoverer(
-            repositoryWorkspace.Object,
-            fileDiscoverer.Object,
-            fileSystem,
-            new TsConfigResolver(repositoryWorkspace.Object, fileSystem));
-
-        var result = await discoverer.DiscoverFiles(
-            "/repo/SharpSense.sln",
-            ["/repo/src/App.tsx", "src/Unknown.ts", "/repo/src/build/App.tsx"],
-            TestContext.Current.CancellationToken);
-
-        result.Select(static file => file.RelativeFilePath)
-            .Should()
-            .Equal("src/App.tsx");
     }
 
     [Fact]
@@ -104,26 +66,29 @@ public sealed class TypeScriptSourceDiscovererTests
             .Returns<string>(path => path["/repo/".Length..]);
         var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
         fileDiscoverer.Setup(candidate => candidate.GetAllowedFiles(
-                "/repo/apps/web",
-                It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
-                TestContext.Current.CancellationToken))
+            "/repo/apps/web",
+            It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
+            TestContext.Current.CancellationToken))
             .ReturnsAsync(
             [
                 new DiscoveredFile("/repo/apps/web/src/App.tsx", "apps/web/src/App.tsx")
             ]);
         fileDiscoverer.Setup(candidate => candidate.GetAllowedFiles(
-                "/repo",
-                It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
-                TestContext.Current.CancellationToken))
+            "/repo",
+            It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
+            TestContext.Current.CancellationToken))
             .ReturnsAsync(
             [
                 new DiscoveredFile("/repo/apps/web/src/App.tsx", "apps/web/src/App.tsx"),
                 new DiscoveredFile("/repo/packages/ai-chat-api/src/query-hooks/index.ts", "packages/ai-chat-api/src/query-hooks/index.ts"),
-                new DiscoveredFile("/repo/packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts", "packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts")
+                new DiscoveredFile(
+                    "/repo/packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts",
+                    "packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts")
             ]);
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/apps/web/src/App.tsx"] = new(
+        var fileSystem = new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/apps/web/src/App.tsx"] = new(
                 """
                 import { useGetConversationById } from "@loanmarket/ai-chat-api/query-hooks";
 
@@ -131,14 +96,14 @@ public sealed class TypeScriptSourceDiscovererTests
                     return useGetConversationById();
                 }
                 """),
-            ["/repo/apps/web/tsconfig.json"] = new("{}"),
-            ["/repo/packages/ai-chat-api/package.json"] = new(
+                ["/repo/apps/web/tsconfig.json"] = new("{}"),
+                ["/repo/packages/ai-chat-api/package.json"] = new(
                 """
                 {
                   "name": "@loanmarket/ai-chat-api"
                 }
                 """),
-            ["/repo/packages/ai-chat-api/tsconfig.json"] = new(
+                ["/repo/packages/ai-chat-api/tsconfig.json"] = new(
                 """
                 {
                   "compilerOptions": {
@@ -146,17 +111,18 @@ public sealed class TypeScriptSourceDiscovererTests
                   }
                 }
                 """),
-            ["/repo/packages/ai-chat-api/src/query-hooks/index.ts"] = new(
+                ["/repo/packages/ai-chat-api/src/query-hooks/index.ts"] = new(
                 """
                 export { useGetConversationById } from "./use-get-conversation-by-id-query.g";
                 """),
-            ["/repo/packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts"] = new(
+                ["/repo/packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts"] = new(
                 """
                 export function useGetConversationById() {
                     return null;
                 }
                 """)
-        }, "/repo");
+            },
+            "/repo");
         var discoverer = new TypeScriptSourceDiscoverer(
             repositoryWorkspace.Object,
             fileDiscoverer.Object,
@@ -168,8 +134,8 @@ public sealed class TypeScriptSourceDiscovererTests
         result.Select(static file => file.RelativeFilePath)
             .Should()
             .Equal(
-                "apps/web/src/App.tsx",
-                "packages/ai-chat-api/src/query-hooks/index.ts",
-                "packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts");
+            "apps/web/src/App.tsx",
+            "packages/ai-chat-api/src/query-hooks/index.ts",
+            "packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts");
     }
 }

@@ -11,8 +11,8 @@ public sealed class WorkspaceTreeRepositoryTests
     [Fact]
     public async Task WhenReadingRoot_ThenReturnsOrderedTopLevelRows()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory();
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(ct: TestContext.Current.CancellationToken);
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        await using var context = await inMemoryFactory.GetContext(ct: TestContext.Current.CancellationToken);
         await SeedTree(context);
         var repository = new WorkspaceTreeRepository(context);
 
@@ -28,8 +28,8 @@ public sealed class WorkspaceTreeRepositoryTests
     [Fact]
     public async Task WhenReadingChildPath_ThenReturnsImmediateChildrenOnly()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory();
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(ct: TestContext.Current.CancellationToken);
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        await using var context = await inMemoryFactory.GetContext(ct: TestContext.Current.CancellationToken);
         await SeedTree(context);
         var repository = new WorkspaceTreeRepository(context);
 
@@ -45,8 +45,8 @@ public sealed class WorkspaceTreeRepositoryTests
     [Fact]
     public async Task WhenReadingFolderNamedRoot_ThenReturnsItsChildren()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory();
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(ct: TestContext.Current.CancellationToken);
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        await using var context = await inMemoryFactory.GetContext(ct: TestContext.Current.CancellationToken);
         await SeedTree(context);
         var repository = new WorkspaceTreeRepository(context);
 

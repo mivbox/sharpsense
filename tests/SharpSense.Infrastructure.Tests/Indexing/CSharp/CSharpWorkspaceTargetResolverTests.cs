@@ -1,6 +1,7 @@
-using System.IO.Abstractions.TestingHelpers;
+using AwesomeAssertions;
 using SharpSense.Infrastructure.Indexing.CSharp;
 using SharpSense.Infrastructure.Storage;
+using System.IO.Abstractions.TestingHelpers;
 
 namespace SharpSense.Infrastructure.Tests.Indexing.CSharp;
 
@@ -21,7 +22,7 @@ public sealed class CSharpWorkspaceTargetResolverTests
         var workspace = new RepositoryWorkspace("/repo", "/test-storage/index.db", fileSystem);
         var resolver = new CSharpWorkspaceTargetResolver(workspace, fileSystem);
 
-        Assert.Equal("/repo/" + target, resolver.ResolveTargetPath(target));
+        resolver.ResolveTargetPath(target).Should().Be("/repo/" + target);
     }
 
     [Theory]
@@ -32,6 +33,6 @@ public sealed class CSharpWorkspaceTargetResolverTests
     {
         var fileSystem = new MockFileSystem();
         var workspace = new RepositoryWorkspace("/repo", "/repo/test.db", fileSystem);
-        Assert.Null(new CSharpWorkspaceTargetResolver(workspace, fileSystem).ResolveTargetPath(target));
+        new CSharpWorkspaceTargetResolver(workspace, fileSystem).ResolveTargetPath(target).Should().BeNull();
     }
 }

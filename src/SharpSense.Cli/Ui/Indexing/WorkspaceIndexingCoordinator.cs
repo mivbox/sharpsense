@@ -9,7 +9,7 @@ namespace SharpSense.Cli.Ui.Indexing;
 /// Owns one cancellable indexing/watch session per workspace for the lifetime of the UI host.
 /// Jobs never depend on a browser request or its mutable current workspace selection.
 /// </summary>
-public sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAsyncDisposable
+internal sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAsyncDisposable
 {
     private readonly object _gate = new();
     private readonly Dictionary<Guid, Job> _jobs = [];
@@ -20,11 +20,13 @@ public sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAsyn
 
     public WorkspaceIndexingCoordinator(
         IServiceScopeFactory scopeFactory,
-        WorkspaceCatalog catalog,
+        IWorkspaceCatalog catalog,
         IHostApplicationLifetime lifetime,
         ILogger<WorkspaceIndexingCoordinator> logger)
-        : this((selection, request, update, ct) => WorkspaceIndexingSession.Run(scopeFactory, catalog, selection, request, update, ct),
-            lifetime.ApplicationStopping, logger)
+        : this(
+            (selection, request, update, ct) => WorkspaceIndexingSession.Run(scopeFactory, catalog, selection, request, update, ct),
+            lifetime.ApplicationStopping,
+            logger)
     {
     }
 
@@ -44,13 +46,27 @@ public sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAsyn
         {
             return _jobs.TryGetValue(workspaceId, out var job)
                 ? job.Status
-                : new WorkspaceIndexingStatus(workspaceId, null, "idle", false, null, null, null, null, null, [], 0, StreamId: _streamId, UpdatedAt: _streamStartedAt);
+                : new WorkspaceIndexingStatus(
+                    workspaceId,
+                    null,
+                    "idle",
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    [],
+                    0,
+                    StreamId: _streamId,
+                    UpdatedAt: _streamStartedAt);
         }
     }
 
     public WorkspaceIndexingStatus Start(WorkspaceSelection selection, StartWorkspaceIndexingRequest request)
     {
         ArgumentNullException.ThrowIfNull(selection);
+
         return Start(() => selection, request);
     }
 
@@ -76,12 +92,25 @@ public sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAsyn
             }
 
             var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_applicationStopping);
-            var job = new Job(cancellation, new WorkspaceIndexingStatus(
-                workspaceId, Guid.NewGuid(), "indexing", request.Watch, DateTimeOffset.UtcNow, null,
-                "Preparing workspace index...", null, null, [], existing?.Status.Revision ?? 0, existing?.Status.Sequence ?? 0));
+            var job = new Job(
+                cancellation,
+                new WorkspaceIndexingStatus(
+                    workspaceId,
+                    Guid.NewGuid(),
+                    "indexing",
+                    request.Watch,
+                    DateTimeOffset.UtcNow,
+                    null,
+                    "Preparing workspace index...",
+                    null,
+                    null,
+                    [],
+                    existing?.Status.Revision ?? 0,
+                    existing?.Status.Sequence ?? 0));
             _jobs[workspaceId] = job;
             Publish(job);
             job.Task = Task.Run(() => Execute(job, selection, request), CancellationToken.None);
+
             return job.Status;
         }
     }
@@ -110,7 +139,11 @@ public sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAsyn
                 return GetStatus(workspaceId);
             }
 
-            job.Status = job.Status with { State = "stopping", Message = "Stopping workspace indexing..." };
+            job.Status = job.Status with
+            {
+                State = "stopping",
+                Message = "Stopping workspace indexing..."
+            };
             Publish(job);
             job.Cancellation.Cancel();
             task = job.Task;
@@ -134,17 +167,23 @@ public sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAsyn
             _stopping = true;
             foreach (var job in _jobs.Values.Where(static job => IsActive(job.Status.State)))
             {
-                job.Status = job.Status with { State = "stopping", Message = "UI host is stopping..." };
+                job.Status = job.Status with
+                {
+                    State = "stopping",
+                    Message = "UI host is stopping..."
+                };
                 Publish(job);
                 job.Cancellation.Cancel();
             }
 
-            tasks = [.. _jobs.Values.Select(static job => job.Task).OfType<Task>()];
+            tasks = [.. _jobs.Values.Select(static job => job.Task)
+                .OfType<Task>()];
         }
 
         try
         {
-            await Task.WhenAll(tasks).WaitAsync(cancellationToken);
+            await Task.WhenAll(tasks)
+                .WaitAsync(cancellationToken);
         }
         finally
         {
@@ -169,7 +208,10 @@ public sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAsyn
         catch (Exception exception)
         {
             _logger.LogError(exception, "Indexing workspace {WorkspaceId} failed", selection.Definition.Id);
-            Complete(job, "failed", "Workspace indexing failed.",
+            Complete(
+                job,
+                "failed",
+                "Workspace indexing failed.",
                 [exception.Message]);
         }
         finally
@@ -236,14 +278,24 @@ public sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAsyn
 
     private static bool IsActive(string state) => state is "indexing" or "watching" or "stopping";
     private static string Limit(string message) => message.Length <= 2000 ? message : message[..2000];
-    private static string[] Bound(IReadOnlyList<string> diagnostics) => [.. diagnostics.Take(20).Select(Limit)];
+    private static string[] Bound(IReadOnlyList<string> diagnostics) => [.. diagnostics.Take(20)
+        .Select(Limit)];
 
     private sealed class Job(CancellationTokenSource cancellation, WorkspaceIndexingStatus status)
     {
-        public CancellationTokenSource Cancellation { get; } = cancellation;
-        public WorkspaceIndexingStatus Status { get; set; } = status;
-        public Task? Task { get; set; }
+        public CancellationTokenSource Cancellation
+        {
+            get;
+        } = cancellation;
+        public WorkspaceIndexingStatus Status
+        {
+            get; set;
+        } = status;
+        public Task? Task
+        {
+            get; set;
+        }
     }
 }
 
-public sealed class WorkspaceBusyException(string message) : InvalidOperationException(message);
+internal sealed class WorkspaceBusyException(string message) : InvalidOperationException(message);

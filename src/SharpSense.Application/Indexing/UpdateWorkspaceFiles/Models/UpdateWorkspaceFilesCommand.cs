@@ -1,6 +1,6 @@
 using SharpSense.Application.Indexing.Models;
-using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Indexing.Notifications;
+using SharpSense.Application.Shared.Models;
 
 namespace SharpSense.Application.Indexing.UpdateWorkspaceFiles.Models;
 

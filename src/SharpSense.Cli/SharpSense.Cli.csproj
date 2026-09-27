@@ -1,13 +1,11 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <FrontendProjectDir>../SharpSense.UI</FrontendProjectDir>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>$(NetCoreAppVersion)</TargetFramework>
     <OutputType>Exe</OutputType>
     <!-- No-build packaging reuses the manifest already embedded in the assembly. -->
     <GenerateEmbeddedFilesManifest Condition="'$(NoBuild)' != 'true'">true</GenerateEmbeddedFilesManifest>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
 
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>

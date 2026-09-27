@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
 namespace SharpSense.Infrastructure.Tests.CodeAnalysis.Roslyn;
@@ -17,14 +18,14 @@ public sealed class MsBuildLocatorRegistrationTests
 
         var selected = MsBuildLocatorRegistration.SelectPreferredInstance(instances);
 
-        Assert.Equal("Alpha", selected.Name);
-        Assert.Equal(Microsoft.Build.Locator.DiscoveryType.DeveloperConsole, selected.DiscoveryType);
-        Assert.Equal("/sdk/alpha-a", selected.MSBuildPath);
+        selected.Name.Should().Be("Alpha");
+        selected.DiscoveryType.Should().Be(Microsoft.Build.Locator.DiscoveryType.DeveloperConsole);
+        selected.MSBuildPath.Should().Be("/sdk/alpha-a");
     }
 
     [Fact]
     public void WhenSelectingPreferredInstanceWithoutAvailableInstances_ThenThrowsInvalidOperationException()
     {
-        Assert.Throws<InvalidOperationException>(() => MsBuildLocatorRegistration.SelectPreferredInstance(Array.Empty<MsBuildInstanceCandidate>()));
+        ((Action)(() => MsBuildLocatorRegistration.SelectPreferredInstance(Array.Empty<MsBuildInstanceCandidate>()))).Should().ThrowExactly<InvalidOperationException>();
     }
 }

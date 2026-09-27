@@ -11,6 +11,8 @@ public static class WorkspaceExplorerInfrastructureServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddScoped<IWorkspaceTreeRepository, WorkspaceTreeRepository>();
 
+        services.TryAddScoped<IWorkspaceOverviewReader, WorkspaceOverviewReader>();
+
         return services;
     }
 }

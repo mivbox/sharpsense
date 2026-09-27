@@ -12,20 +12,6 @@ internal static class CommandPathResolver
         return NormalizeDirectory(rootCandidate);
     }
 
-    public static string ResolveTargetDirectory(string repositoryRoot, string targetPath)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRoot);
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
-
-        var absoluteTargetPath = ResolvePath(repositoryRoot, targetPath);
-        if (Directory.Exists(absoluteTargetPath))
-        {
-            return NormalizeDirectory(absoluteTargetPath);
-        }
-
-        return Path.GetDirectoryName(absoluteTargetPath) ?? NormalizeDirectory(repositoryRoot);
-    }
-
     private static string ResolvePath(string basePath, string path)
         => Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(basePath, path));
 

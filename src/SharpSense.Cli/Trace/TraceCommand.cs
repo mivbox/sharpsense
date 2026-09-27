@@ -2,13 +2,12 @@ using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SharpSense.Application.ImpactAnalysis;
-using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
+using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.Memory;
 using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
-using SharpSense.Application.Shared.Options;
 using SharpSense.Application.Trace;
 using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
@@ -17,7 +16,6 @@ using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.ImpactAnalysis;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
-using SharpSense.Infrastructure.Storage;
 using SharpSense.Infrastructure.Trace;
 using Spectre.Console;
 using Spectre.Console.Cli;
@@ -32,26 +30,44 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
     public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "<identifier>")]
-        public string Identifier { get; init; } = string.Empty;
+        public string Identifier
+        {
+            get; init;
+        } = string.Empty;
 
         [CommandOption("-d|--direction <DIRECTION>")]
-        public string Direction { get; init; } = "callee";
+        public string Direction
+        {
+            get; init;
+        } = "callee";
 
         [CommandOption("--toon")]
-        public bool UseToonFormat { get; init; }
+        public bool UseToonFormat
+        {
+            get; init;
+        }
 
         [CommandOption("--include-structural")]
-        public bool IncludeStructural { get; init; }
+        public bool IncludeStructural
+        {
+            get; init;
+        }
 
         [CommandOption("--include-memories")]
-        public bool IncludeMemories { get; init; }
-
+        public bool IncludeMemories
+        {
+            get; init;
+        }
 
         public override ValidationResult Validate()
-            => string.IsNullOrWhiteSpace(Identifier) ?
-                ValidationResult.Error("A symbol identifier is required.") :
-                NormalizeDirection(Direction) is null ?
-                    ValidationResult.Error("Direction must be either 'caller' or 'callee'.") :
+            => string.IsNullOrWhiteSpace(Identifier)
+                ?
+                ValidationResult.Error("A symbol identifier is required.")
+                :
+                NormalizeDirection(Direction) is null
+                ?
+                    ValidationResult.Error("Direction must be either 'caller' or 'callee'.")
+                :
                     base.Validate();
     }
 
@@ -91,10 +107,10 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
         switch (direction)
         {
             case "caller":
-            {
-                impactResult = await services
-                    .GetRequiredService<IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult>>()
-                    .Handle(
+                {
+                    impactResult = await services
+                        .GetRequiredService<IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult>>()
+                        .Handle(
                         new ImpactAnalysisQuery(
                             settings.Identifier,
                             MaxDepth: 1,
@@ -102,9 +118,9 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
                             IncludedEdgeTypes: includedEdgeTypes),
                         ct);
 
-                nodes = MapImpactedNodes(impactResult.ImpactedNodes);
-                break;
-            }
+                    nodes = MapImpactedNodes(impactResult.ImpactedNodes);
+                    break;
+                }
             case "callee":
                 nodes = await services
                     .GetRequiredService<IQueryHandler<TraceQuery, CodeNodeResult[]>>()
@@ -126,18 +142,20 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
 
         var output = settings.UseToonFormat
             ? rootNode is null
-                ? string.Empty
-                : direction == "caller"
-                    ? TokenObjectNotation.SerializeCallerTrace(rootNode, nodes, impactResult?.Dependencies ?? [], memoriesByNodeId)
-                    : TokenObjectNotation.SerializeCalleeTrace(rootNode, nodes, memoriesByNodeId)
+            ? string.Empty
+            : direction == "caller"
+                ? TokenObjectNotation.SerializeCallerTrace(rootNode, nodes, impactResult?.Dependencies ?? [], memoriesByNodeId)
+                : TokenObjectNotation.SerializeCalleeTrace(rootNode, nodes, memoriesByNodeId)
             : JsonSerializer.Serialize(nodes, TokenObjectNotation.JsonOptions);
 
         CommandOutput.Write(context, output);
+
         return 0;
     }
 
     private static string? NormalizeDirection(string direction)
-        => direction.Trim().ToLowerInvariant() switch
+        => direction.Trim()
+            .ToLowerInvariant() switch
         {
             "caller" => "caller",
             "callee" => "callee",

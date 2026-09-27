@@ -21,18 +21,23 @@ public sealed class MemoryIdentitySearchTests
     public async Task WhenMemoryOwnerNameChanges_ThenSearchUsesStableIdAndCurrentName(string searchText, bool vector)
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory(new(UseMigrations: true, LoadVectorExtension: true));
-        await using var db = await factory.GetContext<SharpSenseDbContext>(ct);
-        await KnowledgeGraphFixture.SeedAsync(db);
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var db = await factory.GetContext(ct);
+        await KnowledgeGraphFixture.Seed(db);
         foreach (var node in await db.CodeNodes.ToArrayAsync(ct))
         {
             node.VectorEmbedding = null;
         }
         db.MemoryNodes.Add(new MemoryNodeRecord
         {
-            Id = Guid.NewGuid(), TargetCodeNodeId = KnowledgeGraphFixture.DirectCallerNodeId,
-            TargetCodeHash = "hash", Content = "AuthoredMarker", ContentHash = "memory-hash",
-            TagsJson = "[\"identity\"]", CreatedAt = DateTimeOffset.UtcNow, VectorEmbedding = vector ? [1f, 0f] : null
+            Id = Guid.NewGuid(),
+            TargetCodeNodeId = KnowledgeGraphFixture.DirectCallerNodeId,
+            TargetCodeHash = "hash",
+            Content = "AuthoredMarker",
+            ContentHash = "memory-hash",
+            TagsJson = "[\"identity\"]",
+            CreatedAt = DateTimeOffset.UtcNow,
+            VectorEmbedding = vector ? [1f, 0f] : null
         });
         await db.SaveChangesAsync(ct);
         var owner = await db.CodeNodes.SingleAsync(node => node.Id == KnowledgeGraphFixture.DirectCallerNodeId, ct);
@@ -40,8 +45,11 @@ public sealed class MemoryIdentitySearchTests
         // Leave FTS untouched: only memory-name matching should find this new display name.
         await db.SaveChangesAsync(ct);
         var embeddings = new Mock<IEmbeddingGenerator>();
-        embeddings.Setup(generator => generator.Generate(searchText, ct)).ReturnsAsync(new TextEmbedding(searchText, [1f, 0f]));
-        var searcher = new HybridSearcher(factory.CreateDbContextFactory<SharpSenseDbContext>(), embeddings.Object,
+        embeddings.Setup(generator => generator.Generate(searchText, ct))
+            .ReturnsAsync(new TextEmbedding(searchText, [1f, 0f]));
+        var searcher = new HybridSearcher(
+            factory.CreateDbContextFactory(),
+            embeddings.Object,
             new SqliteKeywordCandidateProvider());
 
         var result = await searcher.Search(new HybridSearchQuery(searchText, IncludeMemories: true, TagFilters: ["identity"]), ct);

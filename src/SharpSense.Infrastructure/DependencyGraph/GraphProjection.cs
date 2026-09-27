@@ -1,6 +1,6 @@
-using System.Data.Common;
 using SharpSense.Application.DependencyGraph.Models;
 using SharpSense.Infrastructure.Indexing.TypeScript;
+using System.Data.Common;
 
 namespace SharpSense.Infrastructure.DependencyGraph;
 
@@ -16,11 +16,15 @@ internal static class GraphProjection
         }
         else if (type == "package" && PackageNodeIdentity.TryParse(label, out var package, out var export))
         {
-            label = string.IsNullOrWhiteSpace(export) ? package : $"{package}/{export}";
+            label = string.IsNullOrWhiteSpace(export)
+                ? package
+                : $"{package}/{export}";
         }
 
         return new GraphConnectionNode(
-            reader.GetInt32(0), label, type,
+            reader.GetInt32(0),
+            label,
+            type,
             reader.IsDBNull(3) ? null : reader.GetString(3),
             reader.IsDBNull(4) ? null : reader.GetInt32(4),
             reader.IsDBNull(5) ? null : reader.GetInt32(5));

@@ -15,6 +15,7 @@ public static class CommandExecutionInfrastructureServiceCollectionExtensions
             options.UseSqlite("Data Source=:memory:;Mode=Memory;Cache=Private;Pooling=False"));
         services.TryAddSingleton<ICommandProcessRunner, SystemCommandRunner>();
         services.TryAddSingleton<IExecuteLogIndexFactory, TransientExecutionLogIndexFactory>();
+
         return services;
     }
 }

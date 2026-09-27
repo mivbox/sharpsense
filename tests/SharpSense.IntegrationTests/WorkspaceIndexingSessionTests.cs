@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -17,9 +18,11 @@ namespace SharpSense.IntegrationTests;
 public sealed class WorkspaceIndexingSessionTests
 {
     [Fact]
-    public async Task ConcurrentJobsUseIndependentWorkspaceScopesAndDatabases()
+    public async Task WhenConcurrentJobs_ThenUseIndependentWorkspaceScopesAndDatabases()
     {
-        var temporaryDirectory = Path.Combine(Path.GetTempPath(), $"sharpsense-workspace-jobs-{Guid.NewGuid():N}");
+        var temporaryDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"sharpsense-workspace-jobs-{Guid.NewGuid():N}");
         var repositoryRoot = Path.Combine(temporaryDirectory, "repo");
         Directory.CreateDirectory(Path.Combine(repositoryRoot, "docs"));
         var ct = TestContext.Current.CancellationToken;
@@ -34,7 +37,7 @@ public sealed class WorkspaceIndexingSessionTests
             var services = new ServiceCollection();
             services.AddLogging();
             services.AddWorkspaceUiServices(new WorkspaceUiOptions(null, repositoryRoot, new Uri("http://localhost:50069")));
-            services.AddSingleton(catalog);
+            services.AddSingleton<IWorkspaceCatalog>(catalog);
             services.AddSingleton(Mock.Of<IHostApplicationLifetime>());
             services.AddIndexing();
             services.AddIndexingInfrastructure();
@@ -50,14 +53,15 @@ public sealed class WorkspaceIndexingSessionTests
 
             coordinator.Start(first, new StartWorkspaceIndexingRequest(SkipEmbeddings: true));
             coordinator.Start(second, new StartWorkspaceIndexingRequest(SkipEmbeddings: true));
-            await Task.WhenAll(WaitForCompletion(coordinator, first.Definition.Id, ct),
+            await Task.WhenAll(
+                WaitForCompletion(coordinator, first.Definition.Id, ct),
                 WaitForCompletion(coordinator, second.Definition.Id, ct));
 
-            Assert.Equal(["docs/first.md"], await DocumentPaths(provider, first, ct));
-            Assert.Equal(["docs/second.md"], await DocumentPaths(provider, second, ct));
-            Assert.NotEqual(first.Workspace.DatabasePath, second.Workspace.DatabasePath);
-            Assert.Equal(1, coordinator.GetStatus(first.Definition.Id).Revision);
-            Assert.Equal(1, coordinator.GetStatus(second.Definition.Id).Revision);
+            (await DocumentPaths(provider, first, ct)).Should().Equal(["docs/first.md"]);
+            (await DocumentPaths(provider, second, ct)).Should().Equal(["docs/second.md"]);
+            second.Workspace.DatabasePath.Should().NotBe(first.Workspace.DatabasePath);
+            coordinator.GetStatus(first.Definition.Id).Revision.Should().Be(1);
+            coordinator.GetStatus(second.Definition.Id).Revision.Should().Be(1);
         }
         finally
         {
@@ -69,10 +73,13 @@ public sealed class WorkspaceIndexingSessionTests
     private static async Task<string[]> DocumentPaths(IServiceProvider provider, WorkspaceSelection selection, CancellationToken ct)
     {
         await using var scope = provider.CreateAsyncScope();
-        scope.ServiceProvider.GetRequiredService<WorkspaceScope>().Bind(selection);
+        scope.ServiceProvider.GetRequiredService<IWorkspaceScope>()
+            .Bind(selection);
         var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<SharpSenseDbContext>>();
         await using var context = await factory.CreateDbContextAsync(ct);
-        return await context.Documents.Select(static document => document.RelativePath).ToArrayAsync(ct);
+
+        return await context.Documents.Select(static document => document.RelativePath)
+            .ToArrayAsync(ct);
     }
 
     private static async Task WaitForCompletion(WorkspaceIndexingCoordinator coordinator, Guid id, CancellationToken ct)
@@ -87,7 +94,7 @@ public sealed class WorkspaceIndexingSessionTests
                 return;
             }
 
-            Assert.NotEqual("failed", status.State);
+            status.State.Should().NotBe("failed");
             await Task.Delay(20, timeout.Token);
         }
     }

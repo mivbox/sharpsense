@@ -86,8 +86,12 @@ internal sealed class AnalysisOperation
                     return;
                 }
 
-                Publish(AnalysisNotificationKind.SourceProgress, source, progress.CurrentTask,
-                    progress.CompletedItems, progress.TotalItems > 0 ? progress.TotalItems : null);
+                Publish(
+                    AnalysisNotificationKind.SourceProgress,
+                    source,
+                    progress.CurrentTask,
+                    progress.CompletedItems,
+                    progress.TotalItems > 0 ? progress.TotalItems : null);
                 previous?.Report(progress);
             }
         });
@@ -102,8 +106,11 @@ internal sealed class AnalysisOperation
                     return;
                 }
 
-                Publish(AnalysisNotificationKind.EmbeddingProgress, message: progress.CurrentTask,
-                    completed: progress.CompletedItems, total: progress.TotalItems > 0 ? progress.TotalItems : null);
+                Publish(
+                    AnalysisNotificationKind.EmbeddingProgress,
+                    message: progress.CurrentTask,
+                    completed: progress.CompletedItems,
+                    total: progress.TotalItems > 0 ? progress.TotalItems : null);
                 previous?.Report(progress);
             }
         });
@@ -126,16 +133,19 @@ internal sealed class AnalysisOperation
     }
 
     public void Committed(ExtractedNodes graph)
-        => Finish(AnalysisNotificationKind.Committed, "Graph saved.", summary: new AnalysisSummary(
-            graph.Projects.Count,
-            graph.CodeNodes.Count,
-            graph.Edges.Count,
-            graph.CodeNodes.Count(node => node.NodeType == NodeType.Document),
-            _extractedSources,
-            _reusedSources,
-            _reusedEmbeddings,
-            _generatedEmbeddings,
-            graph.Diagnostics.Count));
+        => Finish(
+            AnalysisNotificationKind.Committed,
+            "Graph saved.",
+            summary: new AnalysisSummary(
+                graph.Projects.Count,
+                graph.CodeNodes.Count,
+                graph.Edges.Count,
+                graph.CodeNodes.Count(node => node.NodeType == NodeType.Document),
+                _extractedSources,
+                _reusedSources,
+                _reusedEmbeddings,
+                _generatedEmbeddings,
+                graph.Diagnostics.Count));
 
     public void Ignored() => Finish(AnalysisNotificationKind.Ignored, "No relevant workspace changes.");
 
@@ -163,8 +173,18 @@ internal sealed class AnalysisOperation
                 return;
             }
 
-            var notification = new AnalysisNotification(_id, ++_sequence, DateTimeOffset.UtcNow,
-                kind, _kind, _phase, source, message, completed, total, summary);
+            var notification = new AnalysisNotification(
+                _id,
+                ++_sequence,
+                DateTimeOffset.UtcNow,
+                kind,
+                _kind,
+                _phase,
+                source,
+                message,
+                completed,
+                total,
+                summary);
             try
             {
                 _notifier.Notify(notification);

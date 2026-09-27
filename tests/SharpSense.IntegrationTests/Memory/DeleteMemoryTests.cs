@@ -1,10 +1,7 @@
 using AwesomeAssertions;
-using FluentResults;
-using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Memory.DeleteMemory;
 using SharpSense.Application.Memory.DeleteMemory.Models;
-using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence.Records;
@@ -21,12 +18,17 @@ public sealed class DeleteMemoryTests
     public async Task WhenDeleteMemoryInvokedWithExistingId_ThenMemoryIsRemoved()
     {
         await using var factory = new TestSharpSenseDbContextFactory();
-        var dbContext = await factory.CreateDbContextAsync();
+        var dbContext = await factory.CreateDbContextAsync(TestContext.Current.CancellationToken);
         var store = new MemoryStore(factory, new NoopEmbeddingGenerator());
 
         const int nodeId = 1;
         const string fqdn = "Sample.Namespace.Greeter";
-        dbContext.Directories.Add(new DirectoryRecord { Id = 1, Path = "Sample", Name = "Sample" });
+        dbContext.Directories.Add(new DirectoryRecord
+        {
+            Id = 1,
+            Path = "Sample",
+            Name = "Sample"
+        });
         dbContext.Documents.Add(new DocumentRecord
         {
             Id = 1,
@@ -36,7 +38,12 @@ public sealed class DeleteMemoryTests
             RelativePath = "Sample/Greeter.cs",
             Kind = DocumentKind.Source
         });
-        dbContext.GraphNodes.Add(new GraphNodeRecord { Id = nodeId, CanonicalId = fqdn, Kind = GraphNodeKind.Code });
+        dbContext.GraphNodes.Add(new GraphNodeRecord
+        {
+            Id = nodeId,
+            CanonicalId = fqdn,
+            Kind = GraphNodeKind.Code
+        });
         dbContext.CodeNodes.Add(new CodeNodeRecord
         {
             Id = nodeId,
@@ -50,9 +57,14 @@ public sealed class DeleteMemoryTests
             SearchText = "Greeter greet",
             BodyHash = "hash-v1"
         });
-        await dbContext.SaveChangesAsync();
+        await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        var attach = await store.AttachMemory(nodeId, "Always greet politely.", ["convention"], SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention, CancellationToken.None);
+        var attach = await store.AttachMemory(
+            nodeId,
+            "Always greet politely.",
+            ["convention"],
+            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention,
+            CancellationToken.None);
         attach.IsSuccess.Should().BeTrue();
 
         var reader = (IMemoryRepository)store;

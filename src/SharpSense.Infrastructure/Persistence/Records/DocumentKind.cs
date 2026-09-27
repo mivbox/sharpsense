@@ -1,6 +1,6 @@
 namespace SharpSense.Infrastructure.Persistence.Records;
 
-public enum DocumentKind
+internal enum DocumentKind
 {
     Source = 0,
     ProjectFile = 1,

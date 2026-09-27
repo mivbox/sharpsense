@@ -2,7 +2,7 @@ namespace SharpSense.Application.Indexing.Models;
 
 public static class TypeScriptIndexingPathRules
 {
-    private static readonly HashSet<string> IgnoredDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> _ignoredDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "node_modules",
         "dist",
@@ -23,7 +23,7 @@ public static class TypeScriptIndexingPathRules
         // Extended TypeScript configs may use arbitrary JSON names. Without a persisted
         // config dependency graph, conservatively refresh on repository JSON changes.
         return IsTypeScriptFilePath(path) ||
-               string.Equals(Path.GetExtension(path), ".json", StringComparison.OrdinalIgnoreCase);
+            string.Equals(Path.GetExtension(path), ".json", StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool IsIndexedPath(string path)
@@ -38,8 +38,9 @@ public static class TypeScriptIndexingPathRules
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
         var extension = Path.GetExtension(path);
+
         return string.Equals(extension, ".ts", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(extension, ".tsx", StringComparison.OrdinalIgnoreCase);
+            string.Equals(extension, ".tsx", StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool IsIgnoredPath(string path)
@@ -48,6 +49,7 @@ public static class TypeScriptIndexingPathRules
 
         var normalizedPath = path.Replace('\\', '/');
         var segments = normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        return WorkspaceIndexingPathRules.IsIgnoredPath(normalizedPath) || segments.Any(IgnoredDirectoryNames.Contains);
+
+        return WorkspaceIndexingPathRules.IsIgnoredPath(normalizedPath) || segments.Any(_ignoredDirectoryNames.Contains);
     }
 }

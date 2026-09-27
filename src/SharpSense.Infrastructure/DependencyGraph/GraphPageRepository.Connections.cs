@@ -1,10 +1,10 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.DependencyGraph.Models;
+using System.Text.Json;
 
 namespace SharpSense.Infrastructure.DependencyGraph;
 
-public sealed partial class GraphPageRepository
+internal sealed partial class GraphPageRepository
 {
     private const string ConnectedPeers = """
         WITH ConnectedPeers AS (
@@ -53,17 +53,24 @@ public sealed partial class GraphPageRepository
             int? total = null;
             if (request.IncludeTotal)
             {
-                await using var count = Command($"""
+                await using var count = Command(
+                    $"""
                     {ConnectedPeers}
                     SELECT COUNT(*) {GraphPageSql.NodeJoins}
                     WHERE g.Id IN (SELECT Id FROM ConnectedPeers) AND {GraphPageSql.ValidNode};
-                    """, ("$node", request.NodeId));
+                    """,
+                    ("$node", request.NodeId));
                 total = Convert.ToInt32(await count.ExecuteScalarAsync(ct));
             }
 
             CheckRevision(revision, await ReadRevision(ct));
-            return new GraphNodeConnectionsPage(node, revision,
-                [.. peers.Select(peer => new GraphNodeConnection(peer, relationships[peer.Id]))], next, total);
+
+            return new GraphNodeConnectionsPage(
+                node,
+                revision,
+                [.. peers.Select(peer => new GraphNodeConnection(peer, relationships[peer.Id]))],
+                next,
+                total);
         }
         finally
         {
@@ -73,11 +80,14 @@ public sealed partial class GraphPageRepository
 
     private async Task<GraphConnectionNode?> ReadConnectionNode(int nodeId, CancellationToken ct)
     {
-        await using var command = Command($"""
+        await using var command = Command(
+            $"""
             SELECT {GraphPageSql.NodeColumns} {GraphPageSql.NodeJoins}
             WHERE g.Id = $node AND {GraphPageSql.ValidNode};
-            """, ("$node", nodeId));
+            """,
+            ("$node", nodeId));
         await using var reader = await command.ExecuteReaderAsync(ct);
+
         return await reader.ReadAsync(ct) ? GraphProjection.ReadNode(reader) : null;
     }
 
@@ -85,18 +95,23 @@ public sealed partial class GraphPageRepository
     {
         // Caller/callee indexes restrict discovery to this node's adjacency. UNION makes
         // incoming, outgoing and self relationships share one peer entry across pages.
-        await using var command = Command($"""
+        await using var command = Command(
+            $"""
             {ConnectedPeers}
             SELECT {GraphPageSql.NodeColumns} {GraphPageSql.NodeJoins}
             WHERE g.Id IN (SELECT Id FROM ConnectedPeers) AND g.Id > $after AND {GraphPageSql.ValidNode}
             ORDER BY g.Id LIMIT $limit;
-            """, ("$node", nodeId), ("$after", afterId), ("$limit", limit));
+            """,
+            ("$node", nodeId),
+            ("$after", afterId),
+            ("$limit", limit));
         await using var reader = await command.ExecuteReaderAsync(ct);
         var peers = new List<GraphConnectionNode>();
         while (await reader.ReadAsync(ct))
         {
             peers.Add(GraphProjection.ReadNode(reader));
         }
+
         return peers;
     }
 
@@ -111,7 +126,8 @@ public sealed partial class GraphPageRepository
 
         // Each selected peer gets every edge type in both directions. The self edge is
         // emitted by the first arm only, and JSON binds the peer IDs as one parameter.
-        await using var command = Command("""
+        await using var command = Command(
+            """
             SELECT CalleeNodeId AS PeerId, EdgeType, Metadata,
                 CASE WHEN CalleeNodeId = $node THEN 'self' ELSE 'outgoing' END AS Direction
             FROM DependencyEdges
@@ -122,14 +138,18 @@ public sealed partial class GraphPageRepository
             WHERE CalleeNodeId = $node AND CallerNodeId != $node
                 AND CallerNodeId IN (SELECT value FROM json_each($peers))
             ORDER BY PeerId, Direction, EdgeType;
-            """, ("$node", nodeId), ("$peers", JsonSerializer.Serialize(peers.Select(peer => peer.Id))));
+            """,
+            ("$node", nodeId),
+            ("$peers", JsonSerializer.Serialize(peers.Select(peer => peer.Id))));
         await using var reader = await command.ExecuteReaderAsync(ct);
         while (await reader.ReadAsync(ct))
         {
             relationships[reader.GetInt32(0)].Add(new GraphNodeRelationship(
-                GraphProjection.EdgeType(reader.GetString(1)), reader.GetString(3),
+                GraphProjection.EdgeType(reader.GetString(1)),
+                reader.GetString(3),
                 reader.IsDBNull(2) ? null : reader.GetString(2)));
         }
+
         return relationships;
     }
 }

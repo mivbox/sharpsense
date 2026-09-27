@@ -10,6 +10,7 @@ public static class GraphStatsInfrastructureServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddTransient<IGraphStatsReader, GraphStatsReader>();
+
         return services;
     }
 
@@ -17,6 +18,7 @@ public static class GraphStatsInfrastructureServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddTransient<IIndexRunStore, IndexRunStore>();
+
         return services;
     }
 }

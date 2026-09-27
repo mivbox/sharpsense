@@ -13,11 +13,13 @@ public sealed class TypeScriptMigrationTests
     public async Task WhenUpgradingPopulatedMemorySchema_ThenPreservesAuthoredMemoryAndAddsNullableEdgeMetadata()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory(new(LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(LoadVectorExtension: true));
         await using var db = new SharpSenseDbContext(new DbContextOptionsBuilder<SharpSenseDbContext>()
             .UseSqlite(factory.GetSqliteConnection()).Options);
-        await db.GetService<IMigrator>().MigrateAsync("20260606032026_MemoryIntentColumn", ct);
-        await db.Database.ExecuteSqlRawAsync("""
+        await db.GetService<IMigrator>()
+            .MigrateAsync("20260606032026_MemoryIntentColumn", ct);
+        await db.Database.ExecuteSqlRawAsync(
+            """
             INSERT INTO Directories (Id, ParentId, Path, Name) VALUES (1, NULL, '', '');
             INSERT INTO Documents (Id, DirectoryId, FileName, Extension, RelativePath, Kind)
                 VALUES (1, 1, 'Widget.cs', '.cs', 'Widget.cs', 'Source');
@@ -30,7 +32,8 @@ public sealed class TypeScriptMigrationTests
                 TagsJson, Intent, VectorEmbedding, CreatedAt)
                 VALUES ('F11E5391-64A7-4F5A-B85D-6CC48B9F18C1', 'Widget<T>', 'body', 'Authored invariant',
                 'content-hash', '["important"]', 'Invariant', X'0000803F00000040', '2026-09-23 00:00:00+00:00');
-            """, ct);
+            """,
+            ct);
 
         await db.Database.MigrateAsync(ct);
 

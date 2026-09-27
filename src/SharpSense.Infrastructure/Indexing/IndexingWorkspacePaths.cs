@@ -3,7 +3,7 @@ using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Infrastructure.Indexing;
 
-public sealed class IndexingWorkspacePaths(IRepositoryWorkspace repositoryWorkspace) : IIndexingWorkspacePaths
+internal sealed class IndexingWorkspacePaths(IRepositoryWorkspace repositoryWorkspace) : IIndexingWorkspacePaths
 {
     public string RootPath => repositoryWorkspace.RootPath;
 

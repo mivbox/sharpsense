@@ -1,12 +1,12 @@
+using SharpSense.Application.Indexing.Models;
+using SharpSense.Infrastructure.Storage;
 using System.IO.Abstractions;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using SharpSense.Application.Indexing.Models;
-using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Infrastructure.Indexing.TypeScript;
 
-public sealed class TsConfigResolver(
+internal sealed class TsConfigResolver(
     IRepositoryWorkspace repositoryWorkspace,
     IFileSystem fileSystem)
 {
@@ -39,7 +39,10 @@ public sealed class TsConfigResolver(
         {
             return [];
         }
-        var visited = new HashSet<string>(GetPathComparer()) { configPath };
+        var visited = new HashSet<string>(GetPathComparer())
+        {
+            configPath
+        };
         var pending = new Queue<string>();
         pending.Enqueue(configPath);
         var result = new List<string>();
@@ -48,7 +51,8 @@ public sealed class TsConfigResolver(
             foreach (var reference in LoadConfig(path).References)
             {
                 var referencedConfig = fileSystem.Directory.Exists(reference)
-                    ? fileSystem.Path.Combine(reference, "tsconfig.json") : reference;
+                    ? fileSystem.Path.Combine(reference, "tsconfig.json")
+                    : reference;
                 if (repositoryWorkspace.IsSameOrSubPath(referencedConfig) && visited.Add(referencedConfig))
                 {
                     result.Add(referencedConfig);
@@ -56,6 +60,7 @@ public sealed class TsConfigResolver(
                 }
             }
         }
+
         return result;
     }
 
@@ -79,6 +84,7 @@ public sealed class TsConfigResolver(
             // wins when inputs overlap; referenced project roots bind before following imports.
             _sourceConfigs.TryAdd(GetAbsolutePath(file.AbsolutePath), config);
         }
+
         return selectedFiles;
     }
 
@@ -117,8 +123,14 @@ public sealed class TsConfigResolver(
         {
             pattern = pattern.TrimEnd('/') + "/**/*";
         }
-        var expression = "^" + Regex.Escape(pattern).Replace(@"\*\*/", "(?:.*/)?").Replace(@"\*", "[^/]*").Replace(@"\?", "[^/]") + "$";
-        return Regex.IsMatch(path.Replace('\\', '/'), expression,
+        var expression = "^" + Regex.Escape(pattern)
+            .Replace(@"\*\*/", "(?:.*/)?")
+            .Replace(@"\*", "[^/]*")
+            .Replace(@"\?", "[^/]") + "$";
+
+        return Regex.IsMatch(
+            path.Replace('\\', '/'),
+            expression,
             OperatingSystem.IsWindows() ? RegexOptions.IgnoreCase : RegexOptions.None);
     }
 
@@ -130,6 +142,7 @@ public sealed class TsConfigResolver(
         try
         {
             ct.ThrowIfCancellationRequested();
+
             return ResolveImportCore(importPath, sourceFilePath, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -165,7 +178,8 @@ public sealed class TsConfigResolver(
 
                 foreach (var targetPattern in pathMapping.TargetPatterns)
                 {
-                    var candidate = fileSystem.Path.Combine(resolvedConfig.BaseUrlPath ?? pathMapping.ConfigDirectoryPath,
+                    var candidate = fileSystem.Path.Combine(
+                        resolvedConfig.BaseUrlPath ?? pathMapping.ConfigDirectoryPath,
                         ApplyWildcard(targetPattern, wildcardValue));
                     var resolvedPath = ResolveModulePath(candidate);
                     if (resolvedPath is not null)
@@ -201,6 +215,7 @@ public sealed class TsConfigResolver(
         {
             _sourceConfigs.TryAdd(path, config);
         }
+
         return path;
     }
 
@@ -262,23 +277,30 @@ public sealed class TsConfigResolver(
         ResolvedTsConfig? baseConfig = null;
         var extendsPaths = configDocument.Extends.ValueKind switch
         {
-            JsonValueKind.String => new[] { configDocument.Extends.GetString()! },
-            JsonValueKind.Array => configDocument.Extends.EnumerateArray().Select(value => value.GetString()!).ToArray(),
+            JsonValueKind.String => new[]
+            {
+                configDocument.Extends.GetString()!
+            },
+            JsonValueKind.Array => configDocument.Extends.EnumerateArray()
+                .Select(value => value.GetString()!)
+                .ToArray(),
             _ => []
         };
         foreach (var extendsPath in extendsPaths)
         {
             var inherited = LoadConfigCore(ResolveExtendsPath(configDirectoryPath, extendsPath), visitedConfigPaths);
-            baseConfig = baseConfig is null ? inherited : inherited with
-            {
-                BaseUrlPath = inherited.BaseUrlPath ?? baseConfig.BaseUrlPath,
-                PathMappings = inherited.HasPathMappings ? inherited.PathMappings : baseConfig.PathMappings,
-                HasPathMappings = inherited.HasPathMappings || baseConfig.HasPathMappings,
-                Files = inherited.Files ?? baseConfig.Files,
-                Includes = inherited.Includes ?? baseConfig.Includes,
-                Excludes = inherited.HasExcludes ? inherited.Excludes : baseConfig.Excludes,
-                HasExcludes = inherited.HasExcludes || baseConfig.HasExcludes
-            };
+            baseConfig = baseConfig is null
+                ? inherited
+                : inherited with
+                {
+                    BaseUrlPath = inherited.BaseUrlPath ?? baseConfig.BaseUrlPath,
+                    PathMappings = inherited.HasPathMappings ? inherited.PathMappings : baseConfig.PathMappings,
+                    HasPathMappings = inherited.HasPathMappings || baseConfig.HasPathMappings,
+                    Files = inherited.Files ?? baseConfig.Files,
+                    Includes = inherited.Includes ?? baseConfig.Includes,
+                    Excludes = inherited.HasExcludes ? inherited.Excludes : baseConfig.Excludes,
+                    HasExcludes = inherited.HasExcludes || baseConfig.HasExcludes
+                };
         }
         var baseUrlPath = !string.IsNullOrWhiteSpace(configDocument.CompilerOptions?.BaseUrl)
             ? GetAbsolutePath(fileSystem.Path.Combine(configDirectoryPath, configDocument.CompilerOptions.BaseUrl))
@@ -324,9 +346,13 @@ public sealed class TsConfigResolver(
             configDocument.References?.Select(reference => GetAbsolutePath(fileSystem.Path.Combine(configDirectoryPath, reference.Path))).ToArray() ?? []);
         if (!string.IsNullOrWhiteSpace(configDocument.CompilerOptions?.OutDir))
         {
-            resolvedConfig = resolvedConfig with { Excludes = [.. resolvedConfig.Excludes, GetAbsolutePath(fileSystem.Path.Combine(configDirectoryPath, configDocument.CompilerOptions.OutDir))] };
+            resolvedConfig = resolvedConfig with
+            {
+                Excludes = [.. resolvedConfig.Excludes, GetAbsolutePath(fileSystem.Path.Combine(configDirectoryPath, configDocument.CompilerOptions.OutDir))]
+            };
         }
         _configCache[absoluteConfigPath] = resolvedConfig;
+
         return resolvedConfig;
     }
 
@@ -337,10 +363,13 @@ public sealed class TsConfigResolver(
     {
         if (!fileSystem.File.Exists(configPath))
         {
-            throw new FileNotFoundException($"The tsconfig file '{configPath}' was not found.", configPath);
+            throw new FileNotFoundException(
+                $"The tsconfig file '{configPath}' was not found.",
+                configPath);
         }
 
         var rawContent = fileSystem.File.ReadAllText(configPath);
+
         return JsonSerializer.Deserialize<TsConfigDocument>(rawContent, _serializerOptions) ?? new TsConfigDocument();
     }
 
@@ -362,7 +391,9 @@ public sealed class TsConfigResolver(
 
         if (!fileSystem.File.Exists(candidatePath))
         {
-            throw new FileNotFoundException($"The extended tsconfig file '{candidatePath}' was not found.", candidatePath);
+            throw new FileNotFoundException(
+                $"The extended tsconfig file '{candidatePath}' was not found.",
+                candidatePath);
         }
 
         return GetAbsolutePath(candidatePath);
@@ -521,6 +552,7 @@ public sealed class TsConfigResolver(
 
         ct.ThrowIfCancellationRequested();
         _workspacePackageRootsByName = packageRootsByName;
+
         return _workspacePackageRootsByName;
     }
 
@@ -536,8 +568,8 @@ public sealed class TsConfigResolver(
         foreach (var candidatePath in EnumerateWorkspacePackageCandidateRoots(packageRootPath)
                      .Select(candidateRootPath =>
                          string.IsNullOrWhiteSpace(normalizedSubpath)
-                             ? candidateRootPath
-                             : fileSystem.Path.Combine(candidateRootPath, normalizedSubpath)))
+                         ? candidateRootPath
+                         : fileSystem.Path.Combine(candidateRootPath, normalizedSubpath)))
         {
             var absoluteCandidatePath = GetAbsolutePath(candidatePath);
             if (seenPaths.Add(absoluteCandidatePath))
@@ -589,6 +621,7 @@ public sealed class TsConfigResolver(
         try
         {
             var rawContent = fileSystem.File.ReadAllText(packageManifestPath);
+
             return JsonSerializer.Deserialize<PackageManifestDocument>(rawContent, _serializerOptions)?.Name;
         }
         catch (JsonException)
@@ -674,11 +707,12 @@ public sealed class TsConfigResolver(
     private bool ShouldSkipWorkspacePackageDirectory(string directoryPath)
     {
         var directoryName = fileSystem.Path.GetFileName(directoryPath);
+
         return string.Equals(directoryName, ".git", GetPathComparison()) ||
-               string.Equals(directoryName, "node_modules", GetPathComparison()) ||
-               string.Equals(directoryName, "dist", GetPathComparison()) ||
-               string.Equals(directoryName, "build", GetPathComparison()) ||
-               (fileSystem.DirectoryInfo.New(directoryPath).Attributes & FileAttributes.ReparsePoint) != 0;
+            string.Equals(directoryName, "node_modules", GetPathComparison()) ||
+            string.Equals(directoryName, "dist", GetPathComparison()) ||
+            string.Equals(directoryName, "build", GetPathComparison()) ||
+            (fileSystem.DirectoryInfo.New(directoryPath).Attributes & FileAttributes.ReparsePoint) != 0;
     }
 
     private static bool TrySplitPackageImportPath(
@@ -710,6 +744,7 @@ public sealed class TsConfigResolver(
             packageSubpath = pathSegments.Length > 2
                 ? string.Join('/', pathSegments.Skip(2))
                 : null;
+
             return true;
         }
 
@@ -717,6 +752,7 @@ public sealed class TsConfigResolver(
         packageSubpath = pathSegments.Length > 1
             ? string.Join('/', pathSegments.Skip(1))
             : null;
+
         return true;
     }
 
@@ -737,12 +773,14 @@ public sealed class TsConfigResolver(
         if (firstWildcardIndex < 0)
         {
             wildcardValue = string.Empty;
+
             return string.Equals(pattern, importPath, StringComparison.Ordinal);
         }
 
         if (pattern.LastIndexOf('*') != firstWildcardIndex)
         {
             wildcardValue = string.Empty;
+
             return false;
         }
 
@@ -753,10 +791,12 @@ public sealed class TsConfigResolver(
             importPath.Length < prefix.Length + suffix.Length)
         {
             wildcardValue = string.Empty;
+
             return false;
         }
 
         wildcardValue = importPath[prefix.Length..(importPath.Length - suffix.Length)];
+
         return true;
     }
 
@@ -792,31 +832,64 @@ public sealed class TsConfigResolver(
 
     private sealed class TsConfigDocument
     {
-        public JsonElement Extends { get; init; }
+        public JsonElement Extends
+        {
+            get; init;
+        }
 
-        public string[]? Files { get; init; }
-        public string[]? Include { get; init; }
-        public string[]? Exclude { get; init; }
-        public TsConfigReference[]? References { get; init; }
+        public string[]? Files
+        {
+            get; init;
+        }
+        public string[]? Include
+        {
+            get; init;
+        }
+        public string[]? Exclude
+        {
+            get; init;
+        }
+        public TsConfigReference[]? References
+        {
+            get; init;
+        }
 
-        public TsConfigCompilerOptions? CompilerOptions { get; init; }
+        public TsConfigCompilerOptions? CompilerOptions
+        {
+            get; init;
+        }
     }
 
     private sealed class TsConfigCompilerOptions
     {
-        public string? BaseUrl { get; init; }
+        public string? BaseUrl
+        {
+            get; init;
+        }
 
-        public Dictionary<string, string[]>? Paths { get; init; }
-        public string? OutDir { get; init; }
+        public Dictionary<string, string[]>? Paths
+        {
+            get; init;
+        }
+        public string? OutDir
+        {
+            get; init;
+        }
     }
 
     private sealed class TsConfigReference
     {
-        public string Path { get; init; } = string.Empty;
+        public string Path
+        {
+            get; init;
+        } = string.Empty;
     }
 
     private sealed class PackageManifestDocument
     {
-        public string? Name { get; init; }
+        public string? Name
+        {
+            get; init;
+        }
     }
 }

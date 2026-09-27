@@ -1,12 +1,12 @@
-using System.Text.Json;
 using SharpSense.Application.GraphStats.Models;
+using System.Text.Json;
 
 namespace SharpSense.Infrastructure.GraphStats;
 
 internal static class IndexRunSerialization
 {
     internal const int MaximumJsonLength = 524_288;
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
     public static string Serialize(IndexRunSummary run)
     {
@@ -15,12 +15,15 @@ internal static class IndexRunSerialization
             Scope = Limit(run.Scope, 512),
             Phases = (run.Phases ?? [])
                 .Take(16)
-                .Select(phase => phase with { Name = Limit(phase.Name, 64) })
+                .Select(phase => phase with
+                {
+                    Name = Limit(phase.Name, 64)
+                })
                 .ToArray(),
             Diagnostics = BoundDiagnostics(run.Diagnostics ?? [])
         };
 
-        return JsonSerializer.Serialize(bounded, JsonOptions);
+        return JsonSerializer.Serialize(bounded, _jsonOptions);
     }
 
     public static IndexRunSummary? Deserialize(string? json)
@@ -35,7 +38,7 @@ internal static class IndexRunSerialization
             throw new JsonException("Stored index history exceeds its size limit.");
         }
 
-        var run = JsonSerializer.Deserialize<IndexRunSummary>(json, JsonOptions)
+        var run = JsonSerializer.Deserialize<IndexRunSummary>(json, _jsonOptions)
                   ?? throw new JsonException("Stored index history is empty.");
 
         if (run.Outcome is not ("succeeded" or "failed" or "cancelled") ||
@@ -51,7 +54,7 @@ internal static class IndexRunSerialization
             throw new JsonException("Stored index history has invalid fields.");
         }
 
-        return JsonSerializer.Deserialize<IndexRunSummary>(Serialize(run), JsonOptions);
+        return JsonSerializer.Deserialize<IndexRunSummary>(Serialize(run), _jsonOptions);
     }
 
     private static string Limit(string value, int length)
@@ -75,7 +78,9 @@ internal static class IndexRunSerialization
 
         if (diagnostics.Count > 20)
         {
-            bounded.Add(new IndexDiagnostic("diagnostics-truncated", "info",
+            bounded.Add(new IndexDiagnostic(
+                "diagnostics-truncated",
+                "info",
                 $"{diagnostics.Count - retainedCount} additional diagnostics were omitted from this bounded report."));
         }
 

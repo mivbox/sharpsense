@@ -4,7 +4,7 @@ using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.Persistence.Configuration;
 
-public sealed class MemoryNodeConfiguration : IEntityTypeConfiguration<MemoryNodeRecord>
+internal sealed class MemoryNodeConfiguration : IEntityTypeConfiguration<MemoryNodeRecord>
 {
     public void Configure(EntityTypeBuilder<MemoryNodeRecord> builder)
     {

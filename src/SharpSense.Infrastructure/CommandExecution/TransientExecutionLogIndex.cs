@@ -1,8 +1,8 @@
-using System.Data.Common;
 using FluentResults;
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.Models;
+using System.Data.Common;
 
 namespace SharpSense.Infrastructure.CommandExecution;
 
@@ -29,6 +29,7 @@ internal sealed class TransientExecutionLogIndex(TransientExecutionLogDbContext 
                      SELECT last_insert_rowid() AS Value
                      """)
                 .SingleAsync(ct);
+
             return Result.Ok(Convert.ToInt32(rowId, System.Globalization.CultureInfo.InvariantCulture));
         }
         catch (DbException ex)
@@ -92,8 +93,14 @@ internal sealed class TransientExecutionLogIndex(TransientExecutionLogDbContext 
 
     private sealed class ExecutionLogLineRow
     {
-        public int LineNumber { get; init; }
+        public int LineNumber
+        {
+            get; init;
+        }
 
-        public string Text { get; init; } = string.Empty;
+        public string Text
+        {
+            get; init;
+        } = string.Empty;
     }
 }

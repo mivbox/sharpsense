@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\SharpSense.Application\SharpSense.Application.csproj" />
@@ -27,7 +27,6 @@
     <PackageReference Include="Microsoft.SemanticKernel.Connectors.Onnx" />
     <PackageReference Include="Microsoft.Extensions.Options" />
     <PackageReference Include="Polly" />
-    <PackageReference Include="Riok.Mapperly" ExcludeAssets="runtime" PrivateAssets="all" />
     <PackageReference Include="Serilog" />
     <PackageReference Include="sqlite-vec" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
@@ -37,9 +36,7 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <TargetFramework>$(NetCoreAppVersion)</TargetFramework>
   </PropertyGroup>
 
   <Import Project="SharpSense.LocalEmbeddings.targets" />

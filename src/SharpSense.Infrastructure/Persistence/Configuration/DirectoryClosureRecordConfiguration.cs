@@ -4,13 +4,17 @@ using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.Persistence.Configuration;
 
-public sealed class DirectoryClosureRecordConfiguration : IEntityTypeConfiguration<DirectoryClosureRecord>
+internal sealed class DirectoryClosureRecordConfiguration : IEntityTypeConfiguration<DirectoryClosureRecord>
 {
     public void Configure(EntityTypeBuilder<DirectoryClosureRecord> builder)
     {
         builder.ToTable("DirectoryClosures");
 
-        builder.HasKey(record => new { record.AncestorDirectoryId, record.DescendantDirectoryId });
+        builder.HasKey(record => new
+        {
+            record.AncestorDirectoryId,
+            record.DescendantDirectoryId
+        });
 
         builder.Property(record => record.AncestorDirectoryId)
             .IsRequired();
@@ -30,7 +34,11 @@ public sealed class DirectoryClosureRecordConfiguration : IEntityTypeConfigurati
             .HasForeignKey(record => record.DescendantDirectoryId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(record => new { record.DescendantDirectoryId, record.AncestorDirectoryId });
+        builder.HasIndex(record => new
+        {
+            record.DescendantDirectoryId,
+            record.AncestorDirectoryId
+        });
         builder.ToTable(tableBuilder => tableBuilder.HasCheckConstraint("CK_DirectoryClosures_Depth", "Depth >= 0"));
     }
 }

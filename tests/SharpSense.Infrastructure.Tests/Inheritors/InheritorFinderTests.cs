@@ -26,10 +26,10 @@ public sealed class InheritorFinderTests
     [Fact]
     public async Task WhenGetInheritorsUsesBaseClassNodeId_ThenReturnsDistinctOrderedDerivedClasses()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory();
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(TestContext.Current.CancellationToken);
-        await SeedAsync(context);
-        var finder = new InheritorFinder(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>());
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        await using var context = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken);
+        await Seed(context);
+        var finder = new InheritorFinder(inMemoryFactory.CreateDbContextFactory());
 
         var result = await finder.GetInheritors(
             new GetInheritorsQuery(BaseNodeId),
@@ -46,10 +46,10 @@ public sealed class InheritorFinderTests
     [Fact]
     public async Task WhenGetInheritorsUsesInterfaceNodeId_ThenReturnsImplementingClasses()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory();
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(TestContext.Current.CancellationToken);
-        await SeedAsync(context);
-        var finder = new InheritorFinder(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>());
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        await using var context = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken);
+        await Seed(context);
+        var finder = new InheritorFinder(inMemoryFactory.CreateDbContextFactory());
 
         var result = await finder.GetInheritors(
             new GetInheritorsQuery(InterfaceNodeId),
@@ -60,7 +60,7 @@ public sealed class InheritorFinderTests
         result[0].DisplayName.Should().Be("InterfaceWidget");
     }
 
-    private static async Task SeedAsync(SharpSenseDbContext context)
+    private static async Task Seed(SharpSenseDbContext context)
     {
         context.Directories.AddRange(
             new DirectoryRecord

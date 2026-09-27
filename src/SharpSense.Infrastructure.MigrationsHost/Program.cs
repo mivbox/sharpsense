@@ -1,4 +1,3 @@
-﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;

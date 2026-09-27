@@ -3,7 +3,7 @@ title: "Application Vertical Slice Layout"
 type: architecture
 tags: [cqrs, csharp, implemented]
 created: 2026-04-27
-updated: 2026-09-24
+updated: 2026-09-27
 confidence: high
 ---
 
@@ -33,3 +33,5 @@ SharpSense now treats each Application feature as a first-class Vertical Slice r
 4. Keep command/query payloads in the owning command/query folder under `Models/`.
 5. Keep orchestration in the handler for that command/query unless there is a clear cross-slice abstraction boundary.
 6. Keep feature registration in `{FeatureName}ServiceCollectionExtensions.cs` and compose it through the host as described in [host composition](host-composition.md).
+
+Handlers are internal implementations of public command/query contracts. Test folders mirror these feature folders directly. See [.NET conventions](dotnet-conventions.md) for visibility, formatting, and validation.

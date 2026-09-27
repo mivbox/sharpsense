@@ -1,11 +1,9 @@
-using System.Text;
-using System.Text.Json;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using SharpSense.Application.GraphStats;
-using SharpSense.Application.GraphStats.GetGraphStats;
+using SharpSense.Application.GraphStats.GetGraphStats.Models;
 using SharpSense.Application.GraphStats.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Cli.Shared;
@@ -13,28 +11,33 @@ using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.GraphStats;
 using SharpSense.Infrastructure.Storage;
 using Spectre.Console.Cli;
+using System.Text;
+using System.Text.Json;
 
 namespace SharpSense.Cli.Doctor;
 
 [UsedImplicitly]
 internal sealed class DoctorCommand : AbstractAsyncCommand<DoctorCommand.Settings>
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true
     };
 
     public sealed class Settings : GlobalSettings
     {
-
         [CommandOption("--json")]
-        public bool Json { get; init; }
+        public bool Json
+        {
+            get; init;
+        }
     }
 
     protected override void Configure(Settings settings, IServiceCollection services)
     {
         services.AddSelectedWorkspace(settings);
-        services.AddGraphStats().AddGraphStatsInfrastructure();
+        services.AddGraphStats()
+            .AddGraphStatsInfrastructure();
         services.AddEmbeddingsInfrastructure();
     }
 
@@ -52,14 +55,21 @@ internal sealed class DoctorCommand : AbstractAsyncCommand<DoctorCommand.Setting
         var hasErrors = checks.Any(check => check.Severity == "error") ||
             stats.Diagnostics.Any(diagnostic => diagnostic.Severity == "error") ||
             stats.LastAttempt?.Outcome is "failed" or "cancelled";
-        var hasWarnings = checks.Concat(stats.Diagnostics).Concat(stats.LastAttempt?.Diagnostics ?? [])
+        var hasWarnings = checks.Concat(stats.Diagnostics)
+            .Concat(stats.LastAttempt?.Diagnostics ?? [])
             .Any(diagnostic => diagnostic.Severity == "warning");
-        var report = new DoctorReport(hasErrors ? "attention-required" : hasWarnings ? "warning" : "ok",
-            workspace.Definition.Name, workspace.Definition.Id, checks, stats);
+        var report = new DoctorReport(
+            hasErrors ? "attention-required" : hasWarnings ? "warning" : "ok",
+            workspace.Definition.Name,
+            workspace.Definition.Id,
+            checks,
+            stats);
 
-        CommandOutput.Write(context, settings.Json
-            ? JsonSerializer.Serialize(report, JsonOptions) + Environment.NewLine
-            : Format(report));
+        CommandOutput.Write(
+            context,
+            settings.Json
+                ? JsonSerializer.Serialize(report, _jsonOptions) + Environment.NewLine
+                : Format(report));
 
         return hasErrors ? 1 : 0;
     }

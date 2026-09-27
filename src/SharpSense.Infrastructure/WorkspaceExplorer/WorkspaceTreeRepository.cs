@@ -6,7 +6,7 @@ using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.WorkspaceExplorer;
 
-public sealed class WorkspaceTreeRepository(SharpSenseDbContext context)
+internal sealed class WorkspaceTreeRepository(SharpSenseDbContext context)
     : IWorkspaceTreeRepository
 {
     private const string RootPath = "/";
@@ -64,8 +64,8 @@ public sealed class WorkspaceTreeRepository(SharpSenseDbContext context)
                 node => node.Kind == "folder"
                     ? 0
                     : node.Kind == "project"
-                        ? 1
-                        : 2)
+                    ? 1
+                    : 2)
             .ThenBy(node => node.Label)
             .ThenBy(node => node.Path)
             .ToArray();
@@ -88,7 +88,8 @@ public sealed class WorkspaceTreeRepository(SharpSenseDbContext context)
 
     private static string NormalizePath(string path)
     {
-        var trimmedPath = path.Trim().Replace('\\', '/');
+        var trimmedPath = path.Trim()
+            .Replace('\\', '/');
         if (string.Equals(trimmedPath, RootPath, StringComparison.Ordinal))
         {
             return RootPath;

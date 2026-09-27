@@ -8,7 +8,7 @@ namespace SharpSense.Infrastructure.Indexing.TypeScript;
 /// only by appending projects, code nodes, dependency edges, or diagnostics for the current TypeScript indexing run.
 /// </summary>
 [PublicAPI]
-public interface ITypeScriptExtractionPass
+internal interface ITypeScriptExtractionPass
 {
     /// <summary>
     /// Executes the extraction stage against the shared pass context for the current TypeScript indexing run.

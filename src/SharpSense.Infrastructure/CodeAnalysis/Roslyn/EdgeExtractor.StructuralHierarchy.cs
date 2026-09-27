@@ -17,7 +17,8 @@ internal sealed partial class EdgeExtractor
                 case INamedTypeSymbol namedTypeSymbol:
                     AddTypeParentEdge(declaredSymbol, namedTypeSymbol, nodeResolver, edgeKeys);
                     break;
-                case IMethodSymbol { MethodKind: MethodKind.Ordinary }:
+                case IMethodSymbol
+                { MethodKind: MethodKind.Ordinary }:
                 case IPropertySymbol:
                 case IFieldSymbol:
                     AddMemberParentEdge(declaredSymbol.NodeId, declaredSymbol.Symbol, nodeResolver, edgeKeys);
@@ -36,6 +37,7 @@ internal sealed partial class EdgeExtractor
             nodeResolver.TryGetNodeId(typeSymbol.ContainingType, out var containingTypeNodeId))
         {
             TryAddEdge(containingTypeNodeId, declaredSymbol.NodeId, EdgeType.ParentOf, edgeKeys);
+
             return;
         }
 

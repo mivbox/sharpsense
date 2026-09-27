@@ -2,7 +2,7 @@ using Microsoft.CodeAnalysis.MSBuild;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
-public interface IMsBuildWorkspaceFactory
+internal interface IMsBuildWorkspaceFactory
 {
     MSBuildWorkspace Create();
 }

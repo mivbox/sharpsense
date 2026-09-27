@@ -7,6 +7,7 @@ internal static class CommandOutput
     public static CliCommandExecutionContext? GetExecutionContext(CommandContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
+
         return context.Data as CliCommandExecutionContext;
     }
 
@@ -20,6 +21,7 @@ internal static class CommandOutput
         {
             console.Profile.Out.Writer.Write(output);
             console.Profile.Out.Writer.Flush();
+
             return;
         }
 
@@ -34,6 +36,7 @@ internal static class CommandOutput
         {
             console.Profile.Out.Writer.WriteLine($"Error: {message}");
             console.Profile.Out.Writer.Flush();
+
             return;
         }
 

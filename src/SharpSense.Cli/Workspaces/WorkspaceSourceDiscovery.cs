@@ -1,5 +1,5 @@
-using System.IO.Abstractions;
 using SharpSense.Application.Indexing;
+using System.IO.Abstractions;
 
 namespace SharpSense.Cli.Workspaces;
 
@@ -10,7 +10,7 @@ internal sealed record DiscoveredWorkspaceSources(string RepositoryRoot, IReadOn
 /// </summary>
 internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
 {
-    private static readonly HashSet<string> ExcludedDirectories = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> _excludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
         ".git", ".sharpsense", "node_modules", "bin", "obj", "dist", "build", ".next", ".turbo", "coverage", "vendor"
     };
@@ -48,8 +48,14 @@ internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
 
                 var extension = fileSystem.Path.GetExtension(file);
                 var name = fileSystem.Path.GetFileName(file);
-                var relative = fileSystem.Path.GetRelativePath(root, file).Replace('\\', '/');
-                if (new[] { ".csproj", ".sln", ".slnx" }.Contains(extension, StringComparer.OrdinalIgnoreCase))
+                var relative = fileSystem.Path.GetRelativePath(root, file)
+                    .Replace('\\', '/');
+                if (new[]
+                {
+                    ".csproj",
+                    ".sln",
+                    ".slnx"
+                }.Contains(extension, StringComparer.OrdinalIgnoreCase))
                 {
                     candidates.Add(new(WorkspaceSourceKind.CSharp, relative));
                 }
@@ -59,14 +65,17 @@ internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
                 }
                 else if (extension.Equals(".md", StringComparison.OrdinalIgnoreCase))
                 {
-                    var relativeDirectory = fileSystem.Path.GetRelativePath(root, directory).Replace('\\', '/');
-                    markdownDirectories.Add(relativeDirectory == "." ? "*.md" : $"{relativeDirectory}/*.md");
+                    var relativeDirectory = fileSystem.Path.GetRelativePath(root, directory)
+                        .Replace('\\', '/');
+                    markdownDirectories.Add(relativeDirectory == "."
+                        ? "*.md"
+                        : $"{relativeDirectory}/*.md");
                 }
             }
 
             foreach (var child in fileSystem.Directory.EnumerateDirectories(directory))
             {
-                if (!ExcludedDirectories.Contains(fileSystem.Path.GetFileName(child)) &&
+                if (!_excludedDirectories.Contains(fileSystem.Path.GetFileName(child)) &&
                     (fileSystem.DirectoryInfo.New(child).Attributes & FileAttributes.ReparsePoint) == 0)
                 {
                     pending.Enqueue(child);
@@ -75,6 +84,11 @@ internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
         }
 
         candidates.AddRange(markdownDirectories.Select(static path => new WorkspaceSource(WorkspaceSourceKind.Markdown, path)));
-        return new DiscoveredWorkspaceSources(root, candidates.OrderBy(static source => source.Kind).ThenBy(static source => source.Path).ToArray());
+
+        return new DiscoveredWorkspaceSources(
+            root,
+            candidates.OrderBy(static source => source.Kind)
+                .ThenBy(static source => source.Path)
+                .ToArray());
     }
 }

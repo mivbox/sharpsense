@@ -4,7 +4,7 @@ using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.Persistence.Configuration;
 
-public sealed class ProjectNodeConfiguration : IEntityTypeConfiguration<ProjectNodeRecord>
+internal sealed class ProjectNodeConfiguration : IEntityTypeConfiguration<ProjectNodeRecord>
 {
     public void Configure(EntityTypeBuilder<ProjectNodeRecord> builder)
     {

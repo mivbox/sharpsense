@@ -6,7 +6,7 @@ using Spectre.Console.Cli;
 
 namespace SharpSense.Cli.Shared;
 
-public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
+internal abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
     where TSettings : CliSettings
 {
     protected abstract void Configure(TSettings settings, IServiceCollection services);
@@ -47,7 +47,8 @@ public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
 
             using var host = builder.Build();
             using var commandCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-                ct, host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping);
+                ct,
+                host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping);
             ct = commandCancellation.Token;
             Log.Information("Service provider built successfully for {SettingsType}", typeof(TSettings).FullName);
             await host.StartAsync(ct);
@@ -79,7 +80,9 @@ public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
                 "Command execution failed for {SettingsType}",
                 typeof(TSettings).FullName);
 
-            CommandOutput.WriteError(context, e.GetBaseException().Message);
+            CommandOutput.WriteError(
+                context,
+                e.GetBaseException().Message);
 
             return 1;
         }

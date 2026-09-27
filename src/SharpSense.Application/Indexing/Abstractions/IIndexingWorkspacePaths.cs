@@ -9,7 +9,10 @@ public interface IIndexingWorkspacePaths
     /// <summary>
     /// Gets the normalized absolute repository root used by the current indexing session.
     /// </summary>
-    string RootPath { get; }
+    string RootPath
+    {
+        get;
+    }
 
     /// <summary>
     /// Resolves the configured target path into an absolute path for extraction.

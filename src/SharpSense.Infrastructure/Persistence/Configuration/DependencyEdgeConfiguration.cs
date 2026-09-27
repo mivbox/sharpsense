@@ -4,7 +4,7 @@ using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.Persistence.Configuration;
 
-public sealed class DependencyEdgeConfiguration : IEntityTypeConfiguration<DependencyEdgeRecord>
+internal sealed class DependencyEdgeConfiguration : IEntityTypeConfiguration<DependencyEdgeRecord>
 {
     public void Configure(EntityTypeBuilder<DependencyEdgeRecord> builder)
     {

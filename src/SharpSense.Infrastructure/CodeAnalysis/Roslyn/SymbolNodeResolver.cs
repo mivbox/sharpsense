@@ -17,6 +17,7 @@ internal sealed class SymbolNodeResolver(
         if (project is null || !projectIds.TryGetValue(project.Id, out var projectId))
         {
             nodeId = string.Empty;
+
             return false;
         }
 
@@ -24,6 +25,7 @@ internal sealed class SymbolNodeResolver(
         // Incremental extraction can reference declarations outside the current batch.
         // Their identity belongs to the declaring project, never to a name match.
         nodeId = symbolNodeIds.GetValueOrDefault(canonicalId, canonicalId);
+
         return true;
     }
 }

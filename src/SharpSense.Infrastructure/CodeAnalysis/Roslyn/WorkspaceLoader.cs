@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
 using FluentResults;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
@@ -9,7 +7,9 @@ using Polly.Retry;
 using Serilog;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Errors;
+using System.Collections.Concurrent;
 using System.IO.Abstractions;
+using System.Runtime.CompilerServices;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
@@ -66,6 +66,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         if (openedWorkspace is null || !criticalDiagnostics.IsEmpty)
         {
             openedWorkspace?.Dispose();
+
             return Result.Fail(BuildFailureResult(diagnostics, criticalDiagnostics, normalizedTargetPath));
         }
 
@@ -92,8 +93,12 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         await activeWorkspace.Gate.WaitAsync(ct);
         try
         {
-            return await ReloadAndReturn(normalizedTargetPath, activeWorkspace,
-                new ConcurrentQueue<string>(), new ConcurrentBag<ServiceError>(), ct);
+            return await ReloadAndReturn(
+                normalizedTargetPath,
+                activeWorkspace,
+                new ConcurrentQueue<string>(),
+                [],
+                ct);
         }
         finally
         {
@@ -131,7 +136,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
                 return await ReloadAndReturn(normalizedTargetPath, activeWorkspace, diagnostics, criticalDiagnostics, ct);
             }
 
-            var readResults = await ReadDocumentMutationsAsync(changedFiles, normalizedTargetPath, ct);
+            var readResults = await ReadDocumentMutations(changedFiles, normalizedTargetPath, ct);
             var updatedSolution = ApplyFileMutations(activeWorkspace, activeWorkspace.ActiveSolution, changedFiles, readResults);
 
             if (updatedSolution is null)
@@ -140,6 +145,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
             }
 
             activeWorkspace.UpdateActiveSolution(updatedSolution);
+
             return CreateLoadResultUnderLock(activeWorkspace, diagnostics, criticalDiagnostics);
         }
         finally
@@ -148,12 +154,13 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         }
     }
 
-    private async Task<(WorkspaceFileChange File, string Path, SourceText? Text)[]> ReadDocumentMutationsAsync(
+    private async Task<(WorkspaceFileChange File, string Path, SourceText? Text)[]> ReadDocumentMutations(
         IReadOnlyList<WorkspaceFileChange> changedFiles,
         string normalizedTargetPath,
         CancellationToken ct)
     {
-        var mutations = changedFiles.Where(static f => f.ActionType is not WorkspaceFileChangeAction.Deleted).ToList();
+        var mutations = changedFiles.Where(static f => f.ActionType is not WorkspaceFileChangeAction.Deleted)
+            .ToList();
         var readResults = new ConcurrentBag<(WorkspaceFileChange File, string Path, SourceText? Text)>();
 
         var parallelOptions = new ParallelOptions
@@ -162,7 +169,10 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
             CancellationToken = ct
         };
 
-        await Parallel.ForEachAsync(mutations, parallelOptions, async (file, token) =>
+        await Parallel.ForEachAsync(
+            mutations,
+            parallelOptions,
+            async (file, token) =>
         {
             var path = _fileSystem.Path.GetFullPath(file.GetCurrentPath()!);
             var text = await ReadDocumentText(path, normalizedTargetPath, token);
@@ -232,7 +242,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
 
                 if (!session.DocumentIndex.TryGetValue(result.Path, out var ids))
                 {
-                    ids = new List<DocumentId>();
+                    ids = [];
                     session.DocumentIndex[result.Path] = ids;
                 }
                 ids.Add(documentId);
@@ -259,106 +269,9 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         return CreateLoadResultUnderLock(activeWorkspace, diagnostics, criticalDiagnostics);
     }
 
-    public async Task<WorkspaceTextUpdateResult> ChangeDocumentText(
-        string targetPath,
-        string documentPath,
-        Func<SourceText, WorkspaceTextChange> changeText,
-        CancellationToken ct = default)
-    {
-        ThrowIfDisposed();
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
-        ArgumentException.ThrowIfNullOrWhiteSpace(documentPath);
-        ArgumentNullException.ThrowIfNull(changeText);
-
-        var loadedWorkspace = await Load(targetPath, ct: ct);
-
-        if (loadedWorkspace.IsFailed)
-        {
-            var combinedMessage = string.Join(
-                Environment.NewLine,
-                loadedWorkspace.Errors.Select(static error => $"{error.GetType().Name}: {error.Message}"));
-            return new WorkspaceTextUpdateResult(
-                false,
-                [],
-                combinedMessage);
-        }
-
-        var diagnostics = new ConcurrentQueue<string>();
-        var normalizedTargetPath = _fileSystem.Path.GetFullPath(targetPath);
-        var absoluteDocumentPath = _fileSystem.Path.GetFullPath(documentPath);
-        var activeWorkspace = _activeWorkspaces[normalizedTargetPath];
-
-        await activeWorkspace.Gate.WaitAsync(ct);
-
-        try
-        {
-            if (!activeWorkspace.DocumentIndex.TryGetValue(absoluteDocumentPath, out var documentIds) || documentIds.Count == 0)
-            {
-                return new WorkspaceTextUpdateResult(
-                    false,
-                    diagnostics.ToArray(),
-                    $"Unable to locate document '{absoluteDocumentPath}' in workspace '{normalizedTargetPath}'.");
-            }
-
-            var primaryDocument = activeWorkspace.ActiveSolution.GetDocument(documentIds[0]);
-            if (primaryDocument is null)
-            {
-                return new WorkspaceTextUpdateResult(
-                    false,
-                    diagnostics.ToArray(),
-                    $"Unable to load document '{absoluteDocumentPath}' from workspace '{normalizedTargetPath}'.");
-            }
-
-            var sourceText = await primaryDocument.GetTextAsync(ct);
-            var requestedChange = changeText(sourceText);
-            ArgumentNullException.ThrowIfNull(requestedChange);
-
-            if (!requestedChange.Success)
-            {
-                return new WorkspaceTextUpdateResult(false, diagnostics.ToArray(), requestedChange.ErrorMessage);
-            }
-
-            var updatedText = requestedChange.UpdatedText
-                ?? throw new InvalidOperationException("Successful workspace text changes must supply updated text.");
-
-            if (!activeWorkspace.Workspace.CanApplyChange(ApplyChangesKind.ChangeDocument))
-            {
-                return new WorkspaceTextUpdateResult(
-                    false,
-                    diagnostics.ToArray(),
-                    $"Workspace '{normalizedTargetPath}' does not support document text changes.");
-            }
-
-            var updatedSolution = activeWorkspace.ActiveSolution;
-
-            foreach (var documentId in documentIds)
-            {
-                updatedSolution = updatedSolution.WithDocumentText(
-                    documentId,
-                    updatedText,
-                    PreservationMode.PreserveIdentity);
-            }
-
-            if (!activeWorkspace.Workspace.TryApplyChanges(updatedSolution))
-            {
-                return new WorkspaceTextUpdateResult(
-                    false,
-                    diagnostics.ToArray(),
-                    $"Roslyn could not apply changes to document '{absoluteDocumentPath}'.");
-            }
-
-            activeWorkspace.UpdateActiveSolution(activeWorkspace.Workspace.CurrentSolution);
-
-            return new WorkspaceTextUpdateResult(true, diagnostics.ToArray(), string.Empty);
-        }
-        finally
-        {
-            activeWorkspace.Gate.Release();
-        }
-    }
-
     private static bool IsStructuralChange(WorkspaceFileChange change)
-        => change.GetAffectedPaths().Any(CSharpIndexingPathRules.IsConfigurationPath);
+        => change.GetAffectedPaths()
+            .Any(CSharpIndexingPathRules.IsConfigurationPath);
 
     private ProjectId? FindOwningProjectId(Solution solution, string absoluteFilePath)
     {
@@ -370,7 +283,11 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
 
         var bestMatch = solution.Projects
             .Where(static p => !string.IsNullOrWhiteSpace(p.FilePath))
-            .Select(p => new { Project = p, Directory = _fileSystem.Path.GetDirectoryName(p.FilePath)! })
+            .Select(p => new
+            {
+                Project = p,
+                Directory = _fileSystem.Path.GetDirectoryName(p.FilePath)!
+            })
             .Where(p => absoluteFilePath.StartsWith(p.Directory, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(static p => p.Directory.Length)
             .FirstOrDefault();
@@ -386,6 +303,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
     {
         // Register MSBuild before JIT-compiling the logger overloads in the async core.
         var workspace = _workspaceFactory.Create();
+
         return OpenWorkspaceCore(workspace, absoluteTargetPath, diagnostics, criticalDiagnostics, ct);
     }
 
@@ -450,6 +368,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
                 exception,
                 "Workspace loader caught an exception while opening {TargetPath}; converted to ServiceError.",
                 absoluteTargetPath);
+
             return null;
         }
         finally
@@ -469,6 +388,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         {
             criticalDiagnostics.Add(
                 new ServiceError(ServiceErrorCode.ThirdPartyError, diagnostic.ToString()));
+
             return;
         }
 
@@ -486,10 +406,12 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         if (replacementWorkspace is null || !criticalDiagnostics.IsEmpty)
         {
             replacementWorkspace?.Dispose();
+
             return Result.Fail(BuildFailureResult(diagnostics, criticalDiagnostics, absoluteTargetPath));
         }
 
         activeWorkspace.Replace(replacementWorkspace, replacementWorkspace.CurrentSolution, _fileSystem);
+
         return Result.Ok(replacementWorkspace);
     }
 
@@ -504,6 +426,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
                 async cancellationToken =>
                 {
                     var documentContents = await _fileSystem.File.ReadAllTextAsync(absoluteFilePath, cancellationToken);
+
                     return SourceText.From(documentContents);
                 },
                 ct);
@@ -555,6 +478,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         ConcurrentBag<ServiceError> criticalDiagnostics)
     {
         var errors = criticalDiagnostics.ToArray();
+
         return errors.Length == 0
             ? Result.Ok(new WorkspaceLoadResult(workspaceSession.ActiveSolution, diagnostics.ToArray(), errors))
             : Result.Fail(errors);

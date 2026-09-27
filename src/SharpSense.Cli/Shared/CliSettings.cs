@@ -1,11 +1,14 @@
-using System.ComponentModel;
 using Spectre.Console.Cli;
+using System.ComponentModel;
 
 namespace SharpSense.Cli.Shared;
 
-public abstract class CliSettings : CommandSettings
+internal abstract class CliSettings : CommandSettings
 {
     [CommandOption("-v|--verbose")]
     [Description("Include diagnostic details in the command log.")]
-    public bool IsVerbose { get; init; }
+    public bool IsVerbose
+    {
+        get; init;
+    }
 }

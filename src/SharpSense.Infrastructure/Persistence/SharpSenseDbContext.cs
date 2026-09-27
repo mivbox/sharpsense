@@ -3,7 +3,7 @@ using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.Persistence;
 
-public sealed class SharpSenseDbContext(DbContextOptions<SharpSenseDbContext> options)
+internal sealed class SharpSenseDbContext(DbContextOptions<SharpSenseDbContext> options)
     : DbContext(options)
 {
     public DbSet<DirectoryRecord> Directories => Set<DirectoryRecord>();
@@ -26,5 +26,4 @@ public sealed class SharpSenseDbContext(DbContextOptions<SharpSenseDbContext> op
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
         => modelBuilder.ApplyConfigurationsFromAssembly(typeof(InfrastructureAssemblyMarker).Assembly);
-
 }

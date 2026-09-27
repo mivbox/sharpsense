@@ -1,12 +1,12 @@
-using System.IO.Abstractions;
-using TreeSitter;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Storage;
+using System.IO.Abstractions;
+using TreeSitter;
 
 namespace SharpSense.Infrastructure.Indexing.TypeScript;
 
-public sealed class TypeScriptSourceDiscoverer(
+internal sealed class TypeScriptSourceDiscoverer(
     IRepositoryWorkspace repositoryWorkspace,
     IWorkspaceFileDiscoverer fileDiscoverer,
     IFileSystem fileSystem,
@@ -22,11 +22,6 @@ public sealed class TypeScriptSourceDiscoverer(
         tsConfigResolver.ClearCache();
     }
 
-    public bool IsRelevantChange(string path)
-        => (TypeScriptIndexingPathRules.IsTypeScriptFilePath(path) || Path.GetFileName(path).EndsWith(".json", StringComparison.OrdinalIgnoreCase)) &&
-           repositoryWorkspace.IsSameOrSubPath(ResolveAbsolutePath(path)) &&
-           TypeScriptIndexingPathRules.IsRelevantChangePath(repositoryWorkspace.ToRepositoryRelativePath(ResolveAbsolutePath(path)));
-
     public async Task<IReadOnlyList<DiscoveredFile>> Discover(
         string targetPath,
         CancellationToken ct)
@@ -38,6 +33,7 @@ public sealed class TypeScriptSourceDiscoverer(
         try
         {
             var seedFiles = await GetTargetFiles(targetPath, ct);
+
             return await ExpandReachableFiles(seedFiles, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -45,37 +41,6 @@ public sealed class TypeScriptSourceDiscoverer(
             ClearCache();
             throw;
         }
-    }
-
-    public async Task<IReadOnlyList<DiscoveredFile>> DiscoverFiles(
-        string targetPath,
-        IReadOnlyList<string> filePaths,
-        CancellationToken ct)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
-        ArgumentNullException.ThrowIfNull(filePaths);
-
-        var allowedFiles = await GetTargetFiles(targetPath, ct);
-        if (allowedFiles.Count == 0)
-        {
-            return [];
-        }
-
-        var requestedPaths = filePaths
-            .Where(static filePath => !string.IsNullOrWhiteSpace(filePath))
-            .Select(ResolveAbsolutePath)
-            .ToHashSet(GetPathComparer());
-        if (requestedPaths.Count == 0)
-        {
-            return [];
-        }
-
-        var seedFiles = FilterIndexedFiles(
-        [
-            .. allowedFiles.Where(discoveredFile => requestedPaths.Contains(discoveredFile.AbsolutePath))
-        ]);
-
-        return await ExpandReachableFiles(seedFiles, ct);
     }
 
     private IReadOnlyList<DiscoveredFile> FilterIndexedFiles(IReadOnlyList<DiscoveredFile> discoveredFiles)
@@ -86,7 +51,7 @@ public sealed class TypeScriptSourceDiscoverer(
         [
             .. discoveredFiles
                 .Where(static file => !string.IsNullOrWhiteSpace(file.AbsolutePath) &&
-                                      !string.IsNullOrWhiteSpace(file.RelativeFilePath))
+                    !string.IsNullOrWhiteSpace(file.RelativeFilePath))
                 .Where(file => TypeScriptIndexingPathRules.IsIndexedPath(file.RelativeFilePath))
                 .GroupBy(static file => file.RelativeFilePath, GetPathComparer())
                 .Select(static group => group.First())
@@ -99,7 +64,10 @@ public sealed class TypeScriptSourceDiscoverer(
         CancellationToken ct)
     {
         var discoveredFiles = new List<DiscoveredFile>();
-        foreach (var scope in new[] { targetPath }.Concat(tsConfigResolver.GetReferencedConfigPaths(targetPath)))
+        foreach (var scope in new[]
+        {
+            targetPath
+        }.Concat(tsConfigResolver.GetReferencedConfigPaths(targetPath)))
         {
             var targetDirectoryPath = repositoryWorkspace.GetRequiredTargetDirectoryPath(scope);
             // Configured files/includes can point above the configuration directory. Start from
@@ -182,6 +150,7 @@ public sealed class TypeScriptSourceDiscoverer(
                 ct));
         _repositoryFilesByAbsolutePath = repositoryFiles
             .ToDictionary(static file => file.AbsolutePath, GetPathComparer());
+
         return _repositoryFilesByAbsolutePath;
     }
 
@@ -205,12 +174,6 @@ public sealed class TypeScriptSourceDiscoverer(
             }
         }
     }
-
-    private string ResolveAbsolutePath(string filePath)
-        => fileSystem.Path.GetFullPath(
-            fileSystem.Path.IsPathRooted(filePath)
-                ? filePath
-                : fileSystem.Path.Combine(repositoryWorkspace.RootPath, filePath));
 
     private static StringComparer GetPathComparer()
         => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;

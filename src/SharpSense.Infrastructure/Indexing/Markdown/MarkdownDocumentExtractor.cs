@@ -7,11 +7,9 @@ using SharpSense.Domain.KnowledgeGraph.Nodes;
 
 namespace SharpSense.Infrastructure.Indexing.Markdown;
 
-public sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDiscoverer) : ILanguageExtractor
+internal sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDiscoverer) : ILanguageExtractor
 {
-    public WorkspaceSourceKind? SourceKind => WorkspaceSourceKind.Markdown;
-
-    public string ExtractorName => "markdown";
+    public WorkspaceSourceKind SourceKind => WorkspaceSourceKind.Markdown;
 
     public async Task<Result<ExtractedNodes>> Extract(
         ExtractionContext context,
@@ -20,36 +18,7 @@ public sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDiscove
         ArgumentNullException.ThrowIfNull(context);
         ArgumentException.ThrowIfNullOrWhiteSpace(context.TargetPath);
 
-        var discoveredDocuments = await documentDiscoverer.Discover(context.TargetPath, ct, context.IncludePatterns);
-
-        return Result.Ok(new ExtractedNodes(
-            [],
-            [.. discoveredDocuments.CodeNodes.Select(ToIndexedCodeNode)],
-            [.. discoveredDocuments.Edges.Select(ToIndexedDependency)],
-            []));
-    }
-
-    public async Task<Result<ExtractedNodes>> ExtractIncremental(
-        IncrementalExtractionContext context,
-        CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentException.ThrowIfNullOrWhiteSpace(context.TargetPath);
-        ArgumentNullException.ThrowIfNull(context.ChangedFiles);
-
-        var changedMarkdownFiles = context.ChangedFiles
-            .Select(static changedFile => changedFile.GetCurrentPath())
-            .Where(path => !string.IsNullOrWhiteSpace(path) && MarkdownIndexer.IsMarkdownDocumentPath(path))
-            .Select(static path => path!)
-            .Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
-            .ToArray();
-
-        if (changedMarkdownFiles.Length == 0)
-        {
-            return Result.Ok(new ExtractedNodes([], [], [], []));
-        }
-
-        var discoveredDocuments = await documentDiscoverer.DiscoverFiles(context.TargetPath, changedMarkdownFiles, ct);
+        var discoveredDocuments = await documentDiscoverer.Discover(context.TargetPath, ct, context.IncludePatterns ?? []);
 
         return Result.Ok(new ExtractedNodes(
             [],

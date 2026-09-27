@@ -110,7 +110,8 @@ internal sealed partial class EdgeExtractor
                 continue;
             }
 
-            foreach (var nestedInvocation in lambdaExpression.Body.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>())
+            foreach (var nestedInvocation in lambdaExpression.Body.DescendantNodesAndSelf()
+                .OfType<InvocationExpressionSyntax>())
             {
                 ProcessInvocation(callerId, semanticModel, nestedInvocation, nodeResolver, edgeKeys);
             }

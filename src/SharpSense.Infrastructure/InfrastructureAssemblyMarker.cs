@@ -1,3 +1,3 @@
 namespace SharpSense.Infrastructure;
 
-public static class InfrastructureAssemblyMarker;
+internal static class InfrastructureAssemblyMarker;

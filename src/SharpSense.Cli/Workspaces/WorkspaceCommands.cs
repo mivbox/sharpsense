@@ -1,7 +1,3 @@
-using System.ComponentModel;
-using System.IO.Abstractions;
-using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -10,6 +6,9 @@ using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using System.ComponentModel;
+using System.Text;
+using System.Text.Json;
 
 namespace SharpSense.Cli.Workspaces;
 
@@ -22,31 +21,46 @@ internal abstract class WorkspaceCatalogCommand<TSettings> : AbstractAsyncComman
         services.TryAddSingleton<WorkspaceSourceDiscovery>();
         services.TryAddSingleton<IWorkspaceInteractions, SpectreWorkspaceInteractions>();
         services.TryAddSingleton<WorkspaceSetup>();
-        services.TryAddSingleton(provider => new WorkspaceCatalog(provider.GetRequiredService<IFileSystem>()));
+        services.AddWorkspaceCatalog();
     }
 }
 
-public class WorkspaceSourceSettings : CliSettings
+internal class WorkspaceSourceSettings : CliSettings
 {
     [CommandOption("--repo-root <path>")]
     [Description("Resolve source paths against this directory. Defaults to the current directory.")]
-    public string? RepositoryRoot { get; init; }
+    public string? RepositoryRoot
+    {
+        get; init;
+    }
 
     [CommandOption("--csharp <path>")]
     [Description("A C# project or solution path. May be repeated.")]
-    public string[] CSharp { get; init; } = [];
+    public string[] CSharp
+    {
+        get; init;
+    } = [];
 
     [CommandOption("--typescript <path>")]
     [Description("A TypeScript configuration or directory path. May be repeated.")]
-    public string[] TypeScript { get; init; } = [];
+    public string[] TypeScript
+    {
+        get; init;
+    } = [];
 
     [CommandOption("--markdown <path-or-glob>")]
     [Description("A Markdown path or quoted glob. May be repeated.")]
-    public string[] Markdown { get; init; } = [];
+    public string[] Markdown
+    {
+        get; init;
+    } = [];
 
     [CommandOption("--json")]
     [Description("Write machine-readable JSON without interactive prompts.")]
-    public bool Json { get; init; }
+    public bool Json
+    {
+        get; init;
+    }
 
     public bool HasSources => CSharp.Length + TypeScript.Length + Markdown.Length > 0;
 
@@ -59,18 +73,22 @@ public class WorkspaceSourceSettings : CliSettings
 
 internal static class WorkspaceOutput
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+        Converters =
+        {
+            new System.Text.Json.Serialization.JsonStringEnumConverter()
+        }
     };
 
     public static void Write(CommandContext context, WorkspaceSelection selection, bool json, string verb)
     {
         if (json)
         {
-            CommandOutput.Write(context, JsonSerializer.Serialize(Describe(selection), JsonOptions) + Environment.NewLine);
+            CommandOutput.Write(context, JsonSerializer.Serialize(Describe(selection), _jsonOptions) + Environment.NewLine);
+
             return;
         }
 
@@ -90,20 +108,28 @@ internal static class WorkspaceOutput
     {
         if (json)
         {
-            CommandOutput.Write(context, JsonSerializer.Serialize(selections.Select(selection => Describe(selection, isDefault: selection.Definition.Id == defaultWorkspaceId)), JsonOptions) + Environment.NewLine);
+            CommandOutput.Write(
+                context,
+                JsonSerializer.Serialize(
+                    selections.Select(selection => Describe(selection, isDefault: selection.Definition.Id == defaultWorkspaceId)),
+                    _jsonOptions) + Environment.NewLine);
+
             return;
         }
 
         if (selections.Count == 0)
         {
             CommandOutput.Write(context, "No workspaces registered. Run 'sharpsense workspace create' to create one." + Environment.NewLine);
+
             return;
         }
 
         foreach (var selection in selections)
         {
             var marker = selection.Definition.Id == defaultWorkspaceId ? " (default)" : string.Empty;
-            CommandOutput.Write(context, $"{selection.Definition.Name} ({selection.Definition.Id}){marker}{Environment.NewLine}" +
+            CommandOutput.Write(
+                context,
+                $"{selection.Definition.Name} ({selection.Definition.Id}){marker}{Environment.NewLine}" +
                 $"  {selection.Definition.RepositoryRoot} — {selection.Definition.Sources.Length} source(s){Environment.NewLine}");
         }
     }
@@ -111,7 +137,7 @@ internal static class WorkspaceOutput
     public static void WriteRemoval(CommandContext context, WorkspaceSourceRemoval removal, bool json)
     {
         var output = json
-            ? JsonSerializer.Serialize(Describe(removal.Selection, removal), JsonOptions) + Environment.NewLine
+            ? JsonSerializer.Serialize(Describe(removal.Selection, removal), _jsonOptions) + Environment.NewLine
             : FormatRemoval(removal);
         CommandOutput.Write(context, output);
     }
@@ -128,6 +154,7 @@ internal static class WorkspaceOutput
         {
             text.AppendLine($"  Not registered {source.Kind}: {source.Path}");
         }
+
         return text.ToString();
     }
 
@@ -151,7 +178,10 @@ internal sealed class WorkspaceCreateCommand : WorkspaceCatalogCommand<Workspace
     {
         [CommandArgument(0, "[name]")]
         [Description("Name for the new workspace. Prompts when omitted in an interactive terminal.")]
-        public string? Name { get; init; }
+        public string? Name
+        {
+            get; init;
+        }
     }
 
     protected override async Task<int> Execute(CommandContext context, Settings settings, IHost host, CancellationToken ct)
@@ -163,11 +193,13 @@ internal sealed class WorkspaceCreateCommand : WorkspaceCatalogCommand<Workspace
             throw new InvalidOperationException("JSON mode requires a workspace name and explicit sources.");
         }
 
-        var selection = await host.Services.GetRequiredService<WorkspaceSetup>().Create(settings.Name, root, sources, ct);
+        var selection = await host.Services.GetRequiredService<WorkspaceSetup>()
+            .Create(settings.Name, root, sources, ct);
         if (selection is not null)
         {
             WorkspaceOutput.Write(context, selection, settings.Json, "Created");
         }
+
         return 0;
     }
 }
@@ -178,12 +210,15 @@ internal sealed class WorkspaceListCommand : WorkspaceCatalogCommand<WorkspaceLi
     {
         [CommandOption("--json")]
         [Description("Write machine-readable JSON without interactive prompts.")]
-        public bool Json { get; init; }
+        public bool Json
+        {
+            get; init;
+        }
     }
 
     protected override Task<int> Execute(CommandContext context, Settings settings, IHost host, CancellationToken ct)
     {
-        var catalog = host.Services.GetRequiredService<WorkspaceCatalog>();
+        var catalog = host.Services.GetRequiredService<IWorkspaceCatalog>();
         Guid? defaultWorkspaceId = null;
         try
         {
@@ -196,6 +231,7 @@ internal sealed class WorkspaceListCommand : WorkspaceCatalogCommand<WorkspaceLi
         }
 
         WorkspaceOutput.WriteList(context, catalog.List(), settings.Json, defaultWorkspaceId);
+
         return Task.FromResult(0);
     }
 }
@@ -206,17 +242,25 @@ internal sealed class WorkspaceUseCommand : WorkspaceCatalogCommand<WorkspaceUse
     {
         [CommandArgument(0, "<name-or-id>")]
         [Description("Workspace to use by default from any directory.")]
-        public string Name { get; init; } = string.Empty;
+        public string Name
+        {
+            get; init;
+        } = string.Empty;
 
         [CommandOption("--json")]
         [Description("Write the selected workspace as JSON.")]
-        public bool Json { get; init; }
+        public bool Json
+        {
+            get; init;
+        }
     }
 
     protected override Task<int> Execute(CommandContext context, Settings settings, IHost host, CancellationToken ct)
     {
-        var selection = host.Services.GetRequiredService<WorkspaceCatalog>().Use(settings.Name);
+        var selection = host.Services.GetRequiredService<IWorkspaceCatalog>()
+            .Use(settings.Name);
         WorkspaceOutput.Write(context, selection, settings.Json, "Selected default");
+
         return Task.FromResult(0);
     }
 }
@@ -226,11 +270,17 @@ internal sealed class WorkspaceShowCommand : WorkspaceCatalogCommand<WorkspaceSh
     public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "[name-or-id]")]
-        public string? Name { get; init; }
+        public string? Name
+        {
+            get; init;
+        }
 
         [CommandOption("--json")]
         [Description("Write machine-readable JSON without interactive prompts.")]
-        public bool Json { get; init; }
+        public bool Json
+        {
+            get; init;
+        }
 
         public override ValidationResult Validate()
         {
@@ -247,18 +297,23 @@ internal sealed class WorkspaceShowCommand : WorkspaceCatalogCommand<WorkspaceSh
 
     protected override Task<int> Execute(CommandContext context, Settings settings, IHost host, CancellationToken ct)
     {
-        var selection = host.Services.GetRequiredService<WorkspaceCatalog>().Resolve(
+        var selection = host.Services.GetRequiredService<IWorkspaceCatalog>()
+            .Resolve(
             settings.Name ?? settings.Workspace,
             CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot));
         WorkspaceOutput.Write(context, selection, settings.Json, "Selected");
+
         return Task.FromResult(0);
     }
 }
 
-public sealed class WorkspaceMutationSettings : WorkspaceSourceSettings
+internal sealed class WorkspaceMutationSettings : WorkspaceSourceSettings
 {
     [CommandArgument(0, "<name-or-id>")]
-    public string Name { get; init; } = string.Empty;
+    public string Name
+    {
+        get; init;
+    } = string.Empty;
 
     public override ValidationResult Validate() => !HasSources
         ? ValidationResult.Error("Specify at least one --csharp, --typescript, or --markdown source.")
@@ -270,8 +325,10 @@ internal sealed class WorkspaceAddCommand : WorkspaceCatalogCommand<WorkspaceMut
     protected override Task<int> Execute(CommandContext context, WorkspaceMutationSettings settings, IHost host, CancellationToken ct)
     {
         var sourceBase = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-        var selection = host.Services.GetRequiredService<WorkspaceCatalog>().AddSources(settings.Name, settings.GetSources(sourceBase));
+        var selection = host.Services.GetRequiredService<IWorkspaceCatalog>()
+            .AddSources(settings.Name, settings.GetSources(sourceBase));
         WorkspaceOutput.Write(context, selection, settings.Json, "Updated");
+
         return Task.FromResult(0);
     }
 }
@@ -281,8 +338,10 @@ internal sealed class WorkspaceRemoveCommand : WorkspaceCatalogCommand<Workspace
     protected override Task<int> Execute(CommandContext context, WorkspaceMutationSettings settings, IHost host, CancellationToken ct)
     {
         var sourceBase = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-        var removal = host.Services.GetRequiredService<WorkspaceCatalog>().RemoveSources(settings.Name, settings.GetSources(sourceBase));
+        var removal = host.Services.GetRequiredService<IWorkspaceCatalog>()
+            .RemoveSources(settings.Name, settings.GetSources(sourceBase));
         WorkspaceOutput.WriteRemoval(context, removal, settings.Json);
+
         return Task.FromResult(0);
     }
 }
@@ -292,14 +351,23 @@ internal sealed class WorkspaceMergeCommand : WorkspaceCatalogCommand<WorkspaceM
     public sealed class Settings : CliSettings
     {
         [CommandArgument(0, "<name>")]
-        public string Name { get; init; } = string.Empty;
+        public string Name
+        {
+            get; init;
+        } = string.Empty;
 
         [CommandArgument(1, "<workspaces>")]
-        public string[] Workspaces { get; init; } = [];
+        public string[] Workspaces
+        {
+            get; init;
+        } = [];
 
         [CommandOption("--json")]
         [Description("Write machine-readable JSON without interactive prompts.")]
-        public bool Json { get; init; }
+        public bool Json
+        {
+            get; init;
+        }
 
         public override ValidationResult Validate() => Workspaces.Length < 2
             ? ValidationResult.Error("Select at least two existing workspaces to merge.")
@@ -308,8 +376,10 @@ internal sealed class WorkspaceMergeCommand : WorkspaceCatalogCommand<WorkspaceM
 
     protected override Task<int> Execute(CommandContext context, Settings settings, IHost host, CancellationToken ct)
     {
-        var selection = host.Services.GetRequiredService<WorkspaceCatalog>().Merge(settings.Name, settings.Workspaces);
+        var selection = host.Services.GetRequiredService<IWorkspaceCatalog>()
+            .Merge(settings.Name, settings.Workspaces);
         WorkspaceOutput.Write(context, selection, settings.Json, "Created");
+
         return Task.FromResult(0);
     }
 }
@@ -319,21 +389,31 @@ internal sealed class WorkspaceRenameCommand : WorkspaceCatalogCommand<Workspace
     public sealed class Settings : CliSettings
     {
         [CommandArgument(0, "<name-or-id>")]
-        public string Name { get; init; } = string.Empty;
+        public string Name
+        {
+            get; init;
+        } = string.Empty;
 
         [CommandArgument(1, "<new-name>")]
-        public string NewName { get; init; } = string.Empty;
+        public string NewName
+        {
+            get; init;
+        } = string.Empty;
 
         [CommandOption("--json")]
         [Description("Write machine-readable JSON without interactive prompts.")]
-        public bool Json { get; init; }
+        public bool Json
+        {
+            get; init;
+        }
     }
 
     protected override Task<int> Execute(CommandContext context, Settings settings, IHost host, CancellationToken ct)
     {
-        var catalog = host.Services.GetRequiredService<WorkspaceCatalog>();
+        var catalog = host.Services.GetRequiredService<IWorkspaceCatalog>();
         var updated = catalog.Rename(settings.Name, settings.NewName);
         WorkspaceOutput.Write(context, updated, settings.Json, "Renamed");
+
         return Task.FromResult(0);
     }
 }

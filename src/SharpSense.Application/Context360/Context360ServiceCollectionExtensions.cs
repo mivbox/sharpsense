@@ -14,6 +14,7 @@ public static class Context360ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.TryAddTransient<IQueryHandler<GetNodeContextQuery, Context360Result>, GetNodeContextQueryHandler>();
+
         return services;
     }
 }

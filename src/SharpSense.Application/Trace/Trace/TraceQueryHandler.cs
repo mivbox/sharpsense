@@ -5,7 +5,7 @@ using SharpSense.Application.Trace.Trace.Models;
 
 namespace SharpSense.Application.Trace.Trace;
 
-public sealed class TraceQueryHandler(ITraceNavigator traceNavigator)
+internal sealed class TraceQueryHandler(ITraceNavigator traceNavigator)
     : IQueryHandler<TraceQuery, CodeNodeResult[]>
 {
     public Task<CodeNodeResult[]> Handle(TraceQuery query, CancellationToken ct)

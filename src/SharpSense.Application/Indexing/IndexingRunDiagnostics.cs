@@ -1,9 +1,9 @@
-using System.Diagnostics;
 using FluentResults;
 using Microsoft.Extensions.Logging;
 using SharpSense.Application.GraphStats.Abstractions;
 using SharpSense.Application.GraphStats.Models;
 using SharpSense.Application.Indexing.Models;
+using System.Diagnostics;
 
 namespace SharpSense.Application.Indexing;
 
@@ -38,8 +38,12 @@ internal sealed class IndexingRunDiagnostics(
             Embeddings(0, 0);
         }
 
-        _diagnostics.AddRange(nodes.Diagnostics.Take(50).Select(message =>
-            new IndexDiagnostic("extraction-diagnostic", "warning", message,
+        _diagnostics.AddRange(nodes.Diagnostics.Take(50)
+            .Select(message =>
+            new IndexDiagnostic(
+                "extraction-diagnostic",
+                "warning",
+                message,
                 Suggestion: "Review the source or project configuration; some declarations may be unavailable.")));
     }
 
@@ -48,24 +52,35 @@ internal sealed class IndexingRunDiagnostics(
     public void Failed(IEnumerable<IError> errors)
     {
         _outcome = "failed";
-        _diagnostics.AddRange(errors.Take(50).Select(error => new IndexDiagnostic(
-            "index-failed", "error", error.Message,
-            error.Metadata.TryGetValue("filePath", out var filePath) ? filePath?.ToString() : null,
-            "Fix the reported source or configuration error and run analyze again. The last committed graph is preserved.")));
+        _diagnostics.AddRange(errors.Take(50)
+            .Select(error => new IndexDiagnostic(
+                "index-failed",
+                "error",
+                error.Message,
+                error.Metadata.TryGetValue("filePath", out var filePath) ? filePath?.ToString() : null,
+                "Fix the reported source or configuration error and run analyze again. The last committed graph is preserved.")));
     }
 
     public void Failed(Exception exception)
     {
         _outcome = "failed";
-        _diagnostics.Add(new IndexDiagnostic("index-failed", "error", exception.Message,
+        _diagnostics.Add(new IndexDiagnostic(
+            "index-failed",
+            "error",
+            exception.Message,
             Suggestion: "Check the source, project configuration, and database access, then run analyze again."));
     }
 
     public void Cancelled()
     {
         _outcome = "cancelled";
-        _diagnostics.Insert(0, new IndexDiagnostic("index-cancelled", "warning", "Indexing was cancelled.",
-            Suggestion: "Run analyze again to complete the update."));
+        _diagnostics.Insert(
+            0,
+            new IndexDiagnostic(
+                "index-cancelled",
+                "warning",
+                "Indexing was cancelled.",
+                Suggestion: "Run analyze again to complete the update."));
     }
 
     public async ValueTask DisposeAsync()
@@ -93,7 +108,7 @@ internal sealed class IndexingRunDiagnostics(
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         try
         {
-            await store.RecordAsync(summary, timeout.Token);
+            await store.Record(summary, timeout.Token);
         }
         catch (Exception exception)
         {
@@ -105,6 +120,8 @@ internal sealed class IndexingRunDiagnostics(
     {
         private readonly long _started = Stopwatch.GetTimestamp();
 
-        public void Dispose() => phases.Add(new IndexPhaseTiming(name, Stopwatch.GetElapsedTime(_started).TotalMilliseconds));
+        public void Dispose() => phases.Add(new IndexPhaseTiming(
+            name,
+            Stopwatch.GetElapsedTime(_started).TotalMilliseconds));
     }
 }

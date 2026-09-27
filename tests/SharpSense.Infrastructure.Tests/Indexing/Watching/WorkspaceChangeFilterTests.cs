@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using Microsoft.Extensions.Options;
 using SharpSense.Application.Indexing;
 using SharpSense.Application.Indexing.Abstractions;
@@ -11,109 +12,125 @@ namespace SharpSense.Infrastructure.Tests.Indexing.Watching;
 public sealed class WorkspaceChangeFilterTests
 {
     [Fact]
-    public void DeclaredGeneratorInputsAndNewMarkdownMembershipInvalidateCSharpOutsideDocumentationSelections()
+    public void WhenGeneratorInputsOrMarkdownMembershipChange_ThenCSharpIsInvalidatedOutsideDocumentationSelections()
     {
         var source = new WorkspaceSource(WorkspaceSourceKind.CSharp, "app/App.csproj");
         var filter = Create(source, new(WorkspaceSourceKind.Markdown, "docs/**/*.md"));
         filter.TrackSource(source, new([], [], [], [], ["/repo/schemas/input.md", "/repo/schemas/input.txt"]));
 
-        Assert.True(filter.IsRelevant([Modified("schemas/input.md")]));
-        Assert.True(filter.IsRelevant([Modified("schemas/input.txt")]));
-        Assert.True(filter.IsRelevant([new(WorkspaceFileChangeAction.Deleted, OldPath: "/repo/schemas/input.md")]));
-        Assert.True(filter.IsRelevant([new(WorkspaceFileChangeAction.DirectoryDeleted, OldPath: "/repo/schemas")]));
-        Assert.True(filter.IsRelevant([Added("schemas/new.md")]));
-        Assert.True(filter.IsRelevant([new(WorkspaceFileChangeAction.Renamed, OldPath: "/repo/other.md", NewPath: "/repo/schemas/new.md")]));
-        Assert.False(filter.IsRelevant([Modified("unselected/existing.md")]));
+        filter.IsRelevant([Modified("schemas/input.md")]).Should().BeTrue();
+        filter.IsRelevant([Modified("schemas/input.txt")]).Should().BeTrue();
+        filter.IsRelevant([new(WorkspaceFileChangeAction.Deleted, OldPath: "/repo/schemas/input.md")]).Should().BeTrue();
+        filter.IsRelevant([new(WorkspaceFileChangeAction.DirectoryDeleted, OldPath: "/repo/schemas")]).Should().BeTrue();
+        filter.IsRelevant([Added("schemas/new.md")]).Should().BeTrue();
+        filter.IsRelevant([new(WorkspaceFileChangeAction.Renamed, OldPath: "/repo/other.md", NewPath: "/repo/schemas/new.md")]).Should().BeTrue();
+        filter.IsRelevant([Modified("unselected/existing.md")]).Should().BeFalse();
     }
 
     [Fact]
-    public void CSharpSelectionTracksReferencedProjectsWithoutWatchingUnrelatedProjects()
+    public void WhenCSharpSelection_ThenTracksReferencedProjectsWithoutWatchingUnrelatedProjects()
     {
         var source = new WorkspaceSource(WorkspaceSourceKind.CSharp, "app/App.csproj");
         var filter = Create(source);
-        filter.TrackSource(source, new ExtractedNodes(
-            [new IndexedProject("dependency", "Dependency", "shared/Shared.csproj", "hash")],
-            [Node("shared/Service.cs"), Node("linked/SharedFile.cs")], [], [], ["/repo/linked/InitiallyEmpty.cs"]));
+        filter.TrackSource(
+            source,
+            new ExtractedNodes(
+                [new IndexedProject("dependency", "Dependency", "shared/Shared.csproj", "hash")],
+                [Node("shared/Service.cs"), Node("linked/SharedFile.cs")],
+                [],
+                [],
+                ["/repo/linked/InitiallyEmpty.cs"]));
 
-        Assert.True(filter.IsRelevant([Modified("app/Feature.cs")]));
-        Assert.True(filter.IsRelevant([Modified("shared/Service.cs")]));
-        Assert.True(filter.IsRelevant([Added("shared/NewService.cs")]));
-        Assert.True(filter.IsRelevant([Modified("linked/SharedFile.cs")]));
-        Assert.True(filter.IsRelevant([Modified("linked/InitiallyEmpty.cs")]));
-        Assert.True(filter.IsRelevant([Modified("build/custom.targets")]));
-        Assert.False(filter.IsRelevant([Modified("unrelated/Other.cs")]));
-        Assert.False(filter.IsRelevant([Modified("frontend/index.ts")]));
-        Assert.False(filter.IsRelevant([Modified("app/obj/Generated.cs")]));
+        filter.IsRelevant([Modified("app/Feature.cs")]).Should().BeTrue();
+        filter.IsRelevant([Modified("shared/Service.cs")]).Should().BeTrue();
+        filter.IsRelevant([Added("shared/NewService.cs")]).Should().BeTrue();
+        filter.IsRelevant([Modified("linked/SharedFile.cs")]).Should().BeTrue();
+        filter.IsRelevant([Modified("linked/InitiallyEmpty.cs")]).Should().BeTrue();
+        filter.IsRelevant([Modified("build/custom.targets")]).Should().BeTrue();
+        filter.IsRelevant([Modified("unrelated/Other.cs")]).Should().BeFalse();
+        filter.IsRelevant([Modified("frontend/index.ts")]).Should().BeFalse();
+        filter.IsRelevant([Modified("app/obj/Generated.cs")]).Should().BeFalse();
     }
 
     [Fact]
-    public void DeclaredInputCaseVariantsRemainRelevantWithoutBroadeningRepositoryOrSourceScope()
+    public void WhenDeclaredInputCaseVariants_ThenRemainRelevantWithoutBroadeningRepositoryOrSourceScope()
     {
         var source = new WorkspaceSource(WorkspaceSourceKind.CSharp, "app/App.csproj");
         var filter = Create(source);
         filter.TrackSource(source, new([], [], [], [], ["/repo/schemas/Input.md", "/repo/schemas/Input.txt"]));
 
-        Assert.True(filter.IsRelevant([Modified("SCHEMAS/input.md")]));
-        Assert.True(filter.IsRelevant([Modified("SCHEMAS/input.txt")]));
-        Assert.True(filter.IsRelevant([new(WorkspaceFileChangeAction.Deleted, OldPath: "/repo/SCHEMAS/input.md")]));
-        Assert.True(filter.IsRelevant([new(WorkspaceFileChangeAction.DirectoryDeleted, OldPath: "/repo/SCHEMAS")]));
-        Assert.False(filter.IsRelevant([Modified("schemas/Other.md")]));
-        Assert.False(filter.IsRelevant([new(WorkspaceFileChangeAction.DirectoryDeleted, OldPath: "/repo/schemas-other")]));
-        Assert.False(filter.IsRelevant([new(WorkspaceFileChangeAction.Modified, NewPath: "/other/schemas/Input.md")]));
-        Assert.False(filter.IsRelevant([new(WorkspaceFileChangeAction.DirectoryDeleted, OldPath: "/other/schemas")]));
+        filter.IsRelevant([Modified("SCHEMAS/input.md")]).Should().BeTrue();
+        filter.IsRelevant([Modified("SCHEMAS/input.txt")]).Should().BeTrue();
+        filter.IsRelevant([new(WorkspaceFileChangeAction.Deleted, OldPath: "/repo/SCHEMAS/input.md")]).Should().BeTrue();
+        filter.IsRelevant([new(WorkspaceFileChangeAction.DirectoryDeleted, OldPath: "/repo/SCHEMAS")]).Should().BeTrue();
+        filter.IsRelevant([Modified("schemas/Other.md")]).Should().BeFalse();
+        filter.IsRelevant([new(WorkspaceFileChangeAction.DirectoryDeleted, OldPath: "/repo/schemas-other")]).Should().BeFalse();
+        filter.IsRelevant([new(WorkspaceFileChangeAction.Modified, NewPath: "/other/schemas/Input.md")]).Should().BeFalse();
+        filter.IsRelevant([new(WorkspaceFileChangeAction.DirectoryDeleted, OldPath: "/other/schemas")]).Should().BeFalse();
     }
 
     [Fact]
-    public void TypeScriptSelectionIncludesImportedFilesAndSharedConfiguration()
+    public void WhenTypeScriptSelection_ThenIncludesImportedFilesAndSharedConfiguration()
     {
         var source = new WorkspaceSource(WorkspaceSourceKind.TypeScript, "frontend/tsconfig.json");
         var filter = Create(source);
         filter.TrackSource(source, new ExtractedNodes([], [Node("shared/format.ts")], [], [], ["/repo/shared/later.ts"]));
 
-        Assert.True(filter.IsRelevant([Modified("frontend/view.tsx")]));
-        Assert.True(filter.IsRelevant([Modified("shared/format.ts")]));
-        Assert.True(filter.IsRelevant([Added("shared/later.ts")]));
-        Assert.True(filter.IsRelevant([Modified("configs/base.json")]));
-        Assert.False(filter.IsRelevant([Modified("unrelated/other.ts")]));
-        Assert.False(filter.IsRelevant([Modified("app/Feature.cs")]));
+        filter.IsRelevant([Modified("frontend/view.tsx")]).Should().BeTrue();
+        filter.IsRelevant([Modified("shared/format.ts")]).Should().BeTrue();
+        filter.IsRelevant([Added("shared/later.ts")]).Should().BeTrue();
+        filter.IsRelevant([Modified("configs/base.json")]).Should().BeTrue();
+        filter.IsRelevant([Modified("unrelated/other.ts")]).Should().BeFalse();
+        filter.IsRelevant([Modified("app/Feature.cs")]).Should().BeFalse();
     }
 
     [Fact]
-    public void DocumentationGlobsAreRepositoryRelativeAndTrackOldRenamePaths()
+    public void WhenDocumentationGlobs_ThenAreRepositoryRelativeAndTrackOldRenamePaths()
     {
         var filter = Create(new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/architecture/**/*.md"));
 
-        Assert.True(filter.IsRelevant([Modified("docs/architecture/overview.md")]));
-        Assert.False(filter.IsRelevant([Modified("docs/product/overview.md")]));
-        Assert.True(filter.IsRelevant([new WorkspaceFileChange(
+        filter.IsRelevant([Modified("docs/architecture/overview.md")]).Should().BeTrue();
+        filter.IsRelevant([Modified("docs/product/overview.md")]).Should().BeFalse();
+        filter.IsRelevant([new WorkspaceFileChange(
             WorkspaceFileChangeAction.Renamed,
             OldPath: "/repo/docs/architecture/overview.md",
-            NewPath: "/repo/archive/overview.md")]));
-        Assert.True(filter.IsRelevant([new WorkspaceFileChange(
-            WorkspaceFileChangeAction.DirectoryDeleted, OldPath: "/repo/docs/architecture")]));
-        Assert.False(filter.IsRelevant([new WorkspaceFileChange(
-            WorkspaceFileChangeAction.Modified, NewPath: "/other/docs/architecture/overview.md")]));
+            NewPath: "/repo/archive/overview.md")]).Should().BeTrue();
+        filter.IsRelevant([new WorkspaceFileChange(
+            WorkspaceFileChangeAction.DirectoryDeleted,
+            OldPath: "/repo/docs/architecture")]).Should().BeTrue();
+        filter.IsRelevant([new WorkspaceFileChange(
+            WorkspaceFileChangeAction.Modified,
+            NewPath: "/other/docs/architecture/overview.md")]).Should().BeFalse();
     }
 
     [Fact]
-    public void MultipleSourceKindsShareOneChangeFilter()
+    public void WhenMultipleSourceKinds_ThenShareOneChangeFilter()
     {
         var filter = Create(
             new WorkspaceSource(WorkspaceSourceKind.CSharp, "app/App.csproj"),
             new WorkspaceSource(WorkspaceSourceKind.TypeScript, "frontend"),
             new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/**/*.md"));
 
-        Assert.True(filter.IsRelevant([Modified("app/Feature.cs")]));
-        Assert.True(filter.IsRelevant([Modified("frontend/index.ts")]));
-        Assert.True(filter.IsRelevant([Modified("docs/guide.md")]));
-        Assert.False(filter.IsRelevant([Modified("unselected/index.ts")]));
+        filter.IsRelevant([Modified("app/Feature.cs")]).Should().BeTrue();
+        filter.IsRelevant([Modified("frontend/index.ts")]).Should().BeTrue();
+        filter.IsRelevant([Modified("docs/guide.md")]).Should().BeTrue();
+        filter.IsRelevant([Modified("unselected/index.ts")]).Should().BeFalse();
     }
 
     private static WorkspaceChangeFilter Create(params WorkspaceSource[] sources)
-        => new(new WorkspacePaths(), Options.Create(new SharpSenseCliOptions { WorkspaceSources = sources }));
+        => new(
+            new WorkspacePaths(),
+            Options.Create(new WorkspaceExecutionOptions
+            {
+                WorkspaceSources = sources
+            }));
 
-    private static WorkspaceFileChange Modified(string path) => new(WorkspaceFileChangeAction.Modified, NewPath: $"/repo/{path}");
-    private static WorkspaceFileChange Added(string path) => new(WorkspaceFileChangeAction.Added, NewPath: $"/repo/{path}");
+    private static WorkspaceFileChange Modified(string path) => new(
+        WorkspaceFileChangeAction.Modified,
+        NewPath: $"/repo/{path}");
+    private static WorkspaceFileChange Added(string path) => new(
+        WorkspaceFileChangeAction.Added,
+        NewPath: $"/repo/{path}");
 
     private static IndexedCodeNode Node(string path)
         => new(path, null, path, path, NodeType.Method, path, 1, 2, "", path);
@@ -127,6 +144,7 @@ public sealed class WorkspaceChangeFilterTests
         public bool TryToRepositoryRelativePath(string? filePath, out string relativePath)
         {
             relativePath = ToRepositoryRelativePath(filePath);
+
             return !relativePath.StartsWith("..", StringComparison.Ordinal);
         }
     }

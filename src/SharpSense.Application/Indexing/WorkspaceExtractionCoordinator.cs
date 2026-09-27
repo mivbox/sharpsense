@@ -1,11 +1,11 @@
-using System.Text.Json;
-using System.Runtime.ExceptionServices;
 using FluentResults;
 using Microsoft.Extensions.Logging;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Indexing.Notifications;
 using SharpSense.Application.Shared.Models;
+using System.Runtime.ExceptionServices;
+using System.Text.Json;
 
 namespace SharpSense.Application.Indexing;
 
@@ -14,11 +14,11 @@ namespace SharpSense.Application.Indexing;
 /// extract; the caller merges, embeds and publishes one complete graph before committing this cache.
 /// Watch batches are supplied serially by the session; cancelling a session ends its cache lifetime.
 /// </summary>
-public sealed class WorkspaceExtractionCoordinator(
+internal sealed class WorkspaceExtractionCoordinator(
     IEnumerable<ILanguageExtractor> extractors,
     IIndexingWorkspacePaths paths,
-    IWorkspaceChangeFilter? changeFilter = null,
-    ILogger<WorkspaceExtractionCoordinator>? logger = null) : IDisposable
+    IWorkspaceChangeFilter changeFilter,
+    ILogger<WorkspaceExtractionCoordinator> logger) : IDisposable
 {
     private readonly SemaphoreSlim _sessionGate = new(1, 1);
     private CommittedContributions? _committed;
@@ -26,6 +26,7 @@ public sealed class WorkspaceExtractionCoordinator(
     internal async Task<IDisposable> Acquire(CancellationToken ct)
     {
         await _sessionGate.WaitAsync(ct);
+
         return new SessionLease(_sessionGate);
     }
 
@@ -36,7 +37,12 @@ public sealed class WorkspaceExtractionCoordinator(
         CancellationToken ct,
         AnalysisOperation? analysis = null)
     {
-        var key = JsonSerializer.Serialize(new { workspaceId, paths.RootPath, sources });
+        var key = JsonSerializer.Serialize(new
+        {
+            workspaceId,
+            paths.RootPath,
+            sources
+        });
         var previous = _committed?.Key == key && IsDocumentationOnly(context.ChangedFiles)
             ? _committed
             : null;
@@ -45,23 +51,34 @@ public sealed class WorkspaceExtractionCoordinator(
         // reuse contributions from before an unsuccessful code/configuration change.
         _committed = null;
         var progress = context.Progress is null ? null : new SerialProgress(context.Progress);
-        var plan = WorkspaceExtractionPlan.Create(sources, extractors, paths, context with { Progress = progress });
+        var plan = WorkspaceExtractionPlan.Create(
+            sources,
+            extractors,
+            paths,
+            context with
+            {
+                Progress = progress
+            });
         var contributions = new ExtractedNodes[plan.Count];
         var results = new Result<ExtractedNodes>?[plan.Count];
         ExceptionDispatchInfo? workerFailure = null;
         using var workers = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var groups = plan.Select((step, index) => (Step: step, Index: index)).GroupBy(item => item.Step.Source.Kind);
+        var groups = plan.Select((step, index) => (Step: step, Index: index))
+            .GroupBy(item => item.Step.Source.Kind);
 
         try
         {
             // Independent languages overlap even when discovery/parsing runs synchronously.
             // Each language stays serial: Roslyn and TypeScript own mutable session caches.
             // ForEachAsync joins every worker before returning, including cancellation/failure.
-            await Parallel.ForEachAsync(groups, new ParallelOptions
-            {
-                MaxDegreeOfParallelism = 3,
-                CancellationToken = workers.Token
-            }, async (group, token) =>
+            await Parallel.ForEachAsync(
+                groups,
+                new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = 3,
+                    CancellationToken = workers.Token
+                },
+                async (group, token) =>
             {
                 try
                 {
@@ -72,20 +89,26 @@ public sealed class WorkspaceExtractionCoordinator(
                         if (previous is not null && CanReuse(step, previous.Contributions[index], context.ChangedFiles!))
                         {
                             contributions[index] = previous.Contributions[index];
-                            progress?.Report(new IndexingProgress($"Reusing {step.Source.Kind} source '{step.Source.Path}'...", 0, 1));
+                            progress?.Report(new IndexingProgress(
+                                $"Reusing {step.Source.Kind} source '{step.Source.Path}'...",
+                                0,
+                                1));
                             analysis?.SourceCompleted(source, reused: true);
                             continue;
                         }
 
                         analysis?.SourceStarted(source);
-                        var result = await step.Extractor.Extract(step.Context with
-                        {
-                            Progress = analysis?.SourceProgress(source, step.Context.Progress) ?? step.Context.Progress
-                        }, token);
+                        var result = await step.Extractor.Extract(
+                            step.Context with
+                            {
+                                Progress = analysis?.SourceProgress(source, step.Context.Progress) ?? step.Context.Progress
+                            },
+                            token);
                         results[index] = result;
                         if (result.IsFailed)
                         {
                             await workers.CancelAsync();
+
                             return;
                         }
 
@@ -112,7 +135,9 @@ public sealed class WorkspaceExtractionCoordinator(
 
         ct.ThrowIfCancellationRequested();
         workerFailure?.Throw();
-        var errors = results.Where(result => result?.IsFailed == true).SelectMany(result => result!.Errors).ToArray();
+        var errors = results.Where(result => result?.IsFailed == true)
+            .SelectMany(result => result!.Errors)
+            .ToArray();
         if (errors.Length > 0)
         {
             return Result.Fail(errors);
@@ -122,16 +147,20 @@ public sealed class WorkspaceExtractionCoordinator(
         // from referenced C# projects must still be tracked even when their declarations aren't selected.
         for (var index = 0; index < plan.Count; index++)
         {
-            logger?.LogDebug(new EventId(1101, "WorkspaceSourceContribution"),
+            logger.LogDebug(
+                new EventId(1101, "WorkspaceSourceContribution"),
                 "Workspace source {SourceKind} '{SourcePath}': {Action}.",
-                plan[index].Source.Kind, plan[index].Source.Path, results[index] is null ? "reused" : "extracted");
+                plan[index].Source.Kind,
+                plan[index].Source.Path,
+                results[index] is null ? "reused" : "extracted");
             if (results[index] is { IsSuccess: true } result)
             {
-                changeFilter?.TrackSource(plan[index].Source, result.Value);
+                changeFilter.TrackSource(plan[index].Source, result.Value);
             }
         }
 
         var merged = WorkspaceGraphMerger.Merge(contributions);
+
         return merged.IsFailed
             ? Result.Fail(merged.Errors)
             : Result.Ok(new WorkspaceExtractionBatch(key, contributions, merged.Value));
@@ -163,7 +192,9 @@ public sealed class WorkspaceExtractionCoordinator(
             // Declared MSBuild paths can differ in casing from native watcher paths on
             // case-insensitive macOS volumes. Extra invalidation is safe on other volumes.
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return changes.SelectMany(change => change.GetAffectedPaths())
+
+        return changes
+            .SelectMany(change => change.GetAffectedPaths())
             .All(path => paths.TryToRepositoryRelativePath(path, out var relativePath) && !inputs.Contains(relativePath));
     }
 
@@ -171,7 +202,8 @@ public sealed class WorkspaceExtractionCoordinator(
         => changes is { Count: > 0 } && changes.All(change =>
             change.ActionType is WorkspaceFileChangeAction.Added or WorkspaceFileChangeAction.Modified
                 or WorkspaceFileChangeAction.Deleted or WorkspaceFileChangeAction.Renamed &&
-            change.GetAffectedPaths().Any() && change.GetAffectedPaths().All(path =>
+            change.GetAffectedPaths().Any() &&
+            change.GetAffectedPaths().All(path =>
                 Path.GetExtension(path).ToLowerInvariant() is ".md" or ".markdown" or ".mdown" or ".mkd"));
 
     private ExtractedNodes Normalize(ExtractedNodes contribution)

@@ -6,7 +6,7 @@ using SharpSense.Domain.KnowledgeGraph.Nodes;
 
 namespace SharpSense.Application.Memory.GetMemories;
 
-public sealed class GetMemoriesQueryHandler(IMemoryRepository memoryRepository)
+internal sealed class GetMemoriesQueryHandler(IMemoryRepository memoryRepository)
     : IQueryHandler<GetMemoriesQuery, Result<IReadOnlyDictionary<Guid, MemoryNode>>>
 {
     public async Task<Result<IReadOnlyDictionary<Guid, MemoryNode>>> Handle(
@@ -20,7 +20,8 @@ public sealed class GetMemoriesQueryHandler(IMemoryRepository memoryRepository)
             return Result.Fail("At least one memory id is required.");
         }
 
-        var distinctIds = query.MemoryIds.Distinct().ToArray();
+        var distinctIds = query.MemoryIds.Distinct()
+            .ToArray();
         var memories = await memoryRepository.GetMemories(distinctIds, ct);
 
         // GetMemories returns a dictionary keyed by every supplied id with nulls for missing; rebuild into

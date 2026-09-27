@@ -5,7 +5,7 @@ using SharpSense.Application.Shared.Abstractions;
 
 namespace SharpSense.Application.Context360.GetNodeContext;
 
-public sealed class GetNodeContextQueryHandler(IContextRepository contextRepository)
+internal sealed class GetNodeContextQueryHandler(IContextRepository contextRepository)
     : IQueryHandler<GetNodeContextQuery, Context360Result>
 {
     public async Task<Context360Result> Handle(GetNodeContextQuery query,
@@ -17,7 +17,8 @@ public sealed class GetNodeContextQueryHandler(IContextRepository contextReposit
         }
 
         var normalizedMaxRelated = Math.Clamp(query.MaxRelated, 1, 50);
-        var context = await contextRepository.GetNodeContext(query.NodeId,
+        var context = await contextRepository.GetNodeContext(
+            query.NodeId,
             normalizedMaxRelated,
             ct);
 

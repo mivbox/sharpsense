@@ -4,7 +4,7 @@ using TreeSitter;
 
 namespace SharpSense.Infrastructure.Indexing.TypeScript;
 
-public sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
+internal sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
 {
     public void Execute(TypeScriptPassContext context)
     {
@@ -78,7 +78,8 @@ public sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
             return false;
         }
 
-        var argumentNodes = argumentsNode.NamedChildren.Where(static node => node.Type != "comment").ToArray();
+        var argumentNodes = argumentsNode.NamedChildren.Where(static node => node.Type != "comment")
+            .ToArray();
         if (functionNode.Text == "fetch")
         {
             if (argumentNodes.Length == 0 ||
@@ -93,6 +94,7 @@ public sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
             }
 
             method = "GET";
+
             return true;
         }
 
@@ -137,6 +139,7 @@ public sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
             text[^1] == text[0])
         {
             value = text[1..^1];
+
             return !string.IsNullOrWhiteSpace(value);
         }
 
@@ -145,6 +148,7 @@ public sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
             !text.Contains("${", StringComparison.Ordinal))
         {
             value = text[1..^1];
+
             return !string.IsNullOrWhiteSpace(value);
         }
 
@@ -205,7 +209,10 @@ public sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
         name = node.Text;
         if (node.Type == "string")
         {
-            if (!TryExtractStringLiteral(node, out name)) return false;
+            if (!TryExtractStringLiteral(node, out name))
+            {
+                return false;
+            }
         }
         else if (node.Type is not ("property_identifier" or "identifier" or "shorthand_property_identifier" or "number"))
         {
@@ -221,6 +228,7 @@ public sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
         out string method)
     {
         method = propertyName.ToUpperInvariant();
+
         return method is "GET" or "POST" or "PUT" or "PATCH" or "DELETE" or "HEAD" or "OPTIONS";
     }
 
@@ -236,5 +244,4 @@ public sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
             }
         }
     }
-
 }

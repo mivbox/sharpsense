@@ -8,14 +8,28 @@ namespace SharpSense.Infrastructure.Storage;
 /// </summary>
 public sealed class WorkspaceDefinition
 {
-    public int Version { get; set; } = 1;
+    public int Version
+    {
+        get; set;
+    } = 1;
 
-    public Guid Id { get; set; }
+    public Guid Id
+    {
+        get; set;
+    }
 
-    public string Name { get; set; } = string.Empty;
+    public string Name
+    {
+        get; set;
+    } = string.Empty;
 
-    public string RepositoryRoot { get; set; } = string.Empty;
+    public string RepositoryRoot
+    {
+        get; set;
+    } = string.Empty;
 
-    public WorkspaceSource[] Sources { get; set; } = [];
-
+    public WorkspaceSource[] Sources
+    {
+        get; set;
+    } = [];
 }

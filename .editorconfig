@@ -98,7 +98,7 @@ csharp_prefer_static_local_function = true:suggestion
 csharp_preferred_modifier_order = public,private,protected,internal,static,extern,new,virtual,abstract,sealed,override,readonly,unsafe,volatile,async
 
 # Code-block preferences
-csharp_prefer_braces = true:suggestion
+csharp_prefer_braces = true:warning
 csharp_prefer_simple_using_statement = true:suggestion
 
 # Expression-level preferences
@@ -159,8 +159,8 @@ csharp_space_between_parentheses = false
 csharp_space_between_square_brackets = false
 
 # Wrapping preferences
-csharp_preserve_single_line_blocks = true
-csharp_preserve_single_line_statements = true
+csharp_preserve_single_line_blocks = false
+csharp_preserve_single_line_statements = false
 
 #### Naming styles ####
 
@@ -219,16 +219,9 @@ dotnet_naming_style.starts_with___and_lower.capitalization = camel_case
 
 # Analyzer rules
 
+dotnet_diagnostic.IDE0005.severity = warning
+
 dotnet_diagnostic.CS4014.severity = error
-dotnet_diagnostic.MA0049.severity = warning
-dotnet_diagnostic.VSTHRD002.severity = error
-dotnet_diagnostic.VSTHRD100.severity = error
-dotnet_diagnostic.VSTHRD101.severity = error
-dotnet_diagnostic.VSTHRD103.severity = error
-dotnet_diagnostic.VSTHRD107.severity = error
-dotnet_diagnostic.VSTHRD110.severity = error
-dotnet_diagnostic.VSTHRD114.severity = error
-dotnet_diagnostic.VSTHRD200.severity = none
 
 #Nullable Reference Types
 dotnet_diagnostic.CS8600.severity = error
@@ -257,3 +250,11 @@ end_of_line = lf
 indent_size = 2
 indent_style = space
 insert_final_newline = true
+
+# Preserve historical migration source while enforcing namespaces in maintained code.
+[src/SharpSense.Infrastructure/Persistence/Migrations/*.cs]
+dotnet_diagnostic.IDE0161.severity = none
+
+# Keep the original using directives in this historical migration.
+[src/SharpSense.Infrastructure/Persistence/Migrations/20260514005043_GraphNativeMemoryLayer.cs]
+dotnet_diagnostic.IDE0005.severity = none

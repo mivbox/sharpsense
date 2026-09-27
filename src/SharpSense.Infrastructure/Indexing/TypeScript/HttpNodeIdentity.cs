@@ -36,7 +36,8 @@ internal static class HttpNodeIdentity
 
         method = canonicalId["http:".Length..separatorIndex];
         url = Uri.UnescapeDataString(canonicalId[(separatorIndex + 1)..]);
+
         return !string.IsNullOrWhiteSpace(method) &&
-               !string.IsNullOrWhiteSpace(url);
+            !string.IsNullOrWhiteSpace(url);
     }
 }

@@ -1,8 +1,3 @@
-using System.Globalization;
-using System.IO;
-using System.IO.Abstractions;
-using System.IO.Abstractions.TestingHelpers;
-using System.Text.Json;
 using AwesomeAssertions;
 using FluentResults;
 using Microsoft.EntityFrameworkCore;
@@ -15,12 +10,16 @@ using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Memory;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
-using SharpSense.Infrastructure.Memory;
 using SharpSense.Domain.KnowledgeGraph.Enums;
+using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Testkit;
 using Spectre.Console.Testing;
+using System.Globalization;
+using System.IO.Abstractions;
+using System.IO.Abstractions.TestingHelpers;
+using System.Text.Json;
 using PersistedDocumentKind = SharpSense.Infrastructure.Persistence.Records.DocumentKind;
 
 namespace SharpSense.IntegrationTests;
@@ -48,12 +47,18 @@ public sealed class CliCommandTests
         nodes.GetArrayLength().Should().Be(1);
 
         var node = nodes[0];
-        node.GetProperty("id").GetInt32().Should().Be(CliCommandTestDatabase.CallerNodeId);
-        node.GetProperty("canonicalId").GetString().Should().Be(CliCommandTestDatabase.CallerCanonicalId);
-        node.GetProperty("fullyQualifiedName").GetString().Should().Be("Fixture.App.HttpEndpoint.Handle()");
-        node.GetProperty("displayName").GetString().Should().Be("HttpEndpoint.Handle()");
-        node.GetProperty("startLine").GetInt32().Should().Be(5);
-        node.GetProperty("endLine").GetInt32().Should().Be(12);
+        node.GetProperty("id")
+            .GetInt32().Should().Be(CliCommandTestDatabase.CallerNodeId);
+        node.GetProperty("canonicalId")
+            .GetString().Should().Be(CliCommandTestDatabase.CallerCanonicalId);
+        node.GetProperty("fullyQualifiedName")
+            .GetString().Should().Be("Fixture.App.HttpEndpoint.Handle()");
+        node.GetProperty("displayName")
+            .GetString().Should().Be("HttpEndpoint.Handle()");
+        node.GetProperty("startLine")
+            .GetInt32().Should().Be(5);
+        node.GetProperty("endLine")
+            .GetInt32().Should().Be(12);
     }
 
     [Fact]
@@ -262,10 +267,12 @@ public sealed class CliCommandTests
     public async Task WhenLegacySkillsCommandRuns_ThenItFailsWithoutWritingFiles(string? destination)
     {
         using var console = new TestConsole();
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
-        }, RepositoryRoot);
+        var fileSystem = new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+            },
+            RepositoryRoot);
         var app = Cli.Program.CreateCommandApp(
             console,
             services => services.AddSingleton<IFileSystem>(fileSystem),
@@ -277,7 +284,10 @@ public sealed class CliCommandTests
 
         exitCode.Should().NotBe(0);
         console.Output.Should().Contain("skills");
-        fileSystem.AllFiles.Should().BeEquivalentTo(new[] { "/repo/.git/HEAD" });
+        fileSystem.AllFiles.Should().BeEquivalentTo(new[]
+        {
+            "/repo/.git/HEAD"
+        });
         fileSystem.Directory.Exists("/repo/.agents").Should().BeFalse();
         fileSystem.Directory.Exists("/exported-skills").Should().BeFalse();
     }
@@ -331,8 +341,6 @@ public sealed class CliCommandTests
             $"[C] `{CliCommandTestDatabase.TerminalRendererNodeId}` TerminalRenderer @ src/Fixture.App/TerminalRenderer.cs:3-15");
     }
 
-
-
     [Fact]
     public async Task WhenExecuteRunsWithToon_ThenItFormatsCondensedCommandOutput()
     {
@@ -359,17 +367,18 @@ public sealed class CliCommandTests
         executeLogIndex.Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
         processRunner.Setup(candidate => candidate.Execute(
-                It.Is<CommandProcessRequest>(request =>
+            It.Is<CommandProcessRequest>(request =>
                     request.Command == "dotnet build SharpSense.sln" &&
                     request.WorkingDirectory == RepositoryRoot),
-                It.IsAny<Func<string, CancellationToken, Task>>(),
-                It.Is<CancellationToken>(token => token == executionToken)))
+            It.IsAny<Func<string, CancellationToken, Task>>(),
+            It.Is<CancellationToken>(token => token == executionToken)))
             .Returns(async (
                 CommandProcessRequest _,
                 Func<string, CancellationToken, Task> onOutput,
                 CancellationToken innerCt) =>
             {
                 await onOutput("Build succeeded in 13.7s", innerCt);
+
                 return Result.Ok(new CommandProcessResult(0));
             });
         var app = CreateCommandApp(
@@ -423,11 +432,11 @@ public sealed class CliCommandTests
         executeLogIndex.Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
         processRunner.Setup(candidate => candidate.Execute(
-                It.Is<CommandProcessRequest>(request =>
+            It.Is<CommandProcessRequest>(request =>
                     request.Command == "missing-command" &&
                     request.WorkingDirectory == RepositoryRoot),
-                It.IsAny<Func<string, CancellationToken, Task>>(),
-                It.Is<CancellationToken>(token => token == executionToken)))
+            It.IsAny<Func<string, CancellationToken, Task>>(),
+            It.Is<CancellationToken>(token => token == executionToken)))
             .ReturnsAsync(Result.Fail<CommandProcessResult>("Failed to start command 'missing-command'."));
         var app = CreateCommandApp(
             console,
@@ -447,9 +456,12 @@ public sealed class CliCommandTests
         exitCode.Should().Be(1);
 
         using var jsonDocument = JsonDocument.Parse(console.Output);
-        jsonDocument.RootElement.GetProperty("command").GetString().Should().Be("missing-command");
-        jsonDocument.RootElement.GetProperty("status").GetString().Should().Be("error");
-        jsonDocument.RootElement.GetProperty("errorMessage").GetString().Should().Be("Failed to start command 'missing-command'.");
+        jsonDocument.RootElement.GetProperty("command")
+            .GetString().Should().Be("missing-command");
+        jsonDocument.RootElement.GetProperty("status")
+            .GetString().Should().Be("error");
+        jsonDocument.RootElement.GetProperty("errorMessage")
+            .GetString().Should().Be("Failed to start command 'missing-command'.");
     }
 
     private static Spectre.Console.Cli.CommandApp CreateCommandApp(
@@ -458,10 +470,12 @@ public sealed class CliCommandTests
         MockFileSystem? fileSystem = null,
         Action<IServiceCollection>? configureServices = null)
     {
-        fileSystem ??= new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
-        }, RepositoryRoot);
+        fileSystem ??= new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+            },
+            RepositoryRoot);
 
         return Cli.Program.CreateCommandApp(
             console,
@@ -625,7 +639,9 @@ public sealed class CliCommandTests
     private static async Task<Guid> GetSingleMemoryId(CliCommandTestDatabase database, CancellationToken ct)
     {
         await using var context = await database.GetDbContext();
-        return await context.MemoryNodes.Select(static memory => memory.Id).SingleAsync(ct);
+
+        return await context.MemoryNodes.Select(static memory => memory.Id)
+            .SingleAsync(ct);
     }
 
     private sealed class NoopEmbeddingGenerator : IEmbeddingGenerator
@@ -638,10 +654,11 @@ public sealed class CliCommandTests
             IProgress<EmbeddingGenerationProgress>? progress,
             CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<TextEmbedding>>(
-                texts.Select(text => new TextEmbedding(text, Array.Empty<float>())).ToArray());
+                texts.Select(text => new TextEmbedding(text, Array.Empty<float>()))
+                    .ToArray());
     }
 
-    private sealed class CliCommandTestDatabase(InMemoryContextFactory contextFactory) : IAsyncDisposable
+    private sealed class CliCommandTestDatabase(InMemoryContextFactory<SharpSenseDbContext> contextFactory) : IAsyncDisposable
     {
         public const string ProjectId = "project-app";
         public const int SeedNodeId = 1;
@@ -669,25 +686,28 @@ public sealed class CliCommandTests
 
         public static async Task<CliCommandTestDatabase> Create()
         {
-            var contextFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
-                UseMigrations: true,
-                LoadVectorExtension: true));
+            var contextFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+                options => new SharpSenseDbContext(options),
+                new InMemoryContextFactoryOptions(
+                    UseMigrations: true,
+                    LoadVectorExtension: true));
             var database = new CliCommandTestDatabase(contextFactory);
             await database.Initialize();
+
             return database;
         }
 
         public void ConfigureServices(IServiceCollection services)
         {
             services.RemoveAll<IHostedService>();
-            contextFactory.ConfigureServices<SharpSenseDbContext>(services);
+            contextFactory.ConfigureServices(services);
             services.AddMemory();
             services.AddMemoryInfrastructure();
             services.TryAddSingleton<IEmbeddingGenerator, NoopEmbeddingGenerator>();
         }
 
         public async Task<SharpSenseDbContext> GetDbContext()
-            => await contextFactory.GetContext<SharpSenseDbContext>(ct: TestContext.Current.CancellationToken);
+            => await contextFactory.GetContext(ct: TestContext.Current.CancellationToken);
 
         public async ValueTask DisposeAsync()
         {
@@ -696,7 +716,7 @@ public sealed class CliCommandTests
 
         private async Task Initialize()
         {
-            await using var dbContext = await contextFactory.GetContext<SharpSenseDbContext>(
+            await using var dbContext = await contextFactory.GetContext(
                 ct: TestContext.Current.CancellationToken);
 
             dbContext.Directories.AddRange(

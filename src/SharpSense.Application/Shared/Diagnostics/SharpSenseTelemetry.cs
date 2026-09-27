@@ -5,7 +5,7 @@ using System.Diagnostics;
 
 namespace SharpSense.Application.Shared.Diagnostics;
 
-public class SharpSenseTraceSpan : IDisposable
+public sealed class SharpSenseTraceSpan : IDisposable
 {
     private static readonly ILogger _log = Log.ForContext<SharpSenseTraceSpan>();
 
@@ -16,7 +16,6 @@ public class SharpSenseTraceSpan : IDisposable
     private readonly Activity? _activity;
     private readonly Operation? _operation;
     private bool _operationAbandoned;
-
 
     public static SharpSenseTraceSpan Start(string name) => new(name, parentId: null);
     public static SharpSenseTraceSpan Start(string name, string? parentId) => new(name, parentId);
@@ -51,13 +50,13 @@ public class SharpSenseTraceSpan : IDisposable
     {
         _activity?.SetStatus(ActivityStatusCode.Error);
         _operation?.Abandon();
+        _operationAbandoned = true;
     }
 
     public void RecordExceptionAndErrorStatus(Exception ex)
     {
         _activity?.SetStatus(ActivityStatusCode.Error);
-        //_activity?.AddException(ex);
-        if (_operation != null)
+        if (_operation is not null)
         {
             _operation.Abandon(ex);
             _operationAbandoned = true;
@@ -66,7 +65,7 @@ public class SharpSenseTraceSpan : IDisposable
 
     public void Dispose()
     {
-        if (_operation != null && !_operationAbandoned)
+        if (_operation is not null && !_operationAbandoned)
         {
             _operation.Complete();
         }

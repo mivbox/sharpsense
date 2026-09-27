@@ -4,7 +4,7 @@ using System.Threading.Channels;
 
 namespace SharpSense.Cli.Ui.Indexing;
 
-public sealed partial class WorkspaceIndexingCoordinator
+internal sealed partial class WorkspaceIndexingCoordinator
 {
     private readonly Guid _streamId = Guid.NewGuid();
     private readonly DateTimeOffset _streamStartedAt = DateTimeOffset.UtcNow;
@@ -27,7 +27,12 @@ public sealed partial class WorkspaceIndexingCoordinator
             if (_stopping)
             {
                 channel.Writer.TryComplete();
-                return new WorkspaceIndexingSubscription(channel.Reader, () => { });
+
+                return new WorkspaceIndexingSubscription(
+                    channel.Reader,
+                    () =>
+                    {
+                    });
             }
 
             if (!_subscribers.TryGetValue(workspaceId, out var channels))
@@ -38,18 +43,21 @@ public sealed partial class WorkspaceIndexingCoordinator
 
             channels.Add(channel);
             channel.Writer.TryWrite(GetStatus(workspaceId));
-            return new WorkspaceIndexingSubscription(channel.Reader, () =>
-            {
-                lock (_gate)
+
+            return new WorkspaceIndexingSubscription(
+                channel.Reader,
+                () =>
                 {
-                    channels.Remove(channel);
-                    if (channels.Count == 0)
+                    lock (_gate)
                     {
-                        _subscribers.Remove(workspaceId);
+                        channels.Remove(channel);
+                        if (channels.Count == 0)
+                        {
+                            _subscribers.Remove(workspaceId);
+                        }
+                        channel.Writer.TryComplete();
                     }
-                    channel.Writer.TryComplete();
-                }
-            });
+                });
         }
     }
 
@@ -106,7 +114,10 @@ public sealed partial class WorkspaceIndexingCoordinator
     }
 
     private static SseItem<WorkspaceIndexingStatus> Event(WorkspaceIndexingStatus status)
-        => new(status, "status") { EventId = $"{status.StreamId}:{status.Sequence}" };
+        => new(status, "status")
+        {
+            EventId = $"{status.StreamId}:{status.Sequence}"
+        };
 
     // Caller holds _gate. The sequence orders every status change, independently of graph commits.
     private void Publish(Job job)
@@ -147,6 +158,9 @@ internal sealed class WorkspaceIndexingSubscription(
     Action dispose) : IDisposable
 {
     private Action? _dispose = dispose;
-    public ChannelReader<WorkspaceIndexingStatus> Reader { get; } = reader;
+    public ChannelReader<WorkspaceIndexingStatus> Reader
+    {
+        get;
+    } = reader;
     public void Dispose() => Interlocked.Exchange(ref _dispose, null)?.Invoke();
 }

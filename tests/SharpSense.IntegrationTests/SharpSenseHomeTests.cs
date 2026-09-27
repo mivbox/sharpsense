@@ -1,16 +1,17 @@
-using System.IO.Abstractions;
+using AwesomeAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
+using System.IO.Abstractions;
 
 namespace SharpSense.IntegrationTests;
 
 public sealed class SharpSenseHomeTests
 {
     [Fact]
-    public void LoggingAndCatalogUseSameExplicitHomeWithoutWritingDuringPathResolution()
+    public void WhenLoggingAndCatalog_ThenUseSameExplicitHomeWithoutWritingDuringPathResolution()
     {
         var directory = Directory.CreateTempSubdirectory("sharpsense-home-tests-");
         try
@@ -20,9 +21,9 @@ public sealed class SharpSenseHomeTests
             var catalog = new WorkspaceCatalog(new FileSystem());
             var logPath = SharpSenseLogging.GetLogFilePath("Workspace Create");
 
-            Assert.Equal(home, catalog.HomeDirectory);
-            Assert.Equal(Path.Combine(home, "logs", "workspace-create.log"), logPath);
-            Assert.False(Directory.Exists(home));
+            catalog.HomeDirectory.Should().Be(home);
+            logPath.Should().Be(Path.Combine(home, "logs", "workspace-create.log"));
+            Directory.Exists(home).Should().BeFalse();
 
             var logger = SharpSenseLogging.CreateLogger(false, "Workspace Create", enableConsoleLogging: false);
             try
@@ -34,8 +35,8 @@ public sealed class SharpSenseHomeTests
                 ((IDisposable)logger).Dispose();
             }
 
-            Assert.Contains("Isolated workspace log entry", File.ReadAllText(logPath));
-            Assert.False(Directory.Exists(Path.Combine(home, "workspaces")));
+            File.ReadAllText(logPath).Should().Contain("Isolated workspace log entry");
+            Directory.Exists(Path.Combine(home, "workspaces")).Should().BeFalse();
         }
         finally
         {
@@ -44,32 +45,35 @@ public sealed class SharpSenseHomeTests
     }
 
     [Fact]
-    public void DefaultLogPathUsesLowercaseHomeWithoutCreatingDirectories()
+    public void WhenDefaultLogPath_ThenUsesLowercaseHomeWithoutCreatingDirectories()
     {
         using var homeOverride = new HomeOverride(null);
 
         var logPath = SharpSenseLogging.GetLogFilePath("analyze");
 
-        Assert.Equal(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".sharpsense", "logs", "analyze.log"), logPath);
+        logPath.Should().Be(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".sharpsense",
+            "logs",
+            "analyze.log"));
     }
 
     [Fact]
-    public void RelativeHomeOverrideIsRejectedByCatalogLoggingAndDesignTimeFactory()
+    public void WhenRelativeHomeOverride_ThenIsRejectedByCatalogLoggingAndDesignTimeFactory()
     {
         using var homeOverride = new HomeOverride("relative/sharpsense-home");
 
-        var catalogError = Assert.Throws<ArgumentException>(() => new WorkspaceCatalog(new FileSystem()));
-        var loggingError = Assert.Throws<ArgumentException>(() => SharpSenseLogging.GetLogFilePath("analyze"));
-        var designTimeError = Assert.Throws<ArgumentException>(() => new SharpSenseDesignTimeDbContextFactory().CreateDbContext([]));
+        var catalogError = ((Action)(() => new WorkspaceCatalog(new FileSystem()))).Should().ThrowExactly<ArgumentException>().Which;
+        var loggingError = ((Action)(() => SharpSenseLogging.GetLogFilePath("analyze"))).Should().ThrowExactly<ArgumentException>().Which;
+        var designTimeError = ((Action)(() => new SharpSenseDesignTimeDbContextFactory().CreateDbContext([]))).Should().ThrowExactly<ArgumentException>().Which;
 
-        Assert.Contains("SHARPSENSE_HOME must be an absolute", catalogError.Message);
-        Assert.Equal(catalogError.Message, loggingError.Message);
-        Assert.Equal(catalogError.Message, designTimeError.Message);
+        catalogError.Message.Should().Contain("SHARPSENSE_HOME must be an absolute");
+        loggingError.Message.Should().Be(catalogError.Message);
+        designTimeError.Message.Should().Be(catalogError.Message);
     }
 
     [Fact]
-    public void DesignTimeFactoryUsesIsolatedArtifactWithoutCreatingWorkspaceOrDatabase()
+    public void WhenDesignTimeFactory_ThenUsesIsolatedArtifactWithoutCreatingWorkspaceOrDatabase()
     {
         var directory = Directory.CreateTempSubdirectory("sharpsense-design-time-tests-");
         try
@@ -78,8 +82,8 @@ public sealed class SharpSenseHomeTests
             using var context = new SharpSenseDesignTimeDbContextFactory().CreateDbContext([]);
             var connection = new SqliteConnectionStringBuilder(context.Database.GetConnectionString());
 
-            Assert.Equal(Path.Combine(directory.FullName, "sharpsense-design-time.db"), connection.DataSource);
-            Assert.Empty(directory.EnumerateFileSystemInfos());
+            connection.DataSource.Should().Be(Path.Combine(directory.FullName, "sharpsense-design-time.db"));
+            directory.EnumerateFileSystemInfos().Should().BeEmpty();
         }
         finally
         {
@@ -88,14 +92,14 @@ public sealed class SharpSenseHomeTests
     }
 
     [Fact]
-    public void DefaultDesignTimeArtifactUsesTemporaryDirectory()
+    public void WhenDefaultDesignTimeArtifact_ThenUsesTemporaryDirectory()
     {
         using var homeOverride = new HomeOverride(null);
         using var context = new SharpSenseDesignTimeDbContextFactory().CreateDbContext([]);
 
         var connection = new SqliteConnectionStringBuilder(context.Database.GetConnectionString());
 
-        Assert.Equal(Path.Combine(Path.GetTempPath(), "sharpsense-design-time.db"), connection.DataSource);
+        connection.DataSource.Should().Be(Path.Combine(Path.GetTempPath(), "sharpsense-design-time.db"));
     }
 
     private sealed class HomeOverride : IDisposable

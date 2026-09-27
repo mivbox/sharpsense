@@ -1,6 +1,4 @@
-using SharpSense.Cli.Workspaces;
 using JetBrains.Annotations;
-using System.IO.Compression;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -9,22 +7,21 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Serilog;
 using SharpSense.Application.DependencyGraph;
-using SharpSense.Application.Memory;
 using SharpSense.Application.Indexing;
+using SharpSense.Application.Memory;
 using SharpSense.Application.WorkspaceExplorer;
-using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Cli.Ui.Api;
 using SharpSense.Cli.Ui.Indexing;
+using SharpSense.Cli.Workspaces;
 using SharpSense.Infrastructure.DependencyGraph;
 using SharpSense.Infrastructure.Embeddings;
-using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.GraphStats;
 using SharpSense.Infrastructure.Indexing;
-using SharpSense.Infrastructure.Persistence;
+using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.WorkspaceExplorer;
-using SharpSense.Infrastructure.Storage;
 using Spectre.Console.Cli;
+using System.IO.Compression;
 
 namespace SharpSense.Cli.Ui;
 
@@ -37,8 +34,10 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
     public sealed class Settings : GlobalSettings
     {
         [CommandOption("--url <url>")]
-        public string Url { get; set; } = "http://localhost:50069";
-
+        public string Url
+        {
+            get; set;
+        } = "http://localhost:50069";
     }
 
     protected override void ConfigureServices(Settings settings, IServiceCollection services)
@@ -108,7 +107,9 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
             {
                 if (context.Request.Path.StartsWithSegments("/api") || context.Request.Path.StartsWithSegments("/openapi"))
                 {
-                    await Results.Problem(statusCode: 404, title: "Endpoint not found").ExecuteAsync(context);
+                    await Results.Problem(statusCode: 404, title: "Endpoint not found")
+                        .ExecuteAsync(context);
+
                     return;
                 }
                 var indexFile = fileProvider.GetFileInfo("index.html");
@@ -123,6 +124,7 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
                     await context.Response.WriteAsync(
                         "Embedded UI assets were not found. Build the frontend before running the UI command.",
                         context.RequestAborted);
+
                     return;
                 }
 
@@ -134,13 +136,15 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
 
     private static FileExtensionContentTypeProvider CreateContentTypeProvider()
     {
-        var contentTypeProvider = new FileExtensionContentTypeProvider { Mappings =
+        var contentTypeProvider = new FileExtensionContentTypeProvider
+        {
+            Mappings =
             {
-                [".map"] = "application/json", [".mjs"] = "text/javascript"
+                [".map"] = "application/json",
+                [".mjs"] = "text/javascript"
             }
         };
+
         return contentTypeProvider;
     }
-
-
 }

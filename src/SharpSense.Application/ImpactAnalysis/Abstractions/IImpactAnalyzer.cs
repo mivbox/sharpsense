@@ -1,5 +1,5 @@
-using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
+using SharpSense.Application.ImpactAnalysis.Models;
 
 namespace SharpSense.Application.ImpactAnalysis.Abstractions;
 

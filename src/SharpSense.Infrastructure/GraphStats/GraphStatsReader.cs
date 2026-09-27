@@ -1,38 +1,46 @@
-using System.Reflection;
-using System.Text.Json;
 using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.GraphStats.Abstractions;
 using SharpSense.Application.GraphStats.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Infrastructure.Storage;
+using System.Text.Json;
 
 namespace SharpSense.Infrastructure.GraphStats;
 
-public sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphStatsReader
+internal sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphStatsReader
 {
-    private static readonly string[] RequiredTables =
+    private static readonly string[] _requiredTables =
     [
         "Directories", "Documents", "GraphNodes", "CodeNodes", "ProjectNodes",
         "MemoryNodes", "DependencyEdges", "DirectoryClosures"
     ];
 
-    private static readonly HashSet<string> KnownMigrations = typeof(SharpSenseDbContext).Assembly
-        .GetTypes()
-        .Select(type => type.GetCustomAttribute<MigrationAttribute>()?.Id)
-        .OfType<string>()
-        .ToHashSet(StringComparer.Ordinal);
+    private static readonly HashSet<string> _knownMigrations = LoadKnownMigrations();
 
-    public async Task<GraphStatsSnapshot> ReadAsync(CancellationToken ct)
+    private static HashSet<string> LoadKnownMigrations()
+    {
+        using var context = new SharpSenseDbContext(new DbContextOptionsBuilder<SharpSenseDbContext>()
+            .UseSqlite("Data Source=:memory:").Options);
+
+        return context.Database.GetMigrations()
+            .ToHashSet(StringComparer.Ordinal);
+    }
+
+    public async Task<GraphStatsSnapshot> Read(CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         if (!File.Exists(workspace.DatabasePath))
         {
-            return Empty("missing", new(
-                "database_missing", "warning", "This workspace has no index database.",
-                Suggestion: "Run 'sharpsense analyze --workspace <name>' to create its index."));
+            return Empty(
+                "missing",
+                new(
+                    "database_missing",
+                    "warning",
+                    "This workspace has no index database.",
+                    Suggestion: "Run 'sharpsense analyze --workspace <name>' to create its index."));
         }
 
         try
@@ -48,16 +56,22 @@ public sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphSta
             await connection.OpenAsync(ct);
             await using var transaction = connection.BeginTransaction(deferred: true);
 
-            var tables = await ReadStrings(connection, transaction,
-                "SELECT name FROM sqlite_master WHERE type = 'table';", ct);
-            if (!tables.Contains("__EFMigrationsHistory") || RequiredTables.Any(table => !tables.Contains(table)))
+            var tables = await ReadStrings(
+                connection,
+                transaction,
+                "SELECT name FROM sqlite_master WHERE type = 'table';",
+                ct);
+            if (!tables.Contains("__EFMigrationsHistory") || _requiredTables.Any(table => !tables.Contains(table)))
             {
                 return Incompatible("The database does not contain the expected index schema and migration history.");
             }
 
-            var appliedMigrations = await ReadStrings(connection, transaction,
-                "SELECT MigrationId FROM __EFMigrationsHistory;", ct);
-            if (appliedMigrations.Count == 0 || appliedMigrations.Any(migration => !KnownMigrations.Contains(migration)))
+            var appliedMigrations = await ReadStrings(
+                connection,
+                transaction,
+                "SELECT MigrationId FROM __EFMigrationsHistory;",
+                ct);
+            if (appliedMigrations.Count == 0 || appliedMigrations.Any(migration => !_knownMigrations.Contains(migration)))
             {
                 return Incompatible("The database contains migration history that this version does not recognize.");
             }
@@ -69,11 +83,13 @@ public sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphSta
             }
 
             var diagnostics = new List<IndexDiagnostic>();
-            var state = KnownMigrations.SetEquals(appliedMigrations) ? "ready" : "upgrade_required";
+            var state = _knownMigrations.SetEquals(appliedMigrations) ? "ready" : "upgrade_required";
             if (state == "upgrade_required")
             {
                 diagnostics.Add(new(
-                    "schema_upgrade_required", "warning", "The index uses an earlier supported database schema.",
+                    "schema_upgrade_required",
+                    "warning",
+                    "The index uses an earlier supported database schema.",
                     Suggestion: "Back up the database, then run 'sharpsense analyze --workspace <name>' to apply pending migrations and refresh the index."));
             }
 
@@ -88,23 +104,40 @@ public sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphSta
             if (history.LastSuccessfulIndex is null && counts.CodeNodes > 0)
             {
                 diagnostics.Add(new(
-                    "index_history_unavailable", "info", "The graph exists, but its last successful indexing time was not recorded.",
+                    "index_history_unavailable",
+                    "info",
+                    "The graph exists, but its last successful indexing time was not recorded.",
                     Suggestion: "Run indexing once with this version to record timings and diagnostic history."));
             }
 
             if (counts.CodeNodes == 0)
             {
                 diagnostics.Add(new(
-                    "index_empty", "warning", "The database contains no indexed code or document nodes.",
+                    "index_empty",
+                    "warning",
+                    "The database contains no indexed code or document nodes.",
                     Suggestion: "Run 'sharpsense analyze --workspace <name>' and check its selected sources and exclusions."));
             }
 
             return new GraphStatsSnapshot(
-                workspace.RootPath, workspace.DatabasePath, state, counts.CodeNodes > 0,
-                counts.GraphNodes, counts.CodeNodes, counts.Edges, counts.Files, counts.Projects,
-                counts.EmbeddedNodes, counts.Memories, languages, edgeTypes,
-                history.LastSuccessfulIndex, history.LastAttempt, diagnostics,
-                workspace.WorkspaceId, workspace.WorkspaceName);
+                workspace.RootPath,
+                workspace.DatabasePath,
+                state,
+                counts.CodeNodes > 0,
+                counts.GraphNodes,
+                counts.CodeNodes,
+                counts.Edges,
+                counts.Files,
+                counts.Projects,
+                counts.EmbeddedNodes,
+                counts.Memories,
+                languages,
+                edgeTypes,
+                history.LastSuccessfulIndex,
+                history.LastAttempt,
+                diagnostics,
+                workspace.WorkspaceId,
+                workspace.WorkspaceName);
         }
         catch (SqliteException exception) when (exception.SqliteErrorCode == 1)
         {
@@ -112,21 +145,45 @@ public sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphSta
         }
         catch (Exception exception) when (exception is SqliteException or IOException or UnauthorizedAccessException)
         {
-            return Empty("unreadable", new(
-                "database_unreadable", "error", "The database could not be opened or read safely.",
-                Suggestion: "Check database permissions, available disk space, and whether another process holds a lock. Preserve a backup before attempting recovery."));
+            return Empty(
+                "unreadable",
+                new(
+                    "database_unreadable",
+                    "error",
+                    "The database could not be opened or read safely.",
+                    Suggestion: "Check database permissions, available disk space, and whether another process holds a lock. Preserve a backup before attempting recovery."));
         }
     }
 
     private GraphStatsSnapshot Incompatible(string message)
-        => Empty("incompatible", new(
-            "database_incompatible", "error", message,
-            Suggestion: "The database has been preserved. Back it up and export authored memories using a compatible SharpSense version before rebuilding the index."));
+        => Empty(
+            "incompatible",
+            new(
+                "database_incompatible",
+                "error",
+                message,
+                Suggestion: "The database has been preserved. Back it up and export authored memories using a compatible SharpSense version before rebuilding the index."));
 
     private GraphStatsSnapshot Empty(string state, IndexDiagnostic diagnostic)
-        => new(workspace.RootPath, workspace.DatabasePath, state, false,
-            0, 0, 0, 0, 0, 0, 0, [], [], null, null, [diagnostic],
-            workspace.WorkspaceId, workspace.WorkspaceName);
+        => new(
+            workspace.RootPath,
+            workspace.DatabasePath,
+            state,
+            false,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            [],
+            [],
+            null,
+            null,
+            [diagnostic],
+            workspace.WorkspaceId,
+            workspace.WorkspaceName);
 
     private static async Task<string?> FindObsoleteEnumValue(
         SqliteConnection connection,
@@ -145,7 +202,8 @@ public sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphSta
         {
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
-            var parameters = values.Select((value, index) => $"$value{index}").ToArray();
+            var parameters = values.Select((value, index) => $"$value{index}")
+                .ToArray();
             command.CommandText = $"SELECT substr({column}, 1, 100) FROM {table} WHERE {column} NOT IN ({string.Join(",", parameters)}) LIMIT 1;";
             for (var index = 0; index < values.Length; index++)
             {
@@ -176,8 +234,15 @@ public sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphSta
             """;
         await using var reader = await command.ExecuteReaderAsync(ct);
         await reader.ReadAsync(ct);
-        return new(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3),
-            reader.GetInt64(4), reader.GetInt64(5), reader.GetInt64(6));
+
+        return new(
+            reader.GetInt64(0),
+            reader.GetInt64(1),
+            reader.GetInt64(2),
+            reader.GetInt64(3),
+            reader.GetInt64(4),
+            reader.GetInt64(5),
+            reader.GetInt64(6));
     }
 
     private static async Task<IReadOnlyList<LanguageStats>> ReadLanguages(
@@ -268,6 +333,7 @@ public sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphSta
             catch (JsonException)
             {
                 AddInvalidHistoryDiagnostic();
+
                 return null;
             }
         }
@@ -277,7 +343,9 @@ public sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphSta
             if (diagnostics.Count == 0)
             {
                 diagnostics.Add(new(
-                    "index_history_unreadable", "warning", "Stored indexing history could not be read; graph counts remain available.",
+                    "index_history_unreadable",
+                    "warning",
+                    "Stored indexing history could not be read; graph counts remain available.",
                     Suggestion: "Run indexing again to refresh the bounded diagnostic history."));
             }
         }

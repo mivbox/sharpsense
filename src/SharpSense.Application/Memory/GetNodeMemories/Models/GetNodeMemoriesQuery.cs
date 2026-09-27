@@ -1,6 +1,7 @@
-namespace SharpSense.Application.Memory.GetNodeMemories.Models;
 
 using SharpSense.Domain.KnowledgeGraph.Enums;
+
+namespace SharpSense.Application.Memory.GetNodeMemories.Models;
 
 public sealed record GetNodeMemoriesQuery(
     int NodeId,

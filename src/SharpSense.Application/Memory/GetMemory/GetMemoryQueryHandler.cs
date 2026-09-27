@@ -6,7 +6,7 @@ using SharpSense.Domain.KnowledgeGraph.Nodes;
 
 namespace SharpSense.Application.Memory.GetMemory;
 
-public sealed class GetMemoryQueryHandler(IMemoryRepository memoryRepository)
+internal sealed class GetMemoryQueryHandler(IMemoryRepository memoryRepository)
     : IQueryHandler<GetMemoryQuery, Result<MemoryNode>>
 {
     public async Task<Result<MemoryNode>> Handle(GetMemoryQuery query, CancellationToken ct)

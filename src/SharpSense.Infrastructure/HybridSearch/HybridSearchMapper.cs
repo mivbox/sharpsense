@@ -3,7 +3,7 @@ using SharpSense.Domain.KnowledgeGraph.Nodes;
 
 namespace SharpSense.Infrastructure.HybridSearch;
 
-public static class HybridSearchMapper
+internal static class HybridSearchMapper
 {
     public static HybridSearchHit ToSearchHit(CodeNode codeNode)
     {
@@ -25,5 +25,4 @@ public static class HybridSearchMapper
     public static HybridSearchHit[] ToSearchHit(IEnumerable<CodeNode> codeNodes)
         => [.. codeNodes.Select(ToSearchHit)];
 }
-
 

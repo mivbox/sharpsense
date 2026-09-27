@@ -10,12 +10,14 @@ try
     var app = SharpSense.Cli.Program.CreateCommandApp();
     logger.Information("SharpSense CLI command application configured successfully.");
     logger.Information("Running SharpSense CLI.");
+
     return await app.RunAsync(args);
 }
 catch (Exception ex)
 {
     Log.Error(ex, "SharpSense CLI terminated unexpectedly.");
     await Console.Error.WriteLineAsync(ex.GetBaseException().Message);
+
     return 1;
 }
 finally
@@ -26,5 +28,5 @@ finally
 namespace SharpSense.Cli
 {
     [UsedImplicitly]
-    public partial class Program;
+    internal partial class Program;
 }

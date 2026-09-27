@@ -42,10 +42,10 @@ public sealed class TypeScriptExtractionPassesTests
         result.Value.CodeNodes.Select(static node => node.CanonicalId)
             .Should()
             .Equal(
-                "code:ts:src/Feature.tsx:App",
-                "code:ts:src/Feature.tsx:Greeter",
-                "code:ts:src/Feature.tsx:Toolbar",
-                "code:ts:src/Feature.tsx:run");
+            "code:ts:src/Feature.tsx:App",
+            "code:ts:src/Feature.tsx:Greeter",
+            "code:ts:src/Feature.tsx:Toolbar",
+            "code:ts:src/Feature.tsx:run");
         result.Value.CodeNodes.Should().Contain(node =>
             node.CanonicalId == "code:ts:src/Feature.tsx:run" &&
             node.DisplayName == "run()" &&

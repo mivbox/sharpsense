@@ -2,7 +2,7 @@ namespace SharpSense.Infrastructure.HybridSearch;
 
 internal static class HybridSearchTokenizer
 {
-    private static readonly char[] SearchTokenSeparators =
+    private static readonly char[] _searchTokenSeparators =
     [
         ' ',
         '\t',
@@ -26,7 +26,7 @@ internal static class HybridSearchTokenizer
 
     public static string[] Tokenize(string searchText)
         => searchText
-            .Split(SearchTokenSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Split(_searchTokenSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 }

@@ -6,10 +6,22 @@ namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
 internal sealed class WorkspaceSession : IDisposable
 {
-    public MSBuildWorkspace Workspace { get; private set; }
-    public Solution ActiveSolution { get; private set; }
-    public SemaphoreSlim Gate { get; } = new(1, 1);
-    public Dictionary<string, List<DocumentId>> DocumentIndex { get; private set; }
+    public MSBuildWorkspace Workspace
+    {
+        get; private set;
+    }
+    public Solution ActiveSolution
+    {
+        get; private set;
+    }
+    public SemaphoreSlim Gate
+    {
+        get;
+    } = new(1, 1);
+    public Dictionary<string, List<DocumentId>> DocumentIndex
+    {
+        get; private set;
+    }
 
     public WorkspaceSession(MSBuildWorkspace workspace, Solution activeSolution, IFileSystem fileSystem)
     {
@@ -48,12 +60,13 @@ internal sealed class WorkspaceSession : IDisposable
 
                 if (!index.TryGetValue(path, out var list))
                 {
-                    list = new List<DocumentId>();
+                    list = [];
                     index[path] = list;
                 }
                 list.Add(document.Id);
             }
         }
+
         return index;
     }
 

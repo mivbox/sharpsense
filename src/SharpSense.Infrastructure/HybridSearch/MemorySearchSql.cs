@@ -64,7 +64,8 @@ internal static class MemorySearchSql
             ? []
             : [..
                 tagFilters
-                    .Select(static tag => tag.Trim().ToLowerInvariant())
+                    .Select(static tag => tag.Trim()
+                        .ToLowerInvariant())
                     .Where(static tag => !string.IsNullOrWhiteSpace(tag))
                     .Distinct(StringComparer.Ordinal)
                     .OrderBy(static tag => tag, StringComparer.Ordinal)];

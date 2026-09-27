@@ -1,8 +1,8 @@
+using SharpSense.Application.DependencyGraph.Models;
+using SharpSense.Domain.KnowledgeGraph.Enums;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using SharpSense.Application.DependencyGraph.Models;
-using SharpSense.Domain.KnowledgeGraph.Enums;
 
 namespace SharpSense.Infrastructure.DependencyGraph;
 
@@ -18,8 +18,10 @@ internal sealed record GraphPageCursor(
     string EdgeType = "")
 {
     public string Encode()
-        => Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(this)).TrimEnd('=')
-            .Replace('+', '-').Replace('/', '_');
+        => Convert.ToBase64String(JsonSerializer.SerializeToUtf8Bytes(this))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
 
     public static string ScopeHash(IEnumerable<int> directoryIds)
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join(',', directoryIds))));
@@ -39,7 +41,8 @@ internal sealed record GraphPageCursor(
                 throw new FormatException();
             }
 
-            var encoded = value.Replace('-', '+').Replace('_', '/');
+            var encoded = value.Replace('-', '+')
+                .Replace('_', '/');
             encoded = encoded.PadRight((encoded.Length + 3) / 4 * 4, '=');
             var cursor = JsonSerializer.Deserialize<GraphPageCursor>(Convert.FromBase64String(encoded));
             if (cursor is null || cursor.Workspace != workspace || cursor.Scope != scope || cursor.Kind != kind ||

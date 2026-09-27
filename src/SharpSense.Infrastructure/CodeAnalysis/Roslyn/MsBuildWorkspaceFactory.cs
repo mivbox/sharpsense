@@ -1,11 +1,11 @@
-using System.Reflection;
+using Microsoft.CodeAnalysis.CSharp.Formatting;
 using Microsoft.CodeAnalysis.Host;
 using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.MSBuild;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
-public sealed class MsBuildWorkspaceFactory : IMsBuildWorkspaceFactory
+internal sealed class MsBuildWorkspaceFactory : IMsBuildWorkspaceFactory
 {
     private static readonly Lazy<HostServices> _hostServices = new(
         CreateHostServices,
@@ -39,7 +39,7 @@ public sealed class MsBuildWorkspaceFactory : IMsBuildWorkspaceFactory
     {
         var assemblies = MefHostServices.DefaultAssemblies
             .Add(typeof(MSBuildWorkspace).Assembly)
-            .Add(Assembly.Load("Microsoft.CodeAnalysis.CSharp.Workspaces"));
+            .Add(typeof(CSharpFormattingOptions).Assembly);
 
         return MefHostServices.Create(assemblies.Distinct());
     }

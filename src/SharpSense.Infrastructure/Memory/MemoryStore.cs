@@ -1,6 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using FluentResults;
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.Memory.Abstractions;
@@ -9,10 +6,13 @@ using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace SharpSense.Infrastructure.Memory;
 
-public sealed class MemoryStore(
+internal sealed class MemoryStore(
     IDbContextFactory<SharpSenseDbContext> dbContextFactory,
     IEmbeddingGenerator embeddingGenerator)
     : IMemoryRepository
@@ -53,9 +53,9 @@ public sealed class MemoryStore(
         var contentHash = ComputeHash(normalizedContent);
         var vectorEmbedding = await context.MemoryNodes
                 .AsNoTracking()
-                .Where(memoryNode => memoryNode.ContentHash == contentHash)
-                .Select(memoryNode => memoryNode.VectorEmbedding)
-                .FirstOrDefaultAsync(ct)
+            .Where(memoryNode => memoryNode.ContentHash == contentHash)
+            .Select(memoryNode => memoryNode.VectorEmbedding)
+            .FirstOrDefaultAsync(ct)
             ?? (await embeddingGenerator.Generate(normalizedContent, ct)).Vector;
 
         context.MemoryNodes.Add(
@@ -73,6 +73,7 @@ public sealed class MemoryStore(
             });
 
         await context.SaveChangesAsync(ct);
+
         return Result.Ok();
     }
 
@@ -93,6 +94,7 @@ public sealed class MemoryStore(
 
         context.MemoryNodes.Remove(memory);
         await context.SaveChangesAsync(ct);
+
         return Result.Ok();
     }
 
@@ -136,7 +138,8 @@ public sealed class MemoryStore(
             .Where(memoryNode => normalizedNodeIds.Contains(memoryNode.TargetCodeNodeId));
         if (normalizedIntents.Length > 0)
         {
-            var intentNames = normalizedIntents.Select(static i => i.ToString()).ToArray();
+            var intentNames = normalizedIntents.Select(static i => i.ToString())
+                .ToArray();
             memoriesQuery = memoriesQuery.Where(memoryNode => intentNames.Contains(memoryNode.Intent));
         }
 
@@ -145,13 +148,14 @@ public sealed class MemoryStore(
             .OrderBy(memoryNode => memoryNode.CreatedAt)
             .GroupBy(static memoryNode => memoryNode.TargetCodeNodeId)
             .ToDictionary(
-                static group => group.Key,
-                group => group.ToArray());
+            static group => group.Key,
+            group => group.ToArray());
 
         return codeNodes.ToDictionary(
             static codeNode => codeNode.Id,
             codeNode => memoriesByNodeId.TryGetValue(codeNode.Id, out var records)
-                ? records.Select(record => Map(record, codeNode.FullyQualifiedName, codeNode.BodyHash ?? string.Empty)).ToArray()
+                ? records.Select(record => Map(record, codeNode.FullyQualifiedName, codeNode.BodyHash ?? string.Empty))
+                    .ToArray()
                 : []);
     }
 
@@ -174,7 +178,11 @@ public sealed class MemoryStore(
         var targetNode = await context.CodeNodes
             .AsNoTracking()
             .Where(codeNode => codeNode.Id == record.TargetCodeNodeId)
-            .Select(static codeNode => new { codeNode.FullyQualifiedName, codeNode.BodyHash })
+            .Select(static codeNode => new
+            {
+                codeNode.FullyQualifiedName,
+                codeNode.BodyHash
+            })
             .FirstOrDefaultAsync(ct);
 
         return targetNode is null ? null : Map(record, targetNode.FullyQualifiedName, targetNode.BodyHash ?? string.Empty);
@@ -190,7 +198,8 @@ public sealed class MemoryStore(
             .Where(static id => id != Guid.Empty)
             .Distinct()
             .ToArray();
-        var result = memoryIds.Distinct().ToDictionary(static id => id, static _ => (MemoryNode?)null);
+        var result = memoryIds.Distinct()
+            .ToDictionary(static id => id, static _ => (MemoryNode?)null);
         if (normalizedIds.Length == 0)
         {
             return result;
@@ -206,11 +215,18 @@ public sealed class MemoryStore(
             return result;
         }
 
-        var nodeIds = records.Select(static record => record.TargetCodeNodeId).Distinct().ToArray();
+        var nodeIds = records.Select(static record => record.TargetCodeNodeId)
+            .Distinct()
+            .ToArray();
         var nodesById = await context.CodeNodes
             .AsNoTracking()
             .Where(codeNode => nodeIds.Contains(codeNode.Id))
-            .Select(static codeNode => new { codeNode.Id, codeNode.FullyQualifiedName, codeNode.BodyHash })
+            .Select(static codeNode => new
+            {
+                codeNode.Id,
+                codeNode.FullyQualifiedName,
+                codeNode.BodyHash
+            })
             .ToDictionaryAsync(static node => node.Id, ct);
 
         foreach (var record in records)
@@ -242,7 +258,8 @@ public sealed class MemoryStore(
             ? []
             : [..
                 tags
-                    .Select(static tag => tag.Trim().ToLowerInvariant())
+                    .Select(static tag => tag.Trim()
+                        .ToLowerInvariant())
                     .Where(static tag => !string.IsNullOrWhiteSpace(tag))
                     .Distinct(StringComparer.Ordinal)
                     .OrderBy(static tag => tag, StringComparer.Ordinal)];
@@ -271,5 +288,6 @@ public sealed class MemoryStore(
             : JsonSerializer.Deserialize<string[]>(tagsJson) ?? [];
 
     private static string ComputeHash(string value)
-        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))
+            .ToLowerInvariant();
 }

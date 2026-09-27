@@ -10,6 +10,7 @@ public static class HybridSearchInfrastructureServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         services.AddScoped<IKeywordCandidateProvider, SqliteKeywordCandidateProvider>();
         services.AddScoped<IHybridSearcher, HybridSearcher>();
+
         return services;
     }
 }

@@ -1,14 +1,14 @@
+using SharpSense.Application.Indexing.Models;
+using SharpSense.Domain.KnowledgeGraph.Enums;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
-using SharpSense.Application.Indexing.Models;
-using SharpSense.Domain.KnowledgeGraph.Enums;
 using TreeSitter;
 
 namespace SharpSense.Infrastructure.Indexing.TypeScript;
 
 /// <summary>Indexes exported declarations and members; export aliases reference their original declaration.</summary>
-public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
+internal sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
 {
     public void Execute(TypeScriptPassContext context)
     {
@@ -18,7 +18,8 @@ public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
             var exports = context.ExportsByFile[path] = new(StringComparer.Ordinal);
             var declarations = new Dictionary<string, Declaration>(StringComparer.Ordinal);
             var importedBindings = ReadImportedBindings(file.RootNode);
-            var exportNodes = file.RootNode.NamedChildren.Where(node => node.Type == "export_statement").ToArray();
+            var exportNodes = file.RootNode.NamedChildren.Where(node => node.Type == "export_statement")
+                .ToArray();
             foreach (var node in file.RootNode.NamedChildren)
             {
                 foreach (var declaration in ReadDeclarations(node.Type == "export_statement" ? node.NamedChildren : [node], file))
@@ -52,8 +53,8 @@ public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
 
                 foreach (var specifier in export.NamedChildren
                              .Where(node => node.Type == "export_clause")
-                             .SelectMany(node => node.NamedChildren)
-                             .Where(node => node.Type == "export_specifier"))
+                    .SelectMany(node => node.NamedChildren)
+                    .Where(node => node.Type == "export_specifier"))
                 {
                     var local = specifier.GetChildForField("name")?.Text;
                     var alias = specifier.GetChildForField("alias")?.Text.Trim('\'', '"') ?? local;
@@ -129,6 +130,7 @@ public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
                 }
             }
         }
+
         return bindings;
     }
 
@@ -156,7 +158,9 @@ public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
                     {
                         continue;
                     }
-                    yield return new(name.Text, variable,
+                    yield return new(
+                        name.Text,
+                        variable,
                         value is not null && IsFunction(value) ? FunctionKind(file, name.Text, value) : NodeType.Field);
                 }
                 continue;
@@ -186,7 +190,8 @@ public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
         string parentId)
     {
         if (declaration.Kind is not NodeType.Class and not NodeType.Interface ||
-            declaration.Node.GetChildForField("body") is not { } body)
+            declaration.Node.GetChildForField("body") is not
+            { } body)
         {
             return;
         }
@@ -215,8 +220,14 @@ public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
                 (false, not null) => accessor,
                 _ => null
             };
-            var id = AddNode(context, file, member, $"{declaration.Name}.{name.Text.Trim('\'', '"')}",
-                accessor is null ? kind.Value : NodeType.Property, member, memberKind);
+            var id = AddNode(
+                context,
+                file,
+                member,
+                $"{declaration.Name}.{name.Text.Trim('\'', '"')}",
+                accessor is null ? kind.Value : NodeType.Property,
+                member,
+                memberKind);
             if (!context.Edges.Any(edge => edge.CallerId == parentId && edge.CalleeId == id && edge.EdgeType == EdgeType.ParentOf))
             {
                 context.Edges.Add(new(parentId, id, EdgeType.ParentOf));
@@ -235,7 +246,9 @@ public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
     {
         var path = file.DiscoveredFile.RelativeFilePath;
         var id = TypeScriptNodeIdentity.CreateCanonicalId(path, name) +
-                 (memberKind is null ? string.Empty : $":{memberKind}");
+                 (memberKind is null
+                     ? string.Empty
+                     : $":{memberKind}");
         var existingIndex = context.CodeNodes.FindIndex(candidate => candidate.CanonicalId == id);
         if (existingIndex >= 0)
         {
@@ -248,10 +261,13 @@ public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
             context.CodeNodes.RemoveAt(existingIndex);
         }
 
-        var symbolName = memberKind is null ? name : $"{name} [{memberKind}]";
+        var symbolName = memberKind is null
+            ? name
+            : $"{name} [{memberKind}]";
         var display = TypeScriptNodeIdentity.CreateDisplayName(symbolName, kind);
         var summary = ReadDocumentation(file.SourceText, documentationNode);
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(node.Text))).ToLowerInvariant();
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(node.Text)))
+            .ToLowerInvariant();
         context.DeclarationNodes[id] = node;
         context.CodeNodes.Add(new IndexedCodeNode(
             id,
@@ -265,6 +281,7 @@ public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
             summary,
             TypeScriptNodeIdentity.CreateSearchText(display, summary),
             hash));
+
         return id;
     }
 
@@ -277,7 +294,8 @@ public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
         {
             line--;
         }
-        if (line < 0 || !lines[line].TrimEnd().EndsWith("*/", StringComparison.Ordinal))
+        if (line < 0 || !lines[line].TrimEnd()
+            .EndsWith("*/", StringComparison.Ordinal))
         {
             return string.Empty;
         }
@@ -290,7 +308,13 @@ public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
         {
             return string.Empty;
         }
-        return string.Join("\n", lines[line..(end + 1)].Select(text => text.Trim().TrimStart('/').Trim('*', '/', ' '))).Trim();
+
+        return string.Join(
+            "\n",
+            lines[line..(end + 1)].Select(text => text.Trim()
+                .TrimStart('/')
+                .Trim('*', '/', ' ')))
+            .Trim();
     }
 
     private static void AddReExports(TypeScriptPassContext context, string path, Node export, string source)
@@ -301,6 +325,7 @@ public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
             var namespaceExport = export.NamedChildren.FirstOrDefault(node => node.Type == "namespace_export");
             var alias = namespaceExport?.NamedChildren.LastOrDefault()?.Text;
             context.ReExports.Add(new(path, source, null, alias));
+
             return;
         }
 
@@ -319,7 +344,8 @@ public sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
         => file.DiscoveredFile.RelativeFilePath.EndsWith(".tsx", StringComparison.OrdinalIgnoreCase) &&
            (name == "default" || char.IsUpper(name[0])) &&
            Descendants(node).Any(child => child.Type is "jsx_element" or "jsx_self_closing_element" or "jsx_fragment")
-            ? NodeType.Component : NodeType.Method;
+            ? NodeType.Component
+            : NodeType.Method;
 
     private static bool IsFunction(Node node)
         => node.Type is "arrow_function" or "function_expression" or "function_declaration" or "generator_function";

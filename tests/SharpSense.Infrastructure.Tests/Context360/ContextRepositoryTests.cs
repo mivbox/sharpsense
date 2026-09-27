@@ -14,11 +14,13 @@ public sealed class ContextRepositoryTests
     public async Task WhenGetNodeContextHasRelatedMethods_ThenItSanitizesRelatedNodeNamesInProjection()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
             UseMigrations: true));
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(ct);
-        await KnowledgeGraphFixture.SeedAsync(context);
-        var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>());
+        await using var context = await inMemoryFactory.GetContext(ct);
+        await KnowledgeGraphFixture.Seed(context);
+        var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory());
 
         var result = await repository.GetNodeContext(
             KnowledgeGraphFixture.TargetNodeId,
@@ -43,11 +45,13 @@ public sealed class ContextRepositoryTests
     public async Task WhenTargetNodeIsMissing_ThenItReturnsNull()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
             UseMigrations: true));
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(ct);
-        await KnowledgeGraphFixture.SeedAsync(context);
-        var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>());
+        await using var context = await inMemoryFactory.GetContext(ct);
+        await KnowledgeGraphFixture.Seed(context);
+        var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory());
 
         var result = await repository.GetNodeContext(
             999,
@@ -61,11 +65,13 @@ public sealed class ContextRepositoryTests
     public async Task WhenGetNodeContextTargetsType_ThenItSeparatesStructuralHierarchy()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
             UseMigrations: true));
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(ct);
-        await KnowledgeGraphFixture.SeedAsync(context);
-        var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>());
+        await using var context = await inMemoryFactory.GetContext(ct);
+        await KnowledgeGraphFixture.Seed(context);
+        var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory());
 
         var result = await repository.GetNodeContext(
             KnowledgeGraphFixture.MessageProviderTypeNodeId,
@@ -87,11 +93,13 @@ public sealed class ContextRepositoryTests
     public async Task WhenGetNodeContextTargetsMarkdownHeading_ThenItShowsStructuralParentWithoutFunctionalDuplicate()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
             UseMigrations: true));
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(ct);
-        await SeedMarkdownHierarchyAsync(context, ct);
-        var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>());
+        await using var context = await inMemoryFactory.GetContext(ct);
+        await SeedMarkdownHierarchy(context, ct);
+        var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory());
 
         var result = await repository.GetNodeContext(
             101,
@@ -107,7 +115,7 @@ public sealed class ContextRepositoryTests
         result.Children.Should().BeEmpty();
     }
 
-    private static async Task SeedMarkdownHierarchyAsync(
+    private static async Task SeedMarkdownHierarchy(
         SharpSenseDbContext context,
         CancellationToken ct)
     {

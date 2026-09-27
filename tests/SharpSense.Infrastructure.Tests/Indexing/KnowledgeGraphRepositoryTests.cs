@@ -5,7 +5,6 @@ using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Testkit;
-using System.Reflection;
 
 namespace SharpSense.Infrastructure.Tests.Indexing;
 
@@ -14,12 +13,14 @@ public sealed class KnowledgeGraphRepositoryTests
     [Fact]
     public async Task WhenReplacingTargetWithMissingProjectReference_ThenPersistsNullProjectNodeId()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
-            UseMigrations: true,
-            LoadVectorExtension: true));
-        var repository = new KnowledgeGraphRepository(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>());
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
+                UseMigrations: true,
+                LoadVectorExtension: true));
+        var repository = new KnowledgeGraphRepository(inMemoryFactory.CreateDbContextFactory());
 
-        await repository.ReplaceTarget(
+        await repository.ReplaceWorkspace(
             new ExtractedNodes(
                 [],
                 [
@@ -27,8 +28,8 @@ public sealed class KnowledgeGraphRepositoryTests
                     "code:fixture:src/Fixture/Orphan.cs:T:Orphan",
                     "project:missing",
                     "Fixture.Orphan",
-                        "Orphan",
-                        NodeType.Class,
+                    "Orphan",
+                    NodeType.Class,
                     "src/Fixture/Orphan.cs",
                     1,
                     12,
@@ -39,7 +40,7 @@ public sealed class KnowledgeGraphRepositoryTests
                 []),
             TestContext.Current.CancellationToken);
 
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(
+        await using var context = await inMemoryFactory.GetContext(
             ct: TestContext.Current.CancellationToken);
         var persistedNode = await context.CodeNodes
             .AsNoTracking()
@@ -52,12 +53,14 @@ public sealed class KnowledgeGraphRepositoryTests
     [Fact]
     public async Task WhenGettingPersistedCodeNodes_ThenItReturnsSearchTextAndBodyHash()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
-            UseMigrations: true,
-            LoadVectorExtension: true));
-        var repository = new KnowledgeGraphRepository(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>());
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
+                UseMigrations: true,
+                LoadVectorExtension: true));
+        var repository = new KnowledgeGraphRepository(inMemoryFactory.CreateDbContextFactory());
 
-        await repository.ReplaceTarget(
+        await repository.ReplaceWorkspace(
             new ExtractedNodes(
                 [],
                 [
@@ -143,210 +146,27 @@ public sealed class KnowledgeGraphRepositoryTests
                 persistedSnapshot.Edges[0]
             ],
             []);
-        var canonicalizeSnapshot = typeof(KnowledgeGraphRepository)
-            .GetMethod("CanonicalizeSnapshot", BindingFlags.NonPublic | BindingFlags.Static);
-        var areEquivalentSnapshots = typeof(KnowledgeGraphRepository)
-            .GetMethod("AreEquivalentSnapshots", BindingFlags.NonPublic | BindingFlags.Static);
+        var canonicalSnapshot = GraphSnapshot.CanonicalizeSnapshot(equivalentSnapshot);
 
-        canonicalizeSnapshot.Should().NotBeNull();
-        areEquivalentSnapshots.Should().NotBeNull();
-
-        var canonicalSnapshot = (ExtractedNodes?)canonicalizeSnapshot!
-            .Invoke(null, [equivalentSnapshot, null]);
-        var areEquivalent = (bool?)areEquivalentSnapshots!
-            .Invoke(null, [persistedSnapshot, canonicalSnapshot!]);
-
-        canonicalSnapshot.Should().NotBeNull();
-        areEquivalent.Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task WhenCanonicalizingIncrementalGraph_ThenItPreservesKnownCrossFileEdgesAndCanonicalOrdering()
-    {
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
-            UseMigrations: true,
-            LoadVectorExtension: true));
-        var repository = new KnowledgeGraphRepository(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>());
-        const string projectId = "project:fixture";
-        const string processorPath = "src/Fixture/Processor.cs";
-        const string helperPath = "src/Fixture/Helper.cs";
-        const string helperId = "code:fixture:src/Fixture/Helper.cs:M:Fixture.Helper.Run()";
-        const string runId = "code:fixture:src/Fixture/Processor.cs:M:Fixture.Processor.Run()";
-        const string alphaId = "code:fixture:src/Fixture/Processor.cs:M:Fixture.Processor.Alpha()";
-
-        await repository.ReplaceTarget(
-            new ExtractedNodes(
-                [
-                    new IndexedProject(
-                        projectId,
-                        "Fixture",
-                        "src/Fixture/Fixture.csproj",
-                        "project-hash")
-                ],
-                [
-                    new IndexedCodeNode(
-                        helperId,
-                        projectId,
-                        "Fixture.Helper.Run()",
-                        "Helper.Run()",
-                        NodeType.Method,
-                        helperPath,
-                        10,
-                        18,
-                        "Runs the helper.",
-                        "Helper.Run()\nRuns the helper.",
-                        "helper-hash"),
-                    new IndexedCodeNode(
-                        runId,
-                        projectId,
-                        "Fixture.Processor.Run()",
-                        "Processor.Run()",
-                        NodeType.Method,
-                        processorPath,
-                        10,
-                        18,
-                        "Runs the processor.",
-                        "Processor.Run()\nRuns the processor.",
-                        "run-hash")
-                ],
-                [
-                    new IndexedDependency(
-                        runId,
-                        helperId,
-                        EdgeType.MethodCall)
-                ],
-                []),
-            TestContext.Current.CancellationToken);
-
-        await repository.ReplaceWorkspaceFiles(
-            [processorPath],
-            new ExtractedNodes(
-                [],
-                [
-                    new IndexedCodeNode(
-                        runId,
-                        projectId,
-                        "Fixture.Processor.Run()",
-                        "Processor.Run()",
-                        NodeType.Method,
-                        processorPath,
-                        10,
-                        18,
-                        "Runs the processor.",
-                        "Processor.Run()\nRuns the processor.",
-                        "run-hash"),
-                    new IndexedCodeNode(
-                        alphaId,
-                        projectId,
-                        "Fixture.Processor.Alpha()",
-                        "Processor.Alpha()",
-                        NodeType.Method,
-                        processorPath,
-                        20,
-                        28,
-                        "Runs alpha.",
-                        "Processor.Alpha()\nRuns alpha.",
-                        "alpha-hash")
-                ],
-                [
-                    new IndexedDependency(
-                        runId,
-                        helperId,
-                        EdgeType.MethodCall),
-                    new IndexedDependency(
-                        alphaId,
-                        helperId,
-                        EdgeType.MethodCall)
-                ],
-                []),
-            TestContext.Current.CancellationToken);
-
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(
-            ct: TestContext.Current.CancellationToken);
-        var loadWorkspaceFilesSnapshot = typeof(KnowledgeGraphRepository)
-            .GetMethod("LoadWorkspaceFilesSnapshot", BindingFlags.NonPublic | BindingFlags.Static);
-        var canonicalizeSnapshot = typeof(KnowledgeGraphRepository)
-            .GetMethod("CanonicalizeSnapshot", BindingFlags.NonPublic | BindingFlags.Static);
-        var areEquivalentSnapshots = typeof(KnowledgeGraphRepository)
-            .GetMethod("AreEquivalentSnapshots", BindingFlags.NonPublic | BindingFlags.Static);
-
-        loadWorkspaceFilesSnapshot.Should().NotBeNull();
-        canonicalizeSnapshot.Should().NotBeNull();
-        areEquivalentSnapshots.Should().NotBeNull();
-
-        var persistedSnapshotTask = (Task<ExtractedNodes>?)loadWorkspaceFilesSnapshot!
-            .Invoke(null, [context, (IReadOnlyList<string>)[processorPath], TestContext.Current.CancellationToken]);
-        persistedSnapshotTask.Should().NotBeNull();
-        var persistedSnapshot = await persistedSnapshotTask!;
-        var knownNodeIds = new HashSet<string>(StringComparer.Ordinal)
-        {
-            projectId,
-            helperId,
-            runId,
-            alphaId
-        };
-        var equivalentSnapshot = new ExtractedNodes(
-            [],
-            [
-                new IndexedCodeNode(
-                    runId,
-                    projectId,
-                    "Fixture.Processor.Run()",
-                    "Processor.Run()",
-                    NodeType.Method,
-                    processorPath,
-                    10,
-                    18,
-                    "Runs the processor.",
-                    "Processor.Run()\nRuns the processor.",
-                    "run-hash"),
-                new IndexedCodeNode(
-                    alphaId,
-                    projectId,
-                    "Fixture.Processor.Alpha()",
-                    "Processor.Alpha()",
-                    NodeType.Method,
-                    processorPath,
-                    20,
-                    28,
-                    "Runs alpha.",
-                    "Processor.Alpha()\nRuns alpha.",
-                    "alpha-hash")
-            ],
-            [
-                new IndexedDependency(
-                    runId,
-                    helperId,
-                    EdgeType.MethodCall),
-                new IndexedDependency(
-                    alphaId,
-                    helperId,
-                    EdgeType.MethodCall)
-            ],
-            []);
-        var canonicalSnapshot = (ExtractedNodes?)canonicalizeSnapshot!
-            .Invoke(null, [equivalentSnapshot, knownNodeIds]);
-        var areEquivalent = (bool?)areEquivalentSnapshots!
-            .Invoke(null, [persistedSnapshot, canonicalSnapshot!]);
-
-        canonicalSnapshot.Should().NotBeNull();
-        areEquivalent.Should().BeTrue();
+        GraphSnapshot.AreEquivalentSnapshots(persistedSnapshot, canonicalSnapshot).Should().BeTrue();
     }
 
     [Fact]
     public async Task WhenReplacingTargetWithDistinctIdentitiesAndMatchingNames_ThenPersistsBoth()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
-            UseMigrations: true,
-            LoadVectorExtension: true));
-        var repository = new KnowledgeGraphRepository(inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>());
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
+                UseMigrations: true,
+                LoadVectorExtension: true));
+        var repository = new KnowledgeGraphRepository(inMemoryFactory.CreateDbContextFactory());
         const string projectId = "project:fixture";
         const string processorPath = "src/Fixture/Processor.Part1.cs";
         const string processorPart2Path = "src/Fixture/Processor.Part2.cs";
         const string firstCanonicalId = "code:fixture:src/Fixture/Processor.Part1.cs:T:Fixture.Processor";
         const string secondCanonicalId = "code:fixture:src/Fixture/Processor.Part2.cs:T:Fixture.Processor";
 
-        await repository.ReplaceTarget(
+        await repository.ReplaceWorkspace(
             new ExtractedNodes(
                 [
                     new IndexedProject(

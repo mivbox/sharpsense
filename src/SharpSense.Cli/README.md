@@ -158,13 +158,12 @@ Tools include semantic search, symbol context, dependency tracing, impact analys
 
 ## Install agent skills
 
-The `sharpsense` plugin provides the existing exploration, impact-analysis, and context-mode skills for Codex,
+The `sharpsense` plugin provides code navigation, change assessment, and command-output summaries for Codex,
 Copilot CLI, and Copilot in VS Code. Install it separately after configuring the CLI, workspace, and MCP connection.
 The plugin contains skills and metadata only; it does not install or configure the MCP server.
 
 See the [plugin installation guide](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/cli/skills-command.md)
 for local-checkout and GitHub installation, VS Code settings, and migration from the removed `sharpsense skills` command.
-Skill names and instructions are unchanged.
 
 ## Index diagnostics
 
@@ -208,3 +207,7 @@ dotnet run --project src/SharpSense.Cli -- workspace create sharpsense --repo-ro
   --markdown "docs/**/*.md"
 dotnet run --project src/SharpSense.Cli -- analyze --workspace sharpsense
 ```
+
+## Development
+
+The C# projects share .NET 10 build, analyzer, and test settings. See the [.NET development conventions](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/architecture/dotnet-conventions.md) for formatting, internal contracts, test layout, and validation commands.

@@ -1,15 +1,15 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.GraphStats.Abstractions;
 using SharpSense.Application.GraphStats.Models;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
+using System.Text.Json;
 
 namespace SharpSense.Infrastructure.GraphStats;
 
-public sealed class IndexRunStore(IDbContextFactory<SharpSenseDbContext> dbContextFactory) : IIndexRunStore
+internal sealed class IndexRunStore(IDbContextFactory<SharpSenseDbContext> dbContextFactory) : IIndexRunStore
 {
-    public async Task RecordAsync(IndexRunSummary run, CancellationToken ct)
+    public async Task Record(IndexRunSummary run, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(run);
         var json = IndexRunSerialization.Serialize(run);
@@ -42,8 +42,9 @@ public sealed class IndexRunStore(IDbContextFactory<SharpSenseDbContext> dbConte
     {
         try
         {
-            return IndexRunSerialization.Deserialize(previousJson) is not { } previous ||
-                   run.CompletedAt >= previous.CompletedAt;
+            return IndexRunSerialization.Deserialize(previousJson) is not
+            { } previous ||
+                run.CompletedAt >= previous.CompletedAt;
         }
         catch (JsonException)
         {

@@ -8,7 +8,7 @@ using SharpSense.Infrastructure.Shared;
 
 namespace SharpSense.Infrastructure.Inheritors;
 
-public sealed class InheritorFinder(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
+internal sealed class InheritorFinder(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
     : IInheritorFinder
 {
     public async Task<CodeNodeResult[]> GetInheritors(
@@ -37,14 +37,14 @@ public sealed class InheritorFinder(IDbContextFactory<SharpSenseDbContext> dbCon
         }
 
         return await CodeNodeNavigationQueries.ProjectCodeNodeResults(
-                context,
-                context.CodeNodes
-                    .AsNoTracking()
-                    .Where(codeNode =>
-                        derivedNodeIds.Contains(codeNode.Id) &&
+            context,
+            context.CodeNodes
+                .AsNoTracking()
+                .Where(codeNode =>
+                    derivedNodeIds.Contains(codeNode.Id) &&
                         codeNode.NodeType == NodeType.Class)
-                    .OrderBy(static codeNode => codeNode.FullyQualifiedName)
-                    .ThenBy(static codeNode => codeNode.Id))
+                .OrderBy(static codeNode => codeNode.FullyQualifiedName)
+                .ThenBy(static codeNode => codeNode.Id))
             .ToArrayAsync(ct);
     }
 }

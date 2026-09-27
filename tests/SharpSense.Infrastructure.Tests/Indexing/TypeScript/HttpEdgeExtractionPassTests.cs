@@ -61,11 +61,14 @@ public sealed class HttpEdgeExtractionPassTests
         var source = $"export async function request(options, verb, method, headers, url, suffix) {{ return {expression}; }}";
         using var language = new Language("TypeScript");
         using var parser = new Parser(language);
-        using var file = new TypeScriptParsedFile(new DiscoveredFile("/repo/client.ts", "client.ts"), source,
+        using var file = new TypeScriptParsedFile(
+            new DiscoveredFile("/repo/client.ts", "client.ts"),
+            source,
             parser.Parse(source) ?? throw new InvalidOperationException("Fixture did not parse."));
-        var context = new TypeScriptPassContext("/repo/tsconfig.json", [file], isIncremental: false);
+        var context = new TypeScriptPassContext("/repo/tsconfig.json", [file]);
         new CodeNodeExtractionPass().Execute(context);
         new HttpEdgeExtractionPass().Execute(context);
+
         return context.Edges.ToArray();
     }
 }

@@ -10,17 +10,18 @@ namespace SharpSense.Infrastructure.HybridSearch;
 /// <c>column:</c>, <c>NEAR</c>, quoted phrases, trailing <c>*</c>) are detected and forwarded verbatim so power
 /// users can scope tightly without the orchestrator having to parse the query.
 /// </summary>
-public sealed partial class SqliteKeywordCandidateProvider : IKeywordCandidateProvider
+internal sealed partial class SqliteKeywordCandidateProvider : IKeywordCandidateProvider
 {
     private const int MinimumTokenLength = 2;
     private const string ColumnNamePattern = @"(?:DisplayName|FullyQualifiedName|SearchText|RelativeFilePath)";
 
     /// <inheritdoc />
-    public Task<string> GetMatchQueryAsync(HybridSearchQuery query, CancellationToken ct)
+    public Task<string> GetMatchQuery(HybridSearchQuery query, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(query);
 
         var matchQuery = BuildMatchQuery(query.SearchText);
+
         return Task.FromResult(matchQuery);
     }
 

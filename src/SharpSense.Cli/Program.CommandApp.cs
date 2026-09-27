@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using System.Reflection;
 using SharpSense.Cli.Analyze;
 using SharpSense.Cli.Context;
 using SharpSense.Cli.Doctor;
@@ -14,10 +13,11 @@ using SharpSense.Cli.Ui;
 using SharpSense.Cli.Workspaces;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using System.Diagnostics;
 
 namespace SharpSense.Cli;
 
-public partial class Program
+internal partial class Program
 {
     public static CommandApp CreateCommandApp(
         IAnsiConsole? console = null,
@@ -26,6 +26,7 @@ public partial class Program
     {
         var app = new CommandApp();
         ConfigureCommandApp(app, console, configureServices, enableFileLogging);
+
         return app;
     }
 
@@ -49,33 +50,55 @@ public partial class Program
             config.UseStrictParsing();
             config.SetApplicationName("sharpsense");
             config.SetApplicationVersion(
-                typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                FileVersionInfo.GetVersionInfo(typeof(Program).Assembly.Location).ProductVersion
                 ?? typeof(Program).Assembly.GetName().Version?.ToString()
                 ?? "unknown");
 
-            AttachData(config.AddCommand<WorkspaceCreateCommand>("configure")
-                .WithDescription("Alias for workspace create; prompts for missing inputs in an interactive terminal."), executionContext);
-            config.AddBranch("workspace", workspace =>
+            AttachData(
+                config.AddCommand<WorkspaceCreateCommand>("configure")
+                    .WithDescription("Alias for workspace create; prompts for missing inputs in an interactive terminal."),
+                executionContext);
+            config.AddBranch(
+                "workspace",
+                workspace =>
             {
                 workspace.SetDescription("Create and manage named workspaces stored under ~/.sharpsense.");
-                AttachData(workspace.AddCommand<WorkspaceCreateCommand>("create")
-                    .WithDescription("Create a workspace, with guided setup for missing inputs in an interactive terminal."), executionContext);
-                AttachData(workspace.AddCommand<WorkspaceListCommand>("list")
-                    .WithDescription("List registered workspaces without opening their databases."), executionContext);
-                AttachData(workspace.AddCommand<WorkspaceListCommand>("ls")
-                    .WithDescription("Alias for workspace list."), executionContext);
-                AttachData(workspace.AddCommand<WorkspaceUseCommand>("use")
-                    .WithDescription("Save the default workspace for CLI commands; --workspace overrides it."), executionContext);
-                AttachData(workspace.AddCommand<WorkspaceShowCommand>("show")
-                    .WithDescription("Show workspace sources and storage locations."), executionContext);
-                AttachData(workspace.AddCommand<WorkspaceRenameCommand>("rename")
-                    .WithDescription("Rename a workspace while preserving its identity and index."), executionContext);
-                AttachData(workspace.AddCommand<WorkspaceAddCommand>("add")
-                    .WithDescription("Add sources to an existing workspace."), executionContext);
-                AttachData(workspace.AddCommand<WorkspaceRemoveCommand>("remove")
-                    .WithDescription("Remove selected sources; preserve the workspace and its database."), executionContext);
-                AttachData(workspace.AddCommand<WorkspaceMergeCommand>("merge")
-                    .WithDescription("Create a workspace combining sources from existing workspaces in the same repository."), executionContext);
+                AttachData(
+                    workspace.AddCommand<WorkspaceCreateCommand>("create")
+                        .WithDescription("Create a workspace, with guided setup for missing inputs in an interactive terminal."),
+                    executionContext);
+                AttachData(
+                    workspace.AddCommand<WorkspaceListCommand>("list")
+                        .WithDescription("List registered workspaces without opening their databases."),
+                    executionContext);
+                AttachData(
+                    workspace.AddCommand<WorkspaceListCommand>("ls")
+                        .WithDescription("Alias for workspace list."),
+                    executionContext);
+                AttachData(
+                    workspace.AddCommand<WorkspaceUseCommand>("use")
+                        .WithDescription("Save the default workspace for CLI commands; --workspace overrides it."),
+                    executionContext);
+                AttachData(
+                    workspace.AddCommand<WorkspaceShowCommand>("show")
+                        .WithDescription("Show workspace sources and storage locations."),
+                    executionContext);
+                AttachData(
+                    workspace.AddCommand<WorkspaceRenameCommand>("rename")
+                        .WithDescription("Rename a workspace while preserving its identity and index."),
+                    executionContext);
+                AttachData(
+                    workspace.AddCommand<WorkspaceAddCommand>("add")
+                        .WithDescription("Add sources to an existing workspace."),
+                    executionContext);
+                AttachData(
+                    workspace.AddCommand<WorkspaceRemoveCommand>("remove")
+                        .WithDescription("Remove selected sources; preserve the workspace and its database."),
+                    executionContext);
+                AttachData(
+                    workspace.AddCommand<WorkspaceMergeCommand>("merge")
+                        .WithDescription("Create a workspace combining sources from existing workspaces in the same repository."),
+                    executionContext);
             });
 
             var analyze = config

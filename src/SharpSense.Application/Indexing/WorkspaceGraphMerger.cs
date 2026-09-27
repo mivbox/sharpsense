@@ -29,7 +29,13 @@ internal static class WorkspaceGraphMerger
             {
                 var edges = contributionEdges[node.CanonicalId].ToHashSet();
                 if (nodes.TryGetValue(node.CanonicalId, out var existing) &&
-                    ((existing with { VectorEmbedding = null }) != (node with { VectorEmbedding = null }) ||
+                    ((existing with
+                    {
+                        VectorEmbedding = null
+                    }) != (node with
+                    {
+                        VectorEmbedding = null
+                    }) ||
                      !outgoingEdges[node.CanonicalId].SetEquals(edges)))
                 {
                     return Conflict("declaration", node.CanonicalId);
@@ -45,11 +51,13 @@ internal static class WorkspaceGraphMerger
                 .ThenBy(static project => project.Id, StringComparer.Ordinal)],
             [.. nodes.Values.OrderBy(static node => node.FullyQualifiedName, StringComparer.Ordinal)
                 .ThenBy(static node => node.CanonicalId, StringComparer.Ordinal)],
-            [.. contributions.SelectMany(static contribution => contribution.Edges).Distinct()
+            [.. contributions.SelectMany(static contribution => contribution.Edges)
+                .Distinct()
                 .OrderBy(static edge => edge.CallerId, StringComparer.Ordinal)
                 .ThenBy(static edge => edge.CalleeId, StringComparer.Ordinal)
                 .ThenBy(static edge => edge.EdgeType)],
-            [.. contributions.SelectMany(static contribution => contribution.Diagnostics).Distinct(StringComparer.Ordinal)]));
+            [.. contributions.SelectMany(static contribution => contribution.Diagnostics)
+                .Distinct(StringComparer.Ordinal)]));
     }
 
     private static Result<ExtractedNodes> Conflict(string kind, string identity)

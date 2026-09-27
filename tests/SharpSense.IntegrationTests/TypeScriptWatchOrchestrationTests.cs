@@ -1,4 +1,4 @@
-using System.IO.Abstractions;
+using AwesomeAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,6 +10,7 @@ using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Testing;
+using System.IO.Abstractions;
 
 namespace SharpSense.IntegrationTests;
 
@@ -21,7 +22,10 @@ public sealed class TypeScriptWatchOrchestrationTests
     public async Task WhenConfigAliasChanges_ThenCliWatchRefreshesCompleteTypeScriptScope(bool extendedConfig)
     {
         var ct = TestContext.Current.CancellationToken;
-        var root = Path.Combine(Path.GetTempPath(), "sharpsense-ts-watch-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "sharpsense-ts-watch-" + Guid.NewGuid()
+                .ToString("N"));
         var databasePath = Path.Combine(root, "test-index.db");
         var previousConsole = AnsiConsole.Console;
         using var console = new TestConsole();
@@ -36,14 +40,18 @@ public sealed class TypeScriptWatchOrchestrationTests
                 await Write("client/tsconfig.json", """{ "extends": "./base.json" }""");
             }
             await Write(configPath, Config("v1"));
-            await Write("client/src/consumer.ts", "import { load } from '@shared/api'; export function consumer() { return load(); }");
+            await Write(
+                "client/src/consumer.ts",
+                "import { load } from '@shared/api'; export function consumer() { return load(); }");
             await Write("client/src/deleted.ts", "export function removed() { return 1; }");
             await Write("shared/v1/api.ts", "export function load() { return 'old'; }");
             await Write("shared/v2/api.ts", "export function load() { return 'new'; }");
             await Write("Backend/Feature.cs", "public sealed class Feature {}");
 
             var catalog = new WorkspaceCatalog(new FileSystem(), Path.Combine(root, ".workspace-home"));
-            var selection = catalog.Create("typescript-watch", root,
+            var selection = catalog.Create(
+                "typescript-watch",
+                root,
                 [new(WorkspaceSourceKind.TypeScript, "client/tsconfig.json")]);
             var workspace = new TestWorkspace(selection.Workspace, databasePath);
             string[] initialPaths = [];
@@ -71,35 +79,42 @@ public sealed class TypeScriptWatchOrchestrationTests
                 updatedPaths = await ReadPaths();
                 updatedTargets = await ReadConsumerTargets();
             });
-            var app = Cli.Program.CreateCommandApp(console, services =>
+            var app = Cli.Program.CreateCommandApp(
+                console,
+                services =>
             {
-                services.AddSingleton(catalog);
+                services.AddSingleton<IWorkspaceCatalog>(catalog);
                 services.RemoveAll<WorkspaceSelection>();
-                services.AddSingleton(selection with { Workspace = workspace });
+                services.AddSingleton(selection with
+                {
+                    Workspace = workspace
+                });
                 services.RemoveAll<IRepositoryWorkspace>();
                 services.AddSingleton<IRepositoryWorkspace>(workspace);
                 services.RemoveAll<IWorkspaceWatcher>();
                 services.AddSingleton<IWorkspaceWatcher>(watcher);
-            }, enableFileLogging: false);
+            },
+                enableFileLogging: false);
 
             var exit = await app.RunAsync(
-                ["analyze", "--workspace", "typescript-watch", "--repo-root", root, "--watch", "--no-embeddings"], ct);
+                ["analyze", "--workspace", "typescript-watch", "--repo-root", root, "--watch", "--no-embeddings"],
+                ct);
 
-            Assert.Equal(0, exit);
-            Assert.Equal(1, watcher.Calls);
-            Assert.Contains("client/src/consumer.ts", initialPaths);
-            Assert.Contains("client/src/deleted.ts", initialPaths);
-            Assert.Contains("shared/v1/api.ts", initialPaths);
-            Assert.DoesNotContain("shared/v2/api.ts", initialPaths);
-            Assert.Contains("client/src/consumer.ts", updatedPaths);
-            Assert.Contains("shared/v2/api.ts", updatedPaths);
-            Assert.DoesNotContain("shared/v1/api.ts", updatedPaths);
-            Assert.Equal(extendedConfig, updatedPaths.Contains("client/src/deleted.ts"));
-            Assert.Equal(["code:ts:shared/v1/api.ts:load"], initialTargets);
-            Assert.Equal(["code:ts:shared/v2/api.ts:load"], updatedTargets);
-            Assert.DoesNotContain("Backend/Feature.cs", updatedPaths);
-            Assert.DoesNotContain("Rebuilding the full index", console.Output);
-            Assert.True(File.Exists(databasePath));
+            exit.Should().Be(0);
+            watcher.Calls.Should().Be(1);
+            initialPaths.Should().Contain("client/src/consumer.ts");
+            initialPaths.Should().Contain("client/src/deleted.ts");
+            initialPaths.Should().Contain("shared/v1/api.ts");
+            initialPaths.Should().NotContain("shared/v2/api.ts");
+            updatedPaths.Should().Contain("client/src/consumer.ts");
+            updatedPaths.Should().Contain("shared/v2/api.ts");
+            updatedPaths.Should().NotContain("shared/v1/api.ts");
+            updatedPaths.Contains("client/src/deleted.ts").Should().Be(extendedConfig);
+            initialTargets.Should().Equal(["code:ts:shared/v1/api.ts:load"]);
+            updatedTargets.Should().Equal(["code:ts:shared/v2/api.ts:load"]);
+            updatedPaths.Should().NotContain("Backend/Feature.cs");
+            console.Output.Should().NotContain("Rebuilding the full index");
+            File.Exists(databasePath).Should().BeTrue();
 
             async Task Write(string relativePath, string content)
             {
@@ -113,6 +128,7 @@ public sealed class TypeScriptWatchOrchestrationTests
                 var options = new DbContextOptionsBuilder<SharpSenseDbContext>()
                     .UseSqlite($"Data Source={databasePath};Mode=ReadWrite;Cache=Shared").Options;
                 await using var context = new SharpSenseDbContext(options);
+
                 return await (from edge in context.DependencyEdges
                               join caller in context.GraphNodes on edge.CallerNodeId equals caller.Id
                               join callee in context.GraphNodes on edge.CalleeNodeId equals callee.Id
@@ -125,7 +141,9 @@ public sealed class TypeScriptWatchOrchestrationTests
                 var options = new DbContextOptionsBuilder<SharpSenseDbContext>()
                     .UseSqlite($"Data Source={databasePath};Mode=ReadWrite;Cache=Shared").Options;
                 await using var context = new SharpSenseDbContext(options);
-                return await context.Documents.Select(document => document.RelativePath).ToArrayAsync(ct);
+
+                return await context.Documents.Select(document => document.RelativePath)
+                    .ToArrayAsync(ct);
             }
         }
         finally
@@ -133,7 +151,10 @@ public sealed class TypeScriptWatchOrchestrationTests
             AnsiConsole.Console = previousConsole;
             using var connection = new SqliteConnection($"Data Source={databasePath};Mode=ReadWriteCreate;Cache=Shared");
             SqliteConnection.ClearPool(connection);
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
         }
     }
 
@@ -144,15 +165,25 @@ public sealed class TypeScriptWatchOrchestrationTests
         Func<Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task>, CancellationToken, Task> action)
         : IWorkspaceWatcher
     {
-        public int Calls { get; private set; }
+        public int Calls
+        {
+            get; private set;
+        }
         public async Task Watch(string repositoryRoot,
             Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task> onBatchChanged, CancellationToken ct,
             Func<CancellationToken, Task>? initialize = null, Action? onReady = null)
         {
             Calls++;
-            if (initialize is not null) await initialize(ct);
+            if (initialize is not null)
+            {
+                await initialize(ct);
+            }
+
             onReady?.Invoke();
-            if (Calls == 1) await action(onBatchChanged, ct);
+            if (Calls == 1)
+            {
+                await action(onBatchChanged, ct);
+            }
         }
     }
 

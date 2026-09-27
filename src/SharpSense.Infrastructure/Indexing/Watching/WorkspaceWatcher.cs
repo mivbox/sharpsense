@@ -1,15 +1,15 @@
-using System.Collections.Concurrent;
 using JetBrains.Annotations;
 using Serilog;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Indexing.Markdown;
+using System.Collections.Concurrent;
 using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.Indexing.Watching;
 
 [PublicAPI]
-public sealed class WorkspaceWatcher : IWorkspaceWatcher
+internal sealed class WorkspaceWatcher : IWorkspaceWatcher
 {
     private static readonly ILogger _logger = Log.ForContext<WorkspaceWatcher>();
     private readonly IFileSystem _fileSystem;
@@ -150,8 +150,13 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         bool IsFastPathIgnored(string path)
         {
             var sep = _fileSystem.Path.DirectorySeparatorChar;
-            return path.Contains($"{sep}.git{sep}", StringComparison.OrdinalIgnoreCase) ||
-                   path.EndsWith($"{sep}.git", StringComparison.OrdinalIgnoreCase);
+
+            return path.Contains(
+                $"{sep}.git{sep}",
+                StringComparison.OrdinalIgnoreCase) ||
+                path.EndsWith(
+                    $"{sep}.git",
+                    StringComparison.OrdinalIgnoreCase);
         }
 
         void HandleChanged(string fullPath)
@@ -179,13 +184,15 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
             if (_fileSystem.Directory.Exists(fullPath))
             {
                 AddKnownDirectoryTree(knownDirectories, fullPath);
+
                 return;
             }
 
             lock (stateGate)
             {
                 EnqueueChange(new WorkspaceFileChange(
-                    ClassifyMarkdownChange(fullPath, WorkspaceFileChangeAction.Added), NewPath: fullPath));
+                    ClassifyMarkdownChange(fullPath, WorkspaceFileChangeAction.Added),
+                    NewPath: fullPath));
             }
         }
 
@@ -200,6 +207,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
             if (!_fileSystem.File.Exists(path))
             {
                 knownMarkdownPaths.Remove(path);
+
                 return WorkspaceFileChangeAction.Added;
             }
 
@@ -266,6 +274,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
                         WorkspaceFileChangeAction.DirectoryRenamed,
                         oldFullPath,
                         newFullPath));
+
                     return;
                 }
 
@@ -390,8 +399,10 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         => changedFile.ActionType switch
         {
             WorkspaceFileChangeAction.DirectoryDeleted or WorkspaceFileChangeAction.DirectoryRenamed
-                => changedFile.GetAffectedPaths().Any(path => IsRelevantDirectoryPath(repositoryRoot, path)),
-            _ => changedFile.GetAffectedPaths().Any(path => IsRelevantPath(repositoryRoot, path))
+                => changedFile.GetAffectedPaths()
+                    .Any(path => IsRelevantDirectoryPath(repositoryRoot, path)),
+            _ => changedFile.GetAffectedPaths()
+                .Any(path => IsRelevantPath(repositoryRoot, path))
         };
 
     private bool IsRelevantPath(
@@ -430,8 +441,8 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
     private static bool IsTargetPath(string path)
     {
         return CSharpIndexingPathRules.IsRelevantChangePath(path) ||
-               MarkdownIndexer.IsMarkdownDocumentPath(path) ||
-               TypeScriptIndexingPathRules.IsRelevantChangePath(path);
+            MarkdownIndexer.IsMarkdownDocumentPath(path) ||
+            TypeScriptIndexingPathRules.IsRelevantChangePath(path);
     }
 
     private IEnumerable<WorkspaceFileChange> CreateRenameChanges(
@@ -470,6 +481,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
     {
         var knownDirectories = new ConcurrentDictionary<string, byte>(GetPathComparer());
         AddKnownDirectoryTree(knownDirectories, repositoryRoot);
+
         return knownDirectories;
     }
 
@@ -501,6 +513,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
                 }
             }
         }
+
         return paths;
     }
 
@@ -551,7 +564,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
             : rootPath + Path.DirectorySeparatorChar;
 
         return string.Equals(path, rootPath, comparison) ||
-               path.StartsWith(rootPathWithSeparator, comparison);
+            path.StartsWith(rootPathWithSeparator, comparison);
     }
 
     private string NormalizeDirectoryPath(string path)
@@ -582,6 +595,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         if (string.Equals(relativePath, ".", comparison))
         {
             relativePath = string.Empty;
+
             return true;
         }
 

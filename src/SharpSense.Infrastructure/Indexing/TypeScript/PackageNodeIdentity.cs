@@ -9,6 +9,7 @@ internal static class PackageNodeIdentity
         ArgumentException.ThrowIfNullOrWhiteSpace(packageName);
 
         var encodedPackageName = Uri.EscapeDataString(packageName);
+
         return string.IsNullOrWhiteSpace(exportName)
             ? $"package:{encodedPackageName}"
             : $"package:{encodedPackageName}:{Uri.EscapeDataString(exportName)}";
@@ -40,12 +41,14 @@ internal static class PackageNodeIdentity
         if (separatorIndex < 0)
         {
             packageName = Uri.UnescapeDataString(encodedPayload);
+
             return !string.IsNullOrWhiteSpace(packageName);
         }
 
         packageName = Uri.UnescapeDataString(encodedPayload[..separatorIndex]);
         exportName = Uri.UnescapeDataString(encodedPayload[(separatorIndex + 1)..]);
+
         return !string.IsNullOrWhiteSpace(packageName) &&
-               !string.IsNullOrWhiteSpace(exportName);
+            !string.IsNullOrWhiteSpace(exportName);
     }
 }

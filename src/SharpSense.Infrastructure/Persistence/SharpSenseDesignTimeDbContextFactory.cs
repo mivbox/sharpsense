@@ -1,11 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
-using System.IO.Abstractions;
 using SharpSense.Infrastructure.Storage;
+using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.Persistence;
 
-public sealed class SharpSenseDesignTimeDbContextFactory : IDesignTimeDbContextFactory<SharpSenseDbContext>
+internal sealed class SharpSenseDesignTimeDbContextFactory : IDesignTimeDbContextFactory<SharpSenseDbContext>
 {
     public SharpSenseDbContext CreateDbContext(string[] args)
     {

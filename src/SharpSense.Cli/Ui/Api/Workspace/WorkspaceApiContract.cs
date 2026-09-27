@@ -31,7 +31,11 @@ internal static class WorkspaceApiContract
                 In = ParameterLocation.Header,
                 Required = true,
                 Description = "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
-                Schema = new OpenApiSchema { Type = JsonSchemaType.String, Format = "uuid" }
+                Schema = new OpenApiSchema
+                {
+                    Type = JsonSchemaType.String,
+                    Format = "uuid"
+                }
             });
         }
 

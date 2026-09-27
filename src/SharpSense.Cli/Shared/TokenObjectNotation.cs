@@ -1,19 +1,22 @@
-using SharpSense.Application.Context360.Models;
 using SharpSense.Application.CommandExecution.Models;
+using SharpSense.Application.Context360.Models;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text;
 
 namespace SharpSense.Cli.Shared;
 
-public static class TokenObjectNotation
+internal static class TokenObjectNotation
 {
-    internal static JsonSerializerOptions JsonOptions { get; } = CreateJsonOptions();
+    internal static JsonSerializerOptions JsonOptions
+    {
+        get;
+    } = CreateJsonOptions();
 
     public static string SerializeSemanticSearch(IEnumerable<HybridSearchHit> results)
     {
@@ -46,6 +49,7 @@ public static class TokenObjectNotation
         }
 
         AppendMemorySummary(builder, rootNode, callees, memoriesByNodeId);
+
         return builder.ToString();
     }
 
@@ -83,8 +87,14 @@ public static class TokenObjectNotation
                     .ToArray(),
                 StringComparer.Ordinal);
         var chains = new List<CodeNodeResult[]>();
-        var currentPath = new List<CodeNodeResult> { rootNode };
-        var visitedCanonicalIds = new HashSet<string>(StringComparer.Ordinal) { rootNode.CanonicalId };
+        var currentPath = new List<CodeNodeResult>
+        {
+            rootNode
+        };
+        var visitedCanonicalIds = new HashSet<string>(StringComparer.Ordinal)
+        {
+            rootNode.CanonicalId
+        };
 
         BuildCallerChains(
             rootNode.CanonicalId,
@@ -105,7 +115,8 @@ public static class TokenObjectNotation
         {
             if (chainIndex > 0)
             {
-                builder.AppendLine().AppendLine();
+                builder.AppendLine()
+                    .AppendLine();
             }
 
             var chain = chains[chainIndex];
@@ -121,7 +132,8 @@ public static class TokenObjectNotation
             }
         }
 
-        var allCallerNodes = chains.SelectMany(static chain => chain).ToArray();
+        var allCallerNodes = chains.SelectMany(static chain => chain)
+            .ToArray();
         AppendMemorySummary(builder, rootNode, allCallerNodes, memoriesByNodeId);
 
         return builder.ToString();
@@ -144,9 +156,15 @@ public static class TokenObjectNotation
 
         var builder = new StringBuilder();
         builder.AppendLine("node:");
-        builder.Append("  id: ").Append(result.TargetNode.Id).AppendLine();
-        builder.Append("  name: ").Append(result.TargetNode.Name).AppendLine();
-        builder.Append("  kind: ").Append(GetNodeTypeShorthand(result.TargetNode.Kind)).AppendLine();
+        builder.Append("  id: ")
+            .Append(result.TargetNode.Id)
+            .AppendLine();
+        builder.Append("  name: ")
+            .Append(result.TargetNode.Name)
+            .AppendLine();
+        builder.Append("  kind: ")
+            .Append(GetNodeTypeShorthand(result.TargetNode.Kind))
+            .AppendLine();
         builder.Append("  file: ")
             .Append(result.TargetNode.RelativeFilePath)
             .Append(':')
@@ -156,16 +174,27 @@ public static class TokenObjectNotation
             .AppendLine();
         builder.AppendLine();
         builder.AppendLine("incoming:");
-        builder.Append("  callers: ").Append(FormatContext360RelatedNodes(result.Callers)).AppendLine();
-        builder.Append("  implementers: ").Append(FormatContext360RelatedNodes(result.Implementers)).AppendLine();
+        builder.Append("  callers: ")
+            .Append(FormatContext360RelatedNodes(result.Callers))
+            .AppendLine();
+        builder.Append("  implementers: ")
+            .Append(FormatContext360RelatedNodes(result.Implementers))
+            .AppendLine();
         builder.AppendLine();
         builder.AppendLine("outgoing:");
-        builder.Append("  callees: ").Append(FormatContext360RelatedNodes(result.Callees)).AppendLine();
-        builder.Append("  inherits: ").Append(FormatContext360RelatedNodes(result.Inherits)).AppendLine();
+        builder.Append("  callees: ")
+            .Append(FormatContext360RelatedNodes(result.Callees))
+            .AppendLine();
+        builder.Append("  inherits: ")
+            .Append(FormatContext360RelatedNodes(result.Inherits))
+            .AppendLine();
         builder.AppendLine();
         builder.AppendLine("structural:");
-        builder.Append("  parents: ").Append(FormatContext360RelatedNodes(result.Parents)).AppendLine();
-        builder.Append("  children: ").Append(FormatContext360RelatedNodes(result.Children));
+        builder.Append("  parents: ")
+            .Append(FormatContext360RelatedNodes(result.Parents))
+            .AppendLine();
+        builder.Append("  children: ")
+            .Append(FormatContext360RelatedNodes(result.Children));
         if (semanticContext is { Count: > 0 })
         {
             var staleCount = semanticContext.Count(static memory => memory.IsStale);
@@ -198,7 +227,7 @@ public static class TokenObjectNotation
                     .Append(FormatTags(memory.Tags));
                 if (memory.IsStale)
                 {
-                    builder.Append(" hint=\"call delete_memory + attach_memory to refresh\"");
+                    builder.Append(" hint=\"verify memory against current source before replacing or deleting\"");
                 }
 
                 builder.AppendLine();
@@ -236,33 +265,59 @@ public static class TokenObjectNotation
             builder.AppendLine();
         }
         builder.Length -= Environment.NewLine.Length;
+
         return builder.ToString();
     }
 
     private static string SerializeMemoryBlock(MemoryNode memory, string prefix)
     {
         var builder = new StringBuilder()
-            .Append(prefix).Append("- memory:").AppendLine()
-            .Append(prefix).Append("  id: ").Append(memory.Id).AppendLine()
-            .Append(prefix).Append("  target: ").Append(memory.TargetFullyQualifiedName).AppendLine()
-            .Append(prefix).Append("  intent: ").Append(memory.Intent).AppendLine()
-            .Append(prefix).Append("  stale: ").Append(memory.IsStale ? "true" : "false").AppendLine()
-            .Append(prefix).Append("  tags: ").Append(FormatTags(memory.Tags)).AppendLine()
-            .Append(prefix).Append("  created_at: ").Append(memory.CreatedAt.ToString("O")).AppendLine()
-            .Append(prefix).Append("  content: |").AppendLine();
+            .Append(prefix)
+            .Append("- memory:")
+            .AppendLine()
+            .Append(prefix)
+            .Append("  id: ")
+            .Append(memory.Id)
+            .AppendLine()
+            .Append(prefix)
+            .Append("  target: ")
+            .Append(memory.TargetFullyQualifiedName)
+            .AppendLine()
+            .Append(prefix)
+            .Append("  intent: ")
+            .Append(memory.Intent)
+            .AppendLine()
+            .Append(prefix)
+            .Append("  stale: ")
+            .Append(memory.IsStale ? "true" : "false")
+            .AppendLine()
+            .Append(prefix)
+            .Append("  tags: ")
+            .Append(FormatTags(memory.Tags))
+            .AppendLine()
+            .Append(prefix)
+            .Append("  created_at: ")
+            .Append(memory.CreatedAt.ToString("O"))
+            .AppendLine()
+            .Append(prefix)
+            .Append("  content: |")
+            .AppendLine();
         foreach (var line in memory.Content.Split('\n'))
         {
-            builder.Append(prefix).Append("    ").Append(line.TrimEnd('\r')).AppendLine();
+            builder.Append(prefix)
+                .Append("    ")
+                .Append(line.TrimEnd('\r'))
+                .AppendLine();
         }
         if (memory.IsStale)
         {
             builder.AppendLine()
-                .Append(prefix).Append("  hint: call delete_memory + attach_memory to refresh");
+                .Append(prefix)
+                .Append("  hint: verify memory against current source before replacing or deleting");
         }
 
         return builder.ToString();
     }
-
 
     public static string SerializeCommandExecutionResult(CommandExecutionResult result)
     {
@@ -274,26 +329,38 @@ public static class TokenObjectNotation
         ArgumentException.ThrowIfNullOrWhiteSpace(result.Summary);
 
         var builder = new StringBuilder();
-        builder.Append("command: ").AppendLine(result.Command);
-        builder.Append("status: ").AppendLine(result.Status);
-        builder.Append("exit_code: ").AppendLine(result.ExitCode.ToString());
-        builder.Append("working_directory: ").AppendLine(result.WorkingDirectory);
+        builder.Append("command: ")
+            .AppendLine(result.Command);
+        builder.Append("status: ")
+            .AppendLine(result.Status);
+        builder.Append("exit_code: ")
+            .AppendLine(result.ExitCode.ToString());
+        builder.Append("working_directory: ")
+            .AppendLine(result.WorkingDirectory);
 
         if (!string.IsNullOrWhiteSpace(result.Query))
         {
-            builder.Append("query: ").AppendLine(result.Query);
+            builder.Append("query: ")
+                .AppendLine(result.Query);
         }
 
         builder.AppendLine("metrics:");
-        builder.Append("  captured_lines: ").AppendLine(result.TotalLines.ToString());
-        builder.Append("  matched_lines: ").AppendLine(result.MatchedLineCount.ToString());
-        builder.Append("  block_count: ").AppendLine(result.BlockCount.ToString());
-        builder.Append("  truncated: ").AppendLine(result.Truncated.ToString().ToLowerInvariant());
-        builder.Append("summary: ").AppendLine(result.Summary);
+        builder.Append("  captured_lines: ")
+            .AppendLine(result.TotalLines.ToString());
+        builder.Append("  matched_lines: ")
+            .AppendLine(result.MatchedLineCount.ToString());
+        builder.Append("  block_count: ")
+            .AppendLine(result.BlockCount.ToString());
+        builder.Append("  truncated: ")
+            .AppendLine(result.Truncated.ToString()
+                .ToLowerInvariant());
+        builder.Append("summary: ")
+            .AppendLine(result.Summary);
 
         if (result.Blocks.Length == 0)
         {
             builder.Length -= Environment.NewLine.Length;
+
             return builder.ToString();
         }
 
@@ -310,11 +377,13 @@ public static class TokenObjectNotation
             using var reader = new StringReader(block.Text);
             while (reader.ReadLine() is { } line)
             {
-                builder.Append("      ").AppendLine(line);
+                builder.Append("      ")
+                    .AppendLine(line);
             }
         }
 
         builder.Length -= Environment.NewLine.Length;
+
         return builder.ToString();
     }
 
@@ -326,8 +395,8 @@ public static class TokenObjectNotation
         ArgumentException.ThrowIfNullOrWhiteSpace(errorMessage);
 
         return "command: " + command + Environment.NewLine +
-               "status: error" + Environment.NewLine +
-               "error_message: " + errorMessage;
+            "status: error" + Environment.NewLine +
+            "error_message: " + errorMessage;
     }
 
     private static string SerializeGroupedNodes(IEnumerable<ToonNode> results)
@@ -371,11 +440,14 @@ public static class TokenObjectNotation
 
             var directoryPath = directoryOrder[directoryIndex];
             var directoryGroup = directoryGroups[directoryPath];
-            builder.Append(directoryPath).AppendLine(":");
+            builder.Append(directoryPath)
+                .AppendLine(":");
 
             foreach (var fileName in directoryGroup.FileOrder)
             {
-                builder.Append("  ").Append(fileName).AppendLine(":");
+                builder.Append("  ")
+                    .Append(fileName)
+                    .AppendLine(":");
 
                 foreach (var result in directoryGroup.Files[fileName])
                 {
@@ -423,7 +495,8 @@ public static class TokenObjectNotation
         }
         else
         {
-            builder.Append(' ', depth * 2).Append("-> ");
+            builder.Append(' ', depth * 2)
+                .Append("-> ");
         }
 
         builder
@@ -451,7 +524,9 @@ public static class TokenObjectNotation
     {
         if (!callersByCalleeId.TryGetValue(currentCalleeId, out var callerIds) || callerIds.Length == 0)
         {
-            chains.Add([.. currentPath.AsEnumerable().Reverse()]);
+            chains.Add([.. currentPath.AsEnumerable()
+                .Reverse()]);
+
             return;
         }
 
@@ -482,6 +557,7 @@ public static class TokenObjectNotation
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
         options.Converters.Add(new JsonStringEnumConverter());
+
         return options;
     }
 
@@ -508,6 +584,7 @@ public static class TokenObjectNotation
         }
 
         var parameterListStart = displayName.IndexOf('(');
+
         return parameterListStart < 0
             ? displayName
             : displayName[..parameterListStart].TrimEnd();
@@ -596,7 +673,7 @@ public static class TokenObjectNotation
                 .Append(FormatTags(memory.Tags));
             if (memory.IsStale)
             {
-                builder.Append(" hint=\"call delete_memory + attach_memory to refresh\"");
+                builder.Append(" hint=\"verify memory against current source before replacing or deleting\"");
             }
         }
     }
@@ -606,48 +683,10 @@ public static class TokenObjectNotation
             ? "[]"
             : $"[{string.Join(", ", tags)}]";
 
-    private static string SanitizeInlineText(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return string.Empty;
-        }
-
-        var builder = new StringBuilder(value.Length);
-        var previousWasWhitespace = false;
-
-        foreach (var character in value)
-        {
-            if (char.IsWhiteSpace(character))
-            {
-                if (previousWasWhitespace)
-                {
-                    continue;
-                }
-
-                builder.Append(' ');
-                previousWasWhitespace = true;
-                continue;
-            }
-
-            if (character == '"')
-            {
-                builder.Append('\\').Append('"');
-            }
-            else
-            {
-                builder.Append(character);
-            }
-
-            previousWasWhitespace = false;
-        }
-
-        return builder.ToString().Trim();
-    }
-
     private static string GetDirectoryPath(string relativeFilePath)
     {
         var directoryPath = Path.GetDirectoryName(relativeFilePath);
+
         return string.IsNullOrWhiteSpace(directoryPath)
             ? "./"
             : NormalizePathSeparators(directoryPath) + "/";
@@ -684,13 +723,20 @@ public static class TokenObjectNotation
         }
 
         builder.Append(']');
+
         return builder.ToString();
     }
 
     private sealed class DirectoryGroup
     {
-        public List<string> FileOrder { get; } = [];
-        public Dictionary<string, List<ToonNode>> Files { get; } = new(StringComparer.Ordinal);
+        public List<string> FileOrder
+        {
+            get;
+        } = [];
+        public Dictionary<string, List<ToonNode>> Files
+        {
+            get;
+        } = new(StringComparer.Ordinal);
     }
 
     private readonly record struct ToonNode(

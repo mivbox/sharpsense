@@ -56,7 +56,8 @@ public sealed class PersistenceServiceCollectionExtensionsTests
             serviceProvider,
             new FileSystem());
         var start = () => ensureDatabase.StartAsync(TestContext.Current.CancellationToken);
-        await start.Should().ThrowAsync<InvalidOperationException>().WithMessage("*has been preserved*");
+        await start.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*has been preserved*");
         (await ReadScalarInt(databasePath, "SELECT COUNT(*) FROM pragma_table_info('CodeNodes') WHERE name = 'RelativeFilePath';"))
             .Should().Be(1);
         (await ReadStrings(databasePath, "SELECT Content FROM MemoryNodes;"))
@@ -108,8 +109,7 @@ public sealed class PersistenceServiceCollectionExtensionsTests
         var dbContextFactory = serviceProvider.GetRequiredService<IDbContextFactory<SharpSenseDbContext>>();
         await using var dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.Current.CancellationToken);
 
-        return dbContext.GetService<IMigrationsAssembly>()
-            .Migrations.Keys
+        return dbContext.GetService<IMigrationsAssembly>().Migrations.Keys
             .OrderBy(static migrationId => migrationId, StringComparer.Ordinal)
             .ToArray();
     }

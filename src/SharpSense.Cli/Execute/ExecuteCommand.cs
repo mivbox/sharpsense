@@ -1,16 +1,16 @@
+using FluentResults;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using SharpSense.Application.CommandExecution.Abstractions;
+using SharpSense.Application.CommandExecution;
+using SharpSense.Application.CommandExecution.ExecuteProcess.Models;
 using SharpSense.Application.CommandExecution.Models;
-using SharpSense.Application.Shared.Options;
+using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.CommandExecution;
-using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
 using System.Text.Json;
-using Microsoft.Extensions.Options;
 
 namespace SharpSense.Cli.Execute;
 
@@ -21,14 +21,22 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
     public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "<command>")]
-        public string Command { get; init; } = string.Empty;
+        public string Command
+        {
+            get; init;
+        } = string.Empty;
 
         [CommandOption("-q|--query <QUERY>")]
-        public string? Query { get; init; }
-
+        public string? Query
+        {
+            get; init;
+        }
 
         [CommandOption("--toon")]
-        public bool UseToonFormat { get; init; }
+        public bool UseToonFormat
+        {
+            get; init;
+        }
 
         public override ValidationResult Validate()
             => string.IsNullOrWhiteSpace(Command)
@@ -41,7 +49,8 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
         IServiceCollection services)
     {
         services.AddSelectedWorkspace(settings);
-        services.AddCommandExecutionInfrastructure();
+        services.AddCommandExecution()
+            .AddCommandExecutionInfrastructure();
     }
 
     protected override async Task<int> Execute(
@@ -51,15 +60,8 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
         CancellationToken ct)
     {
         await using var scope = host.Services.CreateAsyncScope();
-        var processRunner = scope.ServiceProvider.GetRequiredService<ICommandProcessRunner>();
-        var executeLogIndexFactory = scope.ServiceProvider.GetRequiredService<IExecuteLogIndexFactory>();
-        var cliOptions = scope.ServiceProvider.GetRequiredService<IOptions<SharpSenseCliOptions>>();
-        var result = await CommandExecutionReducer.Execute(
-            new CommandExecutionRequest(settings.Command, settings.Query),
-            processRunner,
-            executeLogIndexFactory,
-            cliOptions.Value.RepositoryRoot,
-            ct);
+        var handler = scope.ServiceProvider.GetRequiredService<ICommandHandler<ExecuteProcessCommand, Result<CommandExecutionResult>>>();
+        var result = await handler.Handle(new ExecuteProcessCommand(settings.Command, settings.Query), ct);
 
         if (result.IsFailed)
         {
@@ -76,6 +78,7 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
                             errorMessage
                         },
                         TokenObjectNotation.JsonOptions));
+
             return 1;
         }
 
@@ -84,6 +87,7 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
             settings.UseToonFormat
                 ? TokenObjectNotation.SerializeCommandExecutionResult(result.Value)
                 : JsonSerializer.Serialize(result.Value, TokenObjectNotation.JsonOptions));
+
         return result.Value.ExitCode;
     }
 

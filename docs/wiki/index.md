@@ -23,6 +23,8 @@ Start with the [project README](../../README.md) for installation and prerequisi
 
 ## Architecture
 
+- [.NET build, formatting, visibility, and test conventions](architecture/dotnet-conventions.md)
+
 | Area | Documentation |
 | --- | --- |
 | Application boundaries | [Vertical slices](architecture/vertical-slice-application.md), [commands and queries](architecture/cqrs-pipeline.md), [host composition](architecture/host-composition.md) |

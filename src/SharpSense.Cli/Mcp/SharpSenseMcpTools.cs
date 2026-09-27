@@ -1,13 +1,10 @@
-using System.ComponentModel;
-using System.Diagnostics.CodeAnalysis;
 using FluentResults;
 using ModelContextProtocol.Server;
-using Microsoft.Extensions.Options;
-using SharpSense.Application.CommandExecution.Abstractions;
+using SharpSense.Application.CommandExecution.ExecuteProcess.Models;
 using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Context360.GetNodeContext.Models;
 using SharpSense.Application.Context360.Models;
-using SharpSense.Application.GraphStats.GetGraphStats;
+using SharpSense.Application.GraphStats.GetGraphStats.Models;
 using SharpSense.Application.GraphStats.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.Models;
@@ -17,18 +14,19 @@ using SharpSense.Application.Inheritors.GetInheritors.Models;
 using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Memory.AttachMemory.Models;
 using SharpSense.Application.Memory.DeleteMemory.Models;
-using SharpSense.Application.Memory.GetMemory.Models;
 using SharpSense.Application.Memory.GetMemories.Models;
+using SharpSense.Application.Memory.GetMemory.Models;
 using SharpSense.Application.Memory.GetNodeMemories.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Application.Shared.Models;
-using SharpSense.Application.Shared.Options;
 using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Shared;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
+using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 
 namespace SharpSense.Cli.Mcp;
 
@@ -57,9 +55,7 @@ internal sealed class SharpSenseMcpTools
 
     [McpServerTool, Description("Run a local command, index its streamed output with a transient full-text search index, and return compact reduced context blocks for the supplied query.")]
     public static async Task<string> ctx_execute(
-        ICommandProcessRunner processRunner,
-        IExecuteLogIndexFactory executeLogIndexFactory,
-        IOptions<SharpSenseCliOptions> cliOptions,
+        ICommandHandler<ExecuteProcessCommand, Result<CommandExecutionResult>> handler,
         [Description("The OS command to run without a shell. Quote the full string when it contains spaces.")] string command,
         [Description("Optional FTS query used to locate relevant output lines. When omitted or unmatched, only a compact summary is returned.")] string? query = null,
         CancellationToken ct = default)
@@ -70,16 +66,12 @@ internal sealed class SharpSenseMcpTools
 
         try
         {
-            var result = await CommandExecutionReducer.Execute(
-                new CommandExecutionRequest(command, query),
-                processRunner,
-                executeLogIndexFactory,
-                cliOptions.Value.RepositoryRoot,
-                ct);
+            var result = await handler.Handle(new ExecuteProcessCommand(command, query), ct);
 
             if (result.IsFailed)
             {
                 activity.AddTag("execution.success", false);
+
                 return TokenObjectNotation.SerializeCommandExecutionFailure(
                     command,
                     GetErrorMessage(result.Errors));
@@ -90,6 +82,7 @@ internal sealed class SharpSenseMcpTools
             activity.AddTag("execution.matched_line_count", result.Value.MatchedLineCount);
             activity.AddTag("execution.block_count", result.Value.BlockCount);
             activity.AddTag("execution.truncated", result.Value.Truncated);
+
             return TokenObjectNotation.SerializeCommandExecutionResult(result.Value);
         }
         catch (Exception ex)
@@ -118,6 +111,7 @@ internal sealed class SharpSenseMcpTools
                 ct);
 
             activity.AddTag("search.result.count", result.Hits.Length);
+
             return TokenObjectNotation.SerializeSemanticSearch(result.Hits);
         }
         catch (Exception ex)
@@ -148,6 +142,7 @@ internal sealed class SharpSenseMcpTools
                 ct);
 
             activity.AddTag("memory.success", result.IsSuccess);
+
             return result.IsSuccess
                 ? $"attached memory to node {nodeId} (intent={intent})"
                 : $"attach_memory failed: {GetErrorMessage(result.Errors)}";
@@ -173,6 +168,7 @@ internal sealed class SharpSenseMcpTools
         {
             var result = await handler.Handle(new DeleteMemoryCommand(memoryId), ct);
             activity.AddTag("memory.success", result.IsSuccess);
+
             return result.IsSuccess
                 ? $"deleted memory {memoryId}"
                 : $"delete_memory failed: {GetErrorMessage(result.Errors)}";
@@ -200,11 +196,13 @@ internal sealed class SharpSenseMcpTools
             if (result.IsFailed)
             {
                 activity.AddTag("memory.success", false);
+
                 return $"get_memory failed: {GetErrorMessage(result.Errors)}";
             }
 
             activity.AddTag("memory.success", true);
             activity.AddTag("memory.stale", result.Value!.IsStale);
+
             return TokenObjectNotation.SerializeMemory(result.Value);
         }
         catch (Exception ex)
@@ -230,11 +228,13 @@ internal sealed class SharpSenseMcpTools
             if (result.IsFailed)
             {
                 activity.AddTag("memory.success", false);
+
                 return $"get_memories failed: {GetErrorMessage(result.Errors)}";
             }
 
             activity.AddTag("memory.success", true);
             activity.AddTag("memory.returned", result.Value!.Count);
+
             return TokenObjectNotation.SerializeMemories(result.Value);
         }
         catch (Exception ex)
@@ -274,6 +274,7 @@ internal sealed class SharpSenseMcpTools
             activity.AddTag("context.implementers.count", result.Implementers.Length);
             activity.AddTag("context.inherits.count", result.Inherits.Length);
             activity.AddTag("context.semantic.count", semanticContext.Length);
+
             return TokenObjectNotation.SerializeContext360(result, semanticContext);
         }
         catch (Exception ex)
@@ -314,15 +315,15 @@ internal sealed class SharpSenseMcpTools
             switch (direction)
             {
                 case TraceDirection.Caller:
-                {
-                    impactResult = await impactHandler.Handle(
-                        new ImpactAnalysisQuery(nodeId),
-                        ct);
+                    {
+                        impactResult = await impactHandler.Handle(
+                            new ImpactAnalysisQuery(nodeId),
+                            ct);
 
-                    activity.AddTag("trace.edge.count", impactResult.Dependencies.Length);
-                    nodes = MapImpactedNodes(impactResult.ImpactedNodes);
-                    break;
-                }
+                        activity.AddTag("trace.edge.count", impactResult.Dependencies.Length);
+                        nodes = MapImpactedNodes(impactResult.ImpactedNodes);
+                        break;
+                    }
                 case TraceDirection.Callee:
                     nodes = await traceHandler.Handle(
                         new TraceQuery(nodeId),
@@ -341,6 +342,7 @@ internal sealed class SharpSenseMcpTools
 
             activity.AddTag("trace.node.count", nodes.Length);
             activity.AddTag("trace.semantic.count", memoriesByNodeId.Values.Sum(static memories => memories.Length));
+
             return direction switch
             {
                 TraceDirection.Caller => TokenObjectNotation.SerializeCallerTrace(rootNode, nodes, impactResult?.Dependencies ?? [], memoriesByNodeId),
@@ -354,7 +356,6 @@ internal sealed class SharpSenseMcpTools
             throw;
         }
     }
-
 
     [McpServerTool, Description("Find direct derived classes or interface implementers for a persisted node ID.")]
     public static async Task<string> get_inheritors(
@@ -373,6 +374,7 @@ internal sealed class SharpSenseMcpTools
                 ct);
 
             activity.AddTag("inheritors.result.count", result.Length);
+
             return ToonOutputFormatter.Format(result);
         }
         catch (Exception ex)

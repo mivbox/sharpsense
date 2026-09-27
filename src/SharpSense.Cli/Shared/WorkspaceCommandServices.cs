@@ -10,13 +10,11 @@ internal static class WorkspaceCommandServices
     {
         var workingDirectory = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
         services.AddRepositoryWorkspace(workingDirectory, settings.Workspace);
-        services.AddSharpSenseConfiguration();
-        services.AddOptions<SharpSenseCliOptions>()
+        services.AddOptions<WorkspaceExecutionOptions>()
             .Configure<WorkspaceSelection>((options, selection) =>
             {
                 options.RepositoryRoot = selection.Workspace.RootPath;
                 options.WorkspaceId = selection.Definition.Id.ToString();
-                options.TargetPath = selection.Workspace.RootPath;
                 options.WorkspaceSources = selection.Definition.Sources;
             });
 

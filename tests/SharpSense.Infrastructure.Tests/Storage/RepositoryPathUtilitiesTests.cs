@@ -102,11 +102,13 @@ public sealed class RepositoryWorkspaceTests
 
     private static MockFileSystem CreateRepositoryFileSystem()
     {
-        return new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/.git/HEAD"] = new("ref: refs/heads/main"),
-            ["/repo/src/SharpSense.Domain/KnowledgeGraph/Nodes/ProjectNode.cs"] = new("namespace SharpSense.Domain;")
-        }, "/repo");
+        return new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/.git/HEAD"] = new("ref: refs/heads/main"),
+                ["/repo/src/SharpSense.Domain/KnowledgeGraph/Nodes/ProjectNode.cs"] = new("namespace SharpSense.Domain;")
+            },
+            "/repo");
     }
 
     private static IRepositoryWorkspace CreateWorkspace(

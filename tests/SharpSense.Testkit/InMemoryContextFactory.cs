@@ -9,44 +9,44 @@ public sealed record InMemoryContextFactoryOptions(
     bool UseMigrations = false,
     bool LoadVectorExtension = false);
 
-public sealed class InMemoryContextFactory : IDisposable, IAsyncDisposable
+public sealed class InMemoryContextFactory<TContext> : IDisposable, IAsyncDisposable where TContext : DbContext
 {
     private readonly InMemoryContextFactoryOptions _options;
+    private readonly Func<DbContextOptions<TContext>, TContext> _createContext;
     private SqliteConnection? _dbConnection;
 
-    public InMemoryContextFactory(InMemoryContextFactoryOptions? options = null)
+    public InMemoryContextFactory(Func<DbContextOptions<TContext>, TContext> createContext, InMemoryContextFactoryOptions? options = null)
     {
+        _createContext = createContext;
         _options = options ?? new InMemoryContextFactoryOptions();
     }
 
-    public TContext GetContext<TContext>(
+    public TContext GetContext(
         Action<string>? writeLine = null)
-        where TContext : DbContext
     {
-        var context = CreateContext<TContext>(writeLine);
+        var context = CreateContext(writeLine);
         InitializeDatabase(context);
+
         return context;
     }
 
-    public async Task<TContext> GetContext<TContext>(
+    public async Task<TContext> GetContext(
         CancellationToken ct,
         Action<string>? writeLine = null)
-        where TContext : DbContext
     {
-        var context = CreateContext<TContext>(writeLine);
+        var context = CreateContext(writeLine);
         await InitializeDatabase(context, ct);
+
         return context;
     }
 
-    public IDbContextFactory<TContext> CreateDbContextFactory<TContext>(
+    public IDbContextFactory<TContext> CreateDbContextFactory(
         Action<string>? writeLine = null)
-        where TContext : DbContext
-        => new SharedInMemoryDbContextFactory<TContext>(this, writeLine);
+        => new SharedInMemoryDbContextFactory(this, writeLine);
 
-    public void ConfigureServices<TContext>(
+    public void ConfigureServices(
         IServiceCollection services,
         Action<string>? writeLine = null)
-        where TContext : DbContext
     {
         ArgumentNullException.ThrowIfNull(services);
 
@@ -55,7 +55,7 @@ public sealed class InMemoryContextFactory : IDisposable, IAsyncDisposable
         services.RemoveAll<DbContextOptions<TContext>>();
         services.RemoveAll<IDbContextFactory<TContext>>();
 
-        var dbContextFactory = CreateDbContextFactory<TContext>(writeLine);
+        var dbContextFactory = CreateDbContextFactory(writeLine);
         services.AddSingleton(dbContextFactory);
         services.AddScoped(static serviceProvider => serviceProvider
             .GetRequiredService<IDbContextFactory<TContext>>()
@@ -69,8 +69,12 @@ public sealed class InMemoryContextFactory : IDisposable, IAsyncDisposable
         var connection = new SqliteConnection("Filename=:memory:");
         connection.CreateFunction("newid", Guid.NewGuid);
         connection.CreateFunction("newsequentialid", Guid.NewGuid);
-        connection.CreateFunction("getDate", () => TimeProvider.System.GetUtcNow().DateTime);
-        connection.CreateFunction("getUtcDate", () => TimeProvider.System.GetUtcNow().DateTime);
+        connection.CreateFunction(
+            "getDate",
+            () => TimeProvider.System.GetUtcNow().DateTime);
+        connection.CreateFunction(
+            "getUtcDate",
+            () => TimeProvider.System.GetUtcNow().DateTime);
         connection.CreateFunction("sysdatetimeoffset", () => TimeProvider.System.GetUtcNow());
         connection.Open();
 
@@ -84,25 +88,20 @@ public sealed class InMemoryContextFactory : IDisposable, IAsyncDisposable
         return connection;
     }
 
-    private TContext CreateContext<TContext>(Action<string>? writeLine)
-        where TContext : DbContext
+    private TContext CreateContext(Action<string>? writeLine)
     {
         var optionsBuilder = new DbContextOptionsBuilder<TContext>();
-        ConfigureOptions<TContext>(optionsBuilder, writeLine);
+        ConfigureOptions(optionsBuilder, writeLine);
 
-        return (TContext?)Activator.CreateInstance(typeof(TContext), optionsBuilder.Options)
-               ?? throw new InvalidOperationException($"Unable to create DbContext of type {typeof(TContext).FullName}.");
+        return _createContext(optionsBuilder.Options);
     }
 
-    private void ConfigureOptions<TContext>(
+    private void ConfigureOptions(
         DbContextOptionsBuilder optionsBuilder,
         Action<string>? writeLine)
-        where TContext : DbContext
     {
         optionsBuilder
-            .UseSqlite(
-                GetSqliteConnection(),
-                sqlite => sqlite.MigrationsAssembly(typeof(TContext).Assembly.FullName))
+            .UseSqlite(GetSqliteConnection())
             .EnableDetailedErrors()
             .EnableSensitiveDataLogging();
 
@@ -117,6 +116,7 @@ public sealed class InMemoryContextFactory : IDisposable, IAsyncDisposable
         if (_options.UseMigrations)
         {
             context.Database.Migrate();
+
             return;
         }
 
@@ -130,6 +130,7 @@ public sealed class InMemoryContextFactory : IDisposable, IAsyncDisposable
         if (_options.UseMigrations)
         {
             await context.Database.MigrateAsync(ct);
+
             return;
         }
 
@@ -152,16 +153,15 @@ public sealed class InMemoryContextFactory : IDisposable, IAsyncDisposable
         GC.SuppressFinalize(this);
     }
 
-    private sealed class SharedInMemoryDbContextFactory<TContext>(
-        InMemoryContextFactory inMemoryContextFactory,
+    private sealed class SharedInMemoryDbContextFactory(
+        InMemoryContextFactory<TContext> inMemoryContextFactory,
         Action<string>? writeLine)
         : IDbContextFactory<TContext>
-        where TContext : DbContext
     {
         public TContext CreateDbContext()
-            => inMemoryContextFactory.GetContext<TContext>(writeLine);
+            => inMemoryContextFactory.GetContext(writeLine);
 
         public Task<TContext> CreateDbContextAsync(CancellationToken cancellationToken = default)
-            => inMemoryContextFactory.GetContext<TContext>(cancellationToken, writeLine);
+            => inMemoryContextFactory.GetContext(cancellationToken, writeLine);
     }
 }

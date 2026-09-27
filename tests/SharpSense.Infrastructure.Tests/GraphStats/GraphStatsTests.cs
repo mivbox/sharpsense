@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using SharpSense.Application.GraphStats;
-using SharpSense.Application.GraphStats.GetGraphStats;
+using SharpSense.Application.GraphStats.GetGraphStats.Models;
 using SharpSense.Application.GraphStats.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Infrastructure.GraphStats;
@@ -17,7 +17,7 @@ namespace SharpSense.Infrastructure.Tests.GraphStats;
 public sealed class GraphStatsTests
 {
     [Fact]
-    public async Task MissingDatabase_DiagnosesWithoutCreatingDatabaseOrRequiringPersistenceServices()
+    public async Task WhenDatabaseIsMissing_ThenDiagnosesWithoutCreatingDatabaseOrRequiringPersistenceServices()
     {
         using var fixture = new Fixture();
         var services = new ServiceCollection();
@@ -42,7 +42,7 @@ public sealed class GraphStatsTests
     [InlineData(".tsx", "TSX")]
     [InlineData(".mdown", "Markdown")]
     [InlineData(".mkd", "Markdown")]
-    public async Task CurrentDatabase_ReturnsCountsLanguageCoverageAndDurableHistory(string extension, string language)
+    public async Task WhenCurrentDatabase_ThenReturnsCountsLanguageCoverageAndDurableHistory(string extension, string language)
     {
         using var fixture = new Fixture();
         await fixture.Initialize();
@@ -54,7 +54,7 @@ public sealed class GraphStatsTests
                 TestContext.Current.CancellationToken);
         }
         var success = Run("succeeded", 1);
-        await fixture.Store.RecordAsync(success, TestContext.Current.CancellationToken);
+        await fixture.Store.Record(success, TestContext.Current.CancellationToken);
 
         var result = await fixture.Read();
 
@@ -73,7 +73,10 @@ public sealed class GraphStatsTests
             new LanguageStats(language, 1, 1, 0),
             new LanguageStats("Other", 1, 0, 0)
         });
-        result.EdgeTypes.Should().BeEquivalentTo(new[] { new EdgeTypeStats("Import", 1) });
+        result.EdgeTypes.Should().BeEquivalentTo(new[]
+        {
+            new EdgeTypeStats("Import", 1)
+        });
         result.LastSuccessfulIndex!.CompletedAt.Should().Be(success.CompletedAt);
         result.LastAttempt!.Outcome.Should().Be("succeeded");
         result.Diagnostics.Should().BeEmpty();
@@ -82,23 +85,25 @@ public sealed class GraphStatsTests
     }
 
     [Fact]
-    public async Task FailedAndCancelledAttempts_PreserveLastSuccessAndAuthoredMemory()
+    public async Task WhenFailedAndCancelledAttempts_ThenPreserveLastSuccessAndAuthoredMemory()
     {
         using var fixture = new Fixture();
         await fixture.Initialize();
         await fixture.Seed();
         var success = Run("succeeded", 1);
-        await fixture.Store.RecordAsync(success, TestContext.Current.CancellationToken);
-        await fixture.Store.RecordAsync(Run("failed", 2) with
-        {
-            Diagnostics = [new("parse_failed", "error", "Invalid source syntax.", "Widget.tsx", "Fix source syntax and retry.")]
-        }, TestContext.Current.CancellationToken);
+        await fixture.Store.Record(success, TestContext.Current.CancellationToken);
+        await fixture.Store.Record(
+            Run("failed", 2) with
+            {
+                Diagnostics = [new("parse_failed", "error", "Invalid source syntax.", "Widget.tsx", "Fix source syntax and retry.")]
+            },
+            TestContext.Current.CancellationToken);
         var failed = await fixture.Read();
         failed.LastAttempt!.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.FilePath == "Widget.tsx");
         failed.LastSuccessfulIndex!.CompletedAt.Should().Be(success.CompletedAt);
 
-        await fixture.Store.RecordAsync(Run("cancelled", 3), TestContext.Current.CancellationToken);
-        await fixture.Store.RecordAsync(Run("failed", 2), TestContext.Current.CancellationToken);
+        await fixture.Store.Record(Run("cancelled", 3), TestContext.Current.CancellationToken);
+        await fixture.Store.Record(Run("failed", 2), TestContext.Current.CancellationToken);
         var cancelled = await fixture.Read();
 
         cancelled.LastAttempt!.Outcome.Should().Be("cancelled");
@@ -109,36 +114,41 @@ public sealed class GraphStatsTests
     }
 
     [Fact]
-    public async Task IndexHistoryUpdates_PreserveTransactionalGraphRevision()
+    public async Task WhenIndexHistoryUpdates_ThenPreserveTransactionalGraphRevision()
     {
         var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
         await fixture.Initialize();
-        await fixture.Store.RecordAsync(Run("succeeded", 1), ct);
+        await fixture.Store.Record(Run("succeeded", 1), ct);
         await fixture.Execute("UPDATE IndexRunState SET GraphRevision = 'graph-commit-revision';");
 
-        await fixture.Store.RecordAsync(Run("failed", 2), ct);
-        await fixture.Store.RecordAsync(Run("cancelled", 3), ct);
-        await fixture.Store.RecordAsync(Run("succeeded", 4), ct);
+        await fixture.Store.Record(Run("failed", 2), ct);
+        await fixture.Store.Record(Run("cancelled", 3), ct);
+        await fixture.Store.Record(Run("succeeded", 4), ct);
 
         await using var context = fixture.CreateDbContext();
-        (await context.IndexRunState.Select(state => state.GraphRevision).SingleAsync(ct))
+        (await context.IndexRunState.Select(state => state.GraphRevision)
+            .SingleAsync(ct))
             .Should().Be("graph-commit-revision");
     }
 
     [Fact]
-    public async Task HistoryLimits_BoundDiagnosticCountMessagesAndPhaseCount()
+    public async Task WhenHistoryLimits_ThenBoundDiagnosticCountMessagesAndPhaseCount()
     {
         using var fixture = new Fixture();
         await fixture.Initialize();
-        await fixture.Store.RecordAsync(Run("failed", 1) with
-        {
-            Scope = new string('x', 5000),
-            Diagnostics = Enumerable.Range(0, 100)
-                .Select(index => new IndexDiagnostic("parse_failed", "error", new string('語', 5000), new string('p', 2000), new string('s', 2000)))
-                .ToArray(),
-            Phases = Enumerable.Range(0, 50).Select(index => new IndexPhaseTiming(new string('n', 500), index)).ToArray()
-        }, TestContext.Current.CancellationToken);
+        await fixture.Store.Record(
+            Run("failed", 1) with
+            {
+                Scope = new string('x', 5000),
+                Diagnostics = Enumerable.Range(0, 100)
+                    .Select(index => new IndexDiagnostic("parse_failed", "error", new string('語', 5000), new string('p', 2000), new string('s', 2000)))
+                    .ToArray(),
+                Phases = Enumerable.Range(0, 50)
+                    .Select(index => new IndexPhaseTiming(new string('n', 500), index))
+                    .ToArray()
+            },
+            TestContext.Current.CancellationToken);
 
         var result = await fixture.Read();
 
@@ -154,18 +164,26 @@ public sealed class GraphStatsTests
     }
 
     [Fact]
-    public async Task HistoryLimits_PreserveFatalErrorAfterManyExtractionWarnings()
+    public async Task WhenHistoryLimits_ThenPreserveFatalErrorAfterManyExtractionWarnings()
     {
         using var fixture = new Fixture();
         await fixture.Initialize();
         var warnings = Enumerable.Range(0, 50)
-            .Select(index => new IndexDiagnostic("extraction-diagnostic", "warning", $"Warning {index}"));
-        await fixture.Store.RecordAsync(Run("failed", 1) with
-        {
-            Diagnostics = warnings.Append(new IndexDiagnostic(
-                "index-failed", "error", "Embedding generation failed.", Suggestion: "Check the model assets and retry."))
-                .ToArray()
-        }, TestContext.Current.CancellationToken);
+            .Select(index => new IndexDiagnostic(
+                "extraction-diagnostic",
+                "warning",
+                $"Warning {index}"));
+        await fixture.Store.Record(
+            Run("failed", 1) with
+            {
+                Diagnostics = warnings.Append(new IndexDiagnostic(
+                    "index-failed",
+                    "error",
+                    "Embedding generation failed.",
+                    Suggestion: "Check the model assets and retry."))
+                    .ToArray()
+            },
+            TestContext.Current.CancellationToken);
 
         var result = await fixture.Read();
 
@@ -174,7 +192,7 @@ public sealed class GraphStatsTests
     }
 
     [Fact]
-    public async Task LegacyEnum_DiagnosesBeforeEnumMaterializationAndPreservesDatabase()
+    public async Task WhenLegacyEnumIsDiagnosedBeforeMaterialization_ThenPreservesDatabase()
     {
         using var fixture = new Fixture();
         await fixture.Initialize();
@@ -192,7 +210,7 @@ public sealed class GraphStatsTests
     }
 
     [Fact]
-    public async Task UnknownMigration_DiagnosesWithoutApplyingOrResettingSchema()
+    public async Task WhenMigrationIsUnknown_ThenDiagnosesWithoutApplyingOrResettingSchema()
     {
         using var fixture = new Fixture();
         await fixture.Initialize();
@@ -208,7 +226,7 @@ public sealed class GraphStatsTests
     }
 
     [Fact]
-    public async Task PreviousSchema_ReturnsCountsAndUpgradeGuidanceWithoutMigrating()
+    public async Task WhenPreviousSchema_ThenReturnsCountsAndUpgradeGuidanceWithoutMigrating()
     {
         using var fixture = new Fixture();
         await fixture.Initialize("20260923000200_MemoryStableNodeIdentity");
@@ -232,15 +250,17 @@ public sealed class GraphStatsTests
     [Theory]
     [InlineData("{")]
     [InlineData("{\"startedAt\":\"2026-09-24T00:00:00Z\",\"completedAt\":\"2026-09-24T00:00:01Z\",\"durationMs\":1000,\"outcome\":\"failed\",\"kind\":\"full\",\"scope\":\"SharpSense.sln\",\"diagnostics\":[null]}")]
-    public async Task InvalidHistory_ReturnsGraphCountsAndWarning(string json)
+    public async Task WhenInvalidHistory_ThenReturnsGraphCountsAndWarning(string json)
     {
         using var fixture = new Fixture();
         await fixture.Initialize();
         await fixture.Seed();
-        await fixture.Store.RecordAsync(Run("succeeded", 1), TestContext.Current.CancellationToken);
+        await fixture.Store.Record(Run("succeeded", 1), TestContext.Current.CancellationToken);
         await using (var db = fixture.CreateDbContext())
         {
-            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE IndexRunState SET LastAttemptJson = {json};", TestContext.Current.CancellationToken);
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE IndexRunState SET LastAttemptJson = {json};",
+                TestContext.Current.CancellationToken);
         }
 
         var result = await fixture.Read();
@@ -252,7 +272,7 @@ public sealed class GraphStatsTests
     }
 
     [Fact]
-    public async Task InvalidDatabase_ReturnsReadableDiagnosticWithoutReplacingFile()
+    public async Task WhenInvalidDatabase_ThenReturnsReadableDiagnosticWithoutReplacingFile()
     {
         using var fixture = new Fixture();
         await File.WriteAllTextAsync(fixture.Workspace.DatabasePath, "Not a SQLite database", TestContext.Current.CancellationToken);
@@ -266,36 +286,55 @@ public sealed class GraphStatsTests
     private static IndexRunSummary Run(string outcome, int minute)
     {
         var start = new DateTimeOffset(2026, 9, 24, 0, minute, 0, TimeSpan.Zero);
-        return new(start, start.AddSeconds(2), 2000, outcome, "full", "SharpSense.sln",
-            2, 1, 1, [new("extraction", 1000), new("embeddings", 500), new("persistence", 500)], []);
+
+        return new(
+            start,
+            start.AddSeconds(2),
+            2000,
+            outcome,
+            "full",
+            "SharpSense.sln",
+            2,
+            1,
+            1,
+            [new("extraction", 1000), new("embeddings", 500), new("persistence", 500)],
+            []);
     }
 
     private sealed class Fixture : IDbContextFactory<SharpSenseDbContext>, IDisposable
     {
-        public DirectoryInfo Directory { get; } = System.IO.Directory.CreateTempSubdirectory("sharpsense-graph-stats-");
+        public DirectoryInfo Directory
+        {
+            get;
+        } = System.IO.Directory.CreateTempSubdirectory("sharpsense-graph-stats-");
 
-        public IRepositoryWorkspace Workspace { get; }
+        public IRepositoryWorkspace Workspace
+        {
+            get;
+        }
 
         public IndexRunStore Store => new(this);
 
         public Fixture()
         {
             var workspace = new Mock<IRepositoryWorkspace>();
-            workspace.SetupGet(value => value.RootPath).Returns(Directory.FullName);
-            workspace.SetupGet(value => value.DatabasePath).Returns(Path.Combine(Directory.FullName, "graph.db"));
+            workspace.SetupGet(value => value.RootPath)
+                .Returns(Directory.FullName);
+            workspace.SetupGet(value => value.DatabasePath)
+                .Returns(Path.Combine(Directory.FullName, "graph.db"));
             Workspace = workspace.Object;
         }
 
         public SharpSenseDbContext CreateDbContext()
             => new(new DbContextOptionsBuilder<SharpSenseDbContext>()
                 .UseSqlite($"Data Source={Workspace.DatabasePath};Pooling=False")
-                .AddInterceptors(new SqlitePragmaInterceptor())
-                .Options);
+                .AddInterceptors(new SqlitePragmaInterceptor()).Options);
 
         public async Task Initialize(string? migration = null)
         {
             await using var db = CreateDbContext();
-            await db.GetService<IMigrator>().MigrateAsync(migration, TestContext.Current.CancellationToken);
+            await db.GetService<IMigrator>()
+                .MigrateAsync(migration, TestContext.Current.CancellationToken);
         }
 
         public async Task Execute(string sql)
@@ -324,7 +363,7 @@ public sealed class GraphStatsTests
                 'content-hash', '[]', 'Invariant', NULL, '2026-09-24 00:00:00+00:00');
             """);
 
-        public Task<GraphStatsSnapshot> Read() => new GraphStatsReader(Workspace).ReadAsync(TestContext.Current.CancellationToken);
+        public Task<GraphStatsSnapshot> Read() => new GraphStatsReader(Workspace).Read(TestContext.Current.CancellationToken);
 
         public void Dispose() => Directory.Delete(recursive: true);
     }

@@ -18,7 +18,7 @@ public sealed class SqliteKeywordCandidateProviderTests
     {
         var provider = new SqliteKeywordCandidateProvider();
 
-        var matchQuery = await provider.GetMatchQueryAsync(
+        var matchQuery = await provider.GetMatchQuery(
             new HybridSearchQuery("Message Get", Limit: 10),
             TestContext.Current.CancellationToken);
 
@@ -30,7 +30,7 @@ public sealed class SqliteKeywordCandidateProviderTests
     {
         var provider = new SqliteKeywordCandidateProvider();
 
-        var matchQuery = await provider.GetMatchQueryAsync(
+        var matchQuery = await provider.GetMatchQuery(
             new HybridSearchQuery("a", Limit: 10),
             TestContext.Current.CancellationToken);
 
@@ -42,7 +42,7 @@ public sealed class SqliteKeywordCandidateProviderTests
     {
         var provider = new SqliteKeywordCandidateProvider();
 
-        var matchQuery = await provider.GetMatchQueryAsync(
+        var matchQuery = await provider.GetMatchQuery(
             new HybridSearchQuery("...", Limit: 10),
             TestContext.Current.CancellationToken);
 
@@ -54,7 +54,7 @@ public sealed class SqliteKeywordCandidateProviderTests
     {
         var provider = new SqliteKeywordCandidateProvider();
 
-        var matchQuery = await provider.GetMatchQueryAsync(
+        var matchQuery = await provider.GetMatchQuery(
             new HybridSearchQuery("FullyQualifiedName:Message", Limit: 10),
             TestContext.Current.CancellationToken);
 
@@ -64,17 +64,19 @@ public sealed class SqliteKeywordCandidateProviderTests
     [Fact]
     public async Task WhenMatchQueryIsExpanded_ThenHybridSearcherFindsThePrefixHit()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
-            UseMigrations: true,
-            LoadVectorExtension: true));
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(TestContext.Current.CancellationToken);
-        await KnowledgeGraphFixture.SeedAsync(context);
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
+                UseMigrations: true,
+                LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken);
+        await KnowledgeGraphFixture.Seed(context);
 
         var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
         embeddings.Setup(candidate => candidate.Generate("Mess", TestContext.Current.CancellationToken))
             .ReturnsAsync(new TextEmbedding("Mess", [1f, 0f]));
         var searcher = new HybridSearcher(
-            inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
+            inMemoryFactory.CreateDbContextFactory(),
             embeddings.Object,
             new SqliteKeywordCandidateProvider());
 
@@ -93,13 +95,15 @@ public sealed class SqliteKeywordCandidateProviderTests
     [InlineData("What's a message?")]
     public async Task WhenNaturalTextContainsPunctuation_ThenSearchDoesNotInterpretItAsFtsSyntax(string searchText)
     {
-        await using var factory = new InMemoryContextFactory(new(UseMigrations: true, LoadVectorExtension: true));
-        await using var context = await factory.GetContext<SharpSenseDbContext>(TestContext.Current.CancellationToken);
-        await KnowledgeGraphFixture.SeedAsync(context);
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var context = await factory.GetContext(TestContext.Current.CancellationToken);
+        await KnowledgeGraphFixture.Seed(context);
         var embeddings = new Mock<IEmbeddingGenerator>();
         embeddings.Setup(generator => generator.Generate(searchText, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new TextEmbedding(searchText, [1f, 0f]));
-        var searcher = new HybridSearcher(factory.CreateDbContextFactory<SharpSenseDbContext>(), embeddings.Object,
+        var searcher = new HybridSearcher(
+            factory.CreateDbContextFactory(),
+            embeddings.Object,
             new SqliteKeywordCandidateProvider());
 
         var result = await searcher.Search(new HybridSearchQuery(searchText), TestContext.Current.CancellationToken);
@@ -121,7 +125,7 @@ public sealed class SqliteKeywordCandidateProviderTests
     [InlineData("Message*")]
     public async Task WhenUsingExplicitFtsSyntax_ThenQueryRemainsUnchanged(string searchText)
     {
-        var query = await new SqliteKeywordCandidateProvider().GetMatchQueryAsync(new(searchText), TestContext.Current.CancellationToken);
+        var query = await new SqliteKeywordCandidateProvider().GetMatchQuery(new(searchText), TestContext.Current.CancellationToken);
         query.Should().Be(searchText);
     }
 
@@ -142,7 +146,7 @@ public sealed class SqliteKeywordCandidateProviderTests
             """;
         await command.ExecuteNonQueryAsync(ct);
 
-        var query = await new SqliteKeywordCandidateProvider().GetMatchQueryAsync(new(searchText), ct);
+        var query = await new SqliteKeywordCandidateProvider().GetMatchQuery(new(searchText), ct);
         command.CommandText = "SELECT COUNT(*) FROM SearchFixture WHERE SearchFixture MATCH $query";
         command.Parameters.AddWithValue("$query", query);
 

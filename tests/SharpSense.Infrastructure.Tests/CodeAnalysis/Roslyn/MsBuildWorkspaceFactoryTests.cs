@@ -1,10 +1,11 @@
-using System.Diagnostics;
-using System.IO.Abstractions;
-using System.Text.Json.Nodes;
+using AwesomeAssertions;
 using Microsoft.CodeAnalysis;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 using SharpSense.Infrastructure.Storage;
+using System.Diagnostics;
+using System.IO.Abstractions;
+using System.Text.Json.Nodes;
 
 namespace SharpSense.Infrastructure.Tests.CodeAnalysis.Roslyn;
 
@@ -21,13 +22,12 @@ public sealed class MsBuildWorkspaceFactoryTests
 
         var result = await loader.Load(fixture.ProjectPath, TestContext.Current.CancellationToken);
 
-        Assert.True(result.IsSuccess, string.Join("; ", result.Errors.Select(error => error.Message)));
-        Assert.Contains(result.Value.Diagnostics, diagnostic =>
+        result.IsSuccess.Should().BeTrue(string.Join("; ", result.Errors.Select(error => error.Message)));
+        result.Value.Diagnostics.Should().Contain(diagnostic =>
             diagnostic.Contains("MSBuild warning NU1904", StringComparison.Ordinal) &&
             diagnostic.Contains("Synthetic critical audit warning", StringComparison.Ordinal));
-        Assert.Contains(result.Value.Solution.Projects.SelectMany(project => project.Documents),
-            document => document.Name == "Feature.cs");
-        Assert.Equal(projectBefore, File.ReadAllText(fixture.ProjectPath));
+        result.Value.Solution.Projects.SelectMany(project => project.Documents).Should().Contain(document => document.Name == "Feature.cs");
+        File.ReadAllText(fixture.ProjectPath).Should().Be(projectBefore);
     }
 
     [Theory]
@@ -52,14 +52,14 @@ public sealed class MsBuildWorkspaceFactoryTests
 
         var result = await loader.Load(fixture.ProjectPath, TestContext.Current.CancellationToken);
 
-        Assert.True(succeeds == result.IsSuccess, string.Join("; ", result.Errors.Select(error => error.Message)));
+        (succeeds == result.IsSuccess).Should().BeTrue(string.Join("; ", result.Errors.Select(error => error.Message)));
         var diagnostics = result.IsSuccess
             ? result.Value.Diagnostics
             : result.Errors.Select(error => error.Message);
-        Assert.Contains(diagnostics, diagnostic =>
+        diagnostics.Should().Contain(diagnostic =>
             diagnostic.Contains("NU1904", StringComparison.Ordinal) &&
             diagnostic.Contains("Synthetic cached critical audit diagnostic", StringComparison.Ordinal));
-        Assert.Equal(assetsBefore, File.ReadAllText(fixture.AssetsPath));
+        File.ReadAllText(fixture.AssetsPath).Should().Be(assetsBefore);
     }
 
     [Fact]
@@ -72,8 +72,8 @@ public sealed class MsBuildWorkspaceFactoryTests
 
         var result = await loader.Load(fixture.ProjectPath, TestContext.Current.CancellationToken);
 
-        Assert.True(result.IsFailed);
-        Assert.Contains(result.Errors, error => error.Message.Contains("Required project input is unavailable", StringComparison.Ordinal));
+        result.IsFailed.Should().BeTrue();
+        result.Errors.Should().Contain(error => error.Message.Contains("Required project input is unavailable", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -87,8 +87,8 @@ public sealed class MsBuildWorkspaceFactoryTests
 
         var result = await loader.Load(fixture.ProjectPath, TestContext.Current.CancellationToken);
 
-        Assert.True(result.IsFailed);
-        Assert.Contains(result.Errors, error => error.Message.Contains("SSFIXTURE002", StringComparison.Ordinal));
+        result.IsFailed.Should().BeTrue();
+        result.Errors.Should().Contain(error => error.Message.Contains("SSFIXTURE002", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -97,12 +97,12 @@ public sealed class MsBuildWorkspaceFactoryTests
         using var fixture = new WarningProject();
         using var loader = new WorkspaceLoader(new MsBuildWorkspaceFactory(), new FileSystem());
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            loader.Load(fixture.ProjectPath, new CancellationToken(canceled: true)));
+        await ((Func<Task>)(() =>
+            loader.Load(fixture.ProjectPath, new CancellationToken(canceled: true)))).Should().ThrowAsync<OperationCanceledException>();
     }
 
     [Fact]
-    public void DiagnosticCaptureUsesPrivateDirectoryAndDeletesItOnDispose()
+    public void WhenDiagnosticCapture_ThenUsesPrivateDirectoryAndDeletesItOnDispose()
     {
         using var workspace = new MsBuildWorkspaceFactory().Create();
         string directory;
@@ -110,17 +110,16 @@ public sealed class MsBuildWorkspaceFactoryTests
         using (log = new MsBuildDiagnosticLog())
         {
             directory = log.DirectoryPath;
-            Assert.True(Directory.Exists(directory));
+            Directory.Exists(directory).Should().BeTrue();
             if (!OperatingSystem.IsWindows())
             {
-                Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
-                    File.GetUnixFileMode(directory));
+                File.GetUnixFileMode(directory).Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             }
             File.WriteAllText(Path.Combine(directory, "temporary.binlog"), "fixture");
         }
 
         log.Dispose();
-        Assert.False(Directory.Exists(directory));
+        Directory.Exists(directory).Should().BeFalse();
     }
 
     [Fact]
@@ -128,7 +127,9 @@ public sealed class MsBuildWorkspaceFactoryTests
     {
         using var fixture = new WarningProject();
         await fixture.Restore(TestContext.Current.CancellationToken);
-        File.WriteAllText(fixture.SourcePath, """
+        File.WriteAllText(
+            fixture.SourcePath,
+            """
             namespace Fixture;
             public class Feature
             {
@@ -140,21 +141,23 @@ public sealed class MsBuildWorkspaceFactoryTests
         var fileSystem = new FileSystem();
         using var loader = new WorkspaceLoader(new MsBuildWorkspaceFactory(), fileSystem);
         var result = await loader.Load(fixture.ProjectPath, TestContext.Current.CancellationToken);
-        Assert.True(result.IsSuccess, string.Join("; ", result.Errors.Select(error => error.Message)));
-        var project = Assert.Single(result.Value.Solution.Projects);
+        result.IsSuccess.Should().BeTrue(string.Join("; ", result.Errors.Select(error => error.Message)));
+        var project = result.Value.Solution.Projects.Should().ContainSingle().Which;
         var compilation = await project.GetCompilationAsync(TestContext.Current.CancellationToken);
-        Assert.NotNull(compilation);
-        Assert.Contains(compilation.GetDiagnostics(TestContext.Current.CancellationToken),
-            diagnostic => diagnostic.Id == "CS0103" && diagnostic.Severity == DiagnosticSeverity.Error);
+        compilation.Should().NotBeNull();
+        compilation.GetDiagnostics(TestContext.Current.CancellationToken).Should().Contain(diagnostic => diagnostic.Id == "CS0103" && diagnostic.Severity == DiagnosticSeverity.Error);
         var workspace = new RepositoryWorkspace(fixture.RootPath, Path.Combine(fixture.RootPath, "unused.db"), fileSystem);
         var engine = new RoslynTargetAnalysisEngine(new NodeExtractor(), new EdgeExtractor(), fileSystem);
 
-        var graph = await engine.Extract(fixture.ProjectPath, result.Value.Solution, workspace,
+        var graph = await engine.Extract(
+            fixture.ProjectPath,
+            result.Value.Solution,
+            workspace,
             ct: TestContext.Current.CancellationToken);
 
-        var caller = Assert.Single(graph.CodeNodes, node => node.FullyQualifiedName == "Fixture.Feature.Caller()");
-        var callee = Assert.Single(graph.CodeNodes, node => node.FullyQualifiedName == "Fixture.Feature.Known()");
-        Assert.Contains(graph.Edges, edge => edge.CallerId == caller.CanonicalId &&
+        var caller = graph.CodeNodes.Should().ContainSingle(node => node.FullyQualifiedName == "Fixture.Feature.Caller()").Which;
+        var callee = graph.CodeNodes.Should().ContainSingle(node => node.FullyQualifiedName == "Fixture.Feature.Known()").Which;
+        graph.Edges.Should().Contain(edge => edge.CallerId == caller.CanonicalId &&
             edge.CalleeId == callee.CanonicalId && edge.EdgeType == EdgeType.MethodCall);
     }
 
@@ -162,9 +165,15 @@ public sealed class MsBuildWorkspaceFactoryTests
     {
         public WarningProject(string tasks = "")
         {
-            RootPath = Path.Combine(Path.GetTempPath(), "sharpsense-warning-tests", Guid.NewGuid().ToString("N"));
+            RootPath = Path.Combine(
+                Path.GetTempPath(),
+                "sharpsense-warning-tests",
+                Guid.NewGuid()
+                    .ToString("N"));
             Directory.CreateDirectory(RootPath);
-            File.WriteAllText(ProjectPath, $$"""
+            File.WriteAllText(
+                ProjectPath,
+                $$"""
                 <Project Sdk="Microsoft.NET.Sdk">
                   <PropertyGroup>
                     <TargetFramework>net10.0</TargetFramework>
@@ -180,12 +189,17 @@ public sealed class MsBuildWorkspaceFactoryTests
                 </Project>
                 """);
             File.WriteAllText(SourcePath, "namespace Fixture; public class Feature { public void Known() { } }");
-            File.WriteAllText(Path.Combine(RootPath, "NuGet.Config"), """
+            File.WriteAllText(
+                Path.Combine(RootPath, "NuGet.Config"),
+                """
                 <configuration><packageSources><clear /></packageSources></configuration>
                 """);
         }
 
-        public string RootPath { get; }
+        public string RootPath
+        {
+            get;
+        }
         public string ProjectPath => Path.Combine(RootPath, "Fixture.csproj");
         public string SourcePath => Path.Combine(RootPath, "Feature.cs");
         public string AssetsPath => Path.Combine(RootPath, "obj", "project.assets.json");
@@ -219,7 +233,7 @@ public sealed class MsBuildWorkspaceFactoryTests
                 throw;
             }
 
-            Assert.True(process.ExitCode == 0, await output + await error);
+            (process.ExitCode == 0).Should().BeTrue(await output + await error);
         }
 
         public void Dispose() => Directory.Delete(RootPath, recursive: true);

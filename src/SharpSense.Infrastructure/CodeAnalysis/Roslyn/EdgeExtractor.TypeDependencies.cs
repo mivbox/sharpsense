@@ -65,7 +65,8 @@ internal sealed partial class EdgeExtractor
 
             foreach (var parameter in constructor.Parameters)
             {
-                if (parameter.Type is not { TypeKind: not TypeKind.TypeParameter } dependencyType)
+                if (parameter.Type is not
+                    { TypeKind: not TypeKind.TypeParameter } dependencyType)
                 {
                     continue;
                 }
@@ -94,7 +95,8 @@ internal sealed partial class EdgeExtractor
         {
             foreach (var interfaceMember in interfaceSymbol.GetMembers())
             {
-                if (interfaceMember is not IMethodSymbol { MethodKind: MethodKind.Ordinary }
+                if (interfaceMember is not IMethodSymbol
+                    { MethodKind: MethodKind.Ordinary }
                     && interfaceMember is not IPropertySymbol)
                 {
                     continue;
@@ -134,7 +136,8 @@ internal sealed partial class EdgeExtractor
         {
             foreach (var member in currentType.GetMembers())
             {
-                if (member is IMethodSymbol { MethodKind: MethodKind.Ordinary } or IPropertySymbol)
+                if (member is IMethodSymbol
+                    { MethodKind: MethodKind.Ordinary } or IPropertySymbol)
                 {
                     yield return member;
                 }

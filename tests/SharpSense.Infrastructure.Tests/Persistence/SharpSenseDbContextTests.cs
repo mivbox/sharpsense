@@ -1,3 +1,4 @@
+using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Persistence;
@@ -11,8 +12,10 @@ public sealed class SharpSenseDbContextTests
     [Fact]
     public async Task WhenSaveChangesAsyncWithNormalizedRelativePaths_ThenPersistsEmbeddingsAndRelativePaths()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory();
-        await using var context = inMemoryFactory.GetContext<SharpSenseDbContext>(_ => { });
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        await using var context = inMemoryFactory.GetContext(_ =>
+        {
+        });
 
         SeedProjectAndCodeDocuments(context, "src/SharpSense.Domain/SharpSense.Domain.csproj");
         context.CodeNodes.Add(
@@ -56,20 +59,27 @@ public sealed class SharpSenseDbContextTests
             .FindEntityType(typeof(CodeNodeRecord))!
             .FindProperty(nameof(CodeNodeRecord.VectorEmbedding))!;
 
-        Assert.Equal("src/SharpSense.Domain/SharpSense.Domain.csproj", persistedProjectDocument.RelativePath);
-        Assert.Equal("src/SharpSense.Domain/KnowledgeGraph/Nodes/CodeNode.cs", persistedNodeDocument.RelativePath);
-        Assert.Equal(100, persistedProject.Id);
-        Assert.Equal(7, persistedNode.StartLine);
-        Assert.Equal(20, persistedNode.EndLine);
-        Assert.Equal(new[] { 1.25f, -0.5f, 0.875f }, persistedNode.VectorEmbedding);
-        Assert.Equal("BLOB", vectorEmbeddingProperty.GetColumnType());
+        persistedProjectDocument.RelativePath.Should().Be("src/SharpSense.Domain/SharpSense.Domain.csproj");
+        persistedNodeDocument.RelativePath.Should().Be("src/SharpSense.Domain/KnowledgeGraph/Nodes/CodeNode.cs");
+        persistedProject.Id.Should().Be(100);
+        persistedNode.StartLine.Should().Be(7);
+        persistedNode.EndLine.Should().Be(20);
+        persistedNode.VectorEmbedding.Should().Equal(new[]
+        {
+            1.25f,
+            -0.5f,
+            0.875f
+        });
+        vectorEmbeddingProperty.GetColumnType().Should().Be("BLOB");
     }
 
     [Fact]
     public async Task WhenSaveChangesAsyncWithAbsolutePathValues_ThenDoesNotNormalizeThemInsideDbContext()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory();
-        await using var context = inMemoryFactory.GetContext<SharpSenseDbContext>(_ => { });
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        await using var context = inMemoryFactory.GetContext(_ =>
+        {
+        });
         var absolutePath = Path.Combine(
             Path.GetTempPath(),
             "sharp-sense-db-context",
@@ -111,14 +121,14 @@ public sealed class SharpSenseDbContextTests
             document => document.Id == 10,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(absolutePath, persistedProjectDocument.RelativePath);
+        persistedProjectDocument.RelativePath.Should().Be(absolutePath);
     }
 
     [Fact]
     public async Task WhenCreateDbContextAsyncWithSharedInMemoryFactory_ThenSharesPersistedStateAcrossContexts()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory();
-        var factory = inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>();
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        var factory = inMemoryFactory.CreateDbContextFactory();
 
         await using (var writeContext = await factory.CreateDbContextAsync(TestContext.Current.CancellationToken))
         {
@@ -161,15 +171,17 @@ public sealed class SharpSenseDbContextTests
             document => document.Id == 10,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("SharpSense.Domain", persistedProject.Name);
-        Assert.Equal("src/SharpSense.Domain/SharpSense.Domain.csproj", persistedProjectDocument.RelativePath);
+        persistedProject.Name.Should().Be("SharpSense.Domain");
+        persistedProjectDocument.RelativePath.Should().Be("src/SharpSense.Domain/SharpSense.Domain.csproj");
     }
 
     [Fact]
     public async Task WhenSaveChangesAsyncWithNullProjectNodeId_ThenPersistsDocumentNodes()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory();
-        await using var context = inMemoryFactory.GetContext<SharpSenseDbContext>(_ => { });
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        await using var context = inMemoryFactory.GetContext(_ =>
+        {
+        });
 
         SeedDirectories(context);
         context.Documents.Add(
@@ -210,8 +222,8 @@ public sealed class SharpSenseDbContextTests
             codeNode => codeNode.Id == 200,
             cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Null(persistedNode.ProjectNodeId);
-        Assert.Equal(NodeType.Document, persistedNode.NodeType);
+        persistedNode.ProjectNodeId.Should().BeNull();
+        persistedNode.NodeType.Should().Be(NodeType.Document);
     }
 
     private static void SeedProjectAndCodeDocuments(

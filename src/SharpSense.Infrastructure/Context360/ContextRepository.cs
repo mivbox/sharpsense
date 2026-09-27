@@ -7,7 +7,7 @@ using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.Context360;
 
-public sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
+internal sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
     : IContextRepository
 {
     public async Task<Context360Result?> GetNodeContext(

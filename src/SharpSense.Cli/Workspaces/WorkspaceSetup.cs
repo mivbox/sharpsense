@@ -3,7 +3,7 @@ using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Cli.Workspaces;
 
-internal sealed class WorkspaceSetup(WorkspaceCatalog catalog, IWorkspaceInteractions interactions)
+internal sealed class WorkspaceSetup(IWorkspaceCatalog catalog, IWorkspaceInteractions interactions)
 {
     public async Task<WorkspaceSelection?> SelectForAnalysis(string? selector, string root, CancellationToken ct)
     {
@@ -43,6 +43,7 @@ internal sealed class WorkspaceSetup(WorkspaceCatalog catalog, IWorkspaceInterac
         }
 
         interactions.ShowConfiguration(name, root, sources);
+
         return await interactions.Confirm("Save this workspace?", ct) ? catalog.Create(name, root, sources) : null;
     }
 }

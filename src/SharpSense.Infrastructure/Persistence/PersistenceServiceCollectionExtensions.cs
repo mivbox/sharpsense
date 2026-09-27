@@ -32,12 +32,13 @@ public static class PersistenceServiceCollectionExtensions
                     repositoryWorkspace.DatabasePath);
 
                 options.UseSqlite(
-                        $"Data Source={repositoryWorkspace.DatabasePath};Mode=ReadWriteCreate;Cache=Shared",
-                        b => b.MigrationsAssembly(typeof(SharpSenseDbContext).Assembly.FullName))
+                    $"Data Source={repositoryWorkspace.DatabasePath};Mode=ReadWriteCreate;Cache=Shared",
+                    b => b.MigrationsAssembly(typeof(SharpSenseDbContext).Assembly.FullName))
                     .AddInterceptors(serviceProvider.GetRequiredService<SqlitePragmaInterceptor>());
-            }, factoryLifetime);
+            },
+            factoryLifetime);
 
-        services.AddScoped<WorkspaceDatabaseInitializer>();
+        services.AddScoped<IWorkspaceDatabaseInitializer, WorkspaceDatabaseInitializer>();
         if (initializeOnStartup)
         {
             services.AddHostedService<EfCoreEnsureDatabase>();
@@ -57,10 +58,10 @@ public static class PersistenceServiceCollectionExtensions
             await using var scope = serviceProvider.CreateAsyncScope();
             var repositoryWorkspace = scope.ServiceProvider.GetRequiredService<IRepositoryWorkspace>();
             var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<SharpSenseDbContext>>();
-            await InitializeAsync(repositoryWorkspace, dbContextFactory, fileSystem, ct);
+            await Initialize(repositoryWorkspace, dbContextFactory, fileSystem, ct);
         }
 
-        internal static async Task InitializeAsync(
+        internal static async Task Initialize(
             IRepositoryWorkspace repositoryWorkspace,
             IDbContextFactory<SharpSenseDbContext> dbContextFactory,
             IFileSystem fileSystem,
@@ -101,8 +102,7 @@ public static class PersistenceServiceCollectionExtensions
             }
 
             await using var dbContext = await dbContextFactory.CreateDbContextAsync(ct);
-            var currentMigrationIds = dbContext.GetService<IMigrationsAssembly>()
-                .Migrations.Keys
+            var currentMigrationIds = dbContext.GetService<IMigrationsAssembly>().Migrations.Keys
                 .ToHashSet(StringComparer.Ordinal);
 
             await using var connection = new SqliteConnection($"Data Source={databasePath};Mode=ReadWrite;Cache=Shared");

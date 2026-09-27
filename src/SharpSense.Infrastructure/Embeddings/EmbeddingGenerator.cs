@@ -6,7 +6,7 @@ using SharpSense.Application.Shared.Models;
 
 namespace SharpSense.Infrastructure.Embeddings;
 
-public sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstractions.IEmbeddingGenerator, IDisposable
+internal sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstractions.IEmbeddingGenerator, IDisposable
 {
     private readonly LocalEmbeddingsOptions _options;
     private readonly Lazy<Microsoft.Extensions.AI.IEmbeddingGenerator<string, Embedding<float>>> _embeddingGenerator;
@@ -55,6 +55,7 @@ public sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstracti
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
 
         var embedding = await _embeddingGenerator.Value.GenerateAsync(text, cancellationToken: ct);
+
         return new TextEmbedding(text, embedding.Vector.ToArray());
     }
 
@@ -66,7 +67,8 @@ public sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstracti
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(texts);
 
-        var normalizedTexts = texts.Select(ValidateText).ToArray();
+        var normalizedTexts = texts.Select(ValidateText)
+            .ToArray();
         if (normalizedTexts.Length == 0)
         {
             return Array.Empty<TextEmbedding>();
@@ -74,7 +76,8 @@ public sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstracti
 
         var embeddings = new List<TextEmbedding>(normalizedTexts.Length);
         var completedItems = 0;
-        var batches = normalizedTexts.Chunk(_options.BatchSize).ToArray();
+        var batches = normalizedTexts.Chunk(_options.BatchSize)
+            .ToArray();
 
         for (var batchIndex = 0; batchIndex < batches.Length; batchIndex++)
         {
@@ -134,15 +137,19 @@ public sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstracti
 
         if (!File.Exists(_options.ModelPath))
         {
-            throw new FileNotFoundException($"The configured ONNX model file does not exist: {_options.ModelPath}", _options.ModelPath);
+            throw new FileNotFoundException(
+                $"The configured ONNX model file does not exist: {_options.ModelPath}",
+                _options.ModelPath);
         }
 
         if (!File.Exists(_options.VocabPath))
         {
-            throw new FileNotFoundException($"The configured vocab file does not exist: {_options.VocabPath}", _options.VocabPath);
+            throw new FileNotFoundException(
+                $"The configured vocab file does not exist: {_options.VocabPath}",
+                _options.VocabPath);
         }
 
-        #pragma warning disable CS0618
+#pragma warning disable CS0618
         var service = BertOnnxTextEmbeddingGenerationService.Create(
             _options.ModelPath,
             _options.VocabPath,
@@ -153,7 +160,6 @@ public sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstracti
                 NormalizeEmbeddings = true,
                 PoolingMode = EmbeddingPoolingMode.Mean
             });
-        #pragma warning restore CS0618
 
         return service.AsEmbeddingGenerator<string, float>();
     }
@@ -161,6 +167,7 @@ public sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstracti
     private static string ValidateText(string text)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
+
         return text;
     }
 

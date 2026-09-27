@@ -1,91 +1,95 @@
-using System.IO.Abstractions.TestingHelpers;
-using System.IO.Abstractions;
+using AwesomeAssertions;
 using Moq;
 using SharpSense.Application.Indexing;
 using SharpSense.Infrastructure.Storage;
+using System.IO.Abstractions;
+using System.IO.Abstractions.TestingHelpers;
 
 namespace SharpSense.Infrastructure.Tests.Storage;
 
 public sealed class WorkspaceCatalogTests
 {
     [Fact]
-    public void CreatingWorkspacePersistsHomeDefinitionWithoutCreatingDatabaseOrRepositoryConfig()
+    public void WhenCreatingWorkspace_ThenPersistsHomeDefinitionWithoutCreatingDatabaseOrRepositoryConfig()
     {
         var (fileSystem, catalog) = CreateCatalog();
 
-        var selection = catalog.Create("product", "/repo", [
+        var selection = catalog.Create(
+            "product",
+            "/repo",
+            [
             new(WorkspaceSourceKind.CSharp, "backend/Orders.csproj"),
             new(WorkspaceSourceKind.TypeScript, "frontend/tsconfig.json"),
             new(WorkspaceSourceKind.Markdown, "docs/**/*.md")
         ]);
         var loaded = catalog.Resolve("product", "/elsewhere");
 
-        Assert.NotEqual(Guid.Empty, loaded.Definition.Id);
-        Assert.Equal(selection.Definition.Id, loaded.Definition.Id);
-        Assert.Equal("/repo", loaded.Workspace.RootPath);
-        Assert.Equal($"/home/sharpsense/workspaces/{loaded.Definition.Id:D}/index.db", loaded.Workspace.DatabasePath);
-        Assert.Equal(3, loaded.Definition.Sources.Length);
-        Assert.Equal(loaded.Definition.Id, loaded.Workspace.WorkspaceId);
-        Assert.Equal("product", loaded.Workspace.WorkspaceName);
-        Assert.True(fileSystem.File.Exists(loaded.ConfigurationPath));
-        Assert.False(fileSystem.File.Exists(loaded.Workspace.DatabasePath));
-        Assert.False(fileSystem.File.Exists("/repo/sharpsense.yaml"));
-        Assert.DoesNotContain(fileSystem.AllFiles, static path => path.EndsWith(".tmp", StringComparison.Ordinal));
+        loaded.Definition.Id.Should().NotBe(Guid.Empty);
+        loaded.Definition.Id.Should().Be(selection.Definition.Id);
+        loaded.Workspace.RootPath.Should().Be("/repo");
+        loaded.Workspace.DatabasePath.Should().Be($"/home/sharpsense/workspaces/{loaded.Definition.Id:D}/index.db");
+        loaded.Definition.Sources.Length.Should().Be(3);
+        loaded.Workspace.WorkspaceId.Should().Be(loaded.Definition.Id);
+        loaded.Workspace.WorkspaceName.Should().Be("product");
+        fileSystem.File.Exists(loaded.ConfigurationPath).Should().BeTrue();
+        fileSystem.File.Exists(loaded.Workspace.DatabasePath).Should().BeFalse();
+        fileSystem.File.Exists("/repo/sharpsense.yaml").Should().BeFalse();
+        fileSystem.AllFiles.Should().NotContain(static path => path.EndsWith(".tmp", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void ResolutionFromSubdirectoryFindsUniqueRegisteredRepositoryWorkspace()
+    public void WhenResolutionFromSubdirectory_ThenFindsUniqueRegisteredRepositoryWorkspace()
     {
         var (_, catalog) = CreateCatalog();
         var expected = catalog.Create("product", "/repo", []);
 
         var selected = catalog.Resolve(null, "/repo/frontend");
 
-        Assert.Equal(expected.Definition.Id, selected.Definition.Id);
-        Assert.Equal(expected.Definition.Id, catalog.Resolve(expected.Definition.Id.ToString(), "/other").Definition.Id);
+        selected.Definition.Id.Should().Be(expected.Definition.Id);
+        catalog.Resolve(expected.Definition.Id.ToString(), "/other").Definition.Id.Should().Be(expected.Definition.Id);
     }
 
     [Fact]
-    public void MultipleWorkspaceSelectionRequiresExplicitName()
+    public void WhenMultipleWorkspaceSelection_ThenRequiresExplicitName()
     {
         var (_, catalog) = CreateCatalog();
         catalog.Create("frontend", "/repo", []);
         catalog.Create("backend", "/repo", []);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => catalog.Resolve(null, "/repo/frontend"));
+        var exception = ((Action)(() => catalog.Resolve(null, "/repo/frontend"))).Should().ThrowExactly<InvalidOperationException>().Which;
 
-        Assert.Contains("--workspace", exception.Message);
-        Assert.Contains("frontend", exception.Message);
-        Assert.Contains("backend", exception.Message);
-        Assert.Equal("frontend", catalog.Resolve("FRONTEND", "/repo").Definition.Name);
+        exception.Message.Should().Contain("--workspace");
+        exception.Message.Should().Contain("frontend");
+        exception.Message.Should().Contain("backend");
+        catalog.Resolve("FRONTEND", "/repo").Definition.Name.Should().Be("frontend");
     }
 
     [Fact]
-    public void MissingWorkspaceResolutionDoesNotCreateStorage()
+    public void WhenMissingWorkspaceResolution_ThenDoesNotCreateStorage()
     {
         var (fileSystem, catalog) = CreateCatalog();
 
-        Assert.Empty(catalog.List());
-        var exception = Assert.Throws<InvalidOperationException>(() => catalog.Resolve(null, "/repo"));
+        catalog.List().Should().BeEmpty();
+        var exception = ((Action)(() => catalog.Resolve(null, "/repo"))).Should().ThrowExactly<InvalidOperationException>().Which;
 
-        Assert.Contains("sharpsense workspace create", exception.Message);
-        Assert.False(fileSystem.Directory.Exists(catalog.HomeDirectory));
+        exception.Message.Should().Contain("sharpsense workspace create");
+        fileSystem.Directory.Exists(catalog.HomeDirectory).Should().BeFalse();
     }
 
     [Fact]
-    public void WorkspacesInSameRepositoryHaveIndependentDatabasePaths()
+    public void WhenWorkspacesInSameRepository_ThenHaveIndependentDatabasePaths()
     {
         var (_, catalog) = CreateCatalog();
 
         var frontend = catalog.Create("frontend", "/repo", []);
         var backend = catalog.Create("backend", "/repo", []);
 
-        Assert.NotEqual(frontend.Workspace.DatabasePath, backend.Workspace.DatabasePath);
-        Assert.Equal(frontend.Workspace.RootPath, backend.Workspace.RootPath);
+        backend.Workspace.DatabasePath.Should().NotBe(frontend.Workspace.DatabasePath);
+        backend.Workspace.RootPath.Should().Be(frontend.Workspace.RootPath);
     }
 
     [Fact]
-    public void MergeCopiesAndDeduplicatesSourcesWithoutSharingMutableDefinitions()
+    public void WhenMerging_ThenCopiesAndDeduplicatesSourcesWithoutSharingMutableDefinitions()
     {
         var (_, catalog) = CreateCatalog();
         WorkspaceSource docs = new(WorkspaceSourceKind.Markdown, "docs/**/*.md");
@@ -96,46 +100,48 @@ public sealed class WorkspaceCatalogTests
         var merged = catalog.Merge("product", ["frontend", "backend"]);
         catalog.RemoveSources("frontend", [frontendSource]);
 
-        Assert.Equal(3, merged.Definition.Sources.Length);
-        Assert.Single(merged.Definition.Sources, source => source == docs);
-        Assert.Contains(frontendSource, catalog.Resolve("product", "/repo").Definition.Sources);
-        Assert.DoesNotContain(frontendSource, catalog.Resolve("frontend", "/repo").Definition.Sources);
+        merged.Definition.Sources.Length.Should().Be(3);
+        merged.Definition.Sources.Should().ContainSingle(source => source == docs);
+        catalog.Resolve("product", "/repo").Definition.Sources.Should().Contain(frontendSource);
+        catalog.Resolve("frontend", "/repo").Definition.Sources.Should().NotContain(frontendSource);
     }
 
     [Fact]
-    public void MergeRejectsDifferentRepositoryRoots()
+    public void WhenMerge_ThenRejectsDifferentRepositoryRoots()
     {
         var (fileSystem, catalog) = CreateCatalog();
         fileSystem.AddDirectory("/other/.git");
         catalog.Create("first", "/repo", []);
         catalog.Create("second", "/other", []);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => catalog.Merge("combined", ["first", "second"]));
+        var exception = ((Action)(() => catalog.Merge("combined", ["first", "second"]))).Should().ThrowExactly<InvalidOperationException>().Which;
 
-        Assert.Contains("same repository", exception.Message);
-        Assert.Equal(2, catalog.List().Count);
+        exception.Message.Should().Contain("same repository");
+        catalog.List().Count.Should().Be(2);
     }
 
     [Fact]
-    public void AddAndRemoveNormalizePathsAndPreserveWorkspaceIdentity()
+    public void WhenAddAndRemoveNormalizePathsAnd_ThenPreserveWorkspaceIdentity()
     {
         var (_, catalog) = CreateCatalog();
         var created = catalog.Create("product", "/repo", []);
 
-        var updated = catalog.AddSources("product", [
+        var updated = catalog.AddSources(
+            "product",
+            [
             new(WorkspaceSourceKind.CSharp, "./backend/Orders.csproj"),
             new(WorkspaceSourceKind.CSharp, "/repo/backend/Orders.csproj")
         ]);
         var removed = catalog.RemoveSources("product", [new(WorkspaceSourceKind.CSharp, "backend/Orders.csproj")]);
 
-        Assert.Equal(created.Definition.Id, updated.Definition.Id);
-        Assert.Equal(created.Definition.Id, removed.Selection.Definition.Id);
-        Assert.Equal("backend/Orders.csproj", Assert.Single(updated.Definition.Sources).Path);
-        Assert.Empty(removed.Selection.Definition.Sources);
+        updated.Definition.Id.Should().Be(created.Definition.Id);
+        removed.Selection.Definition.Id.Should().Be(created.Definition.Id);
+        updated.Definition.Sources.Should().ContainSingle().Which.Path.Should().Be("backend/Orders.csproj");
+        removed.Selection.Definition.Sources.Should().BeEmpty();
     }
 
     [Fact]
-    public void RemoveReportsMatchedAndUnmatchedSourcesAndDoesNotRewriteOnNoMatch()
+    public void WhenRemove_ThenReportsMatchedAndUnmatchedSourcesAndDoesNotRewriteOnNoMatch()
     {
         var (fileSystem, catalog) = CreateCatalog();
         var source = new WorkspaceSource(WorkspaceSourceKind.CSharp, "backend/Orders.csproj");
@@ -146,32 +152,32 @@ public sealed class WorkspaceCatalogTests
 
         var noMatch = catalog.RemoveSources("product", [missing]);
 
-        Assert.Empty(noMatch.RemovedSources);
-        Assert.Equal(missing, Assert.Single(noMatch.UnmatchedSources));
-        Assert.Equal(source, Assert.Single(noMatch.Selection.Definition.Sources));
-        Assert.Equal(timestamp, fileSystem.File.GetLastWriteTimeUtc(selection.ConfigurationPath));
+        noMatch.RemovedSources.Should().BeEmpty();
+        noMatch.UnmatchedSources.Should().ContainSingle().Which.Should().Be(missing);
+        noMatch.Selection.Definition.Sources.Should().ContainSingle().Which.Should().Be(source);
+        fileSystem.File.GetLastWriteTimeUtc(selection.ConfigurationPath).Should().Be(timestamp);
 
         // Removal must still work after a configured file has been deleted.
         fileSystem.File.Delete("/repo/backend/Orders.csproj");
         var partial = catalog.RemoveSources("product", [source, source, missing]);
 
-        Assert.Equal(source, Assert.Single(partial.RemovedSources));
-        Assert.Equal(missing, Assert.Single(partial.UnmatchedSources));
-        Assert.Empty(partial.Selection.Definition.Sources);
-        Assert.Empty(catalog.ResolveById(selection.Definition.Id).Definition.Sources);
+        partial.RemovedSources.Should().ContainSingle().Which.Should().Be(source);
+        partial.UnmatchedSources.Should().ContainSingle().Which.Should().Be(missing);
+        partial.Selection.Definition.Sources.Should().BeEmpty();
+        catalog.ResolveById(selection.Definition.Id).Definition.Sources.Should().BeEmpty();
     }
 
     [Theory]
     [InlineData("../outside.csproj")]
     [InlineData("/elsewhere/outside.csproj")]
     [InlineData("backend/../../outside.csproj")]
-    public void SourcesCannotEscapeRegisteredRepository(string path)
+    public void WhenSources_ThenCannotEscapeRegisteredRepository(string path)
     {
         var (fileSystem, catalog) = CreateCatalog();
 
-        Assert.Throws<ArgumentException>(() => catalog.Create("product", "/repo", [new(WorkspaceSourceKind.CSharp, path)]));
+        ((Action)(() => catalog.Create("product", "/repo", [new(WorkspaceSourceKind.CSharp, path)]))).Should().ThrowExactly<ArgumentException>();
 
-        Assert.False(fileSystem.Directory.Exists(catalog.HomeDirectory));
+        fileSystem.Directory.Exists(catalog.HomeDirectory).Should().BeFalse();
     }
 
     [Theory]
@@ -180,54 +186,61 @@ public sealed class WorkspaceCatalogTests
     [InlineData(".")]
     [InlineData("../../")]
     [InlineData("00000000-0000-0000-0000-000000000001")]
-    public void WorkspaceNamesCannotBePathsOrIds(string name)
+    public void WhenWorkspaceNames_ThenCannotBePathsOrIds(string name)
     {
         var (_, catalog) = CreateCatalog();
 
-        Assert.Throws<ArgumentException>(() => catalog.Create(name, "/repo", []));
+        ((Action)(() => catalog.Create(name, "/repo", []))).Should().ThrowExactly<ArgumentException>();
     }
 
     [Fact]
-    public void DuplicateNamesAreRejectedCaseInsensitively()
+    public void WhenDuplicateNames_ThenAreRejectedCaseInsensitively()
     {
         var (_, catalog) = CreateCatalog();
         catalog.Create("product", "/repo", []);
 
-        Assert.Throws<InvalidOperationException>(() => catalog.Create("PRODUCT", "/repo", []));
-        Assert.Single(catalog.List());
+        ((Action)(() => catalog.Create("PRODUCT", "/repo", []))).Should().ThrowExactly<InvalidOperationException>();
+        catalog.List().Should().ContainSingle();
     }
 
     [Fact]
-    public void DefinitionCannotRedirectWorkspaceStorageThroughItsId()
+    public void WhenDefinition_ThenCannotRedirectWorkspaceStorageThroughItsId()
     {
         var (fileSystem, catalog) = CreateCatalog();
         var created = catalog.Create("product", "/repo", []);
-        fileSystem.File.WriteAllText(created.ConfigurationPath,
-            fileSystem.File.ReadAllText(created.ConfigurationPath).Replace(created.Definition.Id.ToString(), Guid.NewGuid().ToString()));
+        fileSystem.File.WriteAllText(
+            created.ConfigurationPath,
+            fileSystem.File.ReadAllText(created.ConfigurationPath)
+                .Replace(
+                created.Definition.Id.ToString(),
+                Guid.NewGuid()
+                    .ToString()));
 
-        Assert.Empty(catalog.List());
-        var exception = Assert.Throws<InvalidOperationException>(() => catalog.ResolveById(created.Definition.Id));
+        catalog.List().Should().BeEmpty();
+        var exception = ((Action)(() => catalog.ResolveById(created.Definition.Id))).Should().ThrowExactly<InvalidOperationException>().Which;
 
-        Assert.Contains("ID must match", exception.Message);
+        exception.Message.Should().Contain("ID must match");
     }
 
     [Fact]
-    public void UnsupportedConfigurationVersionIsActionable()
+    public void WhenUnsupportedConfigurationVersion_ThenIsActionable()
     {
         var (fileSystem, catalog) = CreateCatalog();
         var created = catalog.Create("product", "/repo", []);
-        fileSystem.File.WriteAllText(created.ConfigurationPath,
-            fileSystem.File.ReadAllText(created.ConfigurationPath).Replace("version: 1", "version: 999"));
+        fileSystem.File.WriteAllText(
+            created.ConfigurationPath,
+            fileSystem.File.ReadAllText(created.ConfigurationPath)
+                .Replace("version: 1", "version: 999"));
 
-        Assert.Empty(catalog.List());
-        var exception = Assert.Throws<InvalidOperationException>(() => catalog.ResolveById(created.Definition.Id));
+        catalog.List().Should().BeEmpty();
+        var exception = ((Action)(() => catalog.ResolveById(created.Definition.Id))).Should().ThrowExactly<InvalidOperationException>().Which;
 
-        Assert.Contains("unsupported", exception.Message);
-        Assert.Contains(created.ConfigurationPath, exception.Message);
+        exception.Message.Should().Contain("unsupported");
+        exception.Message.Should().Contain(created.ConfigurationPath);
     }
 
     [Fact]
-    public void MalformedSiblingDoesNotBlockHealthyResolutionOrCreation()
+    public void WhenMalformedSibling_ThenDoesNotBlockHealthyResolutionOrCreation()
     {
         var (fileSystem, catalog) = CreateCatalog();
         var healthy = catalog.Create("healthy", "/repo", []);
@@ -235,20 +248,20 @@ public sealed class WorkspaceCatalogTests
         const string invalid = "private: [ malformed configuration";
         fileSystem.File.WriteAllText(broken.ConfigurationPath, invalid);
 
-        Assert.Equal(healthy.Definition.Id, Assert.Single(catalog.List()).Definition.Id);
-        Assert.Equal(healthy.Definition.Id, catalog.Resolve("healthy", "/repo").Definition.Id);
-        Assert.Equal(healthy.Definition.Id, catalog.ResolveById(healthy.Definition.Id).Definition.Id);
-        Assert.Equal(healthy.Definition.Id, catalog.Resolve(null, "/repo").Definition.Id);
+        catalog.List().Should().ContainSingle().Which.Definition.Id.Should().Be(healthy.Definition.Id);
+        catalog.Resolve("healthy", "/repo").Definition.Id.Should().Be(healthy.Definition.Id);
+        catalog.ResolveById(healthy.Definition.Id).Definition.Id.Should().Be(healthy.Definition.Id);
+        catalog.Resolve(null, "/repo").Definition.Id.Should().Be(healthy.Definition.Id);
         var created = catalog.Create("new-workspace", "/repo", []);
-        Assert.Equal(2, catalog.List().Count);
-        Assert.NotEqual(healthy.Definition.Id, created.Definition.Id);
-        var error = Assert.Throws<InvalidOperationException>(() => catalog.Resolve(broken.Definition.Id.ToString(), "/repo"));
-        Assert.Contains(broken.ConfigurationPath, error.Message);
-        Assert.Equal(invalid, fileSystem.File.ReadAllText(broken.ConfigurationPath));
+        catalog.List().Count.Should().Be(2);
+        created.Definition.Id.Should().NotBe(healthy.Definition.Id);
+        var error = ((Action)(() => catalog.Resolve(broken.Definition.Id.ToString(), "/repo"))).Should().ThrowExactly<InvalidOperationException>().Which;
+        error.Message.Should().Contain(broken.ConfigurationPath);
+        fileSystem.File.ReadAllText(broken.ConfigurationPath).Should().Be(invalid);
     }
 
     [Fact]
-    public void UnreadableSiblingDoesNotBlockHealthyListOrDirectResolution()
+    public void WhenUnreadableSibling_ThenDoesNotBlockHealthyListOrDirectResolution()
     {
         var (fileSystem, catalog) = CreateCatalog();
         var healthy = catalog.Create("healthy", "/repo", []);
@@ -257,46 +270,57 @@ public sealed class WorkspaceCatalogTests
         streams.Setup(value => value.New(It.IsAny<string>(), FileMode.Open, FileAccess.Read, It.IsAny<FileShare>()))
             .Returns((string path, FileMode mode, FileAccess access, FileShare share) =>
                 path == broken.ConfigurationPath
-                    ? throw new UnauthorizedAccessException("Access denied.")
-                    : fileSystem.FileStream.New(path, mode, access, share));
+                ? throw new UnauthorizedAccessException("Access denied.")
+                : fileSystem.FileStream.New(path, mode, access, share));
         var wrapper = new Mock<IFileSystem>();
-        wrapper.SetupGet(value => value.Path).Returns(fileSystem.Path);
-        wrapper.SetupGet(value => value.File).Returns(fileSystem.File);
-        wrapper.SetupGet(value => value.Directory).Returns(fileSystem.Directory);
-        wrapper.SetupGet(value => value.DirectoryInfo).Returns(fileSystem.DirectoryInfo);
-        wrapper.SetupGet(value => value.FileInfo).Returns(fileSystem.FileInfo);
-        wrapper.SetupGet(value => value.FileStream).Returns(streams.Object);
+        wrapper.SetupGet(value => value.Path)
+            .Returns(fileSystem.Path);
+        wrapper.SetupGet(value => value.File)
+            .Returns(fileSystem.File);
+        wrapper.SetupGet(value => value.Directory)
+            .Returns(fileSystem.Directory);
+        wrapper.SetupGet(value => value.DirectoryInfo)
+            .Returns(fileSystem.DirectoryInfo);
+        wrapper.SetupGet(value => value.FileInfo)
+            .Returns(fileSystem.FileInfo);
+        wrapper.SetupGet(value => value.FileStream)
+            .Returns(streams.Object);
         var isolated = new WorkspaceCatalog(wrapper.Object, catalog.HomeDirectory);
 
-        Assert.Equal(healthy.Definition.Id, Assert.Single(isolated.List()).Definition.Id);
-        Assert.Equal(healthy.Definition.Id, isolated.ResolveById(healthy.Definition.Id).Definition.Id);
-        var error = Assert.Throws<InvalidOperationException>(() => isolated.ResolveById(broken.Definition.Id));
-        Assert.Contains(broken.ConfigurationPath, error.Message);
-        Assert.IsType<UnauthorizedAccessException>(error.InnerException);
+        isolated.List().Should().ContainSingle().Which.Definition.Id.Should().Be(healthy.Definition.Id);
+        isolated.ResolveById(healthy.Definition.Id).Definition.Id.Should().Be(healthy.Definition.Id);
+        var error = ((Action)(() => isolated.ResolveById(broken.Definition.Id))).Should().ThrowExactly<InvalidOperationException>().Which;
+        error.Message.Should().Contain(broken.ConfigurationPath);
+        error.InnerException.Should().BeOfType<UnauthorizedAccessException>();
     }
 
     [Fact]
-    public void CreatingFromNestedDirectoryRebasesRelativeSourcesAndPreservesAbsoluteSelections()
+    public void WhenCreatingFromNestedDirectoryRebasesRelativeSourcesAnd_ThenPreservesAbsoluteSelections()
     {
         var (fileSystem, catalog) = CreateCatalog();
         fileSystem.AddFile("/repo/frontend/docs/readme.md", new MockFileData("# Frontend"));
 
-        var created = catalog.Create("frontend", "/repo/frontend", [
+        var created = catalog.Create(
+            "frontend",
+            "/repo/frontend",
+            [
             new(WorkspaceSourceKind.TypeScript, "tsconfig.json"),
             new(WorkspaceSourceKind.Markdown, "docs/**/*.md"),
             new(WorkspaceSourceKind.CSharp, "/repo/backend/Orders.csproj")
         ]);
 
-        Assert.Equal("/repo", created.Definition.RepositoryRoot);
-        Assert.Equal(["frontend/tsconfig.json", "frontend/docs/**/*.md", "backend/Orders.csproj"],
-            created.Definition.Sources.Select(source => source.Path));
-        var updated = catalog.Update(created.Definition.Id.ToString(), "renamed", [new(WorkspaceSourceKind.TypeScript, "frontend/tsconfig.json")]);
-        Assert.Equal("frontend/tsconfig.json", Assert.Single(updated.Definition.Sources).Path);
-        Assert.Equal(created.Definition.Id, updated.Definition.Id);
+        created.Definition.RepositoryRoot.Should().Be("/repo");
+        created.Definition.Sources.Select(source => source.Path).Should().Equal(["frontend/tsconfig.json", "frontend/docs/**/*.md", "backend/Orders.csproj"]);
+        var updated = catalog.Update(
+            created.Definition.Id.ToString(),
+            "renamed",
+            [new(WorkspaceSourceKind.TypeScript, "frontend/tsconfig.json")]);
+        updated.Definition.Sources.Should().ContainSingle().Which.Path.Should().Be("frontend/tsconfig.json");
+        updated.Definition.Id.Should().Be(created.Definition.Id);
     }
 
     [Fact]
-    public void RepositoryConfigIsIgnoredAndSourcesRoundTripThroughHome()
+    public void WhenRepositoryConfig_ThenIsIgnoredAndSourcesRoundTripThroughHome()
     {
         var (fileSystem, catalog) = CreateCatalog();
         fileSystem.AddFile("/repo/sharpsense.yaml", new MockFileData("invalid: [ yaml"));
@@ -304,12 +328,12 @@ public sealed class WorkspaceCatalogTests
 
         var selected = catalog.Resolve(null, "/repo");
 
-        Assert.Equal("docs/**/*.md", Assert.Single(selected.Definition.Sources).Path);
-        Assert.Equal("invalid: [ yaml", fileSystem.File.ReadAllText("/repo/sharpsense.yaml"));
+        selected.Definition.Sources.Should().ContainSingle().Which.Path.Should().Be("docs/**/*.md");
+        fileSystem.File.ReadAllText("/repo/sharpsense.yaml").Should().Be("invalid: [ yaml");
     }
 
     [Fact]
-    public void ExistingLegacyDatabaseIsNeverModified()
+    public void WhenExistingLegacyDatabase_ThenIsNeverModified()
     {
         var (fileSystem, catalog) = CreateCatalog();
         const string legacyDatabase = "/home/.SharpSense/legacy.db";
@@ -317,40 +341,44 @@ public sealed class WorkspaceCatalogTests
 
         catalog.Create("product", "/repo", []);
 
-        Assert.Equal("legacy-data", fileSystem.File.ReadAllText(legacyDatabase));
+        fileSystem.File.ReadAllText(legacyDatabase).Should().Be("legacy-data");
     }
 
     [Fact]
-    public void UpdatingSourcesAndNamePreservesStorageIdentity()
+    public void WhenUpdatingSourcesAndName_ThenPreservesStorageIdentity()
     {
         var (_, catalog) = CreateCatalog();
         var created = catalog.Create("original", "/repo", [new(WorkspaceSourceKind.Markdown, "docs/**/*.md")]);
 
-        var updated = catalog.Update(created.Definition.Id.ToString(), "renamed",
+        var updated = catalog.Update(
+            created.Definition.Id.ToString(),
+            "renamed",
             [new(WorkspaceSourceKind.TypeScript, "frontend/tsconfig.json")]);
 
-        Assert.Equal(created.Definition.Id, updated.Definition.Id);
-        Assert.Equal(created.Workspace.DatabasePath, updated.Workspace.DatabasePath);
-        Assert.Equal("renamed", catalog.Resolve(null, "/repo").Definition.Name);
-        Assert.Equal(WorkspaceSourceKind.TypeScript, Assert.Single(updated.Definition.Sources).Kind);
+        updated.Definition.Id.Should().Be(created.Definition.Id);
+        updated.Workspace.DatabasePath.Should().Be(created.Workspace.DatabasePath);
+        catalog.Resolve(null, "/repo").Definition.Name.Should().Be("renamed");
+        updated.Definition.Sources.Should().ContainSingle().Which.Kind.Should().Be(WorkspaceSourceKind.TypeScript);
     }
 
     [Fact]
-    public void InvalidUpdatePreservesExistingDefinition()
+    public void WhenInvalidUpdate_ThenPreservesExistingDefinition()
     {
         var (fileSystem, catalog) = CreateCatalog();
         var created = catalog.Create("original", "/repo", [new(WorkspaceSourceKind.Markdown, "docs/**/*.md")]);
         var originalYaml = fileSystem.File.ReadAllText(created.ConfigurationPath);
 
-        Assert.Throws<ArgumentException>(() => catalog.Update("original", "new-name",
-            [new(WorkspaceSourceKind.CSharp, "../outside.csproj")]));
+        ((Action)(() => catalog.Update(
+            "original",
+            "new-name",
+            [new(WorkspaceSourceKind.CSharp, "../outside.csproj")]))).Should().ThrowExactly<ArgumentException>();
 
-        Assert.Equal(originalYaml, fileSystem.File.ReadAllText(created.ConfigurationPath));
-        Assert.Equal("original", catalog.Resolve(null, "/repo").Definition.Name);
+        fileSystem.File.ReadAllText(created.ConfigurationPath).Should().Be(originalYaml);
+        catalog.Resolve(null, "/repo").Definition.Name.Should().Be("original");
     }
 
     [Fact]
-    public void DefaultIsGlobalPersistsByIdAndExplicitSelectionOverridesIt()
+    public void WhenDefault_ThenIsGlobalPersistsByIdAndExplicitSelectionOverridesIt()
     {
         var (fileSystem, catalog) = CreateCatalog();
         var first = catalog.Create("first", "/repo", []);
@@ -361,40 +389,40 @@ public sealed class WorkspaceCatalogTests
         catalog.Use("second");
         var reloaded = new WorkspaceCatalog(fileSystem, catalog.HomeDirectory);
 
-        Assert.Equal(second.Definition.Id, reloaded.Resolve(null, "/repo/backend").Definition.Id);
-        Assert.Equal(second.Definition.Id, reloaded.Resolve(null, "/other").Definition.Id);
-        Assert.Equal(second.Definition.Id, reloaded.Resolve(null, "/unrelated").Definition.Id);
-        Assert.Equal(first.Definition.Id, reloaded.Resolve("first", "/other").Definition.Id);
-        Assert.Equal(other.Definition.Id, reloaded.Resolve(other.Definition.Id.ToString(), "/repo").Definition.Id);
-        Assert.Equal(second.Definition.Id.ToString("D"), fileSystem.File.ReadAllText("/home/sharpsense/default-workspace"));
-        Assert.False(fileSystem.File.Exists(second.Workspace.DatabasePath));
-        Assert.DoesNotContain(fileSystem.AllFiles, path => path.EndsWith(".tmp", StringComparison.Ordinal));
+        reloaded.Resolve(null, "/repo/backend").Definition.Id.Should().Be(second.Definition.Id);
+        reloaded.Resolve(null, "/other").Definition.Id.Should().Be(second.Definition.Id);
+        reloaded.Resolve(null, "/unrelated").Definition.Id.Should().Be(second.Definition.Id);
+        reloaded.Resolve("first", "/other").Definition.Id.Should().Be(first.Definition.Id);
+        reloaded.Resolve(other.Definition.Id.ToString(), "/repo").Definition.Id.Should().Be(other.Definition.Id);
+        fileSystem.File.ReadAllText("/home/sharpsense/default-workspace").Should().Be(second.Definition.Id.ToString("D"));
+        fileSystem.File.Exists(second.Workspace.DatabasePath).Should().BeFalse();
+        fileSystem.AllFiles.Should().NotContain(path => path.EndsWith(".tmp", StringComparison.Ordinal));
 
         catalog.Rename("second", "renamed");
-        Assert.Equal("renamed", reloaded.Resolve(null, "/other").Definition.Name);
+        reloaded.Resolve(null, "/other").Definition.Name.Should().Be("renamed");
 
-        Assert.Throws<InvalidOperationException>(() => catalog.Use("missing"));
-        Assert.Equal(second.Definition.Id, catalog.GetDefaultWorkspaceId());
+        ((Action)(() => catalog.Use("missing"))).Should().ThrowExactly<InvalidOperationException>();
+        catalog.GetDefaultWorkspaceId().Should().Be(second.Definition.Id);
     }
 
     [Theory]
     [InlineData("")]
     [InlineData(" ")]
-    public void ExplicitBlankSelectorsNeverFallBackToRepositoryOrDefaultSelection(string selector)
+    public void WhenExplicitBlankSelectors_ThenNeverFallBackToRepositoryOrDefaultSelection(string selector)
     {
         var (_, catalog) = CreateCatalog();
         catalog.Create("first", "/repo", []);
 
-        Assert.ThrowsAny<ArgumentException>(() => catalog.Resolve(selector, "/repo"));
+        ((Action)(() => catalog.Resolve(selector, "/repo"))).Should().Throw<ArgumentException>();
 
         catalog.Use("first");
 
-        Assert.ThrowsAny<ArgumentException>(() => catalog.Resolve(selector, "/repo"));
-        Assert.Equal("first", catalog.Resolve(null, "/repo").Definition.Name);
+        ((Action)(() => catalog.Resolve(selector, "/repo"))).Should().Throw<ArgumentException>();
+        catalog.Resolve(null, "/repo").Definition.Name.Should().Be("first");
     }
 
     [Fact]
-    public void DefaultCanChangeWhileIndexingWithoutRebindingAnExistingSelection()
+    public void WhenDefaultChangesDuringIndexing_ThenExistingSelectionRemainsBound()
     {
         var (_, catalog) = CreateCatalog();
         var first = catalog.Create("first", "/repo", []);
@@ -405,12 +433,12 @@ public sealed class WorkspaceCatalogTests
         using var lease = catalog.AcquireIndexLease(first);
         catalog.Use("second");
 
-        Assert.Equal(first.Definition.Id, bound.Definition.Id);
-        Assert.Equal(second.Definition.Id, catalog.Resolve(null, "/repo").Definition.Id);
+        bound.Definition.Id.Should().Be(first.Definition.Id);
+        catalog.Resolve(null, "/repo").Definition.Id.Should().Be(second.Definition.Id);
     }
 
     [Fact]
-    public void UnavailableDefaultDoesNotSilentlySelectADifferentWorkspace()
+    public void WhenUnavailableDefault_ThenDoesNotSilentlySelectADifferentWorkspace()
     {
         var (fileSystem, catalog) = CreateCatalog();
         var first = catalog.Create("first", "/repo", []);
@@ -418,56 +446,57 @@ public sealed class WorkspaceCatalogTests
         catalog.Use("first");
         fileSystem.File.Delete(first.ConfigurationPath);
 
-        var missing = Assert.Throws<InvalidOperationException>(() => catalog.Resolve(null, "/repo"));
-        Assert.Contains("workspace use", missing.Message);
-        Assert.Equal(second.Definition.Id, catalog.Resolve("second", "/repo").Definition.Id);
+        var missing = ((Action)(() => catalog.Resolve(null, "/repo"))).Should().ThrowExactly<InvalidOperationException>().Which;
+        missing.Message.Should().Contain("workspace use");
+        catalog.Resolve("second", "/repo").Definition.Id.Should().Be(second.Definition.Id);
 
         fileSystem.File.WriteAllText("/home/sharpsense/default-workspace", "invalid");
-        var invalid = Assert.Throws<InvalidOperationException>(() => catalog.Resolve(null, "/repo"));
-        Assert.Contains("workspace use", invalid.Message);
-        Assert.Equal(second.Definition.Id, catalog.Resolve("second", "/repo").Definition.Id);
+        var invalid = ((Action)(() => catalog.Resolve(null, "/repo"))).Should().ThrowExactly<InvalidOperationException>().Which;
+        invalid.Message.Should().Contain("workspace use");
+        catalog.Resolve("second", "/repo").Definition.Id.Should().Be(second.Definition.Id);
 
         catalog.Use("second");
-        Assert.Equal(second.Definition.Id, catalog.Resolve(null, "/repo").Definition.Id);
+        catalog.Resolve(null, "/repo").Definition.Id.Should().Be(second.Definition.Id);
     }
 
     [Fact]
-    public void DefaultSelectionsAreIsolatedBySharpSenseHome()
+    public void WhenDefaultSelections_ThenAreIsolatedBySharpSenseHome()
     {
         var (fileSystem, catalog) = CreateCatalog();
         var first = catalog.Create("first", "/repo", []);
         catalog.Use("first");
         var other = new WorkspaceCatalog(fileSystem, "/different-home");
 
-        Assert.Null(other.GetDefaultWorkspaceId());
-        Assert.False(fileSystem.Directory.Exists(other.HomeDirectory));
-        Assert.Throws<InvalidOperationException>(() => other.Resolve(null, "/repo"));
+        other.GetDefaultWorkspaceId().Should().BeNull();
+        fileSystem.Directory.Exists(other.HomeDirectory).Should().BeFalse();
+        ((Action)(() => other.Resolve(null, "/repo"))).Should().ThrowExactly<InvalidOperationException>();
     }
 
     [Fact]
-    public void BoundWorkspaceScopeCannotSwitchSelection()
+    public void WhenBoundWorkspaceScope_ThenCannotSwitchSelection()
     {
         var (_, catalog) = CreateCatalog();
         var first = catalog.Create("first", "/repo", []);
         var second = catalog.Create("second", "/repo", []);
         var scope = new WorkspaceScope();
-        scope.Bind(first, watch: true, skipEmbeddings: true);
+        scope.Bind(first, skipEmbeddings: true);
 
-        Assert.Throws<InvalidOperationException>(() => scope.Bind(second));
+        ((Action)(() => scope.Bind(second))).Should().ThrowExactly<InvalidOperationException>();
 
-        Assert.Equal(first.Definition.Id, scope.Selection.Definition.Id);
-        Assert.True(scope.Watch);
-        Assert.True(scope.SkipEmbeddings);
+        scope.Selection.Definition.Id.Should().Be(first.Definition.Id);
+        scope.SkipEmbeddings.Should().BeTrue();
     }
 
     private static (MockFileSystem FileSystem, WorkspaceCatalog Catalog) CreateCatalog()
     {
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/.git/HEAD"] = new("ref: refs/heads/main"),
-            ["/repo/backend/Orders.csproj"] = new("<Project />"),
-            ["/repo/frontend/tsconfig.json"] = new("{}")
-        }, "/repo");
+        var fileSystem = new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/.git/HEAD"] = new("ref: refs/heads/main"),
+                ["/repo/backend/Orders.csproj"] = new("<Project />"),
+                ["/repo/frontend/tsconfig.json"] = new("{}")
+            },
+            "/repo");
 
         return (fileSystem, new WorkspaceCatalog(fileSystem, "/home/sharpsense"));
     }

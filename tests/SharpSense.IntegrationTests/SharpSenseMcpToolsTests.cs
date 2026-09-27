@@ -3,14 +3,15 @@ using FluentResults;
 using Microsoft.Extensions.Options;
 using Moq;
 using SharpSense.Application.CommandExecution.Abstractions;
+using SharpSense.Application.CommandExecution.ExecuteProcess;
 using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Context360.GetNodeContext.Models;
 using SharpSense.Application.Context360.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.Models;
-using SharpSense.Application.Inheritors.GetInheritors.Models;
-using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
+using SharpSense.Application.ImpactAnalysis.Models;
+using SharpSense.Application.Inheritors.GetInheritors.Models;
 using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Memory.AttachMemory.Models;
 using SharpSense.Application.Memory.GetNodeMemories.Models;
@@ -48,27 +49,29 @@ public sealed class SharpSenseMcpToolsTests
         executeLogIndex.Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
         processRunner.Setup(candidate => candidate.Execute(
-                It.Is<CommandProcessRequest>(request =>
+            It.Is<CommandProcessRequest>(request =>
                     request.Command == "dotnet build SharpSense.sln" &&
                     request.WorkingDirectory == "/repo"),
-                It.IsAny<Func<string, CancellationToken, Task>>(),
-                CancellationToken.None))
+            It.IsAny<Func<string, CancellationToken, Task>>(),
+            CancellationToken.None))
             .Returns(async (
                 CommandProcessRequest _,
                 Func<string, CancellationToken, Task> onOutput,
                 CancellationToken innerCt) =>
             {
                 await onOutput("Build succeeded in 13.7s", innerCt);
+
                 return Result.Ok(new CommandProcessResult(0));
             });
 
         var result = await SharpSenseMcpTools.ctx_execute(
-            processRunner.Object,
-            executeLogIndexFactory.Object,
-            Options.Create(new SharpSenseCliOptions
-            {
-                RepositoryRoot = "/repo"
-            }),
+            new ExecuteProcessCommandHandler(
+                processRunner.Object,
+                executeLogIndexFactory.Object,
+                Options.Create(new WorkspaceExecutionOptions
+                {
+                    RepositoryRoot = "/repo"
+                })),
             "dotnet build SharpSense.sln",
             "Build succeeded",
             CancellationToken.None);
@@ -103,20 +106,21 @@ public sealed class SharpSenseMcpToolsTests
         executeLogIndex.Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
         processRunner.Setup(candidate => candidate.Execute(
-                It.Is<CommandProcessRequest>(request =>
+            It.Is<CommandProcessRequest>(request =>
                     request.Command == "missing-command" &&
                     request.WorkingDirectory == "/repo"),
-                It.IsAny<Func<string, CancellationToken, Task>>(),
-                CancellationToken.None))
+            It.IsAny<Func<string, CancellationToken, Task>>(),
+            CancellationToken.None))
             .ReturnsAsync(Result.Fail<CommandProcessResult>("Failed to start command 'missing-command'."));
 
         var result = await SharpSenseMcpTools.ctx_execute(
-            processRunner.Object,
-            executeLogIndexFactory.Object,
-            Options.Create(new SharpSenseCliOptions
-            {
-                RepositoryRoot = "/repo"
-            }),
+            new ExecuteProcessCommandHandler(
+                processRunner.Object,
+                executeLogIndexFactory.Object,
+                Options.Create(new WorkspaceExecutionOptions
+                {
+                    RepositoryRoot = "/repo"
+                })),
             "missing-command",
             "Error",
             CancellationToken.None);
@@ -133,8 +137,8 @@ public sealed class SharpSenseMcpToolsTests
         var handler = new Mock<IQueryHandler<GetNodeContextQuery, Context360Result>>(MockBehavior.Strict);
         var memoryHandler = new Mock<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>>(MockBehavior.Strict);
         handler.Setup(candidate => candidate.Handle(
-                It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
-                CancellationToken.None))
+            It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
+            CancellationToken.None))
             .ReturnsAsync(
                 new Context360Result(
                     new Context360Node(
@@ -185,7 +189,8 @@ public sealed class SharpSenseMcpToolsTests
             "structural:" + Environment.NewLine +
             "  parents: [PaymentProcessor (Id:11)]" + Environment.NewLine +
             "  children: []");
-        handler.Verify(candidate => candidate.Handle(
+        handler.Verify(
+            candidate => candidate.Handle(
                 It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
                 CancellationToken.None),
             Times.Once);
@@ -194,11 +199,14 @@ public sealed class SharpSenseMcpToolsTests
     [Fact]
     public async Task WhenAttachMemorySucceeds_ThenItReturnsConciseSuccessMessage()
     {
-        var tags = new[] { "security" };
+        var tags = new[]
+        {
+            "security"
+        };
         var handler = new Mock<ICommandHandler<AttachMemoryCommand, Result>>(MockBehavior.Strict);
         handler.Setup(candidate => candidate.Handle(
-                new AttachMemoryCommand(42, "Security review", tags, SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention),
-                CancellationToken.None))
+            new AttachMemoryCommand(42, "Security review", tags, SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention),
+            CancellationToken.None))
             .ReturnsAsync(Result.Ok());
 
         var result = await SharpSenseMcpTools.attach_memory(
@@ -316,7 +324,6 @@ public sealed class SharpSenseMcpToolsTests
             "[C] `8` DerivedBeta @ src/Fixture.App/DerivedBeta.cs:3-17");
         inheritorsHandler.Verify(candidate => candidate.Handle(new GetInheritorsQuery(42), CancellationToken.None), Times.Once);
     }
-
 
     [Fact]
     public async Task WhenTraceNodeUsesDefaultDirection_ThenItCallsTheCalleeNavigator()

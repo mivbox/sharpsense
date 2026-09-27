@@ -2,18 +2,19 @@ using Microsoft.Build.Locator;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
-public static class MsBuildLocatorRegistration
+internal static class MsBuildLocatorRegistration
 {
-    private static readonly object SyncRoot = new();
+    private static readonly object _syncRoot = new();
     private static bool _initialized;
 
     public static void EnsureRegistered(Func<IEnumerable<VisualStudioInstance>>? instanceQuery = null)
     {
-        lock (SyncRoot)
+        lock (_syncRoot)
         {
             if (_initialized || MSBuildLocator.IsRegistered)
             {
                 _initialized = true;
+
                 return;
             }
 

@@ -1,6 +1,7 @@
-namespace SharpSense.Domain.KnowledgeGraph.Nodes;
 
 using SharpSense.Domain.KnowledgeGraph.Enums;
+
+namespace SharpSense.Domain.KnowledgeGraph.Nodes;
 
 public sealed record MemoryNode(
     Guid Id,

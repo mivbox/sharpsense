@@ -3,7 +3,6 @@ using SharpSense.Application.Indexing;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Diagnostics;
-using SharpSense.Application.Shared.Errors;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
@@ -12,16 +11,14 @@ using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Infrastructure.Indexing.CSharp;
 
-public sealed class CSharpLanguageExtractor(
+internal sealed class CSharpLanguageExtractor(
     IWorkspaceLoader workspaceLoader,
     ITargetAnalysisEngine analysisEngine,
     IRepositoryWorkspace repositoryWorkspace,
     ICSharpWorkspaceTargetResolver workspaceTargetResolver)
     : ILanguageExtractor
 {
-    public WorkspaceSourceKind? SourceKind => WorkspaceSourceKind.CSharp;
-
-    public string ExtractorName => "csharp";
+    public WorkspaceSourceKind SourceKind => WorkspaceSourceKind.CSharp;
 
     public async Task<Result<ExtractedNodes>> Extract(
         ExtractionContext context,
@@ -34,9 +31,10 @@ public sealed class CSharpLanguageExtractor(
         if (workspaceTargetPath is null)
         {
             context.Progress?.Report(
-                new IndexingProgress("No C# solution/project found",
-                1,
-                1));
+                new IndexingProgress(
+                    "No C# solution/project found",
+                    1,
+                    1));
 
             return Result.Ok(new ExtractedNodes([], [], [], []));
         }
@@ -98,6 +96,7 @@ public sealed class CSharpLanguageExtractor(
             // Generators may depend on arbitrary AdditionalFiles that are not source-file
             // events. Reload these workspaces so the next source edit observes those inputs.
             activity.AddTag("workspace.refresh.fallback", "additional-files");
+
             return await workspaceLoader.Reload(workspaceTargetPath, ct);
         }
 
@@ -117,7 +116,8 @@ public sealed class CSharpLanguageExtractor(
             return updatedWorkspace;
         }
 
-        return Result.Ok(new WorkspaceLoadResult(updatedWorkspace.Value.Solution,
+        return Result.Ok(new WorkspaceLoadResult(
+            updatedWorkspace.Value.Solution,
             [.. loadedWorkspace.Value.Diagnostics, .. updatedWorkspace.Value.Diagnostics]));
     }
 
@@ -125,72 +125,6 @@ public sealed class CSharpLanguageExtractor(
         => string.IsNullOrWhiteSpace(path)
             ? null
             : Path.GetFullPath(repositoryWorkspace.ToRepositoryRelativePath(path), repositoryWorkspace.RootPath);
-
-    public async Task<Result<ExtractedNodes>> ExtractIncremental(
-        IncrementalExtractionContext context,
-        CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentException.ThrowIfNullOrWhiteSpace(context.TargetPath);
-        ArgumentNullException.ThrowIfNull(context.ChangedFiles);
-
-        var cSharpChanges = context.ChangedFiles
-            .Where(static changedFile => changedFile.GetAffectedPaths().Any(IsCSharpFilePath))
-            .ToArray();
-
-        if (cSharpChanges.Length == 0)
-        {
-            return Result.Ok(new ExtractedNodes([], [], [], []));
-        }
-
-        var workspaceTargetPath = workspaceTargetResolver.ResolveTargetPath(context.TargetPath);
-        if (workspaceTargetPath is null)
-        {
-            return Result.Ok(new ExtractedNodes([], [], [], []));
-        }
-
-        var loadedWorkspace = await workspaceLoader.Load(
-            workspaceTargetPath,
-            ct);
-
-        if (loadedWorkspace.IsFailed)
-        {
-            return Result.Fail(loadedWorkspace.Errors);
-        }
-
-        // Include former partial siblings before refreshing the workspace, including when
-        // a declaration is deleted or renamed and no longer exists in the updated solution.
-        var extractionChanges = await PartialDeclarationChanges.Expand(loadedWorkspace.Value.Solution, cSharpChanges, ct);
-        var updatedWorkspace = await workspaceLoader.UpdateDocuments(
-            workspaceTargetPath,
-            cSharpChanges,
-            ct);
-
-        if (updatedWorkspace.IsFailed)
-        {
-            return Result.Fail(updatedWorkspace.Errors);
-        }
-
-        IReadOnlyList<string> diagnostics =
-        [
-            .. loadedWorkspace.Value.Diagnostics,
-            .. updatedWorkspace.Value.Diagnostics
-        ];
-        var extractionPayload = await analysisEngine.ExtractIncremental(
-            workspaceTargetPath,
-            updatedWorkspace.Value.Solution,
-            repositoryWorkspace,
-            extractionChanges,
-            context.Progress,
-            diagnostics,
-            ct);
-
-        return Result.Ok(new ExtractedNodes(
-            [.. extractionPayload.Projects.Select(ToIndexedProject)],
-            [.. extractionPayload.CodeNodes.Select(ToIndexedCodeNode)],
-            [.. extractionPayload.Edges.Select(ToIndexedDependency)],
-            extractionPayload.Diagnostics));
-    }
 
     private static IndexedProject ToIndexedProject(ProjectNode projectNode)
         => new(
@@ -222,5 +156,4 @@ public sealed class CSharpLanguageExtractor(
 
     private static bool IsCSharpFilePath(string path)
         => string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase);
-
 }

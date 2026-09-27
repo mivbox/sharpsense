@@ -34,7 +34,10 @@ internal static class WorkspaceExtractionPlan
             steps.Add(new WorkspaceExtractionStep(
                 source,
                 GetExtractor(registeredExtractors, source.Kind),
-                context with { TargetPath = targetPath }));
+                context with
+                {
+                    TargetPath = targetPath
+                }));
         }
 
         var markdownPatterns = sources
@@ -49,7 +52,11 @@ internal static class WorkspaceExtractionPlan
             steps.Add(new WorkspaceExtractionStep(
                 new WorkspaceSource(WorkspaceSourceKind.Markdown, "."),
                 GetExtractor(registeredExtractors, WorkspaceSourceKind.Markdown),
-                context with { TargetPath = paths.RootPath, IncludePatterns = markdownPatterns }));
+                context with
+                {
+                    TargetPath = paths.RootPath,
+                    IncludePatterns = markdownPatterns
+                }));
         }
 
         return steps;
@@ -61,7 +68,8 @@ internal static class WorkspaceExtractionPlan
         IIndexingWorkspacePaths paths)
     {
         if (step.Source.Kind != WorkspaceSourceKind.CSharp ||
-            !Path.GetExtension(step.Context.TargetPath).Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+            !Path.GetExtension(step.Context.TargetPath)
+                .Equals(".csproj", StringComparison.OrdinalIgnoreCase))
         {
             return extractedNodes;
         }
@@ -71,13 +79,16 @@ internal static class WorkspaceExtractionPlan
         var selectedPath = paths.ToRepositoryRelativePath(step.Context.TargetPath);
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var projects = extractedNodes.Projects
-            .Where(project => paths.ToRepositoryRelativePath(project.RelativeFilePath).Equals(selectedPath, comparison))
+            .Where(project => paths.ToRepositoryRelativePath(project.RelativeFilePath)
+                .Equals(selectedPath, comparison))
             .ToArray();
-        var projectIds = projects.Select(static project => project.Id).ToHashSet(StringComparer.Ordinal);
+        var projectIds = projects.Select(static project => project.Id)
+            .ToHashSet(StringComparer.Ordinal);
         var codeNodes = extractedNodes.CodeNodes
             .Where(node => node.ProjectId is not null && projectIds.Contains(node.ProjectId))
             .ToArray();
-        var callerIds = projectIds.Concat(codeNodes.Select(static node => node.CanonicalId)).ToHashSet(StringComparer.Ordinal);
+        var callerIds = projectIds.Concat(codeNodes.Select(static node => node.CanonicalId))
+            .ToHashSet(StringComparer.Ordinal);
 
         return extractedNodes with
         {

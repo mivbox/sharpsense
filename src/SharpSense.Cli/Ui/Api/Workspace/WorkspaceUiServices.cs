@@ -10,6 +10,7 @@ internal static class WorkspaceUiServices
     public static IServiceCollection AddWorkspaceUiServices(this IServiceCollection services, WorkspaceUiOptions options)
     {
         services.AddSingleton(options);
+
         return services.AddWorkspaceExecutionServices();
     }
 }

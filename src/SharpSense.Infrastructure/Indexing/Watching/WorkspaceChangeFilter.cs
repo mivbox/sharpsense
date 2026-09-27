@@ -11,9 +11,9 @@ namespace SharpSense.Infrastructure.Indexing.Watching;
 /// Narrows repository watcher batches to selected sources and discovered semantic dependencies.
 /// Retaining old dependencies until process restart also handles deletes and failed reloads safely.
 /// </summary>
-public sealed class WorkspaceChangeFilter(
+internal sealed class WorkspaceChangeFilter(
     IIndexingWorkspacePaths workspacePaths,
-    IOptions<SharpSenseCliOptions> options) : IWorkspaceChangeFilter
+    IOptions<WorkspaceExecutionOptions> options) : IWorkspaceChangeFilter
 {
     private readonly StringComparer _pathComparer = OperatingSystem.IsWindows()
         ? StringComparer.OrdinalIgnoreCase
@@ -129,7 +129,8 @@ public sealed class WorkspaceChangeFilter(
         // glob. Its membership is unknown until MSBuild evaluates the C# source again.
         if (source.Kind == WorkspaceSourceKind.CSharp &&
             action is WorkspaceFileChangeAction.Added or WorkspaceFileChangeAction.Renamed &&
-            Path.GetExtension(path).ToLowerInvariant() is ".md" or ".markdown" or ".mdown" or ".mkd")
+            Path.GetExtension(path)
+                .ToLowerInvariant() is ".md" or ".markdown" or ".mdown" or ".mkd")
         {
             return true;
         }
@@ -138,17 +139,18 @@ public sealed class WorkspaceChangeFilter(
         // folders. Reevaluate those configuration files before attempting narrower filtering.
         if (!directoryChange &&
             (source.Kind == WorkspaceSourceKind.CSharp && CSharpIndexingPathRules.IsConfigurationPath(path) ||
-             source.Kind == WorkspaceSourceKind.TypeScript && Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase)))
+             source.Kind == WorkspaceSourceKind.TypeScript && Path.GetExtension(path)
+                 .Equals(".json", StringComparison.OrdinalIgnoreCase)))
         {
             return true;
         }
 
         if (!directoryChange && !(source.Kind switch
-            {
-                WorkspaceSourceKind.CSharp => CSharpIndexingPathRules.IsRelevantChangePath(path),
-                WorkspaceSourceKind.TypeScript => TypeScriptIndexingPathRules.IsRelevantChangePath(path),
-                _ => false
-            }))
+        {
+            WorkspaceSourceKind.CSharp => CSharpIndexingPathRules.IsRelevantChangePath(path),
+            WorkspaceSourceKind.TypeScript => TypeScriptIndexingPathRules.IsRelevantChangePath(path),
+            _ => false
+        }))
         {
             return false;
         }
@@ -161,13 +163,15 @@ public sealed class WorkspaceChangeFilter(
 
         var sourcePath = workspacePaths.ToRepositoryRelativePath(workspacePaths.GetRequiredTargetPath(source.Path));
         var sourceDirectory = source.Kind == WorkspaceSourceKind.CSharp ||
-                              Path.GetExtension(sourcePath).Equals(".json", StringComparison.OrdinalIgnoreCase)
+                              Path.GetExtension(sourcePath)
+                                  .Equals(".json", StringComparison.OrdinalIgnoreCase)
             ? Normalize(Path.GetDirectoryName(sourcePath) ?? string.Empty)
             : sourcePath;
         // Solution selections may contain projects outside the solution's own directory.
         // Before their first successful extraction, conservatively retain C# source changes.
         if (files.Count == 0 && source.Kind == WorkspaceSourceKind.CSharp &&
-            !Path.GetExtension(sourcePath).Equals(".csproj", StringComparison.OrdinalIgnoreCase))
+            !Path.GetExtension(sourcePath)
+                .Equals(".csproj", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
@@ -193,10 +197,13 @@ public sealed class WorkspaceChangeFilter(
     {
         path = Normalize(path);
         directory = Normalize(directory).TrimEnd('/');
+
         return directory is "" or "." || _pathComparer.Equals(path, directory) ||
-               path.StartsWith(directory + "/", OperatingSystem.IsWindows()
-                   ? StringComparison.OrdinalIgnoreCase
-                   : StringComparison.Ordinal);
+            path.StartsWith(
+                directory + "/",
+                OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal);
     }
 
     private static string Normalize(string path) => path.Replace('\\', '/');

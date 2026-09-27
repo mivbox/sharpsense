@@ -3,20 +3,24 @@ namespace SharpSense.Infrastructure.Storage;
 /// <summary>
 /// Pins a request or background indexing job to one workspace for its entire service scope.
 /// </summary>
-public sealed class WorkspaceScope
+internal sealed class WorkspaceScope : IWorkspaceScope
 {
     private WorkspaceSelection? _selection;
 
     public WorkspaceSelection Selection => _selection
         ?? throw new InvalidOperationException("A workspace must be selected before resolving workspace services.");
 
-    public bool Watch { get; private set; }
+    public bool SkipEmbeddings
+    {
+        get; private set;
+    }
 
-    public bool SkipEmbeddings { get; private set; }
+    public bool DisableEmbeddingCache
+    {
+        get; private set;
+    }
 
-    public bool DisableEmbeddingCache { get; private set; }
-
-    public void Bind(WorkspaceSelection selection, bool watch = false, bool skipEmbeddings = false, bool disableEmbeddingCache = false)
+    public void Bind(WorkspaceSelection selection, bool skipEmbeddings = false, bool disableEmbeddingCache = false)
     {
         ArgumentNullException.ThrowIfNull(selection);
         if (_selection is not null)
@@ -25,7 +29,6 @@ public sealed class WorkspaceScope
         }
 
         _selection = selection;
-        Watch = watch;
         SkipEmbeddings = skipEmbeddings;
         DisableEmbeddingCache = disableEmbeddingCache;
     }

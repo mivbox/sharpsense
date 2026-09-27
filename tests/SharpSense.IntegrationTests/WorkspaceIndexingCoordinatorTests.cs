@@ -1,15 +1,16 @@
-using System.Collections.Concurrent;
+using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using SharpSense.Cli.Ui.Indexing;
 using SharpSense.Infrastructure.Storage;
+using System.Collections.Concurrent;
 
 namespace SharpSense.IntegrationTests;
 
 public sealed class WorkspaceIndexingCoordinatorTests
 {
     [Fact]
-    public async Task WorkspacesRunIndependentlyAndDuplicateStartReusesActiveJob()
+    public async Task WhenWorkspacesRunIndependentlyAndDuplicate_ThenStartReusesActiveJob()
     {
         var first = Selection("first");
         var second = Selection("second");
@@ -20,7 +21,9 @@ public sealed class WorkspaceIndexingCoordinatorTests
         await using var coordinator = Create(async (selection, _, update, ct) =>
         {
             counts.AddOrUpdate(selection.Definition.Id, 1, static (_, count) => count + 1);
-            update(new WorkspaceIndexingUpdate("watching", $"Watching {selection.Definition.Name}."));
+            update(new WorkspaceIndexingUpdate(
+                "watching",
+                $"Watching {selection.Definition.Name}."));
             started[selection.Definition.Id].SetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, ct);
         });
@@ -31,29 +34,30 @@ public sealed class WorkspaceIndexingCoordinatorTests
         await Task.WhenAll(started.Values.Select(static completion => completion.Task))
             .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
-        Assert.Equal(firstJob.JobId, duplicate.JobId);
-        Assert.NotEqual(firstJob.JobId, secondJob.JobId);
-        Assert.Equal(1, counts[first.Definition.Id]);
-        Assert.Equal(1, counts[second.Definition.Id]);
-        Assert.Throws<WorkspaceBusyException>(() => coordinator.UpdateWhileIdle(first.Definition.Id, () => "updated"));
+        duplicate.JobId.Should().Be(firstJob.JobId);
+        (secondJob.JobId != firstJob.JobId).Should().BeTrue();
+        counts[first.Definition.Id].Should().Be(1);
+        counts[second.Definition.Id].Should().Be(1);
+        ((Action)(() => coordinator.UpdateWhileIdle(first.Definition.Id, () => "updated"))).Should().ThrowExactly<WorkspaceBusyException>();
         var stopped = await coordinator.Stop(first.Definition.Id, TestContext.Current.CancellationToken);
-        Assert.Equal("stopped", stopped.State);
-        Assert.NotNull(stopped.CompletedAt);
-        Assert.Equal("watching", coordinator.GetStatus(second.Definition.Id).State);
-        Assert.Equal("updated", coordinator.UpdateWhileIdle(first.Definition.Id, () => "updated"));
+        stopped!.State.Should().Be("stopped");
+        stopped.CompletedAt.Should().NotBeNull();
+        coordinator.GetStatus(second.Definition.Id).State.Should().Be("watching");
+        coordinator.UpdateWhileIdle(first.Definition.Id, () => "updated").Should().Be("updated");
 
         await coordinator.StopAsync(TestContext.Current.CancellationToken);
-        Assert.Equal("stopped", coordinator.GetStatus(second.Definition.Id).State);
+        coordinator.GetStatus(second.Definition.Id).State.Should().Be("stopped");
     }
 
     [Fact]
-    public async Task HostCancellationStopsSessionsAndWaitsForTheirCleanup()
+    public async Task WhenHostCancellation_ThenStopsSessionsAndWaitsForTheirCleanup()
     {
         var selection = Selection("app");
         using var stopping = new CancellationTokenSource();
         var started = Completion();
         var cleanedUp = Completion();
-        await using var coordinator = new WorkspaceIndexingCoordinator(async (_, _, _, ct) =>
+        await using var coordinator = new WorkspaceIndexingCoordinator(
+            async (_, _, _, ct) =>
         {
             started.SetResult();
             try
@@ -64,40 +68,42 @@ public sealed class WorkspaceIndexingCoordinatorTests
             {
                 cleanedUp.SetResult();
             }
-        }, stopping.Token, NullLogger<WorkspaceIndexingCoordinator>.Instance);
+        },
+            stopping.Token,
+            NullLogger<WorkspaceIndexingCoordinator>.Instance);
         coordinator.Start(selection, new StartWorkspaceIndexingRequest(Watch: true));
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         await stopping.CancelAsync();
         await coordinator.StopAsync(TestContext.Current.CancellationToken);
 
-        Assert.True(cleanedUp.Task.IsCompletedSuccessfully);
-        Assert.Equal("stopped", coordinator.GetStatus(selection.Definition.Id).State);
-        Assert.Throws<InvalidOperationException>(() => coordinator.Start(selection, new StartWorkspaceIndexingRequest()));
+        cleanedUp.Task.IsCompletedSuccessfully.Should().BeTrue();
+        coordinator.GetStatus(selection.Definition.Id).State.Should().Be("stopped");
+        ((Action)(() => coordinator.Start(selection, new StartWorkspaceIndexingRequest()))).Should().ThrowExactly<InvalidOperationException>();
     }
 
     [Fact]
-    public async Task FailedJobRetainsErrorAndCanBeStartedAgain()
+    public async Task WhenFailedJob_ThenRetainsErrorAndCanBeStartedAgain()
     {
         var selection = Selection("app");
         var attempts = 0;
         await using var coordinator = Create((_, _, _, _) =>
             Interlocked.Increment(ref attempts) == 1
-                ? Task.FromException(new InvalidOperationException("Selected source could not be read."))
-                : Task.CompletedTask);
+            ? Task.FromException(new InvalidOperationException("Selected source could not be read."))
+            : Task.CompletedTask);
 
         var failed = coordinator.Start(selection, new StartWorkspaceIndexingRequest());
         await WaitForState(coordinator, selection.Definition.Id, "failed");
-        Assert.Contains("Selected source could not be read.", coordinator.GetStatus(selection.Definition.Id).Diagnostics);
+        coordinator.GetStatus(selection.Definition.Id).Diagnostics.Should().Contain("Selected source could not be read.");
 
         var restarted = coordinator.Start(selection, new StartWorkspaceIndexingRequest());
         await WaitForState(coordinator, selection.Definition.Id, "completed");
-        Assert.NotEqual(failed.JobId, restarted.JobId);
-        Assert.Empty(coordinator.GetStatus(selection.Definition.Id).Diagnostics);
+        (restarted.JobId != failed.JobId).Should().BeTrue();
+        coordinator.GetStatus(selection.Definition.Id).Diagnostics.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task WatchDiagnosticsAreBoundedAndProgressKeepsWorkspaceIdentity()
+    public async Task WhenWatchDiagnostics_ThenAreBoundedAndProgressKeepsWorkspaceIdentity()
     {
         var selection = Selection("app");
         var updated = Completion();
@@ -105,8 +111,14 @@ public sealed class WorkspaceIndexingCoordinatorTests
         {
             update(new WorkspaceIndexingUpdate("watching", "Initial index saved.", IndexCommitted: true));
             update(new WorkspaceIndexingUpdate("indexing", "Reindexing changes..."));
-            update(new WorkspaceIndexingUpdate("watching", new string('m', 3000), 3, 10,
-                [.. Enumerable.Range(0, 30).Select(index => $"{index}:" + new string('d', 3000))], IndexCommitted: true));
+            update(new WorkspaceIndexingUpdate(
+                "watching",
+                new string('m', 3000),
+                3,
+                10,
+                [.. Enumerable.Range(0, 30)
+                    .Select(index => $"{index}:" + new string('d', 3000))],
+                IndexCommitted: true));
             updated.SetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, ct);
         });
@@ -114,13 +126,13 @@ public sealed class WorkspaceIndexingCoordinatorTests
         await updated.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         var status = coordinator.GetStatus(selection.Definition.Id);
-        Assert.Equal(selection.Definition.Id, status.WorkspaceId);
-        Assert.Equal(3, status.CompletedItems);
-        Assert.Equal(10, status.TotalItems);
-        Assert.Equal(2, status.Revision);
-        Assert.Equal(2000, status.Message!.Length);
-        Assert.Equal(20, status.Diagnostics.Count);
-        Assert.All(status.Diagnostics, diagnostic => Assert.True(diagnostic.Length <= 2000));
+        status.WorkspaceId.Should().Be(selection.Definition.Id);
+        status.CompletedItems.Should().Be(3);
+        status.TotalItems.Should().Be(10);
+        status.Revision.Should().Be(2);
+        status.Message!.Length.Should().Be(2000);
+        status.Diagnostics.Count.Should().Be(20);
+        status.Diagnostics.Should().AllSatisfy(diagnostic => (diagnostic.Length <= 2000).Should().BeTrue());
     }
 
     private static WorkspaceIndexingCoordinator Create(
@@ -130,8 +142,16 @@ public sealed class WorkspaceIndexingCoordinatorTests
     private static TaskCompletionSource Completion() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private static WorkspaceSelection Selection(string name)
-        => new(new WorkspaceDefinition { Id = Guid.NewGuid(), Name = name, RepositoryRoot = "/repo" },
-            "/home/workspace", "/home/workspace/workspace.yaml", Mock.Of<IRepositoryWorkspace>());
+        => new(
+            new WorkspaceDefinition
+            {
+                Id = Guid.NewGuid(),
+                Name = name,
+                RepositoryRoot = "/repo"
+            },
+            "/home/workspace",
+            "/home/workspace/workspace.yaml",
+            Mock.Of<IRepositoryWorkspace>());
 
     private static async Task WaitForState(WorkspaceIndexingCoordinator coordinator, Guid workspaceId, string state)
     {

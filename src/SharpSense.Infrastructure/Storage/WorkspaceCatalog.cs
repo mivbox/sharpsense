@@ -1,6 +1,6 @@
-using System.IO.Abstractions;
 using Serilog;
 using SharpSense.Application.Indexing;
+using System.IO.Abstractions;
 using YamlDotNet.Core;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -11,9 +11,9 @@ namespace SharpSense.Infrastructure.Storage;
 /// Reads and maintains named workspaces under the SharpSense home directory.
 /// Listing and resolving never create directories, databases, or configuration files.
 /// </summary>
-public sealed class WorkspaceCatalog
+internal sealed class WorkspaceCatalog : IWorkspaceCatalog
 {
-    private static readonly ILogger Logger = Log.ForContext<WorkspaceCatalog>();
+    private static readonly ILogger _logger = Log.ForContext<WorkspaceCatalog>();
     private readonly IFileSystem _fileSystem;
     private readonly object _deserializationGate = new();
     private readonly ISerializer _serializer = new SerializerBuilder()
@@ -32,7 +32,10 @@ public sealed class WorkspaceCatalog
         HomeDirectory = SharpSenseHome.Resolve(fileSystem, homeDirectory);
     }
 
-    public string HomeDirectory { get; }
+    public string HomeDirectory
+    {
+        get;
+    }
 
     public Guid? GetDefaultWorkspaceId()
     {
@@ -44,7 +47,10 @@ public sealed class WorkspaceCatalog
 
         using var stream = _fileSystem.FileStream.New(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         using var reader = new StreamReader(stream);
-        if (!Guid.TryParse(reader.ReadToEnd().Trim(), out var id) || id == Guid.Empty)
+        if (!Guid.TryParse(
+            reader.ReadToEnd()
+                .Trim(),
+            out var id) || id == Guid.Empty)
         {
             throw new InvalidOperationException(
                 $"Default workspace selection '{path}' is invalid. Run 'sharpsense workspace use <name-or-id>' to replace it, or pass --workspace explicitly.");
@@ -58,6 +64,7 @@ public sealed class WorkspaceCatalog
         using var catalogLock = AcquireWriteLock();
         var selection = ResolveExplicit(List(), nameOrId);
         WriteAtomically(_fileSystem.Path.Combine(HomeDirectory, "default-workspace"), selection.Definition.Id.ToString("D"));
+
         return selection;
     }
 
@@ -122,13 +129,17 @@ public sealed class WorkspaceCatalog
                 {
                     // Malformed YAML can include private source content in its exception.
                     // Report only the affected registration and safe failure category.
-                    Logger.Warning("Skipping unavailable workspace configuration {ConfigurationPath} ({FailureType}). Resolve workspace ID {WorkspaceId} for details.",
-                        configurationPath, (exception.InnerException ?? exception).GetType().Name, id);
+                    _logger.Warning(
+                        "Skipping unavailable workspace configuration {ConfigurationPath} ({FailureType}). Resolve workspace ID {WorkspaceId} for details.",
+                        configurationPath,
+                        (exception.InnerException ?? exception).GetType().Name,
+                        id);
                 }
             }
         }
 
-        return selections.OrderBy(static selection => selection.Definition.Name, StringComparer.OrdinalIgnoreCase).ToArray();
+        return selections.OrderBy(static selection => selection.Definition.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     public WorkspaceSelection Resolve(string? nameOrId, string workingDirectory)
@@ -137,6 +148,7 @@ public sealed class WorkspaceCatalog
         if (nameOrId is not null)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(nameOrId);
+
             return Guid.TryParse(nameOrId.Trim(), out var id)
                 ? ResolveById(id)
                 : ResolveExplicit(List(), nameOrId);
@@ -216,6 +228,7 @@ public sealed class WorkspaceCatalog
         using var catalogLock = AcquireWriteLock();
         EnsureNameAvailable(definition.Name);
         Write(definition);
+
         return CreateSelection(definition);
     }
 
@@ -225,9 +238,11 @@ public sealed class WorkspaceCatalog
         using var catalogLock = AcquireWriteLock();
         var selection = ResolveExplicit(List(), nameOrId);
         using var indexLease = AcquireIndexLease(selection);
-        selection.Definition.Sources = selection.Definition.Sources.Concat(sources).ToArray();
+        selection.Definition.Sources = selection.Definition.Sources.Concat(sources)
+            .ToArray();
         NormalizeDefinition(selection.Definition, requireExistingSources: true);
         Write(selection.Definition);
+
         return CreateSelection(selection.Definition);
     }
 
@@ -238,9 +253,13 @@ public sealed class WorkspaceCatalog
         var existing = List();
         var selection = ResolveExplicit(existing, nameOrId);
         using var indexLease = AcquireIndexLease(selection);
-        EnsureNameAvailable(name.Trim(), existing.Where(item => item.Definition.Id != selection.Definition.Id).ToArray());
+        EnsureNameAvailable(
+            name.Trim(),
+            existing.Where(item => item.Definition.Id != selection.Definition.Id)
+                .ToArray());
         selection.Definition.Name = name.Trim();
         Write(selection.Definition);
+
         return CreateSelection(selection.Definition);
     }
 
@@ -252,11 +271,15 @@ public sealed class WorkspaceCatalog
         var existing = List();
         var selection = ResolveExplicit(existing, nameOrId);
         using var indexLease = AcquireIndexLease(selection);
-        EnsureNameAvailable(name.Trim(), existing.Where(item => item.Definition.Id != selection.Definition.Id).ToArray());
+        EnsureNameAvailable(
+            name.Trim(),
+            existing.Where(item => item.Definition.Id != selection.Definition.Id)
+                .ToArray());
         selection.Definition.Name = name.Trim();
         selection.Definition.Sources = sources.ToArray();
         NormalizeDefinition(selection.Definition, requireExistingSources: true);
         Write(selection.Definition);
+
         return CreateSelection(selection.Definition);
     }
 
@@ -268,12 +291,15 @@ public sealed class WorkspaceCatalog
         using var indexLease = AcquireIndexLease(selection);
         var requested = NormalizeSources(selection.Definition.RepositoryRoot, sources, requireExistingSources: false);
         var existing = selection.Definition.Sources;
-        var removed = existing.Where(source => requested.Any(candidate => SameSource(source, candidate))).ToArray();
-        var unmatched = requested.Where(source => !existing.Any(candidate => SameSource(source, candidate))).ToArray();
+        var removed = existing.Where(source => requested.Any(candidate => SameSource(source, candidate)))
+            .ToArray();
+        var unmatched = requested.Where(source => !existing.Any(candidate => SameSource(source, candidate)))
+            .ToArray();
 
         if (removed.Length > 0)
         {
-            selection.Definition.Sources = existing.Where(source => !removed.Contains(source)).ToArray();
+            selection.Definition.Sources = existing.Where(source => !removed.Contains(source))
+                .ToArray();
             Write(selection.Definition);
         }
 
@@ -306,11 +332,13 @@ public sealed class WorkspaceCatalog
             Id = Guid.NewGuid(),
             Name = name.Trim(),
             RepositoryRoot = repositoryRoot,
-            Sources = selections.SelectMany(static selection => selection.Definition.Sources).ToArray()
+            Sources = selections.SelectMany(static selection => selection.Definition.Sources)
+                .ToArray()
         };
 
         NormalizeDefinition(definition, requireExistingSources: false);
         Write(definition);
+
         return CreateSelection(definition);
     }
 
@@ -333,11 +361,14 @@ public sealed class WorkspaceCatalog
             }
 
             NormalizeDefinition(definition, requireExistingSources: false);
+
             return CreateSelection(definition);
         }
         catch (Exception exception) when (exception is YamlException or ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException)
         {
-            throw new InvalidOperationException($"Workspace configuration '{configurationPath}' is invalid: {exception.Message}", exception);
+            throw new InvalidOperationException(
+                $"Workspace configuration '{configurationPath}' is invalid: {exception.Message}",
+                exception);
         }
     }
 
@@ -345,6 +376,7 @@ public sealed class WorkspaceCatalog
     {
         var directory = _fileSystem.Path.Combine(HomeDirectory, "workspaces", definition.Id.ToString("D"));
         var databasePath = _fileSystem.Path.Combine(directory, "index.db");
+
         return new WorkspaceSelection(
             definition,
             directory,
@@ -391,10 +423,14 @@ public sealed class WorkspaceCatalog
             }
 
             ArgumentException.ThrowIfNullOrWhiteSpace(source.Path);
-            var path = source.Path.Trim().Replace('\\', '/');
-            if (path.Contains('\0') || path.Split('/').Contains("..", StringComparer.Ordinal))
+            var path = source.Path.Trim()
+                .Replace('\\', '/');
+            if (path.Contains('\0') || path.Split('/')
+                .Contains("..", StringComparer.Ordinal))
             {
-                throw new ArgumentException($"Workspace source '{path}' must stay inside the repository root.", nameof(sources));
+                throw new ArgumentException(
+                    $"Workspace source '{path}' must stay inside the repository root.",
+                    nameof(sources));
             }
 
             var fullPath = _fileSystem.Path.IsPathRooted(path)
@@ -402,7 +438,9 @@ public sealed class WorkspaceCatalog
                 : _fileSystem.Path.GetFullPath(_fileSystem.Path.Combine(sourceBasePath ?? repositoryRoot, path));
             if (!workspace.TryToRepositoryRelativePath(fullPath, out var relativePath))
             {
-                throw new ArgumentException($"Workspace source '{path}' must stay inside the repository root.", nameof(sources));
+                throw new ArgumentException(
+                    $"Workspace source '{path}' must stay inside the repository root.",
+                    nameof(sources));
             }
 
             relativePath = string.IsNullOrWhiteSpace(relativePath) ? "." : relativePath;
@@ -421,7 +459,12 @@ public sealed class WorkspaceCatalog
     {
         var extension = _fileSystem.Path.GetExtension(fullPath);
         if (kind == WorkspaceSourceKind.CSharp &&
-            !new[] { ".csproj", ".sln", ".slnx" }.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            !new[]
+            {
+                ".csproj",
+                ".sln",
+                ".slnx"
+            }.Contains(extension, StringComparer.OrdinalIgnoreCase))
         {
             throw new ArgumentException($"C# source '{fullPath}' must be a .csproj, .sln, or .slnx file.");
         }
@@ -430,12 +473,15 @@ public sealed class WorkspaceCatalog
             ((kind == WorkspaceSourceKind.CSharp && !_fileSystem.File.Exists(fullPath)) ||
              (kind == WorkspaceSourceKind.TypeScript && !_fileSystem.File.Exists(fullPath) && !_fileSystem.Directory.Exists(fullPath))))
         {
-            throw new FileNotFoundException($"Workspace source '{fullPath}' was not found.", fullPath);
+            throw new FileNotFoundException(
+                $"Workspace source '{fullPath}' was not found.",
+                fullPath);
         }
 
         if (kind == WorkspaceSourceKind.TypeScript && _fileSystem.File.Exists(fullPath) &&
             (!string.Equals(extension, ".json", StringComparison.OrdinalIgnoreCase) ||
-             !_fileSystem.Path.GetFileName(fullPath).StartsWith("tsconfig", StringComparison.OrdinalIgnoreCase)))
+             !_fileSystem.Path.GetFileName(fullPath)
+                 .StartsWith("tsconfig", StringComparison.OrdinalIgnoreCase)))
         {
             throw new ArgumentException($"TypeScript source '{fullPath}' must be a directory or a tsconfig JSON file.");
         }
@@ -448,7 +494,9 @@ public sealed class WorkspaceCatalog
         if (trimmed.Length > 100 || trimmed.Any(char.IsControl) || trimmed.IndexOfAny(['/', '\\']) >= 0 ||
             trimmed is "." or ".." || Guid.TryParse(trimmed, out _))
         {
-            throw new ArgumentException("Workspace name must be at most 100 characters, contain no path separators or control characters, and not be a GUID.", nameof(name));
+            throw new ArgumentException(
+                "Workspace name must be at most 100 characters, contain no path separators or control characters, and not be a GUID.",
+                nameof(name));
         }
     }
 
@@ -522,7 +570,9 @@ public sealed class WorkspaceCatalog
         }
     }
 
-    private static bool PathsEqual(string left, string right) => string.Equals(left, right,
+    private static bool PathsEqual(string left, string right) => string.Equals(
+        left,
+        right,
         OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     private static bool SameSource(WorkspaceSource left, WorkspaceSource right) =>

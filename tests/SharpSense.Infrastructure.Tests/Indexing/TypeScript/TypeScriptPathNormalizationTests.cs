@@ -1,16 +1,16 @@
-using System.IO.Abstractions;
 using AwesomeAssertions;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Indexing.TypeScript;
 using SharpSense.Infrastructure.Storage;
+using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.Tests.Indexing.TypeScript;
 
 public sealed class TypeScriptPathNormalizationTests
 {
     [Fact]
-    public async Task PackageTraversalSkipsRepositorySymlinkCycle()
+    public async Task WhenPackageTraversal_ThenSkipsRepositorySymlinkCycle()
     {
         var ct = TestContext.Current.CancellationToken;
         var directory = Directory.CreateTempSubdirectory("sharpsense-ts-package-cycle-");
@@ -37,7 +37,7 @@ public sealed class TypeScriptPathNormalizationTests
 
             var result = resolver.ResolveImport("@fixture/shared", Path.Combine(workspace.RootPath, "app.ts"), timeout.Token);
 
-            Assert.Equal(Path.Combine(workspace.RootPath, "packages", "shared", "index.ts"), result);
+            result.Should().Be(Path.Combine(workspace.RootPath, "packages", "shared", "index.ts"));
         }
         finally
         {
@@ -46,7 +46,7 @@ public sealed class TypeScriptPathNormalizationTests
     }
 
     [Fact]
-    public async Task SymlinkedRepositoryAndConfigTargetMatchPhysicalSourcePaths()
+    public async Task WhenRepositoryOrConfigIsSymlinked_ThenSourcePathsMatchPhysicalPaths()
     {
         var ct = TestContext.Current.CancellationToken;
         var temporaryDirectory = Directory.CreateTempSubdirectory("sharpsense-ts-config-");
@@ -57,14 +57,21 @@ public sealed class TypeScriptPathNormalizationTests
             Directory.CreateDirectory(Path.Combine(physicalRoot, ".git"));
             Directory.CreateDirectory(Path.Combine(physicalRoot, "client", "src"));
             Directory.CreateDirectory(Path.Combine(physicalRoot, "shared"));
-            await File.WriteAllTextAsync(Path.Combine(physicalRoot, "client", "tsconfig.json"), """
+            await File.WriteAllTextAsync(
+                Path.Combine(physicalRoot, "client", "tsconfig.json"),
+                """
                 { "files": ["../shared/api.ts"], "include": ["src"],
                   "compilerOptions": { "paths": { "@api": ["../shared/api.ts"] } } }
-                """, ct);
-            await File.WriteAllTextAsync(Path.Combine(physicalRoot, "client", "src", "app.ts"),
-                "import { api } from '@api'; export function app() { return api(); }", ct);
-            await File.WriteAllTextAsync(Path.Combine(physicalRoot, "shared", "api.ts"),
-                "export function api() { return 1; }", ct);
+                """,
+                ct);
+            await File.WriteAllTextAsync(
+                Path.Combine(physicalRoot, "client", "src", "app.ts"),
+                "import { api } from '@api'; export function app() { return api(); }",
+                ct);
+            await File.WriteAllTextAsync(
+                Path.Combine(physicalRoot, "shared", "api.ts"),
+                "export function api() { return 1; }",
+                ct);
             try
             {
                 Directory.CreateSymbolicLink(aliasRoot, physicalRoot);
@@ -77,12 +84,18 @@ public sealed class TypeScriptPathNormalizationTests
             var fileSystem = new FileSystem();
             var workspace = new RepositoryWorkspace(aliasRoot, Path.Combine(temporaryDirectory.FullName, "index.db"), fileSystem);
             var resolver = new TsConfigResolver(workspace, fileSystem);
-            var discoverer = new TypeScriptSourceDiscoverer(workspace,
-                new WorkspaceFileDiscoverer(workspace, fileSystem), fileSystem, resolver);
-            var extractor = new TypeScriptLanguageExtractor(discoverer, fileSystem,
+            var discoverer = new TypeScriptSourceDiscoverer(
+                workspace,
+                new WorkspaceFileDiscoverer(workspace, fileSystem),
+                fileSystem,
+                resolver);
+            var extractor = new TypeScriptLanguageExtractor(
+                discoverer,
+                fileSystem,
                 [new CodeNodeExtractionPass(), new ImportDependencyPass(resolver, workspace)]);
 
-            var result = await extractor.Extract(new(Path.Combine(aliasRoot, "client", "tsconfig.json"), null),
+            var result = await extractor.Extract(
+                new(Path.Combine(aliasRoot, "client", "tsconfig.json"), null),
                 ct);
 
             result.IsSuccess.Should().BeTrue(string.Join("; ", result.Errors.Select(error => error.Message)));

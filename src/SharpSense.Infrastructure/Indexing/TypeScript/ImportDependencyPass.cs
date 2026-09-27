@@ -4,7 +4,7 @@ using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Infrastructure.Indexing.TypeScript;
 
-public sealed class ImportDependencyPass(
+internal sealed class ImportDependencyPass(
     TsConfigResolver tsConfigResolver,
     IRepositoryWorkspace repositoryWorkspace) : ITypeScriptExtractionPass
 {
@@ -18,9 +18,10 @@ public sealed class ImportDependencyPass(
         var callerIdsByFile = context.CodeNodes
             .GroupBy(static node => node.RelativeFilePath, StringComparer.Ordinal)
             .ToDictionary(
-                static group => group.Key,
-                static group => group.Select(static node => node.CanonicalId).ToArray(),
-                StringComparer.Ordinal);
+            static group => group.Key,
+            static group => group.Select(static node => node.CanonicalId)
+                .ToArray(),
+            StringComparer.Ordinal);
         var edgeIndexes = context.Edges
             .Select(static (edge, index) => new
             {
@@ -66,8 +67,7 @@ public sealed class ImportDependencyPass(
 
                 foreach (var target in targets)
                 {
-                    if (!context.IsIncremental &&
-                        !knownNodeIds.Contains(target.CalleeId) &&
+                    if (!knownNodeIds.Contains(target.CalleeId) &&
                         !PackageNodeIdentity.IsPlaceholderId(target.CalleeId))
                     {
                         continue;
@@ -179,7 +179,8 @@ public sealed class ImportDependencyPass(
             {
                 yield break;
             }
-            var reExports = context.ReExports.Where(binding => binding.FilePath == path).ToArray();
+            var reExports = context.ReExports.Where(binding => binding.FilePath == path)
+                .ToArray();
             var hasExplicitExport = reExports.Any(binding => binding.ExportedName == name);
             foreach (var binding in reExports)
             {
@@ -287,7 +288,9 @@ public sealed class ImportDependencyPass(
             {
                 var matchingNamespaceTags = jsxTagNames
                     .Where(tagName =>
-                        tagName.StartsWith($"{importedBinding.LocalName}.", StringComparison.Ordinal))
+                        tagName.StartsWith(
+                            $"{importedBinding.LocalName}.",
+                            StringComparison.Ordinal))
                     .Distinct(StringComparer.Ordinal)
                     .ToArray();
                 if (matchingNamespaceTags.Length > 0)
@@ -360,6 +363,7 @@ public sealed class ImportDependencyPass(
                 }
             }
         }
+
         return [.. bindings.Distinct()];
     }
 
@@ -423,22 +427,6 @@ public sealed class ImportDependencyPass(
         }
 
         targetsByCalleeId[target.CalleeId] = target;
-    }
-
-    private static void AddResolvedTargets(
-        IDictionary<string, ResolvedImportTarget> targetsByCalleeId,
-        string targetRelativePath,
-        IReadOnlyDictionary<string, string[]> targetNodeIdsByFile)
-    {
-        if (!targetNodeIdsByFile.TryGetValue(targetRelativePath, out var targetNodeIds))
-        {
-            return;
-        }
-
-        foreach (var targetNodeId in targetNodeIds)
-        {
-            AddResolvedTarget(targetsByCalleeId, new ResolvedImportTarget(targetNodeId, null));
-        }
     }
 
     private static void AddResolvedTarget(

@@ -2,24 +2,26 @@ using FluentResults;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using SharpSense.Application.Indexing.Abstractions;
-using SharpSense.Application.Indexing.IndexTarget.Models;
+using SharpSense.Application.Indexing.IndexWorkspace.Models;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Indexing.UpdateWorkspaceFiles.Models;
 using SharpSense.Application.Shared.Abstractions;
+using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 
 namespace SharpSense.Cli.Analyze;
 
 /// <summary>One lease and one bound scope cover initialization and the entire analysis/watch session.</summary>
-internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory, WorkspaceCatalog catalog, IAnsiConsole console)
+internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory, IWorkspaceCatalog catalog, IAnsiConsole console)
 {
     public async Task<int> Run(WorkspaceSelection selection, AnalyzeCommand.Settings settings, CancellationToken ct)
     {
         using var lease = catalog.AcquireIndexLease(selection);
         await using var scope = scopeFactory.CreateAsyncScope();
         var services = scope.ServiceProvider;
-        services.GetRequiredService<WorkspaceScope>().Bind(selection, settings.Watch, settings.SkipEmbeddings, settings.DisableEmbeddingCache);
+        services.GetRequiredService<IWorkspaceScope>()
+            .Bind(selection, settings.SkipEmbeddings, settings.DisableEmbeddingCache);
         var presentation = new SpectreAnalysisNotifier(console, selection.Definition.Name);
         using var stopping = ct.Register(() => presentation.SetState("Stopping analysis..."));
         try
@@ -27,7 +29,8 @@ internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory,
             await presentation.Run(async () =>
             {
                 presentation.SetState("Preparing workspace database...");
-                await services.GetRequiredService<IAnalysisDatabaseInitializer>().Initialize(ct);
+                await services.GetRequiredService<IWorkspaceDatabaseInitializer>()
+                    .Initialize(ct);
                 if (settings.Watch)
                 {
                     await Watch(services, selection.Workspace.RootPath, presentation, ct);
@@ -38,16 +41,19 @@ internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory,
                     presentation.SetState($"Indexed workspace '{selection.Definition.Name}'.");
                 }
             });
+
             return 0;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             console.WriteLine("Analysis stopped.");
+
             return 0;
         }
         catch (IndexingFailedException ex)
         {
             console.MarkupLine($"[red]ERROR[/]: {Markup.Escape(ex.Message)}");
+
             return 1;
         }
     }
@@ -55,8 +61,8 @@ internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory,
     private static async Task Index(IServiceProvider services, SpectreAnalysisNotifier presentation, CancellationToken ct, bool recovering = false)
     {
         presentation.SetState(recovering ? "Recovering: rebuilding the full index..." : "Analyzing workspace...");
-        var handler = services.GetRequiredService<ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>>();
-        var result = await handler.Handle(new IndexTargetCommand(Notifier: presentation), ct);
+        var handler = services.GetRequiredService<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>();
+        var result = await handler.Handle(new IndexWorkspaceCommand(Notifier: presentation), ct);
         ct.ThrowIfCancellationRequested();
         if (result.IsFailed)
         {
@@ -75,7 +81,11 @@ internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory,
             ready = false;
             try
             {
-                await watcher.Watch(root, ApplyBatch, ct, initialize: async token =>
+                await watcher.Watch(
+                    root,
+                    ApplyBatch,
+                    ct,
+                    initialize: async token =>
                 {
                     subscribed = true;
                     if (recovering)
@@ -87,11 +97,13 @@ internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory,
                         await Index(services, presentation, token);
                     }
                     presentation.SetState("Reconciling changes received during indexing...");
-                }, onReady: () =>
+                },
+                    onReady: () =>
                 {
                     ready = true;
                     presentation.SetState("Watching workspace sources for changes. Press Ctrl+C to stop.");
                 });
+
                 return;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -104,7 +116,8 @@ internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory,
             }
             catch (Exception ex) when (subscribed)
             {
-                Log.ForContext<WorkspaceAnalysisRunner>().Warning(ex, "Workspace watcher failed.");
+                Log.ForContext<WorkspaceAnalysisRunner>()
+                    .Warning(ex, "Workspace watcher failed.");
                 recovering = true;
                 presentation.SetState("Restarting watch mode after a file system error...");
             }
@@ -124,8 +137,10 @@ internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory,
                 {
                     throw new InvalidOperationException(string.Join("; ", result.Errors.Select(error => error.Message)));
                 }
-                presentation.SetState(!ready ? "Reconciling changes received during indexing..."
-                    : result.Value.IndexCommitted ? "Workspace update saved. Watching for changes."
+                presentation.SetState(!ready
+                    ? "Reconciling changes received during indexing..."
+                    : result.Value.IndexCommitted
+                    ? "Workspace update saved. Watching for changes."
                     : "No indexed sources changed. Watching for changes.");
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -134,9 +149,11 @@ internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory,
             }
             catch (Exception ex)
             {
-                Log.ForContext<WorkspaceAnalysisRunner>().Warning(ex, "Incremental watch update failed.");
+                Log.ForContext<WorkspaceAnalysisRunner>()
+                    .Warning(ex, "Incremental watch update failed.");
                 await Recover(token);
-                presentation.SetState(ready ? "Watching workspace sources for changes. Press Ctrl+C to stop."
+                presentation.SetState(ready
+                    ? "Watching workspace sources for changes. Press Ctrl+C to stop."
                     : "Reconciling changes received during indexing...");
             }
         }

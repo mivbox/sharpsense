@@ -1,6 +1,5 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.Extensions.DependencyInjection;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
@@ -186,13 +185,13 @@ internal sealed partial class EdgeExtractor
         string interfaceNamespace)
     {
         return typeSymbol is INamedTypeSymbol namedTypeSymbol &&
-               string.Equals(namedTypeSymbol.Name, interfaceName, StringComparison.Ordinal) &&
-               (string.Equals(
-                    namedTypeSymbol.ContainingNamespace.ToDisplayString(),
-                    interfaceNamespace,
-                    StringComparison.Ordinal) ||
+            string.Equals(namedTypeSymbol.Name, interfaceName, StringComparison.Ordinal) &&
+            (string.Equals(
+                namedTypeSymbol.ContainingNamespace.ToDisplayString(),
+                interfaceNamespace,
+                StringComparison.Ordinal) ||
                 (namedTypeSymbol.TypeKind == TypeKind.Error &&
-                 namedTypeSymbol.ContainingNamespace.IsGlobalNamespace));
+                    namedTypeSymbol.ContainingNamespace.IsGlobalNamespace));
     }
 
     private static ITypeSymbol? GetFactoryReturnType(ITypeSymbol returnType)
@@ -228,7 +227,8 @@ internal sealed partial class EdgeExtractor
                 continue;
             }
 
-            if (semanticModel.GetTypeInfo(typeOfExpression.Type).Type is { TypeKind: not TypeKind.TypeParameter } targetType)
+            if (semanticModel.GetTypeInfo(typeOfExpression.Type).Type is
+                { TypeKind: not TypeKind.TypeParameter } targetType)
             {
                 yield return targetType;
             }
@@ -273,7 +273,8 @@ internal sealed partial class EdgeExtractor
                 continue;
             }
 
-            if (semanticModel.GetTypeInfo(argument.Expression).Type is { TypeKind: not TypeKind.TypeParameter } targetType)
+            if (semanticModel.GetTypeInfo(argument.Expression).Type is
+                { TypeKind: not TypeKind.TypeParameter } targetType)
             {
                 yield return targetType;
             }
@@ -286,10 +287,12 @@ internal sealed partial class EdgeExtractor
     {
         switch (invocationExpression)
         {
-            case MemberAccessExpressionSyntax { Name: GenericNameSyntax memberGenericName }:
+            case MemberAccessExpressionSyntax
+            { Name: GenericNameSyntax memberGenericName }:
                 genericName = memberGenericName;
                 return true;
-            case MemberBindingExpressionSyntax { Name: GenericNameSyntax memberGenericName }:
+            case MemberBindingExpressionSyntax
+            { Name: GenericNameSyntax memberGenericName }:
                 genericName = memberGenericName;
                 return true;
             case GenericNameSyntax directGenericName:
@@ -306,7 +309,8 @@ internal sealed partial class EdgeExtractor
         return typeSymbol switch
         {
             { TypeKind: TypeKind.Interface } => EdgeType.MethodCall,
-            INamedTypeSymbol { IsAbstract: true } => EdgeType.MethodCall,
+            INamedTypeSymbol
+            { IsAbstract: true } => EdgeType.MethodCall,
             _ => EdgeType.Instantiates
         };
     }

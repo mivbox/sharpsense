@@ -11,6 +11,7 @@ public static class TraceInfrastructureServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.TryAddScoped<ITraceNavigator, TraceNavigator>();
+
         return services;
     }
 }

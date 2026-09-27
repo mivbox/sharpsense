@@ -1,10 +1,11 @@
 using FluentResults;
 using Microsoft.Extensions.DependencyInjection;
 using SharpSense.Application.Indexing.Abstractions;
-using SharpSense.Application.Indexing.IndexTarget.Models;
+using SharpSense.Application.Indexing.IndexWorkspace.Models;
 using SharpSense.Application.Indexing.Notifications;
 using SharpSense.Application.Indexing.UpdateWorkspaceFiles.Models;
 using SharpSense.Application.Shared.Abstractions;
+using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
 
@@ -14,7 +15,7 @@ internal static class WorkspaceIndexingSession
 {
     public static async Task Run(
         IServiceScopeFactory scopeFactory,
-        WorkspaceCatalog catalog,
+        IWorkspaceCatalog catalog,
         WorkspaceSelection selection,
         StartWorkspaceIndexingRequest request,
         Action<WorkspaceIndexingUpdate> update,
@@ -23,15 +24,17 @@ internal static class WorkspaceIndexingSession
         using var lease = catalog.AcquireIndexLease(selection);
         await using var scope = scopeFactory.CreateAsyncScope();
         var services = scope.ServiceProvider;
-        services.GetRequiredService<WorkspaceScope>().Bind(selection, request.Watch, request.SkipEmbeddings);
+        services.GetRequiredService<IWorkspaceScope>()
+            .Bind(selection, request.SkipEmbeddings);
         update(new WorkspaceIndexingUpdate("indexing", "Preparing workspace database..."));
-        await services.GetRequiredService<WorkspaceDatabaseInitializer>().InitializeAsync(ct);
+        await services.GetRequiredService<IWorkspaceDatabaseInitializer>()
+            .Initialize(ct);
 
         var notifier = new SessionAnalysisNotifier(update);
-        var indexer = services.GetRequiredService<ICommandHandler<IndexTargetCommand, Result<IndexTargetOutcome>>>();
+        var indexer = services.GetRequiredService<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>();
         async Task Initialize(CancellationToken token)
         {
-            var result = await indexer.Handle(new IndexTargetCommand(Notifier: notifier), token);
+            var result = await indexer.Handle(new IndexWorkspaceCommand(Notifier: notifier), token);
             if (result.IsFailed)
             {
                 token.ThrowIfCancellationRequested();
@@ -39,20 +42,24 @@ internal static class WorkspaceIndexingSession
             }
 
             update(new WorkspaceIndexingUpdate(
-                "indexing", "Workspace index saved."));
+                "indexing",
+                "Workspace index saved."));
             token.ThrowIfCancellationRequested();
         }
 
         if (!request.Watch)
         {
             await Initialize(ct);
+
             return;
         }
 
         var ready = false;
         var watcher = services.GetRequiredService<IWorkspaceWatcher>();
         var updater = services.GetRequiredService<ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>>();
-        await watcher.Watch(selection.Workspace.RootPath, async (changes, token) =>
+        await watcher.Watch(
+            selection.Workspace.RootPath,
+            async (changes, token) =>
         {
             var changed = await updater.Handle(new UpdateWorkspaceFilesCommand(changes, Notifier: notifier), token);
             if (changed.IsFailed && !ready)
@@ -68,7 +75,10 @@ internal static class WorkspaceIndexingSession
                     : "Update failed. Watching for the next change.",
                 Diagnostics: changed.IsSuccess ? null : [.. changed.Errors.Select(static error => error.Message)]));
             token.ThrowIfCancellationRequested();
-        }, ct, initialize: Initialize, onReady: () =>
+        },
+            ct,
+            initialize: Initialize,
+            onReady: () =>
         {
             ready = true;
             update(new WorkspaceIndexingUpdate("watching", "Watching workspace sources for changes."));
@@ -87,8 +97,11 @@ internal static class WorkspaceIndexingSession
             }
 
             update(new WorkspaceIndexingUpdate(
-                "indexing", snapshot.Message ?? "Analyzing workspace...",
-                snapshot.CompletedItems, snapshot.TotalItems, snapshot.Diagnostics,
+                "indexing",
+                snapshot.Message ?? "Analyzing workspace...",
+                snapshot.CompletedItems,
+                snapshot.TotalItems,
+                snapshot.Diagnostics,
                 IndexCommitted: notification.Kind == AnalysisNotificationKind.Committed,
                 Analysis: snapshot));
         }

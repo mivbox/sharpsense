@@ -1,10 +1,10 @@
-using System.IO.Abstractions;
 using AwesomeAssertions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 using Moq;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
+using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.Tests.CodeAnalysis.Roslyn;
 
@@ -130,22 +130,24 @@ public sealed class WorkspaceLoaderTests
         using var loader = new WorkspaceLoader(factory, new FileSystem());
         var ct = TestContext.Current.CancellationToken;
         var initial = await loader.Load(fixture.ProjectFilePath, ct);
-        Assert.True(initial.IsSuccess, string.Join("; ", initial.Errors.Select(error => error.Message)));
+        initial.IsSuccess.Should().BeTrue(string.Join("; ", initial.Errors.Select(error => error.Message)));
         var validProject = await File.ReadAllTextAsync(fixture.ProjectFilePath, ct);
-        await File.WriteAllTextAsync(fixture.ProjectFilePath,
-            "<invalid-project-xml", ct);
+        await File.WriteAllTextAsync(
+            fixture.ProjectFilePath,
+            "<invalid-project-xml",
+            ct);
 
         var failed = await loader.Reload(fixture.ProjectFilePath, ct);
-        Assert.True(failed.IsFailed);
+        failed.IsFailed.Should().BeTrue();
         var retained = await loader.Load(fixture.ProjectFilePath, ct);
-        Assert.True(retained.IsSuccess);
-        Assert.Same(initial.Value.Solution, retained.Value.Solution);
-        Assert.Equal(2, factory.CreateCount);
+        retained.IsSuccess.Should().BeTrue();
+        retained.Value.Solution.Should().BeSameAs(initial.Value.Solution);
+        factory.CreateCount.Should().Be(2);
 
         await File.WriteAllTextAsync(fixture.ProjectFilePath, validProject, ct);
         var recovered = await loader.Reload(fixture.ProjectFilePath, ct);
-        Assert.True(recovered.IsSuccess, string.Join("; ", recovered.Errors.Select(error => error.Message)));
-        Assert.Equal(3, factory.CreateCount);
+        recovered.IsSuccess.Should().BeTrue(string.Join("; ", recovered.Errors.Select(error => error.Message)));
+        factory.CreateCount.Should().Be(3);
     }
 
     private static IFileSystem CreateFileSystem(Func<string, CancellationToken, Task<string>> readContents)
@@ -157,8 +159,8 @@ public sealed class WorkspaceLoaderTests
         file.Setup(candidate => candidate.Exists(It.IsAny<string>()))
             .Returns((string candidatePath) => File.Exists(candidatePath));
         file.Setup(candidate => candidate.ReadAllTextAsync(
-                It.IsAny<string>(),
-                It.IsAny<CancellationToken>()))
+            It.IsAny<string>(),
+            It.IsAny<CancellationToken>()))
             .Returns((string candidatePath, CancellationToken ct) => readContents(candidatePath, ct));
         fileSystem.SetupGet(candidate => candidate.File)
             .Returns(file.Object);
@@ -182,6 +184,7 @@ public sealed class WorkspaceLoaderTests
                                  pathComparer.Equals(Path.GetFullPath(candidate.FilePath), sourceFilePath));
 
         var documentContents = await document.GetTextAsync(ct);
+
         return documentContents.ToString();
     }
 
@@ -196,18 +199,22 @@ public sealed class WorkspaceLoaderTests
         return solution.Projects
             .SelectMany(static project => project.Documents)
             .Any(candidate => candidate.FilePath is not null &&
-                              pathComparer.Equals(Path.GetFullPath(candidate.FilePath), sourceFilePath));
+                pathComparer.Equals(Path.GetFullPath(candidate.FilePath), sourceFilePath));
     }
 
     private sealed class CountingMsBuildWorkspaceFactory : IMsBuildWorkspaceFactory
     {
         private readonly MsBuildWorkspaceFactory _innerFactory = new();
 
-        public int CreateCount { get; private set; }
+        public int CreateCount
+        {
+            get; private set;
+        }
 
         public MSBuildWorkspace Create()
         {
             CreateCount++;
+
             return _innerFactory.Create();
         }
     }
@@ -224,18 +231,28 @@ public sealed class WorkspaceLoaderTests
             SourceFilePath = sourceFilePath;
         }
 
-        public string RootPath { get; }
+        public string RootPath
+        {
+            get;
+        }
 
-        public string ProjectFilePath { get; }
+        public string ProjectFilePath
+        {
+            get;
+        }
 
-        public string SourceFilePath { get; }
+        public string SourceFilePath
+        {
+            get;
+        }
 
         public static TemporaryProject Create()
         {
             var rootPath = Path.Combine(
                 Path.GetTempPath(),
                 "sharpsense-workspace-loader-tests",
-                Guid.NewGuid().ToString("N"));
+                Guid.NewGuid()
+                    .ToString("N"));
             Directory.CreateDirectory(rootPath);
 
             var projectFilePath = Path.Combine(rootPath, "Fixture.csproj");

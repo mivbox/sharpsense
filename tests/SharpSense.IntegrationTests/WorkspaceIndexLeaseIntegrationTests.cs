@@ -1,12 +1,11 @@
-using System.IO.Abstractions;
-using System.Diagnostics;
+using AwesomeAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Moq;
 using SharpSense.Application.Indexing;
-using SharpSense.Cli.Ui.Api;
 using SharpSense.Cli.Analyze;
+using SharpSense.Cli.Ui.Api;
 using SharpSense.Cli.Ui.Indexing;
 using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.GraphStats;
@@ -14,13 +13,15 @@ using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Testing;
+using System.Diagnostics;
+using System.IO.Abstractions;
 
 namespace SharpSense.IntegrationTests;
 
 public sealed class WorkspaceIndexLeaseIntegrationTests
 {
     [Fact]
-    public async Task SeparateCliProcessCannotBypassHeldWriterLease()
+    public async Task WhenSeparateCliProcess_ThenCannotBypassHeldWriterLease()
     {
         using var fixture = new Fixture();
         using var lease = fixture.Catalog.AcquireIndexLease(fixture.Selection);
@@ -52,9 +53,9 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
             await process.WaitForExitAsync(timeout.Token);
             var output = await stdout + await stderr;
 
-            Assert.Equal(1, process.ExitCode);
-            Assert.Contains("already being indexed or watched", output);
-            Assert.False(File.Exists(fixture.Selection.Workspace.DatabasePath));
+            process.ExitCode.Should().Be(1);
+            output.Should().Contain("already being indexed or watched");
+            File.Exists(fixture.Selection.Workspace.DatabasePath).Should().BeFalse();
         }
         finally
         {
@@ -67,25 +68,25 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
     }
 
     [Fact]
-    public async Task CliWriterConflictFailsBeforeDatabaseInitialization()
+    public async Task WhenCliWriterConflict_ThenFailsBeforeDatabaseInitialization()
     {
         using var fixture = new Fixture();
         using (fixture.Catalog.AcquireIndexLease(fixture.Selection))
         {
             var result = await RunAnalyze(fixture.Catalog, fixture.Selection);
 
-            Assert.Equal(1, result.ExitCode);
-            Assert.Contains("already being indexed or watched", result.Output);
-            Assert.False(File.Exists(fixture.Selection.Workspace.DatabasePath));
+            result.ExitCode.Should().Be(1);
+            result.Output.Should().Contain("already being indexed or watched");
+            File.Exists(fixture.Selection.Workspace.DatabasePath).Should().BeFalse();
         }
 
         var retry = await RunAnalyze(fixture.Catalog, fixture.Selection);
-        Assert.Equal(0, retry.ExitCode);
-        Assert.Equal(["docs/first.md"], await DocumentPaths(fixture.Selection));
+        retry.ExitCode.Should().Be(0);
+        (await DocumentPaths(fixture.Selection)).Should().Equal(["docs/first.md"]);
     }
 
     [Fact]
-    public async Task IndependentUiHostsCannotWriteSameWorkspaceUntilWatchStops()
+    public async Task WhenIndependentUiHosts_ThenCannotWriteSameWorkspaceUntilWatchStops()
     {
         using var fixture = new Fixture();
         var otherCatalog = new WorkspaceCatalog(new FileSystem(), fixture.HomeDirectory);
@@ -96,28 +97,34 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
         first.Start(fixture.Selection, new StartWorkspaceIndexingRequest(Watch: true, SkipEmbeddings: true));
         await WaitForState(first, fixture.Selection, "watching");
 
-        second.Start(otherCatalog.Resolve(fixture.Selection.Definition.Id.ToString(), fixture.RepositoryRoot),
+        second.Start(
+            otherCatalog.Resolve(fixture.Selection.Definition.Id.ToString(), fixture.RepositoryRoot),
             new StartWorkspaceIndexingRequest(SkipEmbeddings: true));
         var rejected = await WaitForState(second, fixture.Selection, "failed");
-        Assert.Contains(rejected.Diagnostics, message => message.Contains("already being indexed or watched"));
-        Assert.Equal(0, rejected.Revision);
-        Assert.Equal(["docs/first.md"], await DocumentPaths(fixture.Selection));
-        Assert.Throws<WorkspaceIndexBusyException>(() => otherCatalog.Update(
-            fixture.Selection.Definition.Id.ToString(), "changed", [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/second.md")]));
+        rejected.Diagnostics.Should().Contain(message => message.Contains("already being indexed or watched"));
+        rejected.Revision.Should().Be(0);
+        (await DocumentPaths(fixture.Selection)).Should().Equal(["docs/first.md"]);
+        ((Action)(() => otherCatalog.Update(
+            fixture.Selection.Definition.Id.ToString(),
+            "changed",
+            [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/second.md")]))).Should().ThrowExactly<WorkspaceIndexBusyException>();
 
         await first.Stop(fixture.Selection.Definition.Id, TestContext.Current.CancellationToken);
-        second.Start(otherCatalog.Resolve(fixture.Selection.Definition.Id.ToString(), fixture.RepositoryRoot),
+        second.Start(
+            otherCatalog.Resolve(fixture.Selection.Definition.Id.ToString(), fixture.RepositoryRoot),
             new StartWorkspaceIndexingRequest(SkipEmbeddings: true));
         await WaitForState(second, fixture.Selection, "completed");
-        Assert.Equal(["docs/first.md"], await DocumentPaths(fixture.Selection));
+        (await DocumentPaths(fixture.Selection)).Should().Equal(["docs/first.md"]);
     }
 
     [Fact]
-    public async Task StaleSelectionsCannotReplaceExistingGraphFromCliOrUi()
+    public async Task WhenStaleSelections_ThenCannotReplaceExistingGraphFromCliOrUi()
     {
         using var fixture = new Fixture();
-        Assert.Equal(0, (await RunAnalyze(fixture.Catalog, fixture.Selection)).ExitCode);
-        fixture.Catalog.Update(fixture.Selection.Definition.Id.ToString(), "workspace",
+        (await RunAnalyze(fixture.Catalog, fixture.Selection)).ExitCode.Should().Be(0);
+        fixture.Catalog.Update(
+            fixture.Selection.Definition.Id.ToString(),
+            "workspace",
             [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/second.md")]);
 
         using var console = new TestConsole();
@@ -125,20 +132,26 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
         services.AddLogging();
         services.AddSingleton<IAnsiConsole>(console);
         services.AddAnalyzeExecution();
-        services.AddSingleton(fixture.Catalog);
+        services.AddSingleton<IWorkspaceCatalog>(fixture.Catalog);
         await using var cliProvider = services.BuildServiceProvider();
-        var staleCli = await Assert.ThrowsAsync<WorkspaceDefinitionChangedException>(() =>
-            cliProvider.GetRequiredService<WorkspaceAnalysisRunner>().Run(fixture.Selection,
-                new AnalyzeCommand.Settings { SkipEmbeddings = true }, TestContext.Current.CancellationToken));
-        Assert.Contains("changed after this command selected it", staleCli.Message);
-        Assert.Equal(["docs/first.md"], await DocumentPaths(fixture.Selection));
+        var staleCli = (await ((Func<Task>)(() =>
+            cliProvider.GetRequiredService<WorkspaceAnalysisRunner>()
+                .Run(
+                fixture.Selection,
+                new AnalyzeCommand.Settings
+                {
+                    SkipEmbeddings = true
+                },
+                TestContext.Current.CancellationToken))).Should().ThrowExactlyAsync<WorkspaceDefinitionChangedException>()).Which;
+        staleCli.Message.Should().Contain("changed after this command selected it");
+        (await DocumentPaths(fixture.Selection)).Should().Equal(["docs/first.md"]);
 
         await using var provider = CreateUiServices(fixture.Catalog, fixture.RepositoryRoot);
         var coordinator = provider.GetRequiredService<WorkspaceIndexingCoordinator>();
         coordinator.Start(fixture.Selection, new StartWorkspaceIndexingRequest(SkipEmbeddings: true));
         var staleUi = await WaitForState(coordinator, fixture.Selection, "failed");
-        Assert.Contains(staleUi.Diagnostics, message => message.Contains("changed after this command selected it"));
-        Assert.Equal(["docs/first.md"], await DocumentPaths(fixture.Selection));
+        staleUi.Diagnostics.Should().Contain(message => message.Contains("changed after this command selected it"));
+        (await DocumentPaths(fixture.Selection)).Should().Equal(["docs/first.md"]);
     }
 
     private static async Task<(int ExitCode, string Output)> RunAnalyze(WorkspaceCatalog catalog, WorkspaceSelection selection)
@@ -148,15 +161,19 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
         AnsiConsole.Console = console;
         try
         {
-            var app = Cli.Program.CreateCommandApp(console, services =>
+            var app = Cli.Program.CreateCommandApp(
+                console,
+                services =>
             {
-                services.AddSingleton(catalog);
+                services.AddSingleton<IWorkspaceCatalog>(catalog);
                 services.AddSingleton(selection);
                 services.AddSingleton(selection.Workspace);
-            }, enableFileLogging: false);
+            },
+                enableFileLogging: false);
             var exit = await app.RunAsync(
                 ["analyze", "--workspace", selection.Definition.Name, "--repo-root", selection.Workspace.RootPath, "--no-embeddings"],
                 TestContext.Current.CancellationToken);
+
             return (exit, console.Output);
         }
         finally
@@ -170,14 +187,19 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddWorkspaceUiServices(new WorkspaceUiOptions(null, root, new Uri("http://localhost:50069")));
-        services.AddSingleton(catalog);
+        services.AddSingleton<IWorkspaceCatalog>(catalog);
         services.AddSingleton(Mock.Of<IHostApplicationLifetime>());
         services.AddIndexing();
         services.AddIndexingInfrastructure();
         services.AddEmbeddingsInfrastructure();
         services.AddIndexRunRecording();
         services.AddWorkspaceIndexing();
-        return services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+
+        return services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateScopes = true,
+            ValidateOnBuild = true
+        });
     }
 
     private static async Task<WorkspaceIndexingStatus> WaitForState(
@@ -195,7 +217,7 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
                 return status;
             }
 
-            Assert.True(status.State != "failed", string.Join(Environment.NewLine, status.Diagnostics));
+            (status.State != "failed").Should().BeTrue(string.Join(Environment.NewLine, status.Diagnostics));
             await Task.Delay(20, timeout.Token);
         }
     }
@@ -218,7 +240,9 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
 
     private sealed class Fixture : IDisposable
     {
-        private readonly string _directory = Path.Combine(Path.GetTempPath(), $"sharpsense-writer-lease-{Guid.NewGuid():N}");
+        private readonly string _directory = Path.Combine(
+            Path.GetTempPath(),
+            $"sharpsense-writer-lease-{Guid.NewGuid():N}");
 
         public Fixture()
         {
@@ -231,10 +255,22 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
             Selection = Catalog.Create("workspace", RepositoryRoot, [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/first.md")]);
         }
 
-        public string RepositoryRoot { get; }
-        public string HomeDirectory { get; }
-        public WorkspaceCatalog Catalog { get; }
-        public WorkspaceSelection Selection { get; }
+        public string RepositoryRoot
+        {
+            get;
+        }
+        public string HomeDirectory
+        {
+            get;
+        }
+        public WorkspaceCatalog Catalog
+        {
+            get;
+        }
+        public WorkspaceSelection Selection
+        {
+            get;
+        }
 
         public void Dispose()
         {

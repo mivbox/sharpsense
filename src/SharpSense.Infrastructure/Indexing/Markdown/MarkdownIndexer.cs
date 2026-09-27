@@ -8,7 +8,7 @@ using System.Text;
 
 namespace SharpSense.Infrastructure.Indexing.Markdown;
 
-public sealed class MarkdownIndexer : IMarkdownIndexer
+internal sealed class MarkdownIndexer : IMarkdownIndexer
 {
     private const string DocumentRootName = "Document Root";
     private const string DocumentRootSlug = "document-root";
@@ -38,7 +38,10 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
 
         var lineMap = new LineMap(rawText);
         var chunkBuilders = new List<MarkdownChunkBuilder>();
-        var assignedSlugs = new HashSet<string>(StringComparer.Ordinal) { DocumentRootSlug };
+        var assignedSlugs = new HashSet<string>(StringComparer.Ordinal)
+        {
+            DocumentRootSlug
+        };
         var currentChunk = MarkdownChunkBuilder.CreateDocumentRoot();
         var activeHeadings = new MarkdownChunkBuilder?[7];
         activeHeadings[0] = currentChunk;
@@ -100,7 +103,9 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
 
         var emittedChunks = chunkBuilders
             .Select(chunk => (Chunk: chunk, Node: ToCodeNode(chunk, rawText, relativeFilePath)))
-            .Where(static candidate => candidate.Node.FullyQualifiedName.EndsWith($"#{DocumentRootSlug}", StringComparison.Ordinal) ||
+            .Where(static candidate => candidate.Node.FullyQualifiedName.EndsWith(
+                $"#{DocumentRootSlug}",
+                StringComparison.Ordinal) ||
                                        !string.IsNullOrWhiteSpace(candidate.Node.Summary))
             .ToArray();
         var codeNodes = emittedChunks
@@ -150,7 +155,8 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
         var builder = new StringBuilder(headingName.Length);
         var previousWasSeparator = false;
 
-        foreach (var character in headingName.Trim().ToLowerInvariant())
+        foreach (var character in headingName.Trim()
+            .ToLowerInvariant())
         {
             if (char.IsLetterOrDigit(character))
             {
@@ -168,9 +174,9 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
             previousWasSeparator = true;
         }
 
-        return builder
-            .ToString()
-            .Trim('-') is { Length: > 0 } slug ? slug : "section";
+        return builder.ToString().Trim('-') is { Length: > 0 } slug
+            ? slug
+            : "section";
     }
 
     private static string ExtractHeadingName(
@@ -184,7 +190,11 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
 
         var builder = new StringBuilder();
         AppendInlineText(builder, headingBlock.Inline);
-        return string.IsNullOrWhiteSpace(builder.ToString()) ? blockText.Trim() : builder.ToString().Trim();
+
+        return string.IsNullOrWhiteSpace(builder.ToString())
+            ? blockText.Trim()
+            : builder.ToString()
+                .Trim();
     }
 
     private static void AppendInlineText(
@@ -228,6 +238,7 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
 
         spanStart = Math.Clamp(span.Start, 0, textLength - 1);
         spanEnd = Math.Clamp(span.End, spanStart, textLength - 1);
+
         return true;
     }
 
@@ -303,7 +314,8 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
 
     private static IEnumerable<LinkInline> EnumerateLinkInlines(Block block)
     {
-        if (block is LeafBlock { Inline: not null } leafBlock)
+        if (block is LeafBlock
+            { Inline: not null } leafBlock)
         {
             foreach (var linkInline in EnumerateLinkInlines(leafBlock.Inline!))
             {
@@ -329,7 +341,8 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
         {
             switch (child)
             {
-                case LinkInline { IsImage: false } linkInline:
+                case LinkInline
+                { IsImage: false } linkInline:
                     yield return linkInline;
                     break;
                 case ContainerInline childContainer:
@@ -408,7 +421,8 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
 
     private static IEnumerable<Inline> EnumerateIgnoredWikiLinkInlines(Block block)
     {
-        if (block is LeafBlock { Inline: not null } leafBlock)
+        if (block is LeafBlock
+            { Inline: not null } leafBlock)
         {
             foreach (var inline in EnumerateIgnoredWikiLinkInlines(leafBlock.Inline!))
             {
@@ -486,6 +500,7 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
         if (string.IsNullOrWhiteSpace(rawPath))
         {
             targetId = BuildDocumentNodeId(relativeFilePath, NormalizeFragment(rawFragment));
+
             return true;
         }
 
@@ -496,6 +511,7 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
         }
 
         targetId = BuildDocumentNodeId(normalizedPath, NormalizeFragment(rawFragment));
+
         return true;
     }
 
@@ -528,6 +544,7 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
         if (string.IsNullOrWhiteSpace(rawPath))
         {
             targetId = BuildDocumentNodeId(relativeFilePath, NormalizeFragment(rawFragment));
+
             return true;
         }
 
@@ -538,6 +555,7 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
 
         var normalizedPath = ResolveRelativePath(relativeFilePath, rawPath);
         targetId = BuildDocumentNodeId(normalizedPath, NormalizeFragment(rawFragment));
+
         return true;
     }
 
@@ -545,7 +563,8 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
         string relativeFilePath,
         string rawPath)
     {
-        var normalizedPath = rawPath.Replace('\\', '/').Trim();
+        var normalizedPath = rawPath.Replace('\\', '/')
+            .Trim();
         if (string.IsNullOrWhiteSpace(normalizedPath))
         {
             return string.Empty;
@@ -619,7 +638,8 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
         string currentFilePath,
         string targetPath)
     {
-        var normalizedTargetPath = targetPath.Replace('\\', '/').Trim();
+        var normalizedTargetPath = targetPath.Replace('\\', '/')
+            .Trim();
         if (Path.IsPathRooted(normalizedTargetPath))
         {
             return normalizedTargetPath.TrimStart('/', '\\');
@@ -633,7 +653,8 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
             normalizedTargetPath.Replace('/', Path.DirectorySeparatorChar),
             currentDirectoryPath);
 
-        return Path.GetRelativePath(repositoryRoot, resolvedAbsolutePath).Replace('\\', '/');
+        return Path.GetRelativePath(repositoryRoot, resolvedAbsolutePath)
+            .Replace('\\', '/');
     }
 
     private static string GetSyntheticRepositoryRoot()
@@ -658,7 +679,8 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
     private static string NormalizeFragment(string rawFragment)
         => string.IsNullOrWhiteSpace(rawFragment)
             ? DocumentRootSlug
-            : Slugify(Uri.UnescapeDataString(rawFragment).Trim());
+            : Slugify(Uri.UnescapeDataString(rawFragment)
+                .Trim());
 
     private static CodeNode ToCodeNode(
         MarkdownChunkBuilder chunk,
@@ -716,19 +738,40 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
     {
         private readonly HashSet<string> _linkTargets = new(StringComparer.Ordinal);
 
-        public string HeadingName { get; } = headingName;
+        public string HeadingName
+        {
+            get;
+        } = headingName;
 
-        public string Slug { get; } = slug;
+        public string Slug
+        {
+            get;
+        } = slug;
 
-        public string? ParentSlug { get; } = parentSlug;
+        public string? ParentSlug
+        {
+            get;
+        } = parentSlug;
 
-        public int? StartIndex { get; private set; } = startIndex;
+        public int? StartIndex
+        {
+            get; private set;
+        } = startIndex;
 
-        public int? EndIndex { get; private set; } = endIndex;
+        public int? EndIndex
+        {
+            get; private set;
+        } = endIndex;
 
-        public int StartLine { get; private set; } = startLine;
+        public int StartLine
+        {
+            get; private set;
+        } = startLine;
 
-        public int EndLine { get; private set; } = endLine;
+        public int EndLine
+        {
+            get; private set;
+        } = endLine;
 
         public IEnumerable<string> LinkTargets => _linkTargets;
 
@@ -776,7 +819,10 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
 
         public LineMap(string rawText)
         {
-            var lineStarts = new List<int> { 0 };
+            var lineStarts = new List<int>
+            {
+                0
+            };
 
             for (var index = 0; index < rawText.Length; index++)
             {
@@ -804,6 +850,7 @@ public sealed class MarkdownIndexer : IMarkdownIndexer
             }
 
             var lookupIndex = Array.BinarySearch(_lineStarts, characterIndex);
+
             return lookupIndex >= 0 ? lookupIndex + 1 : ~lookupIndex;
         }
     }

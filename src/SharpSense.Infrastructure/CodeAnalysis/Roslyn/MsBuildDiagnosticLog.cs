@@ -1,7 +1,7 @@
-using System.Runtime.CompilerServices;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Logging;
 using Microsoft.CodeAnalysis;
+using System.Runtime.CompilerServices;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
@@ -22,7 +22,8 @@ internal sealed class MsBuildDiagnosticLog : IDisposable
         {
             if (!OperatingSystem.IsWindows())
             {
-                File.SetUnixFileMode(_directory.FullName,
+                File.SetUnixFileMode(
+                    _directory.FullName,
                     UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
             }
 
@@ -41,7 +42,10 @@ internal sealed class MsBuildDiagnosticLog : IDisposable
         }
     }
 
-    public ILogger Logger { get; }
+    public ILogger Logger
+    {
+        get;
+    }
 
     internal string DirectoryPath => _directory.FullName;
 
@@ -55,13 +59,21 @@ internal sealed class MsBuildDiagnosticLog : IDisposable
             using var stream = File.OpenRead(path);
             var events = new BinaryLogReplayEventSource();
             events.WarningRaised += (_, warning) => warnings.Add(new MsBuildMessage(
-                warning.ProjectFile, warning.Code, warning.Message));
+                warning.ProjectFile,
+                warning.Code,
+                warning.Message));
             events.ErrorRaised += (_, error) => errors.Add(new MsBuildMessage(
-                error.ProjectFile, error.Code, error.Message));
+                error.ProjectFile,
+                error.Code,
+                error.Message));
             events.Replay(stream, ct);
         }
 
-        return new MsBuildDiagnosticReport(warnings.Distinct().ToArray(), errors.Distinct().ToArray());
+        return new MsBuildDiagnosticReport(
+            warnings.Distinct()
+                .ToArray(),
+            errors.Distinct()
+                .ToArray());
     }
 
     public void Dispose()
@@ -97,8 +109,13 @@ internal sealed record MsBuildMessage(string? ProjectFile, string? Code, string?
         var pathComparison = OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
-        return diagnostic.Message.Contains($"'{ProjectFile}'", pathComparison) &&
-               diagnostic.Message.EndsWith($": {Message}", StringComparison.Ordinal);
+
+        return diagnostic.Message.Contains(
+            $"'{ProjectFile}'",
+            pathComparison) &&
+            diagnostic.Message.EndsWith(
+                $": {Message}",
+                StringComparison.Ordinal);
     }
 
     public string Format(string severity) => $"MSBuild {severity} {Code} in '{ProjectFile}': {Message}";

@@ -11,6 +11,7 @@ public static class Context360InfrastructureServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.TryAddScoped<IContextRepository, ContextRepository>();
+
         return services;
     }
 }

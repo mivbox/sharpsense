@@ -1,13 +1,15 @@
 # SharpSense skills plugin
 
-The `sharpsense` plugin packages the existing exploration, impact-analysis, and context-mode skills for Codex,
-Copilot CLI, and Copilot in VS Code. Skill names, frontmatter, and instructions are unchanged.
+The `sharpsense` plugin provides code navigation, change assessment, and command-output summaries for Codex,
+Copilot CLI, and Copilot in VS Code.
 
 | Skill | Purpose |
 | --- | --- |
-| `sharpsense-exploring` | Search, inspect context, and navigate the graph. |
-| `sharpsense-impact-analysis` | Inspect callers and dependencies before a change. |
-| `sharpsense-context-mode` | Reduce large command output through `ctx_execute`. |
+| `sharpsense-map-code` | Search, inspect context, and navigate the graph. |
+| `sharpsense-assess-change` | Inspect callers and dependencies before a change. |
+| `sharpsense-summarize-output` | Reduce large command output through `ctx_execute`. |
+
+Development skills under `.agents/skills/` are repository tooling, separate from the published SharpSense plugin. They cover C# feature work, behavior tests, EF queries and async workflows using the consuming repository's conventions, so they can move into a parent monorepo without SharpSense-specific paths or provider assumptions.
 
 ## Prerequisites
 
@@ -109,6 +111,18 @@ After installing the plugin and confirming skill discovery, review any copies pr
 - `sharpsense-context-mode/`
 
 Leave unrelated skills in place. This migration does not delete or overwrite user-installed files.
+
+## Renamed plugin skills
+
+The current names describe each skill's task:
+
+| Previous name | Current name |
+| --- | --- |
+| `sharpsense-exploring` | `sharpsense-map-code` |
+| `sharpsense-impact-analysis` | `sharpsense-assess-change` |
+| `sharpsense-context-mode` | `sharpsense-summarize-output` |
+
+Update saved prompts that explicitly invoke the previous names when adopting this version of the plugin.
 
 ## Package layout and versions
 

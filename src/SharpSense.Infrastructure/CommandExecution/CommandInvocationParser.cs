@@ -1,5 +1,5 @@
-using System.Text;
 using FluentResults;
+using System.Text;
 
 namespace SharpSense.Infrastructure.CommandExecution;
 

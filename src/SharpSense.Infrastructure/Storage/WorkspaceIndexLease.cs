@@ -6,7 +6,7 @@ namespace SharpSense.Infrastructure.Storage;
 /// Holds exclusive ownership of a workspace's indexing plan across CLI and UI processes.
 /// The lock file remains after disposal so another process cannot lock a different inode.
 /// </summary>
-public sealed class WorkspaceIndexLease : IDisposable
+internal sealed class WorkspaceIndexLease : IDisposable
 {
     private Stream? _handle;
 
