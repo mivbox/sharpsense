@@ -498,6 +498,43 @@ public sealed class UiCommandIntegrationTests
                 .EnumerateArray().Should().Contain(node => node.GetProperty("id")
                     .GetInt32() == 202);
 
+            using var callers = await client.PostAsJsonAsync(
+                $"{baseUrl}/api/tools/trace",
+                new
+                {
+                    nodeId = 201,
+                    direction = "CALLER",
+                    maxDepth = 1
+                },
+                ct);
+            callers.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var callersJson = JsonDocument.Parse(await callers.Content.ReadAsStringAsync(ct));
+            callersJson.RootElement.GetProperty("root")
+                .GetProperty("id")
+                .GetInt32().Should().Be(201);
+            callersJson.RootElement.GetProperty("direction")
+                .GetString().Should().Be("caller");
+            callersJson.RootElement.GetProperty("truncated")
+                .GetBoolean().Should().BeFalse();
+            var callerNode = callersJson.RootElement.GetProperty("nodes")
+                .EnumerateArray().Should().ContainSingle().Which;
+            callerNode.GetProperty("id")
+                .GetInt32().Should().Be(200);
+            callersJson.RootElement.GetProperty("dependencies")
+                .EnumerateArray().Should().ContainSingle();
+
+            foreach (var invalidTrace in new[]
+            {
+                new { nodeId = 0, direction = "callee", maxDepth = 3 },
+                new { nodeId = 200, direction = "sideways", maxDepth = 3 },
+                new { nodeId = 200, direction = "callee", maxDepth = 11 }
+            })
+            {
+                using var invalidResponse = await client.PostAsJsonAsync($"{baseUrl}/api/tools/trace", invalidTrace, ct);
+                invalidResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+                (invalidResponse.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
+            }
+
             using var invalidContext = await client.PostAsJsonAsync(
                 $"{baseUrl}/api/tools/context",
                 new

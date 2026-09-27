@@ -11,6 +11,7 @@ using SharpSense.Application.ImpactAnalysis;
 using SharpSense.Application.Inheritors;
 using SharpSense.Application.Memory;
 using SharpSense.Application.Trace;
+using SharpSense.Application.Trace.Models;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.CommandExecution;
 using SharpSense.Infrastructure.Context360;

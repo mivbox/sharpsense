@@ -10,6 +10,8 @@ Read slices expose focused contracts for hybrid search, node context, traces, in
 
 `GetNodeContextQueryHandler` returns typed results for invalid or missing node IDs. CLI writes expected failures to stderr and returns a nonzero exit code; MCP marks its tool result with `isError: true`. HTTP maps failures to problem responses without a separate existence lookup. Cancellation and unexpected storage failures still propagate.
 
+`GetTraceGraphQueryHandler` owns the browser's caller/callee traversal behind `ITraceNavigator` and `IImpactAnalyzer`. The HTTP adapter maps its result to the existing `TraceResponse` schema. Traversal retains the depth range of 1–10 and the callee budget of 1,000 visible nodes including the root; `Truncated` reports omitted callees. Caller traversal retains the impact analyzer's behavior. CLI/MCP tracing retains its existing query contracts and output.
+
 ## Boundaries
 
 - Domain owns graph concepts and identities.

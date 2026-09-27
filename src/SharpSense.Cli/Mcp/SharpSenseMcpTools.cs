@@ -22,6 +22,7 @@ using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Trace.Abstractions;
+using SharpSense.Application.Trace.Models;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Shared;
 using SharpSense.Domain.KnowledgeGraph.Enums;
