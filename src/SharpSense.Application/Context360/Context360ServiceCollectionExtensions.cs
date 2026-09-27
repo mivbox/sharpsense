@@ -1,3 +1,4 @@
+using FluentResults;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SharpSense.Application.Context360.GetNodeContext;
@@ -13,7 +14,7 @@ public static class Context360ServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.TryAddTransient<IQueryHandler<GetNodeContextQuery, Context360Result>, GetNodeContextQueryHandler>();
+        services.TryAddTransient<IQueryHandler<GetNodeContextQuery, Result<Context360Result>>, GetNodeContextQueryHandler>();
 
         return services;
     }

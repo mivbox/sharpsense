@@ -498,6 +498,15 @@ public sealed class UiCommandIntegrationTests
                 .EnumerateArray().Should().Contain(node => node.GetProperty("id")
                     .GetInt32() == 202);
 
+            using var invalidContext = await client.PostAsJsonAsync(
+                $"{baseUrl}/api/tools/context",
+                new
+                {
+                    nodeId = 0
+                },
+                ct);
+            invalidContext.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
             using var member = await client.PostAsJsonAsync(
                 $"{baseUrl}/api/tools/context",
                 new

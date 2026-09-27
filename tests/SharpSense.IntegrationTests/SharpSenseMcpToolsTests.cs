@@ -1,6 +1,10 @@
 using AwesomeAssertions;
 using FluentResults;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using Moq;
 using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.ExecuteProcess;
@@ -16,6 +20,7 @@ using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Memory.AttachMemory.Models;
 using SharpSense.Application.Memory.GetNodeMemories.Models;
 using SharpSense.Application.Shared.Abstractions;
+using SharpSense.Application.Shared.Errors;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Application.Trace.Abstractions;
@@ -23,6 +28,9 @@ using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Mcp;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Result = FluentResults.Result;
 
 namespace SharpSense.IntegrationTests;
 
@@ -134,13 +142,13 @@ public sealed class SharpSenseMcpToolsTests
     [Fact]
     public async Task WhenContextHasMatches_ThenItFormatsCompressedToonOutput()
     {
-        var handler = new Mock<IQueryHandler<GetNodeContextQuery, Context360Result>>(MockBehavior.Strict);
+        var handler = new Mock<IQueryHandler<GetNodeContextQuery, Result<Context360Result>>>(MockBehavior.Strict);
         var memoryHandler = new Mock<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>>(MockBehavior.Strict);
         handler.Setup(candidate => candidate.Handle(
             It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
-            CancellationToken.None))
+            TestContext.Current.CancellationToken))
             .ReturnsAsync(
-                new Context360Result(
+                Result.Ok(new Context360Result(
                     new Context360Node(
                         42,
                         "PaymentProcessor.ProcessPayment(string, int)",
@@ -163,15 +171,19 @@ public sealed class SharpSenseMcpToolsTests
                     [
                         new Context360RelatedNode(11, "PaymentProcessor")
                     ],
-                    []));
+                    [])));
 
-        var result = await SharpSenseMcpTools.context(
+        var result = await InvokeContextTool(
             handler.Object,
             memoryHandler.Object,
             42,
-            ct: CancellationToken.None);
+            EdgeCategory.Structural,
+            TestContext.Current.CancellationToken);
 
-        result.Should().Be(
+        result.IsError.Should().NotBe(true);
+        result.Content.Should().ContainSingle();
+        var text = result.Content.OfType<TextContentBlock>().Should().ContainSingle().Which.Text;
+        text.Should().Be(
             "node:" + Environment.NewLine +
             "  id: 42" + Environment.NewLine +
             "  name: PaymentProcessor.ProcessPayment(string, int)" + Environment.NewLine +
@@ -192,8 +204,32 @@ public sealed class SharpSenseMcpToolsTests
         handler.Verify(
             candidate => candidate.Handle(
                 It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
-                CancellationToken.None),
+                TestContext.Current.CancellationToken),
             Times.Once);
+    }
+
+    [Theory]
+    [InlineData(42, ServiceErrorCode.NotFound, "No persisted node exists for id 42.")]
+    [InlineData(0, ServiceErrorCode.InvalidArgument, "NodeId must be greater than zero.")]
+    public async Task WhenContextFails_ThenItReportsAMcpToolErrorWithoutLoadingMemories(
+        int nodeId,
+        ServiceErrorCode errorCode,
+        string message)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var handler = new Mock<IQueryHandler<GetNodeContextQuery, Result<Context360Result>>>(MockBehavior.Strict);
+        handler
+            .Setup(candidate => candidate.Handle(new GetNodeContextQuery(nodeId, 10), ct))
+            .ReturnsAsync(Result.Fail<Context360Result>(new ServiceError(errorCode, message)));
+        var memoryHandler = new Mock<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>>(MockBehavior.Strict);
+
+        var result = await InvokeContextTool(handler.Object, memoryHandler.Object, nodeId, EdgeCategory.Semantic, ct);
+
+        result.IsError.Should().BeTrue();
+        result.Content.Should().ContainSingle();
+        var text = result.Content.OfType<TextContentBlock>().Should().ContainSingle().Which.Text;
+        text.Should().Be($"context failed: {message}");
+        memoryHandler.VerifyNoOtherCalls();
     }
 
     [Fact]
@@ -375,5 +411,51 @@ public sealed class SharpSenseMcpToolsTests
         traceNavigator.Verify(candidate => candidate.GetRootNode("node-root", CancellationToken.None), Times.Once);
         traceHandler.Verify(candidate => candidate.Handle(new TraceQuery("node-root"), CancellationToken.None), Times.Once);
         impactHandler.VerifyNoOtherCalls();
+    }
+
+    private static async Task<CallToolResult> InvokeContextTool(
+        IQueryHandler<GetNodeContextQuery, Result<Context360Result>> handler,
+        IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>> memoryHandler,
+        int nodeId,
+        EdgeCategory edgeCategories,
+        CancellationToken ct)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(handler);
+        services.AddSingleton(memoryHandler);
+        await using var provider = services.BuildServiceProvider();
+        await using var transport = new StreamServerTransport(Stream.Null, Stream.Null);
+        await using var server = McpServer.Create(transport, new McpServerOptions(), null, provider);
+        var serializerOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<EdgeCategory>());
+        var tool = McpServerTool.Create(
+            SharpSenseMcpTools.context,
+            new McpServerToolCreateOptions
+            {
+                Services = provider,
+                SerializerOptions = serializerOptions
+            });
+        var parameters = new CallToolRequestParams
+        {
+            Name = "context",
+            Arguments = new Dictionary<string, JsonElement>
+            {
+                ["nodeId"] = JsonSerializer.SerializeToElement(nodeId),
+                ["edgeCategories"] = JsonSerializer.SerializeToElement(edgeCategories, serializerOptions)
+            }
+        };
+        var request = new RequestContext<CallToolRequestParams>(
+            server,
+            new JsonRpcRequest
+            {
+                Id = new RequestId(1),
+                Method = "tools/call"
+            },
+            parameters)
+        {
+            Services = provider
+        };
+
+        return await tool.InvokeAsync(request, ct);
     }
 }

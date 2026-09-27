@@ -4,6 +4,8 @@ Historical implementation notes follow. Each dated entry describes behavior at t
 
 ## Version 1
 
+- `2026-09-27` — Returned typed context failures across CLI, MCP and HTTP and removed the duplicate HTTP context lookup. Context failures preserve stderr in the CLI and set the MCP tool-error flag. Added handler and transport behavior coverage. See [CQRS](architecture/cqrs-pipeline.md) and [context](cli/context-command.md).
+
 - `2026-09-27` — Added portable development skills and aligned the SharpSense plugin skills with current search, graph and output-reduction behavior. Moved command execution into an application handler and the analysis snapshot reducer into CLI presentation; grouped graph queries with their operation models. Stale-memory hints now require source verification before replacement or deletion. See [skills plugin](cli/skills-command.md), [CQRS](architecture/cqrs-pipeline.md), [windowed execution](architecture/windowed-execution-pipeline.md), and [host composition](architecture/host-composition.md).
 
 - `2026-09-25` — Replaced embedded skill installation with a skills-only plugin for Codex and Copilot. Preserved all three skill files unchanged, documented marketplace and local-checkout installation, and added manual migration guidance. Pages updated: [skills plugin](cli/skills-command.md), [MCP server](cli/mcp-command.md), [documentation index](index.md), and both READMEs.

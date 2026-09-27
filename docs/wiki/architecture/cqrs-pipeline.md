@@ -8,6 +8,8 @@ Read slices expose focused contracts for hybrid search, node context, traces, in
 
 `ExecuteProcessCommandHandler` owns process execution and bounded output reduction behind process/log-index contracts. CLI `execute` and MCP `ctx_execute` invoke the same handler; Infrastructure owns process startup and the transient SQLite output index.
 
+`GetNodeContextQueryHandler` returns typed results for invalid or missing node IDs. CLI writes expected failures to stderr and returns a nonzero exit code; MCP marks its tool result with `isError: true`. HTTP maps failures to problem responses without a separate existence lookup. Cancellation and unexpected storage failures still propagate.
+
 ## Boundaries
 
 - Domain owns graph concepts and identities.

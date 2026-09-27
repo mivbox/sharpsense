@@ -1,4 +1,5 @@
 using FluentResults;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using SharpSense.Application.CommandExecution.ExecuteProcess.Models;
 using SharpSense.Application.CommandExecution.Models;
@@ -27,6 +28,7 @@ using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using Result = FluentResults.Result;
 
 namespace SharpSense.Cli.Mcp;
 
@@ -246,8 +248,8 @@ internal sealed class SharpSenseMcpTools
 
     [McpServerTool]
     [Description("Gets an instant 360-degree architectural snapshot of a node. Returns immediate callers, callees, and inheritance hierarchy for a persisted node ID. Use this to understand a node's immediate context and blast radius before deep tracing.")]
-    public static async Task<string> context(
-        IQueryHandler<GetNodeContextQuery, Context360Result> handler,
+    public static async Task<CallToolResult> context(
+        IQueryHandler<GetNodeContextQuery, Result<Context360Result>> handler,
         IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>> memoryHandler,
         [Description("The persisted integer ID of the target node.")] int nodeId,
         [Description("Optional edge-category mask. Defaults to Structural.")] EdgeCategory edgeCategories = EdgeCategory.Structural,
@@ -265,17 +267,45 @@ internal sealed class SharpSenseMcpTools
                     nodeId,
                     10),
                 ct);
+            if (result.IsFailed)
+            {
+                activity.SetError();
+
+                return new CallToolResult
+                {
+                    IsError = true,
+                    Content =
+                    [
+                        new TextContentBlock
+                        {
+                            Text = $"context failed: {GetErrorMessage(result.Errors)}"
+                        }
+                    ]
+                };
+            }
+
+            var nodeContext = result.Value;
             var semanticContext = edgeCategories.HasFlag(EdgeCategory.Semantic)
                 ? (await memoryHandler.Handle(new GetNodeMemoriesQuery(nodeId), ct)).Value ?? []
                 : [];
 
-            activity.AddTag("context.callers.count", result.Callers.Length);
-            activity.AddTag("context.callees.count", result.Callees.Length);
-            activity.AddTag("context.implementers.count", result.Implementers.Length);
-            activity.AddTag("context.inherits.count", result.Inherits.Length);
+            activity.AddTag("context.callers.count", nodeContext.Callers.Length);
+            activity.AddTag("context.callees.count", nodeContext.Callees.Length);
+            activity.AddTag("context.implementers.count", nodeContext.Implementers.Length);
+            activity.AddTag("context.inherits.count", nodeContext.Inherits.Length);
             activity.AddTag("context.semantic.count", semanticContext.Length);
 
-            return TokenObjectNotation.SerializeContext360(result, semanticContext);
+            return new CallToolResult
+            {
+                IsError = false,
+                Content =
+                [
+                    new TextContentBlock
+                    {
+                        Text = TokenObjectNotation.SerializeContext360(nodeContext, semanticContext)
+                    }
+                ]
+            };
         }
         catch (Exception ex)
         {

@@ -1,3 +1,4 @@
+using FluentResults;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -60,12 +61,19 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
     {
         await using var scope = host.Services.CreateAsyncScope();
         var services = scope.ServiceProvider;
-        var contextHandler = services.GetRequiredService<IQueryHandler<GetNodeContextQuery, Context360Result>>();
+        var contextHandler = services.GetRequiredService<IQueryHandler<GetNodeContextQuery, Result<Context360Result>>>();
         var result = await contextHandler.Handle(
             new GetNodeContextQuery(
                 settings.NodeId,
                 10),
             ct);
+
+        if (result.IsFailed)
+        {
+            CommandOutput.WriteError(context, string.Join("; ", result.Errors.Select(error => error.Message)));
+
+            return 1;
+        }
 
         SharpSense.Domain.KnowledgeGraph.Nodes.MemoryNode[]? semanticContext = null;
         if (settings.IncludeMemories)
@@ -77,7 +85,7 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
                 : [];
         }
 
-        CommandOutput.Write(context, TokenObjectNotation.SerializeContext360(result, semanticContext));
+        CommandOutput.Write(context, TokenObjectNotation.SerializeContext360(result.Value, semanticContext));
 
         return 0;
     }

@@ -29,6 +29,8 @@ Refactoring and rename tools are not part of the version 1 surface.
 
 Start with graph statistics if index state is uncertain. Search for a relevant node, request context, and trace only the necessary direction. Node IDs belong to this server's workspace. Context and trace include semantic-memory metadata only when the requested edge-category mask includes it; fetch full notes separately.
 
+`context` reports invalid or missing node IDs as tool errors with `isError: true` and a readable explanation. Successful results retain the compact TOON text.
+
 `ctx_execute` runs real local commands with the server process's filesystem permissions. It launches an executable without a shell, so shell operators are not interpreted. Its optional FTS query selects context windows; an omitted or unmatched query returns a summary. See [command execution](execute-command.md).
 
 Install the [SharpSense skills plugin](skills-command.md) separately through Codex or Copilot. The plugin supplies agent instructions; the MCP connection remains configured in your client.

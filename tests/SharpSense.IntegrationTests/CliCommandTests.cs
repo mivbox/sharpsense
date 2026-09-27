@@ -15,6 +15,7 @@ using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Testkit;
+using Spectre.Console;
 using Spectre.Console.Testing;
 using System.Globalization;
 using System.IO.Abstractions;
@@ -146,6 +147,36 @@ public sealed class CliCommandTests
             "docs/:" + Environment.NewLine +
             "  Guide.md:" + Environment.NewLine +
             $"    - [D] `{CliCommandTestDatabase.DocumentNodeId}` Guide#getting-started L1-3");
+    }
+
+    [Fact]
+    public async Task WhenContextNodeIsMissing_ThenItWritesToStderrAndReturnsANonzeroExitCode()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        using var errors = new StringWriter();
+        var previousConsole = AnsiConsole.Console;
+        var previousError = Console.Error;
+
+        try
+        {
+            AnsiConsole.Console = console;
+            Console.SetError(errors);
+            var app = CreateCommandApp(null, database);
+
+            var exitCode = await app.RunAsync(
+                ["context", "--node-id", "999999", "--include-memories", "--repo-root", RepositoryRoot],
+                TestContext.Current.CancellationToken);
+
+            exitCode.Should().Be(1);
+            console.Output.Should().BeEmpty();
+            errors.ToString().Should().Be($"Error: No persisted node exists for id 999999.{Environment.NewLine}");
+        }
+        finally
+        {
+            AnsiConsole.Console = previousConsole;
+            Console.SetError(previousError);
+        }
     }
 
     [Fact]
@@ -465,7 +496,7 @@ public sealed class CliCommandTests
     }
 
     private static Spectre.Console.Cli.CommandApp CreateCommandApp(
-        TestConsole console,
+        TestConsole? console,
         CliCommandTestDatabase database,
         MockFileSystem? fileSystem = null,
         Action<IServiceCollection>? configureServices = null)
