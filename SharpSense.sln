@@ -26,7 +26,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".solution-items", ".solutio
 		dotnet-tools.json = dotnet-tools.json
 		copilot.sh = copilot.sh
 		mcp-config.json = mcp-config.json
-		sharpsense.yaml = sharpsense.yaml
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SharpSense.Infrastructure.MigrationsHost", "src\SharpSense.Infrastructure.MigrationsHost\SharpSense.Infrastructure.MigrationsHost.csproj", "{9669DABE-D3E1-4BBF-898E-04FB96FC604C}"
