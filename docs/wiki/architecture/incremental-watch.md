@@ -43,6 +43,6 @@ Full and incremental handlers publish typed notifications through `IAnalysisNoti
 
 `AnalysisSnapshotStore` reduces these notifications into bounded immutable presentation state. It retains the current source for each language, bounded diagnostics, and the last committed summary; late progress cannot reopen a finished operation. Existing extractor progress reporters are adapted at the indexing boundary.
 
-The Spectre CLI renders snapshots from one presenter loop. UI-owned sessions project them into workspace job status and publish bounded SSE snapshots. Neither presentation layer controls the indexing commit or blocks language workers on terminal/network output. CLI prompts remain separate in `IAnalyzeInteractions`.
+The Spectre CLI renders snapshots from one presenter loop. UI-owned sessions project them into workspace job status and publish bounded SSE snapshots. Neither presentation layer controls the indexing commit or blocks language workers on terminal/network output. CLI prompts remain separate in `IWorkspaceInteractions`.
 
 Graph revision advances only on a persisted commit; status sequence advances on progress and lifecycle changes. Cancellation can arrive just after persistence, so the UI retains a committed revision while stopping. Closing an SSE subscription never cancels its workspace job.

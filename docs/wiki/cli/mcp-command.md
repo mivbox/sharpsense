@@ -8,7 +8,7 @@ sharpsense mcp --workspace product
 
 Configure your MCP client to launch executable `sharpsense` with arguments `["mcp", "--workspace", "product"]`. Pass the same absolute `SHARPSENSE_HOME` environment value if the workspace uses a custom home. The workspace must be registered and analyzed before graph queries are useful.
 
-The host keeps one workspace for its lifetime. Run a separate server process to expose a different workspace. Standard output is reserved for MCP transport; diagnostic logging does not replace protocol responses.
+`--workspace` is required, even if `workspace use` has saved a CLI default. Changing that default does not affect running servers. The host keeps one workspace for its lifetime. Run a separate server process to expose a different workspace. Standard output is reserved for MCP transport; diagnostic logging does not replace protocol responses.
 
 ## Tools
 

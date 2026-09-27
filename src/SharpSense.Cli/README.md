@@ -24,10 +24,10 @@ See the [CLI and architecture guide](https://github.com/mivbox/sharpsense/blob/m
 
 ## Create a workspace
 
-Run `sharpsense configure` for guided setup, or provide explicit sources:
+Run `sharpsense workspace create` for guided setup, or provide explicit sources. `sharpsense configure` is an alias:
 
 ```bash
-sharpsense configure commerce --repo-root /path/to/monorepo \
+sharpsense workspace create commerce --repo-root /path/to/monorepo \
   --csharp src/Api/Api.csproj \
   --csharp src/Core/Core.csproj \
   --csharp src/Jobs/Jobs.csproj \
@@ -45,7 +45,8 @@ editing sources and merging workspaces from the same repository. `ui --workspace
 
 C# sources accept `.sln`, `.slnx`, or `.csproj` files. TypeScript sources accept a configuration file or source directory.
 Markdown sources accept a file, directory, or quoted glob. Include documentation explicitly; no repository YAML file
-is required or read. Source paths are stored relative to the registered repository root.
+is required or read. For `workspace create`, `add`, and `remove`, relative source paths resolve from the current directory,
+or from `--repo-root` when supplied. Absolute paths also work. Stored paths remain relative to the registered repository root.
 
 One workspace can contain all of a product, while another indexes just its API or frontend. Names are convenient
 selectors; stable workspace IDs determine storage identity. Renaming or selecting another workspace does not redirect
@@ -54,23 +55,27 @@ an existing MCP session to a different graph.
 ## Manage workspaces
 
 ```bash
-sharpsense workspace                         # Guided terminal manager
-sharpsense workspace list
+sharpsense workspace                         # Show command help
+sharpsense workspace ls                      # Alias for list; marks the default
+sharpsense workspace use commerce            # Save the global CLI default
+sharpsense analyze                           # Analyze that default workspace
 sharpsense workspace show commerce --json
 sharpsense workspace rename old-name commerce
-sharpsense workspace add commerce --markdown "design/**/*.md"
-sharpsense workspace remove commerce --markdown "design/**/*.md"
+sharpsense workspace add commerce --repo-root /path/to/monorepo --markdown "design/**/*.md"
+sharpsense workspace remove commerce --repo-root /path/to/monorepo --markdown "design/**/*.md"
 
 sharpsense workspace create api --repo-root /path/to/monorepo --csharp src/Api/Api.csproj
 sharpsense workspace create web --repo-root /path/to/monorepo --typescript frontend/tsconfig.json
 sharpsense workspace merge product api web
 ```
 
-The guided manager selects, creates, inspects, renames, edits, and merges workspaces, and can start analysis or watch.
-Setup offers bounded source discovery, manual paths/globs, and a review before saving. Explicit commands and JSON
-output remain suitable for scripts. Running `sharpsense` without a command still shows help.
+Workspace management uses explicit subcommands. Creation offers bounded source discovery, manual paths/globs, and a review before saving. Fully specified creation commands
+save without prompting; incomplete commands require an interactive terminal. JSON mode always requires explicit inputs.
+Running `sharpsense` or `sharpsense workspace` without a subcommand shows help.
 
-`remove` removes selected sources from a definition; it does not delete the workspace or its database. `merge` creates
+`remove` reports each removed or unmatched source, including when zero sources matched. Its JSON output adds
+`removedSources` and `unmatchedSources` to the workspace details. Unmatched requests succeed without rewriting the
+definition. Removal does not delete the workspace or its database. `merge` creates
 a new workspace from the source sets of existing workspaces in the same repository, preserving the originals.
 Stop an active analyzer or watcher before changing sources. Reindex after changing sources, and restart an MCP process
 to bind the updated definition. A workspace writer lock prevents concurrent CLI/UI indexing and source edits.
@@ -85,10 +90,20 @@ Configuration and data live outside the repository:
 ```
 
 Set `SHARPSENSE_HOME` to an absolute directory to use another storage location. Configuration schema version 1 contains
-`version`, `id`, `name`, `repositoryRoot`, and explicit `sources`. Commands accept `--workspace <name-or-id>`.
-Without that option, graph commands resolve a single registered workspace for the current repository. When several
-workspaces match, select one explicitly. Interactive `analyze` also offers a workspace picker or setup; redirected
-commands never prompt, and an invalid explicit selection remains an error. `--repo-root` is a lookup hint and never implicitly creates a workspace.
+`version`, `id`, `name`, `repositoryRoot`, and explicit `sources`.
+
+`workspace use <name-or-id>` saves one global default in `~/.sharpsense/default-workspace` (or under `SHARPSENSE_HOME`).
+It stores the workspace ID, so renaming preserves the selection. Multiple workspaces can share a repository.
+CLI analysis and query commands use explicit `--workspace` first, then the saved default, then a single workspace
+matching the current repository. `--repo-root` only changes that final repository lookup.
+Interactive `analyze` offers a picker or setup when no default is saved and repository selection is ambiguous or missing;
+redirected commands never prompt. Empty or whitespace workspace selectors are rejected; omit `--workspace` to use the default.
+Invalid explicit or saved selections remain errors. `workspace ls` stays available if the saved default is invalid,
+with a warning on stderr and valid JSON on stdout when `--json` is used.
+
+MCP always requires `--workspace <name-or-id>` and keeps that workspace for its lifetime. Changing the CLI default
+does not affect running MCP servers or watchers. The global UI provides its own workspace switcher; use `ui --workspace`
+to choose its initial workspace.
 
 ## Analyze and query
 
@@ -187,7 +202,7 @@ start independently; do not copy an incompatible database containing legacy valu
 To configure this repository from source, explicitly include its previous documentation selection:
 
 ```bash
-dotnet run --project src/SharpSense.Cli -- configure sharpsense --repo-root "$PWD" \
+dotnet run --project src/SharpSense.Cli -- workspace create sharpsense --repo-root "$PWD" \
   --csharp SharpSense.sln \
   --typescript src/SharpSense.UI/tsconfig.json \
   --markdown "docs/**/*.md"
