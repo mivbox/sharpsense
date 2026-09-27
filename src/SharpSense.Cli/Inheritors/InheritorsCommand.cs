@@ -32,7 +32,7 @@ internal sealed class InheritorsCommand : AbstractAsyncCommand<InheritorsCommand
         public override ValidationResult Validate()
             => NodeId <= 0
                 ? ValidationResult.Error("A positive node id is required.")
-                : ValidationResult.Success();
+                : base.Validate();
     }
 
     protected override void Configure(

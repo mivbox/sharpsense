@@ -37,7 +37,7 @@ internal sealed class SearchCommand : AbstractAsyncCommand<SearchCommand.Setting
         public override ValidationResult Validate()
             => string.IsNullOrWhiteSpace(Query)
                 ? ValidationResult.Error("A search query is required.")
-                : ValidationResult.Success();
+                : base.Validate();
     }
 
     protected override void Configure(Settings settings, IServiceCollection services)

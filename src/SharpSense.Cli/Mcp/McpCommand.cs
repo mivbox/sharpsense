@@ -26,6 +26,7 @@ using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
 using SharpSense.Infrastructure.Trace;
+using Spectre.Console;
 using Spectre.Console.Cli;
 
 namespace SharpSense.Cli.Mcp;
@@ -40,6 +41,9 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
     public sealed class Settings : GlobalSettings
     {
+        public override ValidationResult Validate() => string.IsNullOrWhiteSpace(Workspace)
+            ? ValidationResult.Error("MCP requires --workspace <name-or-id>; it never uses the CLI default workspace.")
+            : base.Validate();
     }
 
     protected override void Configure(Settings settings, IServiceCollection services)

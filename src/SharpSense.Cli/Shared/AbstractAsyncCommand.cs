@@ -7,7 +7,7 @@ using Spectre.Console.Cli;
 namespace SharpSense.Cli.Shared;
 
 public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
-    where TSettings : GlobalSettings
+    where TSettings : CliSettings
 {
     protected abstract void Configure(TSettings settings, IServiceCollection services);
 
@@ -22,11 +22,7 @@ public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
         TSettings settings,
         CancellationToken ct)
     {
-        var executionContext = CommandOutput.GetExecutionContext(context) ?? settings.ExecutionContext;
-        if (context.Data is null && executionContext is not null)
-        {
-            context = new CommandContext(context.Arguments, context.Remaining, context.Name, executionContext);
-        }
+        var executionContext = CommandOutput.GetExecutionContext(context);
         var enableFileLogging = executionContext?.EnableFileLogging ?? true;
         var previousLogger = Log.Logger;
         SharpSenseLogging.UseGlobalLogger(settings.IsVerbose, context.Name, enableConsoleLogging: false, enableFileLogging);

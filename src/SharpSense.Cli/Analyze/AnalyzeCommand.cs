@@ -24,7 +24,7 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
 
     protected override async Task<int> Execute(CommandContext context, Settings settings, IHost host, CancellationToken ct)
     {
-        var selection = await host.Services.GetRequiredService<WorkspaceManagement>().SelectForAnalysis(settings.Workspace,
+        var selection = await host.Services.GetRequiredService<WorkspaceSetup>().SelectForAnalysis(settings.Workspace,
             CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot), ct);
         return selection is null ? 0 : await host.Services.GetRequiredService<WorkspaceAnalysisRunner>().Run(selection, settings, ct);
     }

@@ -96,7 +96,7 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
                 return ValidationResult.Error("--intent-filter values must be one of: Convention, Invariant, Todo, Warning, Decision.");
             }
 
-            return ValidationResult.Success();
+            return base.Validate();
         }
 
         private static bool TryParseIntent(string raw, out SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent intent)

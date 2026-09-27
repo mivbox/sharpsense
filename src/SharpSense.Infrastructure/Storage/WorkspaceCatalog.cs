@@ -34,6 +34,33 @@ public sealed class WorkspaceCatalog
 
     public string HomeDirectory { get; }
 
+    public Guid? GetDefaultWorkspaceId()
+    {
+        var path = _fileSystem.Path.Combine(HomeDirectory, "default-workspace");
+        if (!_fileSystem.File.Exists(path))
+        {
+            return null;
+        }
+
+        using var stream = _fileSystem.FileStream.New(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        if (!Guid.TryParse(reader.ReadToEnd().Trim(), out var id) || id == Guid.Empty)
+        {
+            throw new InvalidOperationException(
+                $"Default workspace selection '{path}' is invalid. Run 'sharpsense workspace use <name-or-id>' to replace it, or pass --workspace explicitly.");
+        }
+
+        return id;
+    }
+
+    public WorkspaceSelection Use(string nameOrId)
+    {
+        using var catalogLock = AcquireWriteLock();
+        var selection = ResolveExplicit(List(), nameOrId);
+        WriteAtomically(_fileSystem.Path.Combine(HomeDirectory, "default-workspace"), selection.Definition.Id.ToString("D"));
+        return selection;
+    }
+
     public IDisposable AcquireIndexLease(WorkspaceSelection selection)
     {
         ArgumentNullException.ThrowIfNull(selection);
@@ -107,21 +134,31 @@ public sealed class WorkspaceCatalog
     public WorkspaceSelection Resolve(string? nameOrId, string workingDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
-        if (Guid.TryParse(nameOrId?.Trim(), out var id))
+        if (nameOrId is not null)
         {
-            return ResolveById(id);
+            ArgumentException.ThrowIfNullOrWhiteSpace(nameOrId);
+            return Guid.TryParse(nameOrId.Trim(), out var id)
+                ? ResolveById(id)
+                : ResolveExplicit(List(), nameOrId);
         }
 
-        var selections = List();
-        if (!string.IsNullOrWhiteSpace(nameOrId))
+        if (GetDefaultWorkspaceId() is { } defaultId)
         {
-            return ResolveExplicit(selections, nameOrId);
+            try
+            {
+                return ResolveById(defaultId);
+            }
+            catch (Exception exception) when (exception is KeyNotFoundException or InvalidOperationException)
+            {
+                throw new InvalidOperationException(
+                    $"Default workspace '{defaultId}' is unavailable. Run 'sharpsense workspace use <name-or-id>' to choose another, or pass --workspace explicitly.");
+            }
         }
 
         var repositoryRoot = RepositoryWorkspace.ResolveRootPathFromWorkingDirectory(workingDirectory, _fileSystem);
         var hasGitRoot = _fileSystem.Directory.Exists(_fileSystem.Path.Combine(repositoryRoot, ".git")) ||
                          _fileSystem.File.Exists(_fileSystem.Path.Combine(repositoryRoot, ".git"));
-        var matches = selections.Where(selection =>
+        var matches = List().Where(selection =>
                 PathsEqual(selection.Workspace.RootPath, repositoryRoot) ||
                 (!hasGitRoot && selection.Workspace.IsSameOrSubPath(repositoryRoot)))
             .ToArray();
@@ -130,7 +167,7 @@ public sealed class WorkspaceCatalog
         {
             1 => matches[0],
             0 => throw new InvalidOperationException(
-                $"No workspace is registered for '{repositoryRoot}'. Run 'sharpsense configure' or 'sharpsense workspace create', or select an existing workspace with '--workspace <name>'."),
+                $"No workspace is registered for '{repositoryRoot}'. Run 'sharpsense workspace create', or select an existing workspace with '--workspace <name>'."),
             _ => throw new InvalidOperationException(
                 $"Multiple workspaces match '{repositoryRoot}': {string.Join(", ", matches.Select(static selection => selection.Definition.Name))}. Select one with '--workspace <name-or-id>'.")
         };
@@ -223,18 +260,24 @@ public sealed class WorkspaceCatalog
         return CreateSelection(selection.Definition);
     }
 
-    public WorkspaceSelection RemoveSources(string nameOrId, IEnumerable<WorkspaceSource> sources)
+    public WorkspaceSourceRemoval RemoveSources(string nameOrId, IEnumerable<WorkspaceSource> sources)
     {
         ArgumentNullException.ThrowIfNull(sources);
         using var catalogLock = AcquireWriteLock();
         var selection = ResolveExplicit(List(), nameOrId);
         using var indexLease = AcquireIndexLease(selection);
-        var removedSources = NormalizeSources(selection.Definition.RepositoryRoot, sources, requireExistingSources: false);
-        selection.Definition.Sources = selection.Definition.Sources
-            .Where(source => !removedSources.Any(removed => SameSource(source, removed)))
-            .ToArray();
-        Write(selection.Definition);
-        return CreateSelection(selection.Definition);
+        var requested = NormalizeSources(selection.Definition.RepositoryRoot, sources, requireExistingSources: false);
+        var existing = selection.Definition.Sources;
+        var removed = existing.Where(source => requested.Any(candidate => SameSource(source, candidate))).ToArray();
+        var unmatched = requested.Where(source => !existing.Any(candidate => SameSource(source, candidate))).ToArray();
+
+        if (removed.Length > 0)
+        {
+            selection.Definition.Sources = existing.Where(source => !removed.Contains(source)).ToArray();
+            Write(selection.Definition);
+        }
+
+        return new WorkspaceSourceRemoval(CreateSelection(selection.Definition), removed, unmatched);
     }
 
     public WorkspaceSelection Merge(string name, IEnumerable<string> workspaceNames)
@@ -459,11 +502,16 @@ public sealed class WorkspaceCatalog
     {
         var selection = CreateSelection(definition);
         _fileSystem.Directory.CreateDirectory(selection.DirectoryPath);
-        var temporaryPath = _fileSystem.Path.Combine(selection.DirectoryPath, $".workspace-{Guid.NewGuid():N}.tmp");
+        WriteAtomically(selection.ConfigurationPath, _serializer.Serialize(definition));
+    }
+
+    private void WriteAtomically(string destination, string content)
+    {
+        var temporaryPath = destination + $".{Guid.NewGuid():N}.tmp";
         try
         {
-            _fileSystem.File.WriteAllText(temporaryPath, _serializer.Serialize(definition));
-            _fileSystem.File.Move(temporaryPath, selection.ConfigurationPath, overwrite: true);
+            _fileSystem.File.WriteAllText(temporaryPath, content);
+            _fileSystem.File.Move(temporaryPath, destination, overwrite: true);
         }
         finally
         {

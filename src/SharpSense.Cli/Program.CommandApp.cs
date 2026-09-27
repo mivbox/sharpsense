@@ -46,27 +46,26 @@ public partial class Program
                 config.Settings.Console = console;
             }
 
-            if (executionContext is not null)
-            {
-                config.SetInterceptor(new CliExecutionContextInterceptor(executionContext));
-            }
-
+            config.UseStrictParsing();
             config.SetApplicationName("sharpsense");
             config.SetApplicationVersion(
                 typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
                 ?? typeof(Program).Assembly.GetName().Version?.ToString()
                 ?? "unknown");
 
-            AttachData(config.AddCommand<ConfigureCommand>("configure")
-                .WithDescription("Create a named workspace with explicit C#, TypeScript, and Markdown sources."), executionContext);
+            AttachData(config.AddCommand<WorkspaceCreateCommand>("configure")
+                .WithDescription("Alias for workspace create; prompts for missing inputs in an interactive terminal."), executionContext);
             config.AddBranch("workspace", workspace =>
             {
-                workspace.SetDefaultCommand<WorkspaceManagerCommand>();
                 workspace.SetDescription("Create and manage named workspaces stored under ~/.sharpsense.");
                 AttachData(workspace.AddCommand<WorkspaceCreateCommand>("create")
-                    .WithDescription("Create a workspace from explicit source paths."), executionContext);
+                    .WithDescription("Create a workspace, with guided setup for missing inputs in an interactive terminal."), executionContext);
                 AttachData(workspace.AddCommand<WorkspaceListCommand>("list")
                     .WithDescription("List registered workspaces without opening their databases."), executionContext);
+                AttachData(workspace.AddCommand<WorkspaceListCommand>("ls")
+                    .WithDescription("Alias for workspace list."), executionContext);
+                AttachData(workspace.AddCommand<WorkspaceUseCommand>("use")
+                    .WithDescription("Save the default workspace for CLI commands; --workspace overrides it."), executionContext);
                 AttachData(workspace.AddCommand<WorkspaceShowCommand>("show")
                     .WithDescription("Show workspace sources and storage locations."), executionContext);
                 AttachData(workspace.AddCommand<WorkspaceRenameCommand>("rename")
@@ -106,7 +105,7 @@ public partial class Program
 
             var mcp = config
                 .AddCommand<McpCommand>("mcp")
-                .WithDescription("Start the MCP server over stdio.");
+                .WithDescription("Start an MCP server over stdio; requires --workspace <name-or-id>.");
             AttachData(mcp, executionContext);
 
             var memory = config

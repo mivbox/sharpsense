@@ -52,7 +52,7 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
                 ValidationResult.Error("A symbol identifier is required.") :
                 NormalizeDirection(Direction) is null ?
                     ValidationResult.Error("Direction must be either 'caller' or 'callee'.") :
-                    ValidationResult.Success();
+                    base.Validate();
     }
 
     protected override void Configure(

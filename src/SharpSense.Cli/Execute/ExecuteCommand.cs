@@ -33,7 +33,7 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
         public override ValidationResult Validate()
             => string.IsNullOrWhiteSpace(Command)
                 ? ValidationResult.Error("A non-empty command is required.")
-                : ValidationResult.Success();
+                : base.Validate();
     }
 
     protected override void Configure(

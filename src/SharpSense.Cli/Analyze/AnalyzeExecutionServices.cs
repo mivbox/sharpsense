@@ -16,8 +16,8 @@ internal static class AnalyzeExecutionServices
     {
         services.AddWorkspaceExecutionServices();
         services.TryAddSingleton<WorkspaceSourceDiscovery>();
-        services.TryAddSingleton<IAnalyzeInteractions, SpectreAnalyzeInteractions>();
-        services.TryAddSingleton<WorkspaceManagement>();
+        services.TryAddSingleton<IWorkspaceInteractions, SpectreWorkspaceInteractions>();
+        services.TryAddSingleton<WorkspaceSetup>();
         services.TryAddSingleton<WorkspaceAnalysisRunner>();
         services.TryAddScoped<IAnalysisDatabaseInitializer, AnalysisDatabaseInitializer>();
         services.AddIndexing();

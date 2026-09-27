@@ -1,11 +1,10 @@
 using SharpSense.Application.Indexing;
-using SharpSense.Cli.Workspaces;
 using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 
-namespace SharpSense.Cli.Analyze;
+namespace SharpSense.Cli.Workspaces;
 
-internal sealed class SpectreAnalyzeInteractions(IAnsiConsole console, WorkspaceSourceDiscovery discovery) : IAnalyzeInteractions
+internal sealed class SpectreWorkspaceInteractions(IAnsiConsole console, WorkspaceSourceDiscovery discovery) : IWorkspaceInteractions
 {
     public bool IsInteractive => console.Profile.Capabilities.Interactive;
 
@@ -19,25 +18,6 @@ internal sealed class SpectreAnalyzeInteractions(IAnsiConsole console, Workspace
                 : "Create a workspace")
             .AddChoices(items), ct);
         return choice.Selection;
-    }
-
-    public Task<WorkspaceAction> SelectAction(WorkspaceSelection? selection, CancellationToken ct)
-    {
-        var actions = selection is null
-            ? new[] { WorkspaceAction.Select, WorkspaceAction.Create, WorkspaceAction.Exit }
-            : Enum.GetValues<WorkspaceAction>();
-        return console.PromptAsync(new SelectionPrompt<WorkspaceAction>()
-            .Title(selection is null ? "Workspace manager" : $"Workspace: [bold]{Markup.Escape(selection.Definition.Name)}[/]")
-            .UseConverter(static action => action switch
-            {
-                WorkspaceAction.Select => "Select workspace",
-                WorkspaceAction.Create => "Create workspace",
-                WorkspaceAction.AddSources => "Add sources",
-                WorkspaceAction.RemoveSources => "Remove sources",
-                WorkspaceAction.Watch => "Analyze and watch",
-                _ => action.ToString()
-            })
-            .AddChoices(actions), ct);
     }
 
     public Task<string> ReadName(string? current, CancellationToken ct)
@@ -111,23 +91,8 @@ internal sealed class SpectreAnalyzeInteractions(IAnsiConsole console, Workspace
         }
     }
 
-    public async Task<IReadOnlyList<WorkspaceSource>> SelectSourcesToRemove(IReadOnlyList<WorkspaceSource> sources, CancellationToken ct) =>
-        await console.PromptAsync(new MultiSelectionPrompt<WorkspaceSource>()
-            .Title("Select sources to remove").NotRequired().UseConverter(DescribeSource).AddChoices(sources), ct);
-
-    public async Task<IReadOnlyList<WorkspaceSelection>> SelectWorkspacesToMerge(IReadOnlyList<WorkspaceSelection> choices, CancellationToken ct) =>
-        await console.PromptAsync(new MultiSelectionPrompt<WorkspaceSelection>()
-            .Title("Select at least two workspaces from the same repository")
-            .NotRequired().UseConverter(static selection => Markup.Escape(selection.Definition.Name)).AddChoices(choices), ct);
-
     public Task<bool> Confirm(string message, CancellationToken ct) =>
         console.PromptAsync(new ConfirmationPrompt(Markup.Escape(message)) { DefaultValue = false }, ct);
-
-    public void ShowWorkspace(WorkspaceSelection selection)
-    {
-        ShowConfiguration(selection.Definition.Name, selection.Definition.RepositoryRoot, selection.Definition.Sources);
-        console.WriteLine($"Configuration: {selection.ConfigurationPath}");
-    }
 
     public void ShowConfiguration(string name, string root, IReadOnlyList<WorkspaceSource> sources)
     {
@@ -140,7 +105,7 @@ internal sealed class SpectreAnalyzeInteractions(IAnsiConsole console, Workspace
         console.WriteLine($"Repository: {root}");
     }
 
-    public void ShowError(string message) => console.MarkupLine($"[red]Error:[/] {Markup.Escape(message)}");
+    private void ShowError(string message) => console.MarkupLine($"[red]Error:[/] {Markup.Escape(message)}");
 
     private static string DescribeSource(WorkspaceSource source) => Markup.Escape($"{source.Kind}: {source.Path}");
     private sealed record WorkspaceChoice(WorkspaceSelection? Selection);
