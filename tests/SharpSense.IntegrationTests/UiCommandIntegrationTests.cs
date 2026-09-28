@@ -1,14 +1,18 @@
-using System.Net;
-using System.Net.Sockets;
-using System.IO.Abstractions;
-using System.IO.Abstractions.TestingHelpers;
-using System.Text.Json;
+using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
+using SharpSense.Infrastructure.Storage;
 using SharpSense.Testkit;
+using System.IO.Abstractions;
+using System.IO.Abstractions.TestingHelpers;
+using System.Net;
+using System.Net.Http.Json;
+using System.Net.Sockets;
+using System.Text.Json;
 
 namespace SharpSense.IntegrationTests;
 
@@ -20,18 +24,162 @@ public sealed class UiCommandIntegrationTests
     private const string RootTreePath = "%2F";
 
     [Fact]
+    public async Task WhenGraphPages_ThenReturnCompactCompleteResultsAndValidateRevisionAndCursor()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await UiCommandTestDatabase.Create();
+        var fileSystem = new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+            },
+            RepositoryRoot);
+        var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
+        var selection = catalog.Create("fixture", RepositoryRoot, []);
+        var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
+        var app = Cli.Program.CreateCommandApp(
+            configureServices: services =>
+        {
+            services.AddSingleton<IFileSystem>(fileSystem);
+            services.AddSingleton<IWorkspaceCatalog>(catalog);
+            database.ConfigureServices(services);
+        },
+            enableFileLogging: false);
+        using var shutdown = new CancellationTokenSource();
+        var runTask = app.RunAsync(["ui", "--url", baseUrl], shutdown.Token);
+        try
+        {
+            await WaitForServer(
+                runTask,
+                $"{baseUrl}/");
+            using var client = new HttpClient
+            {
+                BaseAddress = new Uri(baseUrl)
+            };
+            using var missingWorkspace = await client.GetAsync("/api/graph/nodes/page?directoryIds=1", ct);
+            missingWorkspace.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            using var missingConnectionsWorkspace = await client.GetAsync("/api/graph/nodes/200/connections", ct);
+            missingConnectionsWorkspace.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            client.DefaultRequestHeaders.Add("X-SharpSense-Workspace", selection.Definition.Id.ToString());
+
+            using var first = JsonDocument.Parse(await client.GetStringAsync(
+                "/api/graph/nodes/page?directoryIds=1&pageSize=1&includeTotal=true",
+                ct));
+            var revision = first.RootElement.GetProperty("revision")
+                .GetString();
+            first.RootElement.GetProperty("totalCount")
+                .GetInt32().Should().Be(4);
+            first.RootElement.GetProperty("items")
+                .EnumerateArray().Should().ContainSingle().Which.GetProperty("id")
+                .GetInt32().Should().Be(100);
+            var cursor = first.RootElement.GetProperty("nextCursor")
+                .GetString();
+            using var next = JsonDocument.Parse(await client.GetStringAsync(
+                $"/api/graph/nodes/page?directoryIds=1&pageSize=5&cursor={Uri.EscapeDataString(cursor!)}",
+                ct));
+            next.RootElement.GetProperty("items")
+                .GetArrayLength().Should().Be(3);
+            next.RootElement.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
+
+            using var edges = JsonDocument.Parse(await client.GetStringAsync(
+                $"/api/graph/edges/page?directoryIds=1&revision={revision}&includeTotal=true",
+                ct));
+            edges.RootElement.GetProperty("totalCount")
+                .GetInt32().Should().Be(2);
+            edges.RootElement.GetProperty("items")
+                .EnumerateArray().Should().AllSatisfy(edge =>
+            {
+                edge.GetProperty("source").ValueKind.Should().Be(JsonValueKind.Number);
+                edge.GetProperty("target").ValueKind.Should().Be(JsonValueKind.Number);
+                edge.TryGetProperty("id", out _).Should().BeFalse();
+            });
+
+            foreach (var query in new[]
+            {
+                "pageSize=0",
+                "pageSize=5001",
+                "cursor=invalid!",
+                "directoryIds=-1"
+            })
+            {
+                using var invalid = await client.GetAsync(
+                    $"/api/graph/nodes/page?{query}",
+                    ct);
+                invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            }
+            using var stale = await client.GetAsync("/api/graph/edges/page?directoryIds=1&revision=old", ct);
+            stale.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+            using var connections = JsonDocument.Parse(await client.GetStringAsync(
+                "/api/graph/nodes/200/connections?includeTotal=true",
+                ct));
+            connections.RootElement.GetProperty("node")
+                .GetProperty("id")
+                .GetInt32().Should().Be(200);
+            connections.RootElement.GetProperty("totalCount")
+                .GetInt32().Should().Be(1);
+            var connectedPeer = connections.RootElement.GetProperty("items")
+                .EnumerateArray().Should().ContainSingle().Which;
+            connectedPeer.GetProperty("node")
+                .GetProperty("id")
+                .GetInt32().Should().Be(201);
+            var relationship = connectedPeer.GetProperty("relationships")
+                .EnumerateArray().Should().ContainSingle().Which;
+            relationship.GetProperty("direction")
+                .GetString().Should().Be("outgoing");
+            relationship.GetProperty("type")
+                .GetString().Should().Be("methodcall");
+            foreach (var (path, expectedStatus) in new[]
+            {
+                ("/api/graph/nodes/999999/connections", HttpStatusCode.NotFound),
+                ("/api/graph/nodes/0/connections", HttpStatusCode.BadRequest),
+                ("/api/graph/nodes/200/connections?pageSize=501", HttpStatusCode.BadRequest),
+                ("/api/graph/nodes/200/connections?cursor=invalid!", HttpStatusCode.BadRequest),
+                ("/api/graph/nodes/200/connections?revision=old", HttpStatusCode.Conflict)
+            })
+            {
+                using var response = await client.GetAsync(path, ct);
+                response.StatusCode.Should().Be(expectedStatus);
+            }
+
+            using var compressedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/graph/nodes/page?directoryIds=1");
+            compressedRequest.Headers.AcceptEncoding.ParseAdd("gzip");
+            using var compressed = await client.SendAsync(compressedRequest, ct);
+            compressed.StatusCode.Should().Be(HttpStatusCode.OK);
+            compressed.Content.Headers.ContentEncoding.Should().Contain("gzip");
+            await using var compressedBody = await compressed.Content.ReadAsStreamAsync(ct);
+            await using var decompressed = new System.IO.Compression.GZipStream(
+                compressedBody,
+                System.IO.Compression.CompressionMode.Decompress);
+            using var compressedPage = await JsonDocument.ParseAsync(decompressed, cancellationToken: ct);
+            compressedPage.RootElement.GetProperty("items")
+                .GetArrayLength().Should().Be(4);
+        }
+        finally
+        {
+            shutdown.Cancel();
+            await runTask;
+        }
+    }
+
+    [Fact]
     public async Task WhenUiCommandRuns_ThenTreeAndScopedGraphEndpointsReturnAnalyzedData()
     {
         await using var database = await UiCommandTestDatabase.Create();
         var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
-        }, RepositoryRoot);
+        var fileSystem = new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+            },
+            RepositoryRoot);
+        var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
+        var selection = catalog.Create("fixture", RepositoryRoot, []);
         var app = Cli.Program.CreateCommandApp(
             configureServices: services =>
             {
                 services.AddSingleton<IFileSystem>(fileSystem);
+                services.AddSingleton<IWorkspaceCatalog>(catalog);
                 database.ConfigureServices(services);
             },
             enableFileLogging: false);
@@ -42,23 +190,36 @@ public sealed class UiCommandIntegrationTests
 
         try
         {
-            await WaitForServer(runTask, $"{baseUrl}/");
+            await WaitForServer(
+                runTask,
+                $"{baseUrl}/");
 
             using var httpClient = new HttpClient
             {
                 Timeout = TimeSpan.FromSeconds(5)
             };
+            httpClient.DefaultRequestHeaders.Add("X-SharpSense-Workspace", selection.Definition.Id.ToString());
 
-            using var graphNodesResponse = await httpClient.GetAsync($"{baseUrl}/api/graph/nodes", TestContext.Current.CancellationToken);
-            using var graphEdgesResponse = await httpClient.GetAsync($"{baseUrl}/api/graph/edges", TestContext.Current.CancellationToken);
-            using var rootTreeResponse = await httpClient.GetAsync($"{baseUrl}/api/tree?path={RootTreePath}", TestContext.Current.CancellationToken);
-            using var srcTreeResponse = await httpClient.GetAsync($"{baseUrl}/api/tree?path=src", TestContext.Current.CancellationToken);
-            using var rootResponse = await httpClient.GetAsync($"{baseUrl}/", TestContext.Current.CancellationToken);
-            Assert.Equal(HttpStatusCode.OK, graphNodesResponse.StatusCode);
-            Assert.Equal(HttpStatusCode.OK, graphEdgesResponse.StatusCode);
-            Assert.Equal(HttpStatusCode.OK, rootTreeResponse.StatusCode);
-            Assert.Equal(HttpStatusCode.OK, srcTreeResponse.StatusCode);
-            Assert.Equal(HttpStatusCode.OK, rootResponse.StatusCode);
+            using var graphNodesResponse = await httpClient.GetAsync(
+                $"{baseUrl}/api/graph/nodes/page",
+                TestContext.Current.CancellationToken);
+            using var graphEdgesResponse = await httpClient.GetAsync(
+                $"{baseUrl}/api/graph/edges/page",
+                TestContext.Current.CancellationToken);
+            using var rootTreeResponse = await httpClient.GetAsync(
+                $"{baseUrl}/api/tree?path={RootTreePath}",
+                TestContext.Current.CancellationToken);
+            using var srcTreeResponse = await httpClient.GetAsync(
+                $"{baseUrl}/api/tree?path=src",
+                TestContext.Current.CancellationToken);
+            using var rootResponse = await httpClient.GetAsync(
+                $"{baseUrl}/",
+                TestContext.Current.CancellationToken);
+            graphNodesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            graphEdgesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            rootTreeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            srcTreeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            rootResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
             await using var graphNodesStream = await graphNodesResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
             await using var graphEdgesStream = await graphEdgesResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
@@ -68,91 +229,203 @@ public sealed class UiCommandIntegrationTests
             using var graphEdgesDocument = await JsonDocument.ParseAsync(graphEdgesStream, cancellationToken: TestContext.Current.CancellationToken);
             using var rootTreeDocument = await JsonDocument.ParseAsync(rootTreeStream, cancellationToken: TestContext.Current.CancellationToken);
             using var srcTreeDocument = await JsonDocument.ParseAsync(srcTreeStream, cancellationToken: TestContext.Current.CancellationToken);
-            var nodes = graphNodesDocument.RootElement;
-            var edges = graphEdgesDocument.RootElement;
+            var nodes = graphNodesDocument.RootElement.GetProperty("items");
+            var edges = graphEdgesDocument.RootElement.GetProperty("items");
             var rootTreeNodes = rootTreeDocument.RootElement.GetProperty("nodes");
             var srcTreeNodes = srcTreeDocument.RootElement.GetProperty("nodes");
             var appDirectoryId = srcTreeNodes.EnumerateArray()
                 .First(
                     node =>
-                        node.GetProperty("path").GetString() == AppFolderPath &&
-                    node.GetProperty("kind").GetString() == "folder")
+                        node.GetProperty("path")
+                            .GetString() == AppFolderPath &&
+                    node.GetProperty("kind")
+                        .GetString() == "folder")
                 .GetProperty("id")
                 .GetInt32();
             using var scopedGraphNodesResponse = await httpClient.GetAsync(
-                $"{baseUrl}/api/graph/nodes?directoryIds={appDirectoryId}",
+                $"{baseUrl}/api/graph/nodes/page?directoryIds={appDirectoryId}",
                 TestContext.Current.CancellationToken);
             using var scopedGraphEdgesResponse = await httpClient.GetAsync(
-                $"{baseUrl}/api/graph/edges?directoryIds={appDirectoryId}",
+                $"{baseUrl}/api/graph/edges/page?directoryIds={appDirectoryId}",
                 TestContext.Current.CancellationToken);
-            Assert.Equal(HttpStatusCode.OK, scopedGraphNodesResponse.StatusCode);
-            Assert.Equal(HttpStatusCode.OK, scopedGraphEdgesResponse.StatusCode);
+            scopedGraphNodesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            scopedGraphEdgesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
             await using var scopedGraphNodesStream = await scopedGraphNodesResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
             await using var scopedGraphEdgesStream = await scopedGraphEdgesResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
             using var scopedGraphNodesDocument = await JsonDocument.ParseAsync(scopedGraphNodesStream, cancellationToken: TestContext.Current.CancellationToken);
             using var scopedGraphEdgesDocument = await JsonDocument.ParseAsync(scopedGraphEdgesStream, cancellationToken: TestContext.Current.CancellationToken);
-            var scopedNodes = scopedGraphNodesDocument.RootElement;
-            var scopedEdges = scopedGraphEdgesDocument.RootElement;
+            var scopedNodes = scopedGraphNodesDocument.RootElement.GetProperty("items");
+            var scopedEdges = scopedGraphEdgesDocument.RootElement.GetProperty("items");
 
-            Assert.Empty(nodes.EnumerateArray());
-            Assert.Empty(edges.EnumerateArray());
-            Assert.Contains(
-                rootTreeNodes.EnumerateArray(),
-                node =>
-                    node.GetProperty("path").GetString() == "src" &&
-                    node.GetProperty("kind").GetString() == "folder");
-            Assert.Contains(
-                srcTreeNodes.EnumerateArray(),
-                node =>
-                    node.GetProperty("path").GetString() == AppFolderPath &&
-                    node.GetProperty("kind").GetString() == "folder");
-            Assert.Contains(
-                srcTreeNodes.EnumerateArray(),
-                node =>
-                    node.GetProperty("path").GetString() == CoreFolderPath &&
-                    node.GetProperty("kind").GetString() == "folder");
+            nodes.EnumerateArray().Should().BeEmpty();
+            edges.EnumerateArray().Should().BeEmpty();
+            rootTreeNodes.EnumerateArray().Should().Contain(node =>
+                    node.GetProperty("path")
+                        .GetString() == "src" &&
+                    node.GetProperty("kind")
+                        .GetString() == "folder");
+            srcTreeNodes.EnumerateArray().Should().Contain(node =>
+                    node.GetProperty("path")
+                        .GetString() == AppFolderPath &&
+                    node.GetProperty("kind")
+                        .GetString() == "folder");
+            srcTreeNodes.EnumerateArray().Should().Contain(node =>
+                    node.GetProperty("path")
+                        .GetString() == CoreFolderPath &&
+                    node.GetProperty("kind")
+                        .GetString() == "folder");
 
-            Assert.Contains(
-                scopedNodes.EnumerateArray(),
-                node =>
-                    node.GetProperty("id").GetString() == UiCommandTestDatabase.AppProjectId &&
-                    node.GetProperty("scope").GetString() == "selected");
-            Assert.Contains(
-                scopedNodes.EnumerateArray(),
-                node =>
-                    node.GetProperty("id").GetString() == UiCommandTestDatabase.CallerCanonicalId &&
-                    node.GetProperty("label").GetString() == "Fixture.App.HttpEndpoint.Handle()" &&
-                    node.GetProperty("type").GetString() == "method" &&
-                    node.GetProperty("scope").GetString() == "selected");
-            Assert.Contains(
-                scopedNodes.EnumerateArray(),
-                node =>
-                    node.GetProperty("id").GetString() == UiCommandTestDatabase.CoreProjectId &&
-                    node.GetProperty("scope").GetString() == "external");
-            Assert.Contains(
-                scopedNodes.EnumerateArray(),
-                node =>
-                    node.GetProperty("id").GetString() == UiCommandTestDatabase.CalleeCanonicalId &&
-                    node.GetProperty("label").GetString() == "Fixture.Core.MessageProvider.GetMessage()" &&
-                    node.GetProperty("type").GetString() == "method" &&
-                    node.GetProperty("scope").GetString() == "external");
-            Assert.Contains(
-                scopedEdges.EnumerateArray(),
-                edge =>
-                    edge.GetProperty("source").GetString() == UiCommandTestDatabase.AppProjectId &&
-                    edge.GetProperty("target").GetString() == UiCommandTestDatabase.CoreProjectId &&
-                    edge.GetProperty("type").GetString() == "projectreference" &&
-                    edge.GetProperty("scope").GetString() == "boundary");
-            Assert.Contains(
-                scopedEdges.EnumerateArray(),
-                edge =>
-                    edge.GetProperty("source").GetString() == UiCommandTestDatabase.CallerCanonicalId &&
-                    edge.GetProperty("target").GetString() == UiCommandTestDatabase.CalleeCanonicalId &&
-                    edge.GetProperty("type").GetString() == "methodcall" &&
-                    edge.GetProperty("scope").GetString() == "boundary");
+            scopedNodes.EnumerateArray().Should().Contain(node =>
+                    node.GetProperty("id")
+                        .GetInt32() == 100 &&
+                    node.GetProperty("scope")
+                        .GetString() == "selected");
+            scopedNodes.EnumerateArray().Should().Contain(node =>
+                    node.GetProperty("id")
+                        .GetInt32() == 200 &&
+                    node.GetProperty("label")
+                        .GetString() == "Fixture.App.HttpEndpoint.Handle()" &&
+                    node.GetProperty("codeNodeId")
+                        .GetInt32() == 200 &&
+                    node.GetProperty("type")
+                        .GetString() == "method" &&
+                    node.GetProperty("scope")
+                        .GetString() == "selected");
+            scopedNodes.EnumerateArray().Should().Contain(node =>
+                    node.GetProperty("id")
+                        .GetInt32() == 101 &&
+                    node.GetProperty("scope")
+                        .GetString() == "external");
+            scopedNodes.EnumerateArray().Should().Contain(node =>
+                    node.GetProperty("id")
+                        .GetInt32() == 201 &&
+                    node.GetProperty("label")
+                        .GetString() == "Fixture.Core.MessageProvider.GetMessage()" &&
+                    node.GetProperty("type")
+                        .GetString() == "method" &&
+                    node.GetProperty("scope")
+                        .GetString() == "external");
+            scopedEdges.EnumerateArray().Should().Contain(edge =>
+                    edge.GetProperty("source")
+                        .GetInt32() == 100 &&
+                    edge.GetProperty("target")
+                        .GetInt32() == 101 &&
+                    edge.GetProperty("type")
+                        .GetString() == "projectreference" &&
+                    edge.GetProperty("scope")
+                        .GetString() == "boundary");
+            scopedEdges.EnumerateArray().Should().Contain(edge =>
+                    edge.GetProperty("source")
+                        .GetInt32() == 200 &&
+                    edge.GetProperty("target")
+                        .GetInt32() == 201 &&
+                    edge.GetProperty("type")
+                        .GetString() == "methodcall" &&
+                    edge.GetProperty("scope")
+                        .GetString() == "boundary");
+
+            foreach (var retired in new[]
+            {
+                "/api/graph/view",
+                "/api/graph/nodes",
+                "/api/graph/edges"
+            })
+            {
+                using var retiredResponse = await httpClient.GetAsync(baseUrl + retired, TestContext.Current.CancellationToken);
+                retiredResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+                (retiredResponse.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
+            }
+
+            using var overview = await httpClient.GetAsync(
+                $"{baseUrl}/api/overview",
+                TestContext.Current.CancellationToken);
+            overview.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var overviewJson = JsonDocument.Parse(await overview.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            overviewJson.RootElement.GetProperty("indexed")
+                .GetBoolean().Should().BeTrue();
+            overviewJson.RootElement.GetProperty("nodeCount")
+                .GetInt32().Should().Be(2);
+
+            using var openApi = await httpClient.GetAsync(
+                $"{baseUrl}/openapi/v1.json",
+                TestContext.Current.CancellationToken);
+            openApi.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var schema = JsonDocument.Parse(await openApi.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            schema.RootElement.GetProperty("paths")
+                .TryGetProperty("/api/tools/search", out _).Should().BeTrue();
+            foreach (var retired in new[]
+            {
+                "/api/graph/view",
+                "/api/graph/nodes",
+                "/api/graph/edges"
+            })
+            {
+                schema.RootElement.GetProperty("paths")
+                    .TryGetProperty(retired, out _).Should().BeFalse();
+            }
+            var connectionsHeader = schema.RootElement.GetProperty("paths")
+                .GetProperty("/api/graph/nodes/{nodeId}/connections")
+                .GetProperty("get")
+                .GetProperty("parameters")
+                .EnumerateArray()
+                .Single(parameter => parameter.GetProperty("name")
+                    .GetString() == "X-SharpSense-Workspace");
+            connectionsHeader.GetProperty("required")
+                .GetBoolean().Should().BeTrue();
+            connectionsHeader.GetProperty("schema")
+                .GetProperty("format")
+                .GetString().Should().Be("uuid");
+            schema.RootElement.ToString().Should().Contain("codeNodeId");
+            schema.RootElement.GetProperty("components")
+                .GetProperty("schemas")
+                .GetProperty("WorkspaceOverview")
+                .GetProperty("properties")
+                .GetProperty("nodeCount")
+                .GetProperty("type")
+                .GetString().Should().Be("integer");
+
+            foreach (var tool in new[]
+            {
+                "context",
+                "trace",
+                "inheritors",
+                "impact"
+            })
+            {
+                using var toolResponse = await httpClient.PostAsJsonAsync(
+                    $"{baseUrl}/api/tools/{tool}",
+                    new
+                    {
+                        nodeId = 200
+                    },
+                    TestContext.Current.CancellationToken);
+                toolResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+                using var missing = await httpClient.PostAsJsonAsync(
+                    $"{baseUrl}/api/tools/{tool}",
+                    new
+                    {
+                        nodeId = 999999
+                    },
+                    TestContext.Current.CancellationToken);
+                missing.StatusCode.Should().Be(HttpStatusCode.NotFound);
+                (missing.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
+            }
+            using var invalidSearch = await httpClient.PostAsJsonAsync(
+                $"{baseUrl}/api/tools/search",
+                new
+                {
+                    query = "",
+                    limit = 10
+                },
+                TestContext.Current.CancellationToken);
+            invalidSearch.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            using var unknownApi = await httpClient.GetAsync(
+                $"{baseUrl}/api/missing",
+                TestContext.Current.CancellationToken);
+            unknownApi.StatusCode.Should().Be(HttpStatusCode.NotFound);
 
             shutdown.Cancel();
-            Assert.Equal(0, await runTask);
+            (await runTask).Should().Be(0);
         }
         finally
         {
@@ -162,6 +435,411 @@ public sealed class UiCommandIntegrationTests
             {
                 await runTask;
             }
+        }
+    }
+
+    [Fact]
+    public async Task WhenTracingOwnedMembers_ThenExcludesStructuralEdgesAndMarksOnlyCodeParentsSelectable()
+    {
+        await using var database = await UiCommandTestDatabase.Create();
+        await database.AddStructuralRelationships();
+        var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
+        var fileSystem = new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+            },
+            RepositoryRoot);
+        var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
+        var selection = catalog.Create("fixture", RepositoryRoot, []);
+        var app = Cli.Program.CreateCommandApp(
+            configureServices: services =>
+        {
+            services.AddSingleton<IFileSystem>(fileSystem);
+            services.AddSingleton<IWorkspaceCatalog>(catalog);
+            database.ConfigureServices(services);
+        },
+            enableFileLogging: false);
+        using var shutdown = new CancellationTokenSource();
+        var runTask = app.RunAsync(["ui", "--url", baseUrl, "--repo-root", RepositoryRoot], shutdown.Token);
+        try
+        {
+            await WaitForServer(
+                runTask,
+                $"{baseUrl}/");
+            using var client = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(5)
+            };
+            client.DefaultRequestHeaders.Add("X-SharpSense-Workspace", selection.Definition.Id.ToString());
+            var ct = TestContext.Current.CancellationToken;
+            using var trace = await client.PostAsJsonAsync(
+                $"{baseUrl}/api/tools/trace",
+                new
+                {
+                    nodeId = 200,
+                    direction = "callee",
+                    maxDepth = 3
+                },
+                ct);
+            trace.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var traceJson = JsonDocument.Parse(await trace.Content.ReadAsStringAsync(ct));
+            var dependencies = traceJson.RootElement.GetProperty("dependencies")
+                .EnumerateArray()
+                .ToArray();
+            dependencies.Length.Should().Be(2);
+            dependencies.Should().NotContain(edge =>
+                string.Equals(
+                    edge.GetProperty("edgeType")
+                        .GetString(),
+                    "ParentOf",
+                    StringComparison.OrdinalIgnoreCase));
+            traceJson.RootElement.GetProperty("nodes")
+                .EnumerateArray().Should().Contain(node => node.GetProperty("id")
+                    .GetInt32() == 202);
+
+            using var callers = await client.PostAsJsonAsync(
+                $"{baseUrl}/api/tools/trace",
+                new
+                {
+                    nodeId = 201,
+                    direction = "CALLER",
+                    maxDepth = 1
+                },
+                ct);
+            callers.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var callersJson = JsonDocument.Parse(await callers.Content.ReadAsStringAsync(ct));
+            callersJson.RootElement.GetProperty("root")
+                .GetProperty("id")
+                .GetInt32().Should().Be(201);
+            callersJson.RootElement.GetProperty("direction")
+                .GetString().Should().Be("caller");
+            callersJson.RootElement.GetProperty("truncated")
+                .GetBoolean().Should().BeFalse();
+            var callerNode = callersJson.RootElement.GetProperty("nodes")
+                .EnumerateArray().Should().ContainSingle().Which;
+            callerNode.GetProperty("id")
+                .GetInt32().Should().Be(200);
+            callersJson.RootElement.GetProperty("dependencies")
+                .EnumerateArray().Should().ContainSingle();
+
+            foreach (var invalidTrace in new[]
+            {
+                new { nodeId = 0, direction = "callee", maxDepth = 3 },
+                new { nodeId = 200, direction = "sideways", maxDepth = 3 },
+                new { nodeId = 200, direction = "callee", maxDepth = 11 }
+            })
+            {
+                using var invalidResponse = await client.PostAsJsonAsync($"{baseUrl}/api/tools/trace", invalidTrace, ct);
+                invalidResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+                (invalidResponse.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
+            }
+
+            using var invalidContext = await client.PostAsJsonAsync(
+                $"{baseUrl}/api/tools/context",
+                new
+                {
+                    nodeId = 0
+                },
+                ct);
+            invalidContext.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+            using var member = await client.PostAsJsonAsync(
+                $"{baseUrl}/api/tools/context",
+                new
+                {
+                    nodeId = 200
+                },
+                ct);
+            using var memberJson = JsonDocument.Parse(await member.Content.ReadAsStringAsync(ct));
+            var codeParent = memberJson.RootElement.GetProperty("parents")
+                .EnumerateArray().Should().ContainSingle().Which;
+            codeParent.GetProperty("codeNodeId")
+                .GetInt32().Should().Be(202);
+
+            using var owner = await client.PostAsJsonAsync(
+                $"{baseUrl}/api/tools/context",
+                new
+                {
+                    nodeId = 202
+                },
+                ct);
+            using var ownerJson = JsonDocument.Parse(await owner.Content.ReadAsStringAsync(ct));
+            var projectParent = ownerJson.RootElement.GetProperty("parents")
+                .EnumerateArray().Should().ContainSingle().Which;
+            projectParent.GetProperty("id")
+                .GetInt32().Should().Be(100);
+            (!projectParent.TryGetProperty("codeNodeId", out var codeNodeId) || codeNodeId.ValueKind == JsonValueKind.Null).Should().BeTrue();
+        }
+        finally
+        {
+            shutdown.Cancel();
+            await runTask;
+        }
+    }
+
+    [Fact]
+    public async Task WhenGlobalUi_ThenStartsEmptyAndKeepsConcurrentWorkspaceRequestsAndMemoriesIsolated()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var firstDatabase = await UiCommandTestDatabase.Create();
+        await using var secondDatabase = await UiCommandTestDatabase.Create();
+        await secondDatabase.AddStructuralRelationships();
+        var fileSystem = new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/.git/HEAD"] = new("ref: refs/heads/main"),
+                ["/repo/backend/Orders.csproj"] = new("<Project />"),
+                ["/repo/frontend/tsconfig.json"] = new("{}"),
+                ["/repo/docs/design.md"] = new("# Architecture"),
+                ["/repo/node_modules/ignored/tsconfig.json"] = new("{}"),
+                ["/repo/.git/ignored.csproj"] = new("<Project />")
+            },
+            RepositoryRoot);
+        var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
+        var firstId = Guid.Empty;
+        var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
+        var app = Cli.Program.CreateCommandApp(
+            configureServices: services =>
+        {
+            services.AddSingleton<IFileSystem>(fileSystem);
+            services.AddSingleton<IWorkspaceCatalog>(catalog);
+            services.RemoveAll<IDbContextFactory<SharpSenseDbContext>>();
+            services.AddScoped(provider => provider.GetRequiredService<IRepositoryWorkspace>().WorkspaceId == firstId
+                ? firstDatabase.GetFactory()
+                : secondDatabase.GetFactory());
+        },
+            enableFileLogging: false);
+        using var shutdown = new CancellationTokenSource();
+        var runTask = app.RunAsync(["ui", "--url", baseUrl], shutdown.Token);
+        try
+        {
+            await WaitForServer(
+                runTask,
+                $"{baseUrl}/");
+            using var globalClient = new HttpClient
+            {
+                BaseAddress = new Uri(baseUrl)
+            };
+            using var emptyCatalog = JsonDocument.Parse(await globalClient.GetStringAsync("/api/workspaces", ct));
+            emptyCatalog.RootElement.GetProperty("workspaces")
+                .EnumerateArray().Should().BeEmpty();
+            fileSystem.Directory.Exists(catalog.HomeDirectory).Should().BeFalse();
+
+            globalClient.DefaultRequestHeaders.Add("Origin", baseUrl);
+            using var discovery = await globalClient.PostAsJsonAsync(
+                "/api/workspaces/discover",
+                new
+                {
+                    repositoryRoot = RepositoryRoot
+                },
+                ct);
+            discovery.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var candidates = JsonDocument.Parse(await discovery.Content.ReadAsStringAsync(ct));
+            candidates.RootElement.GetProperty("sources")
+                .EnumerateArray()
+                .Select(static source => source.GetProperty("path")
+                    .GetString())
+                .OrderBy(static path => path)
+                .ToArray().Should().Equal(new[]
+                {
+                    "backend/Orders.csproj",
+                    "docs/*.md",
+                    "frontend/tsconfig.json"
+                });
+            fileSystem.Directory.Exists(catalog.HomeDirectory).Should().BeFalse();
+
+            firstId = await CreateWorkspace("first");
+            var secondId = await CreateWorkspace("second");
+            using var firstClient = new HttpClient
+            {
+                BaseAddress = new Uri(baseUrl)
+            };
+            using var secondClient = new HttpClient
+            {
+                BaseAddress = new Uri(baseUrl)
+            };
+            firstClient.DefaultRequestHeaders.Add("X-SharpSense-Workspace", firstId.ToString());
+            secondClient.DefaultRequestHeaders.Add("X-SharpSense-Workspace", secondId.ToString());
+
+            using var missingSelection = await globalClient.GetAsync("/api/overview", ct);
+            missingSelection.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            using var unknownRequest = new HttpRequestMessage(HttpMethod.Get, "/api/overview");
+            unknownRequest.Headers.Add(
+                "X-SharpSense-Workspace",
+                Guid.NewGuid()
+                    .ToString());
+            using var unknownSelection = await globalClient.SendAsync(unknownRequest, ct);
+            unknownSelection.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+            var overviews = await Task.WhenAll(
+                firstClient.GetStringAsync("/api/overview", ct),
+                secondClient.GetStringAsync("/api/overview", ct));
+            using var firstOverview = JsonDocument.Parse(overviews[0]);
+            using var secondOverview = JsonDocument.Parse(overviews[1]);
+            firstOverview.RootElement.GetProperty("workspaceId")
+                .GetGuid().Should().Be(firstId);
+            secondOverview.RootElement.GetProperty("workspaceId")
+                .GetGuid().Should().Be(secondId);
+            firstOverview.RootElement.GetProperty("nodeCount")
+                .GetInt32().Should().Be(2);
+            secondOverview.RootElement.GetProperty("nodeCount")
+                .GetInt32().Should().Be(3);
+
+            using var firstConnections = JsonDocument.Parse(await firstClient.GetStringAsync("/api/graph/nodes/200/connections?includeTotal=true", ct));
+            using var secondConnections = JsonDocument.Parse(await secondClient.GetStringAsync("/api/graph/nodes/200/connections?includeTotal=true", ct));
+            firstConnections.RootElement.GetProperty("totalCount")
+                .GetInt32().Should().Be(1);
+            secondConnections.RootElement.GetProperty("totalCount")
+                .GetInt32().Should().Be(2);
+
+            using var attached = await firstClient.PostAsJsonAsync(
+                "/api/memory/node/200",
+                new
+                {
+                    content = "Belongs only to first workspace",
+                    tags = new[]
+                    {
+                        "scope"
+                    },
+                    intent = "Invariant"
+                },
+                ct);
+            attached.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var firstMemories = JsonDocument.Parse(await firstClient.GetStringAsync("/api/memory/node/200", ct));
+            using var secondMemories = JsonDocument.Parse(await secondClient.GetStringAsync("/api/memory/node/200", ct));
+            firstMemories.RootElement.EnumerateArray().Should().ContainSingle();
+            secondMemories.RootElement.EnumerateArray().Should().BeEmpty();
+
+            using var renamed = await globalClient.PutAsJsonAsync(
+                $"/api/workspaces/{firstId}",
+                new
+                {
+                    name = "renamed-first",
+                    sources = Array.Empty<object>()
+                },
+                ct);
+            renamed.StatusCode.Should().Be(HttpStatusCode.OK);
+            catalog.Resolve("renamed-first", RepositoryRoot).Definition.Id.Should().Be(firstId);
+
+            using var schema = JsonDocument.Parse(await globalClient.GetStringAsync("/openapi/v1.json", ct));
+            foreach (var path in schema.RootElement.GetProperty("paths")
+                .EnumerateObject())
+            {
+                var scoped = !path.Name.StartsWith("/api/workspaces", StringComparison.Ordinal) && path.Name != "/api/tools";
+                foreach (var operation in path.Value.EnumerateObject()
+                    .Where(static property =>
+                             property.Name is "get" or "post" or "put" or "patch" or "delete"))
+                {
+                    var headers = operation.Value.TryGetProperty("parameters", out var parameters)
+                        ? parameters.EnumerateArray()
+                            .Where(static parameter => parameter.TryGetProperty("name", out var name) &&
+                            name.GetString() == "X-SharpSense-Workspace")
+                            .ToArray()
+                        : [];
+                    if (!scoped)
+                    {
+                        headers.Should().BeEmpty();
+                        continue;
+                    }
+
+                    var header = headers.Should().ContainSingle().Which;
+                    header.GetProperty("in")
+                        .GetString().Should().Be("header");
+                    header.GetProperty("required")
+                        .GetBoolean().Should().BeTrue();
+                    header.GetProperty("schema")
+                        .GetProperty("type")
+                        .GetString().Should().Be("string");
+                    header.GetProperty("schema")
+                        .GetProperty("format")
+                        .GetString().Should().Be("uuid");
+                }
+            }
+
+            async Task<Guid> CreateWorkspace(string name)
+            {
+                using var response = await globalClient.PostAsJsonAsync(
+                    "/api/workspaces",
+                    new
+                    {
+                        name,
+                        repositoryRoot = RepositoryRoot,
+                        sources = Array.Empty<object>()
+                    },
+                    ct);
+                response.StatusCode.Should().Be(HttpStatusCode.Created);
+                using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+
+                return json.RootElement.GetProperty("id")
+                    .GetGuid();
+            }
+        }
+        finally
+        {
+            shutdown.Cancel();
+            await runTask;
+        }
+    }
+
+    [Fact]
+    public async Task WhenGlobalUi_ThenRejectsCrossOriginAndUnexpectedHostBeforeCatalogWrites()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fileSystem = new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+            },
+            RepositoryRoot);
+        var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
+        var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
+        var app = Cli.Program.CreateCommandApp(
+            configureServices: services =>
+        {
+            services.AddSingleton<IFileSystem>(fileSystem);
+            services.AddSingleton<IWorkspaceCatalog>(catalog);
+        },
+            enableFileLogging: false);
+        using var shutdown = new CancellationTokenSource();
+        var runTask = app.RunAsync(["ui", "--url", baseUrl], shutdown.Token);
+        try
+        {
+            await WaitForServer(
+                runTask,
+                $"{baseUrl}/");
+            using var client = new HttpClient
+            {
+                BaseAddress = new Uri(baseUrl)
+            };
+            foreach (var (header, value) in new[]
+            {
+                ("Origin", "https://untrusted.example"),
+                ("Host", "untrusted.example"),
+                ("Sec-Fetch-Site", "cross-site")
+            })
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, "/api/workspaces")
+                {
+                    Content = JsonContent.Create(new
+                    {
+                        name = "blocked",
+                        repositoryRoot = RepositoryRoot,
+                        sources = Array.Empty<object>()
+                    })
+                };
+                request.Headers.TryAddWithoutValidation(header, value);
+                using var response = await client.SendAsync(request, ct);
+                response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+            }
+
+            catalog.List().Should().BeEmpty();
+            fileSystem.Directory.Exists(catalog.HomeDirectory).Should().BeFalse();
+        }
+        finally
+        {
+            shutdown.Cancel();
+            await runTask;
         }
     }
 
@@ -206,6 +884,7 @@ public sealed class UiCommandIntegrationTests
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
         listener.Start();
+
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
@@ -214,14 +893,19 @@ public sealed class UiCommandIntegrationTests
     {
         await using var database = await UiCommandTestDatabase.Create();
         var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
-        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
-        }, RepositoryRoot);
+        var fileSystem = new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+            },
+            RepositoryRoot);
+        var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
+        var selection = catalog.Create("fixture", RepositoryRoot, []);
         var app = Cli.Program.CreateCommandApp(
             configureServices: services =>
             {
                 services.AddSingleton<IFileSystem>(fileSystem);
+                services.AddSingleton<IWorkspaceCatalog>(catalog);
                 database.ConfigureServices(services);
             },
             enableFileLogging: false);
@@ -232,9 +916,15 @@ public sealed class UiCommandIntegrationTests
 
         try
         {
-            await WaitForServer(runTask, $"{baseUrl}/");
+            await WaitForServer(
+                runTask,
+                $"{baseUrl}/");
 
-            using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+            using var httpClient = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(5)
+            };
+            httpClient.DefaultRequestHeaders.Add("X-SharpSense-Workspace", selection.Definition.Id.ToString());
 
             const int nodeId = 200;
             var content = "Always greet politely: invariant the team expects.";
@@ -247,56 +937,64 @@ public sealed class UiCommandIntegrationTests
                     "application/json"),
                 TestContext.Current.CancellationToken))
             {
-                Assert.Equal(HttpStatusCode.OK, addResponse.StatusCode);
+                addResponse.StatusCode.Should().Be(HttpStatusCode.OK);
             }
 
             var listJson = await httpClient.GetStringAsync(
                 $"{baseUrl}/api/memory/node/{nodeId}",
                 TestContext.Current.CancellationToken);
             using var listDocument = JsonDocument.Parse(listJson);
-            var memories = listDocument.RootElement.EnumerateArray().ToArray();
-            Assert.Single(memories);
-            var memoryId = memories[0].GetProperty("id").GetString()!;
-            // MemoryIntent enum serializes as its integer value (Invariant = 1)
-            Assert.Equal(1, memories[0].GetProperty("intent").GetInt32());
+            var memories = listDocument.RootElement.EnumerateArray()
+                .ToArray();
+            memories.Should().ContainSingle();
+            var memoryId = memories[0].GetProperty("id")
+                .GetString()!;
+            memories[0].GetProperty("intent")
+                .GetString().Should().Be("Invariant");
 
             var singleJson = await httpClient.GetStringAsync(
                 $"{baseUrl}/api/memory/{memoryId}",
                 TestContext.Current.CancellationToken);
             using var singleDocument = JsonDocument.Parse(singleJson);
-            Assert.Equal(content, singleDocument.RootElement.GetProperty("content").GetString());
+            singleDocument.RootElement.GetProperty("content")
+                .GetString().Should().Be(content);
 
             var batchJson = await httpClient.GetStringAsync(
                 $"{baseUrl}/api/memory?ids={memoryId}",
                 TestContext.Current.CancellationToken);
             using var batchDocument = JsonDocument.Parse(batchJson);
-            Assert.Equal(1, batchDocument.RootElement.GetArrayLength());
+            batchDocument.RootElement.GetArrayLength().Should().Be(1);
+
+            using var invalidIntent = await httpClient.GetAsync(
+                $"{baseUrl}/api/memory/node/{nodeId}?intents=Unknown",
+                TestContext.Current.CancellationToken);
+            invalidIntent.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            (invalidIntent.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
 
             var filteredJson = await httpClient.GetStringAsync(
                 $"{baseUrl}/api/memory/node/{nodeId}?intents=Invariant",
                 TestContext.Current.CancellationToken);
             using var filteredDocument = JsonDocument.Parse(filteredJson);
-            Assert.Equal(1, filteredDocument.RootElement.GetArrayLength());
+            filteredDocument.RootElement.GetArrayLength().Should().Be(1);
 
             var noneJson = await httpClient.GetStringAsync(
                 $"{baseUrl}/api/memory/node/{nodeId}?intents=Warning",
                 TestContext.Current.CancellationToken);
             using var noneDocument = JsonDocument.Parse(noneJson);
-            // MemoryIntent enum serializes as integer; "Warning" is index 3 — there is no Warning memory so we get 0.
-            Assert.Equal(0, noneDocument.RootElement.GetArrayLength());
+            noneDocument.RootElement.GetArrayLength().Should().Be(0);
 
             using (var deleteResponse = await httpClient.DeleteAsync(
                 $"{baseUrl}/api/memory/{memoryId}",
                 TestContext.Current.CancellationToken))
             {
-                Assert.Equal(HttpStatusCode.OK, deleteResponse.StatusCode);
+                deleteResponse.StatusCode.Should().Be(HttpStatusCode.OK);
             }
 
             var afterJson = await httpClient.GetStringAsync(
                 $"{baseUrl}/api/memory/node/{nodeId}",
                 TestContext.Current.CancellationToken);
             using var afterDocument = JsonDocument.Parse(afterJson);
-            Assert.Equal(0, afterDocument.RootElement.GetArrayLength());
+            afterDocument.RootElement.GetArrayLength().Should().Be(0);
         }
         finally
         {
@@ -312,7 +1010,7 @@ public sealed class UiCommandIntegrationTests
         }
     }
 
-    private sealed class UiCommandTestDatabase(InMemoryContextFactory contextFactory) : IAsyncDisposable
+    private sealed class UiCommandTestDatabase(InMemoryContextFactory<SharpSenseDbContext> contextFactory) : IAsyncDisposable
     {
         public const string AppProjectId = "project:src/Fixture.App/Fixture.App.csproj";
         public const string CoreProjectId = "project:src/Fixture.Core/Fixture.Core.csproj";
@@ -321,23 +1019,70 @@ public sealed class UiCommandIntegrationTests
 
         public static async Task<UiCommandTestDatabase> Create()
         {
-            var contextFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(UseMigrations: true));
+            var contextFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new InMemoryContextFactoryOptions(UseMigrations: true));
             var database = new UiCommandTestDatabase(contextFactory);
             await database.Initialize();
+
             return database;
         }
 
         public void ConfigureServices(IServiceCollection services)
-            => contextFactory.ConfigureServices<SharpSenseDbContext>(services);
+            => contextFactory.ConfigureServices(services);
+
+        public IDbContextFactory<SharpSenseDbContext> GetFactory() => contextFactory.CreateDbContextFactory();
 
         public async ValueTask DisposeAsync()
         {
             await contextFactory.DisposeAsync();
         }
 
+        public async Task AddStructuralRelationships()
+        {
+            var ct = TestContext.Current.CancellationToken;
+            await using var context = await contextFactory.GetContext(ct);
+            context.GraphNodes.Add(new GraphNodeRecord
+            {
+                Id = 202,
+                CanonicalId = "code:Fixture.App:Fixture.App.HttpEndpoint",
+                Kind = GraphNodeKind.Code
+            });
+            context.CodeNodes.Add(new CodeNodeRecord
+            {
+                Id = 202,
+                ProjectNodeId = 100,
+                DocumentId = 12,
+                FullyQualifiedName = "Fixture.App.HttpEndpoint",
+                DisplayName = "HttpEndpoint",
+                NodeType = NodeType.Class,
+                StartLine = 1,
+                EndLine = 15,
+                Summary = "Owns endpoint handler."
+            });
+            context.DependencyEdges.AddRange(
+                new DependencyEdgeRecord
+                {
+                    CallerNodeId = 100,
+                    CalleeNodeId = 202,
+                    EdgeType = EdgeType.ParentOf
+                },
+                new DependencyEdgeRecord
+                {
+                    CallerNodeId = 202,
+                    CalleeNodeId = 200,
+                    EdgeType = EdgeType.ParentOf
+                },
+                new DependencyEdgeRecord
+                {
+                    CallerNodeId = 200,
+                    CalleeNodeId = 202,
+                    EdgeType = EdgeType.Instantiates
+                });
+            await context.SaveChangesAsync(ct);
+        }
+
         private async Task Initialize()
         {
-            await using var dbContext = await contextFactory.GetContext<SharpSenseDbContext>(
+            await using var dbContext = await contextFactory.GetContext(
                 ct: TestContext.Current.CancellationToken);
 
             dbContext.Directories.AddRange(

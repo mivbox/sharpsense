@@ -1,15 +1,15 @@
-using System.Collections.Concurrent;
 using JetBrains.Annotations;
 using Serilog;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Indexing.Markdown;
+using System.Collections.Concurrent;
 using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.Indexing.Watching;
 
 [PublicAPI]
-public sealed class WorkspaceWatcher : IWorkspaceWatcher
+internal sealed class WorkspaceWatcher : IWorkspaceWatcher
 {
     private static readonly ILogger _logger = Log.ForContext<WorkspaceWatcher>();
     private readonly IFileSystem _fileSystem;
@@ -42,7 +42,9 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
     public async Task Watch(
         string repositoryRoot,
         Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task> onBatchChanged,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<CancellationToken, Task>? initialize = null,
+        Action? onReady = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRoot);
         ArgumentNullException.ThrowIfNull(onBatchChanged);
@@ -54,6 +56,9 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         using var fileWatcher = watchers.FileWatcher;
         using var directoryWatcher = watchers.DirectoryWatcher;
         var knownDirectories = CreateKnownDirectories(normalizedRepositoryRoot);
+        var knownMarkdownPaths = CreateKnownMarkdownPaths(normalizedRepositoryRoot, ct);
+        var stateGate = new object();
+        var ready = false;
         var pendingChanges = new ConcurrentQueue<WorkspaceFileChange>();
         var pendingChangeCount = 0;
         Exception? fatalWatchException = null;
@@ -70,6 +75,44 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         directoryWatcher.Error += (_, args) => RequestFatalError(args.GetException());
         fileWatcher.EnableRaisingEvents = true;
         directoryWatcher.EnableRaisingEvents = true;
+
+        // Initial scans can take minutes. Keep subscriptions active throughout the
+        // scan and reconcile its queued edits before advertising a current index.
+        if (initialize is not null)
+        {
+            await initialize(ct);
+        }
+
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (Volatile.Read(ref fatalWatchException) is { } startupException)
+            {
+                throw CreateFatalWatchException(startupException);
+            }
+
+            IReadOnlyList<WorkspaceFileChange> bufferedChanges;
+            lock (stateGate)
+            {
+                Interlocked.Exchange(ref pendingChangeCount, 0);
+                bufferedChanges = DrainChanges(pendingChanges);
+                if (bufferedChanges.Count == 0)
+                {
+                    // A file can disappear between inventory and subscription. Never
+                    // retain that stale baseline when classifying its future creation.
+                    knownMarkdownPaths.RemoveWhere(path => !_fileSystem.File.Exists(path));
+                    ready = true;
+                }
+            }
+            if (bufferedChanges.Count == 0)
+            {
+                break;
+            }
+
+            await onBatchChanged(bufferedChanges, ct);
+        }
+
+        onReady?.Invoke();
 
         while (!ct.IsCancellationRequested)
         {
@@ -107,8 +150,13 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         bool IsFastPathIgnored(string path)
         {
             var sep = _fileSystem.Path.DirectorySeparatorChar;
-            return path.Contains($"{sep}.git{sep}", StringComparison.OrdinalIgnoreCase) ||
-                   path.EndsWith($"{sep}.git", StringComparison.OrdinalIgnoreCase);
+
+            return path.Contains(
+                $"{sep}.git{sep}",
+                StringComparison.OrdinalIgnoreCase) ||
+                path.EndsWith(
+                    $"{sep}.git",
+                    StringComparison.OrdinalIgnoreCase);
         }
 
         void HandleChanged(string fullPath)
@@ -118,9 +166,12 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
                 return;
             }
 
-            EnqueueChange(new WorkspaceFileChange(
-                WorkspaceFileChangeAction.Modified,
-                NewPath: fullPath));
+            lock (stateGate)
+            {
+                EnqueueChange(new WorkspaceFileChange(
+                    ClassifyMarkdownChange(fullPath, WorkspaceFileChangeAction.Modified),
+                    NewPath: fullPath));
+            }
         }
 
         void HandleCreated(string fullPath)
@@ -133,12 +184,45 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
             if (_fileSystem.Directory.Exists(fullPath))
             {
                 AddKnownDirectoryTree(knownDirectories, fullPath);
+
                 return;
             }
 
-            EnqueueChange(new WorkspaceFileChange(
-                WorkspaceFileChangeAction.Added,
-                NewPath: fullPath));
+            lock (stateGate)
+            {
+                EnqueueChange(new WorkspaceFileChange(
+                    ClassifyMarkdownChange(fullPath, WorkspaceFileChangeAction.Added),
+                    NewPath: fullPath));
+            }
+        }
+
+        WorkspaceFileChangeAction ClassifyMarkdownChange(string fullPath, WorkspaceFileChangeAction action)
+        {
+            if (!MarkdownIndexer.IsMarkdownDocumentPath(fullPath) || !IsRelevantPath(normalizedRepositoryRoot, fullPath))
+            {
+                return action;
+            }
+
+            var path = NormalizeDirectoryPath(fullPath);
+            if (!_fileSystem.File.Exists(path))
+            {
+                knownMarkdownPaths.Remove(path);
+
+                return WorkspaceFileChangeAction.Added;
+            }
+
+            var known = !knownMarkdownPaths.Add(path);
+            // Some platforms deliver Changed before Created, possibly in another batch.
+            // The first observation of new membership must always trigger a full refresh.
+            if (!known)
+            {
+                return WorkspaceFileChangeAction.Added;
+            }
+
+            // macOS can report Created as well as Changed for an existing document write.
+            // Initial workers still need raw Added events because they can observe
+            // different file membership; normalization starts after reconciliation.
+            return ready ? WorkspaceFileChangeAction.Modified : action;
         }
 
         void HandleDeleted(string fullPath)
@@ -148,17 +232,21 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
                 return;
             }
 
-            if (RemoveKnownDirectoryTree(knownDirectories, fullPath))
+            lock (stateGate)
             {
-                EnqueueChange(new WorkspaceFileChange(
-                    WorkspaceFileChangeAction.DirectoryDeleted,
-                    OldPath: fullPath));
-            }
-            else
-            {
-                EnqueueChange(new WorkspaceFileChange(
-                    WorkspaceFileChangeAction.Deleted,
-                    OldPath: fullPath));
+                ForgetMarkdownPaths(fullPath);
+                if (RemoveKnownDirectoryTree(knownDirectories, fullPath))
+                {
+                    EnqueueChange(new WorkspaceFileChange(
+                        WorkspaceFileChangeAction.DirectoryDeleted,
+                        OldPath: fullPath));
+                }
+                else
+                {
+                    EnqueueChange(new WorkspaceFileChange(
+                        WorkspaceFileChangeAction.Deleted,
+                        OldPath: fullPath));
+                }
             }
         }
 
@@ -174,21 +262,33 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
                 return;
             }
 
-            if (RemoveKnownDirectoryTree(knownDirectories, oldFullPath) ||
-                _fileSystem.Directory.Exists(newFullPath))
+            lock (stateGate)
             {
-                AddKnownDirectoryTree(knownDirectories, newFullPath);
-                EnqueueChange(new WorkspaceFileChange(
-                    WorkspaceFileChangeAction.DirectoryRenamed,
+                ForgetMarkdownPaths(oldFullPath);
+                ForgetMarkdownPaths(newFullPath);
+                if (RemoveKnownDirectoryTree(knownDirectories, oldFullPath) ||
+                    _fileSystem.Directory.Exists(newFullPath))
+                {
+                    AddKnownDirectoryTree(knownDirectories, newFullPath);
+                    EnqueueChange(new WorkspaceFileChange(
+                        WorkspaceFileChangeAction.DirectoryRenamed,
+                        oldFullPath,
+                        newFullPath));
+
+                    return;
+                }
+
+                EnqueueChanges(CreateRenameChanges(
+                    normalizedRepositoryRoot,
                     oldFullPath,
                     newFullPath));
-                return;
             }
+        }
 
-            EnqueueChanges(CreateRenameChanges(
-                normalizedRepositoryRoot,
-                oldFullPath,
-                newFullPath));
+        void ForgetMarkdownPaths(string path)
+        {
+            var normalized = NormalizeDirectoryPath(path);
+            knownMarkdownPaths.RemoveWhere(known => IsSameOrSubPath(known, normalized));
         }
 
         void EnqueueChange(WorkspaceFileChange changedFile)
@@ -198,33 +298,21 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
                 return;
             }
 
-            pendingChanges.Enqueue(changedFile);
-
-            if (Interlocked.Increment(ref pendingChangeCount) == 1)
+            lock (stateGate)
             {
-                ReleaseSignal();
+                pendingChanges.Enqueue(changedFile);
+                if (Interlocked.Increment(ref pendingChangeCount) == 1)
+                {
+                    ReleaseSignal();
+                }
             }
         }
 
         void EnqueueChanges(IEnumerable<WorkspaceFileChange> changedFiles)
         {
-            var enqueuedChanges = 0;
-
             foreach (var changedFile in changedFiles)
             {
-                if (!IsRelevantChange(normalizedRepositoryRoot, changedFile))
-                {
-                    continue;
-                }
-
-                pendingChanges.Enqueue(changedFile);
-                enqueuedChanges++;
-            }
-
-            if (enqueuedChanges > 0 &&
-                Interlocked.Add(ref pendingChangeCount, enqueuedChanges) == enqueuedChanges)
-            {
-                ReleaseSignal();
+                EnqueueChange(changedFile);
             }
         }
 
@@ -264,8 +352,17 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
                                    NotifyFilters.LastWrite |
                                    NotifyFilters.Size;
         fileWatcher.Filters.Add("*.cs");
+        fileWatcher.Filters.Add("*.csproj");
+        fileWatcher.Filters.Add("*.sln");
+        fileWatcher.Filters.Add("*.slnx");
+        fileWatcher.Filters.Add("*.props");
+        fileWatcher.Filters.Add("*.targets");
+        fileWatcher.Filters.Add("global.json");
+        fileWatcher.Filters.Add(".editorconfig");
         fileWatcher.Filters.Add("*.ts");
         fileWatcher.Filters.Add("*.tsx");
+        // TypeScript extends/references can point to configs such as base.json.
+        fileWatcher.Filters.Add("*.json");
         fileWatcher.Filters.Add("*.md");
         fileWatcher.Filters.Add("*.markdown");
         fileWatcher.Filters.Add("*.mdown");
@@ -302,8 +399,10 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         => changedFile.ActionType switch
         {
             WorkspaceFileChangeAction.DirectoryDeleted or WorkspaceFileChangeAction.DirectoryRenamed
-                => changedFile.GetAffectedPaths().Any(path => IsRelevantDirectoryPath(repositoryRoot, path)),
-            _ => changedFile.GetAffectedPaths().Any(path => IsRelevantPath(repositoryRoot, path))
+                => changedFile.GetAffectedPaths()
+                    .Any(path => IsRelevantDirectoryPath(repositoryRoot, path)),
+            _ => changedFile.GetAffectedPaths()
+                .Any(path => IsRelevantPath(repositoryRoot, path))
         };
 
     private bool IsRelevantPath(
@@ -341,8 +440,9 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
 
     private static bool IsTargetPath(string path)
     {
-        return string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase) ||
-               MarkdownIndexer.IsMarkdownDocumentPath(path);
+        return CSharpIndexingPathRules.IsRelevantChangePath(path) ||
+            MarkdownIndexer.IsMarkdownDocumentPath(path) ||
+            TypeScriptIndexingPathRules.IsRelevantChangePath(path);
     }
 
     private IEnumerable<WorkspaceFileChange> CreateRenameChanges(
@@ -381,7 +481,40 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
     {
         var knownDirectories = new ConcurrentDictionary<string, byte>(GetPathComparer());
         AddKnownDirectoryTree(knownDirectories, repositoryRoot);
+
         return knownDirectories;
+    }
+
+    private HashSet<string> CreateKnownMarkdownPaths(string repositoryRoot, CancellationToken ct)
+    {
+        var paths = new HashSet<string>(GetPathComparer());
+        var pending = new Stack<string>();
+        pending.Push(repositoryRoot);
+        while (pending.TryPop(out var directory))
+        {
+            ct.ThrowIfCancellationRequested();
+            foreach (var file in _fileSystem.Directory.EnumerateFiles(directory))
+            {
+                ct.ThrowIfCancellationRequested();
+                if (MarkdownIndexer.IsMarkdownDocumentPath(file) && IsRelevantPath(repositoryRoot, file) &&
+                    (_fileSystem.FileInfo.New(file).Attributes & FileAttributes.ReparsePoint) == 0)
+                {
+                    paths.Add(NormalizeDirectoryPath(file));
+                }
+            }
+
+            foreach (var child in _fileSystem.Directory.EnumerateDirectories(directory))
+            {
+                ct.ThrowIfCancellationRequested();
+                if (IsRelevantDirectoryPath(repositoryRoot, child) &&
+                    (_fileSystem.DirectoryInfo.New(child).Attributes & FileAttributes.ReparsePoint) == 0)
+                {
+                    pending.Push(child);
+                }
+            }
+        }
+
+        return paths;
     }
 
     private void AddKnownDirectoryTree(
@@ -431,7 +564,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
             : rootPath + Path.DirectorySeparatorChar;
 
         return string.Equals(path, rootPath, comparison) ||
-               path.StartsWith(rootPathWithSeparator, comparison);
+            path.StartsWith(rootPathWithSeparator, comparison);
     }
 
     private string NormalizeDirectoryPath(string path)
@@ -462,6 +595,7 @@ public sealed class WorkspaceWatcher : IWorkspaceWatcher
         if (string.Equals(relativePath, ".", comparison))
         {
             relativePath = string.Empty;
+
             return true;
         }
 

@@ -10,7 +10,7 @@ namespace SharpSense.Cli.Shared;
 /// Base class for async commands that require a full ASP.NET Core WebApplication host
 /// (e.g., serving UI assets or HTTP APIs).
 /// </summary>
-public abstract class AbstractWebAsyncCommand<TSettings> : AsyncCommand<TSettings>
+internal abstract class AbstractWebAsyncCommand<TSettings> : AsyncCommand<TSettings>
     where TSettings : GlobalSettings
 {
     private static ILogger Logger => Log.ForContext<AbstractWebAsyncCommand<TSettings>>();
@@ -60,6 +60,7 @@ public abstract class AbstractWebAsyncCommand<TSettings> : AsyncCommand<TSetting
             await app.StartAsync(ct);
             Logger.Information("Web host started for {SettingsType}", typeof(TSettings).FullName);
             await app.WaitForShutdownAsync(token: ct);
+
             return 0;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -69,6 +70,10 @@ public abstract class AbstractWebAsyncCommand<TSettings> : AsyncCommand<TSetting
         catch (Exception ex)
         {
             Logger.Error(ex, "Web command execution failed for {SettingsType}", typeof(TSettings).FullName);
+            CommandOutput.WriteError(
+                context,
+                ex.GetBaseException().Message);
+
             return 1;
         }
         finally

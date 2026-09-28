@@ -10,8 +10,8 @@ namespace SharpSense.Application.Context360.Abstractions;
 public interface IContextRepository
 {
     /// <summary>
-     /// Loads the target node plus its immediate incoming and outgoing breadth buckets for a persisted node id.
-     /// </summary>
+    /// Loads the target node plus its immediate incoming and outgoing breadth buckets for a persisted node id.
+    /// </summary>
     /// <param name="nodeId">The persisted integer code-node handle.</param>
     /// <param name="maxRelated">The maximum number of related rows to return per bucket.</param>
     /// <param name="ct"><see cref="CancellationToken" /> for the current request.</param>

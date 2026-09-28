@@ -1,27 +1,26 @@
-using Microsoft.Extensions.Options;
-using System.IO.Abstractions;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.Indexing.Markdown;
 using SharpSense.Infrastructure.Storage;
+using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.Indexing;
 
-public sealed class DocumentDiscoverer(
+internal sealed class DocumentDiscoverer(
     IRepositoryWorkspace repositoryWorkspace,
-    IOptionsMonitor<SharpSenseConfig> configMonitor,
     IWorkspaceFileDiscoverer fileDiscoverer,
     IMarkdownIndexer markdownIndexer,
     IFileSystem fileSystem)
 {
     public async Task<MarkdownIndexResult> Discover(
         string targetPath,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlyList<string> includePatterns)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
 
-        var includePaths = GetIncludePaths();
+        var includePaths = includePatterns.ToArray();
         if (includePaths.Length == 0)
         {
             return new MarkdownIndexResult([], []);
@@ -35,43 +34,6 @@ public sealed class DocumentDiscoverer(
         }
 
         return await DiscoverFiles(discoveredFiles, ct);
-    }
-
-    public async Task<MarkdownIndexResult> DiscoverFiles(
-        string targetPath,
-        IReadOnlyList<string> filePaths,
-        CancellationToken ct)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
-        ArgumentNullException.ThrowIfNull(filePaths);
-
-        var includePaths = GetIncludePaths();
-        if (includePaths.Length == 0)
-        {
-            return new MarkdownIndexResult([], []);
-        }
-
-        var targetDirectoryPath = repositoryWorkspace.GetRequiredTargetDirectoryPath(targetPath);
-        var allowedFiles = await fileDiscoverer.GetAllowedFiles(targetDirectoryPath, includePaths, ct);
-        if (allowedFiles.Count == 0)
-        {
-            return new MarkdownIndexResult([], []);
-        }
-
-        var requestedPaths = filePaths
-            .Where(static filePath => !string.IsNullOrWhiteSpace(filePath))
-            .Select(ResolveAbsolutePath)
-            .ToHashSet(GetPathComparer());
-        if (requestedPaths.Count == 0)
-        {
-            return new MarkdownIndexResult([], []);
-        }
-
-        return await DiscoverFiles(
-            [
-                .. allowedFiles.Where(discoveredFile => requestedPaths.Contains(discoveredFile.AbsolutePath))
-            ],
-            ct);
     }
 
     private async Task<MarkdownIndexResult> DiscoverFiles(
@@ -105,25 +67,13 @@ public sealed class DocumentDiscoverer(
                     .OrderBy(static node => node.RelativeFilePath, GetPathComparer())
                     .ThenBy(static node => node.StartLine)
                     .ThenBy(static node => node.CanonicalId, StringComparer.Ordinal)
-             ],
+            ],
             [
                 .. documentEdges
                     .OrderBy(static edge => edge.CallerId, StringComparer.Ordinal)
                     .ThenBy(static edge => edge.CalleeId, StringComparer.Ordinal)
                     .ThenBy(static edge => edge.EdgeType)
-             ]);
-    }
-
-    private string ResolveAbsolutePath(string filePath)
-        => fileSystem.Path.GetFullPath(
-            fileSystem.Path.IsPathRooted(filePath)
-                ? filePath
-                : fileSystem.Path.Combine(repositoryWorkspace.RootPath, filePath));
-
-    private string[] GetIncludePaths()
-    {
-        var includePaths = configMonitor.CurrentValue.IncludePaths;
-        return includePaths.Length == 0 ? [] : [.. includePaths];
+            ]);
     }
 
     private static StringComparer GetPathComparer()

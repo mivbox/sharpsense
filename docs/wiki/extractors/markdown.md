@@ -1,38 +1,17 @@
----
-title: "Markdown"
-type: extractor
-tags: [markdown, markdig, implemented]
-created: 2026-04-26
-updated: 2026-05-12
-confidence: high
----
+# Markdown extraction
 
-## Target Language
+Markdown uses Markdig to create a document root and heading-level chunks. Select files, directories, or globs explicitly in a workspace, for example `--markdown 'docs/**/*.md'`. Named workspaces do not add an implicit documentation selection.
 
-Markdown. `MarkdownDocumentExtractor` combines the discovery pipeline from [[architecture/file-discovery]] with `IMarkdownIndexer` so Markdown Targets become document nodes and document edges without hard-coding physical file reads into the extractor itself.
+## Nodes and links
 
-## Full Index Logic
+Each selected document is read through the filesystem boundary and parsed into stable, repository-relative canonical identities. Heading slugs distinguish chunks; source spans and text support context display and search.
 
-1. `MarkdownDocumentExtractor.Extract()` calls `DocumentDiscoverer.Discover(targetPath)`.
-2. `DocumentDiscoverer` reads `IncludePaths` from `SharpSenseConfig`, resolves the Target directory, and asks `IWorkspaceFileDiscoverer` for the allowed files. With `docs/**/*.md`, nested wiki pages are part of the same discovery pass as top-level docs.
-3. Each `DiscoveredFile` is read through `IFileSystem` on the [[architecture/virtual-file-system]] seam and passed to `IMarkdownIndexer.Index(rawText, relativeFilePath)`.
-4. `MarkdownIndexer` parses with Markdig advanced extensions, creates a document-root chunk, splits new chunks at headings, generates stable slugs, and captures summaries from the raw text spans.
-5. Each document node gets a compact `DisplayName`: top-level docs drop the `docs/` prefix, and wiki docs drop the `docs/wiki/` prefix so CLI output stays terse while `CanonicalId` remains deterministic.
-6. It emits generic structural `ParentOf` edges from heading nesting and `DocumentLink` edges for local Markdown links.
-7. Standard Markdown links still resolve relative to the current file, but Obsidian-style wiki links now support `[[page]]`, `[[page#heading]]`, and `[[page|alias]]`. Plain wiki targets inside `docs/wiki/` resolve from the wiki root, while explicit `./` and `../` targets stay relative to the current page.
+The extractor emits structural `ParentOf` edges for heading hierarchy and `DocumentLink` edges for resolvable local links. Standard Markdown links resolve relative to the source file. Wiki links support `[[page]]`, `[[page#heading]]`, and `[[page|alias]]`; bare targets inside `docs/wiki/` resolve from the wiki root, while `./` and `../` stay relative to the page.
 
-## Incremental Logic
+Public documentation uses relative Markdown links so navigation also works on GitHub. Links to unselected documents cannot provide an indexed target node.
 
-1. `ExtractIncremental()` filters changed files to Markdown extensions and deduplicates them by current path.
-2. `DocumentDiscoverer.DiscoverFiles()` reuses the allowed-file set from `IWorkspaceFileDiscoverer` and keeps only the requested changed files.
-3. `DocumentDiscoverer` re-reads only the requested Markdown payloads through `IFileSystem`, leaving file discovery and Markdown parsing separately mockable.
-4. Reindexed Markdown nodes reuse the same persisted integer ids when their `CanonicalId` survives the rewrite, so watch-mode updates do not churn the lightweight handles used by [[cli/search-command]] and [[cli/trace-command]].
-5. The reindexed document nodes and edges flow through the same RelativeFilePath-targeted overwrite path used by [[persistence/sqlite-schema]].
-6. Watch-mode batching and recovery are coordinated by [[architecture/incremental-watch]] rather than by the extractor itself.
+## Watching
 
-## Dependencies
+All selected Markdown inputs are combined into one extraction pass. Relevant watch changes reconcile the selected document graph, including incoming links when a target appears, disappears, or changes headings. Canonical identities that survive a rewrite retain their persisted node handles.
 
-- Markdig `MarkdownPipeline` with advanced extensions.
-- `DocumentDiscoverer`, `IWorkspaceFileDiscoverer`, and `IFileSystem` for allow-listed discovery plus file reads.
-- `SharpSenseConfig.IncludePaths` for scoped Markdown discovery.
-- `IMarkdownIndexer` / `MarkdownIndexer` helpers for slugging, heading hierarchy, wiki-link normalization, and normalized local-link targets.
+Heading changes or removed selections can remove nodes and their attached memories. See [memory lifecycle](../cli/memory-command.md), [watch reconciliation](../architecture/incremental-watch.md), and [SQLite persistence](../persistence/sqlite-schema.md).

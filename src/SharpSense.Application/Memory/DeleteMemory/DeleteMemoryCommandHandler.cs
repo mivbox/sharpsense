@@ -5,7 +5,7 @@ using SharpSense.Application.Shared.Abstractions;
 
 namespace SharpSense.Application.Memory.DeleteMemory;
 
-public sealed class DeleteMemoryCommandHandler(IMemoryRepository memoryRepository)
+internal sealed class DeleteMemoryCommandHandler(IMemoryRepository memoryRepository)
     : ICommandHandler<DeleteMemoryCommand, Result>
 {
     public Task<Result> Handle(DeleteMemoryCommand command, CancellationToken ct)

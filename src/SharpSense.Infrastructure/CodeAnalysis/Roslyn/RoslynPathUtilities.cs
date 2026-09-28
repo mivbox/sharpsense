@@ -1,8 +1,8 @@
-using System.Collections.Concurrent;
-using System.Security.Cryptography;
 using Microsoft.CodeAnalysis;
-using System.IO.Abstractions;
 using SharpSense.Infrastructure.Storage;
+using System.Collections.Concurrent;
+using System.IO.Abstractions;
+using System.Security.Cryptography;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
@@ -27,6 +27,7 @@ internal static class RoslynPathUtilities
         if (string.IsNullOrWhiteSpace(syntaxTree.FilePath))
         {
             diagnostics.Enqueue($"Skipping document without a file path in project '{project.Name}'.");
+
             return null;
         }
 
@@ -38,6 +39,7 @@ internal static class RoslynPathUtilities
             }
 
             diagnostics.Enqueue($"Skipping document outside repository root: '{syntaxTree.FilePath}'.");
+
             return null;
         }
 

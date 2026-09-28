@@ -1,9 +1,7 @@
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using SharpSense.Domain.KnowledgeGraph.Enums;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
@@ -48,7 +46,7 @@ internal static class RoslynSymbolUtilities
     public static string GetLookupKey(ISymbol symbol)
     {
         return symbol.GetDocumentationCommentId()
-               ?? GetFullyQualifiedName(symbol);
+            ?? GetFullyQualifiedName(symbol);
     }
 
     public static string GetFullyQualifiedName(ISymbol symbol)
@@ -85,9 +83,11 @@ internal static class RoslynSymbolUtilities
 
         var summary = ExtractDocumentationElementText(documentationComment, "summary");
         var remarks = ExtractDocumentationElementText(documentationComment, "remarks");
+
         return string.Join(
-                _searchTextSeparator,
-                new[] { summary, remarks }.Where(static text => !string.IsNullOrWhiteSpace(text)))
+            _searchTextSeparator,
+            new[] { summary, remarks
+                        }.Where(static text => !string.IsNullOrWhiteSpace(text)))
             .Trim();
     }
 
@@ -98,6 +98,7 @@ internal static class RoslynSymbolUtilities
         ArgumentNullException.ThrowIfNull(symbol);
 
         var displayName = GetDisplayName(symbol);
+
         return string.IsNullOrWhiteSpace(summary)
             ? displayName
             : $"{displayName}{_searchTextSeparator}{summary}";
@@ -117,7 +118,9 @@ internal static class RoslynSymbolUtilities
         }
 
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedDeclaration));
-        return Convert.ToHexString(hashBytes).ToLowerInvariant();
+
+        return Convert.ToHexString(hashBytes)
+            .ToLowerInvariant();
     }
 
     private static string ExtractDocumentationElementText(
@@ -133,7 +136,8 @@ internal static class RoslynSymbolUtilities
             .Select(element => FlattenXmlContent(element.Content))
             .Where(static value => !string.IsNullOrWhiteSpace(value));
 
-        return string.Join(_searchTextSeparator, text).Trim();
+        return string.Join(_searchTextSeparator, text)
+            .Trim();
     }
 
     private static string FlattenXmlContent(SyntaxList<XmlNodeSyntax> content)
@@ -257,7 +261,7 @@ internal static class RoslynSymbolUtilities
             previousWasWhitespace = false;
         }
 
-        return normalizedBuilder.ToString().Trim();
+        return normalizedBuilder.ToString()
+            .Trim();
     }
-
 }

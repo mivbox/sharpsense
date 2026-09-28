@@ -1,4 +1,3 @@
-using System.Text;
 using FluentResults;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
@@ -6,18 +5,17 @@ using Microsoft.Extensions.Hosting;
 using SharpSense.Application.Memory;
 using SharpSense.Application.Memory.AttachMemory.Models;
 using SharpSense.Application.Memory.DeleteMemory.Models;
-using SharpSense.Application.Memory.GetMemory.Models;
 using SharpSense.Application.Memory.GetMemories.Models;
+using SharpSense.Application.Memory.GetMemory.Models;
 using SharpSense.Application.Memory.GetNodeMemories.Models;
 using SharpSense.Application.Shared.Abstractions;
-using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
-using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using System.Text;
 
 namespace SharpSense.Cli.Memory;
 
@@ -28,31 +26,52 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
     public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "<action>")]
-        public string Action { get; init; } = string.Empty;
+        public string Action
+        {
+            get; init;
+        } = string.Empty;
 
         [CommandOption("--node-id <NODE_ID>")]
-        public int? NodeId { get; init; }
+        public int? NodeId
+        {
+            get; init;
+        }
 
         [CommandOption("--memory-id <MEMORY_ID>")]
-        public Guid? MemoryId { get; init; }
+        public Guid? MemoryId
+        {
+            get; init;
+        }
 
         [CommandOption("--memory-ids <MEMORY_IDS>")]
-        public Guid[]? MemoryIds { get; init; }
+        public Guid[]? MemoryIds
+        {
+            get; init;
+        }
 
         [CommandOption("--content <CONTENT>")]
-        public string? Content { get; init; }
+        public string? Content
+        {
+            get; init;
+        }
 
         [CommandOption("--tag <TAG>")]
-        public string[]? Tags { get; init; }
+        public string[]? Tags
+        {
+            get; init;
+        }
 
         [CommandOption("--intent <INTENT>")]
-        public string? IntentRaw { get; init; }
+        public string? IntentRaw
+        {
+            get; init;
+        }
 
         [CommandOption("--intent-filter <INTENT>")]
-        public string[]? IntentFilterRaw { get; init; }
-
-        [CommandOption("--repo-root <path>")]
-        public string? RepositoryRoot { get; init; }
+        public string[]? IntentFilterRaw
+        {
+            get; init;
+        }
 
         public override ValidationResult Validate()
         {
@@ -98,7 +117,7 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
                 return ValidationResult.Error("--intent-filter values must be one of: Convention, Invariant, Todo, Warning, Decision.");
             }
 
-            return ValidationResult.Success();
+            return base.Validate();
         }
 
         private static bool TryParseIntent(string raw, out SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent intent)
@@ -107,14 +126,7 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
 
     protected override void Configure(Settings settings, IServiceCollection services)
     {
-        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-
-        services.Configure<SharpSenseCliOptions>(options =>
-        {
-            options.RepositoryRoot = rawRoot;
-        });
-        services.AddRepositoryWorkspace(rawRoot);
-        services.AddSharpSenseConfiguration(rawRoot);
+        services.AddSelectedWorkspace(settings);
         services.AddMemory();
         services.AddMemoryInfrastructure();
         services.AddPersistence();
@@ -135,7 +147,9 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
             "remove" => await RemoveMemory(context, settings, services, ct),
             "list" => await ListMemories(context, settings, services, ct),
             "get" => await GetMemory(context, settings, services, ct),
-            _ => Fail(context, $"Unknown action '{settings.Action}'.")
+            _ => Fail(
+                context,
+                $"Unknown action '{settings.Action}'.")
         };
     }
 
@@ -151,7 +165,10 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
 
         if (result.IsFailed)
         {
-            CommandOutput.Write(context, $"add failed: {string.Join("; ", result.Errors)}");
+            CommandOutput.Write(
+                context,
+                $"add failed: {string.Join("; ", result.Errors)}");
+
             return 1;
         }
 
@@ -163,17 +180,29 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
         var output = new StringBuilder()
             .Append("added_memory: true")
             .AppendLine()
-            .Append("node_id: ").Append(settings.NodeId.Value).AppendLine();
+            .Append("node_id: ")
+            .Append(settings.NodeId.Value)
+            .AppendLine();
         if (memory is not null)
         {
             output
-                .Append("memory_id: ").Append(memory.Id).AppendLine()
-                .Append("intent: ").Append(memory.Intent).AppendLine()
-                .Append("is_stale: ").Append(memory.IsStale ? "true" : "false").AppendLine()
-                .Append("content: \"").Append(SanitizeForOutput(memory.Content)).Append('"').AppendLine();
+                .Append("memory_id: ")
+                .Append(memory.Id)
+                .AppendLine()
+                .Append("intent: ")
+                .Append(memory.Intent)
+                .AppendLine()
+                .Append("is_stale: ")
+                .Append(memory.IsStale ? "true" : "false")
+                .AppendLine()
+                .Append("content: \"")
+                .Append(SanitizeForOutput(memory.Content))
+                .Append('"')
+                .AppendLine();
         }
 
         CommandOutput.Write(context, output.ToString());
+
         return 0;
     }
 
@@ -184,11 +213,17 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
 
         if (result.IsFailed)
         {
-            CommandOutput.Write(context, $"remove failed: {string.Join("; ", result.Errors)}");
+            CommandOutput.Write(
+                context,
+                $"remove failed: {string.Join("; ", result.Errors)}");
+
             return 1;
         }
 
-        CommandOutput.Write(context, $"removed_memory: {settings.MemoryId.Value}");
+        CommandOutput.Write(
+            context,
+            $"removed_memory: {settings.MemoryId.Value}");
+
         return 0;
     }
 
@@ -208,25 +243,45 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
 
         if (memoriesResult.IsFailed)
         {
-            CommandOutput.Write(context, $"list failed: {string.Join("; ", memoriesResult.Errors)}");
+            CommandOutput.Write(
+                context,
+                $"list failed: {string.Join("; ", memoriesResult.Errors)}");
+
             return 1;
         }
 
         var memories = memoriesResult.Value!;
         var builder = new StringBuilder()
-            .Append("node_id: ").Append(settings.NodeId.Value).AppendLine()
-            .Append("count: ").Append(memories.Length).AppendLine();
+            .Append("node_id: ")
+            .Append(settings.NodeId.Value)
+            .AppendLine()
+            .Append("count: ")
+            .Append(memories.Length)
+            .AppendLine();
         foreach (var memory in memories)
         {
             builder
-                .Append("- memory_id: ").Append(memory.Id).AppendLine()
-                .Append("  intent: ").Append(memory.Intent).AppendLine()
-                .Append("  is_stale: ").Append(memory.IsStale ? "true" : "false").AppendLine()
-                .Append("  tags: [").Append(string.Join(", ", memory.Tags)).Append(']').AppendLine()
-                .Append("  content: \"").Append(SanitizeForOutput(memory.Content)).Append('"').AppendLine();
+                .Append("- memory_id: ")
+                .Append(memory.Id)
+                .AppendLine()
+                .Append("  intent: ")
+                .Append(memory.Intent)
+                .AppendLine()
+                .Append("  is_stale: ")
+                .Append(memory.IsStale ? "true" : "false")
+                .AppendLine()
+                .Append("  tags: [")
+                .Append(string.Join(", ", memory.Tags))
+                .Append(']')
+                .AppendLine()
+                .Append("  content: \"")
+                .Append(SanitizeForOutput(memory.Content))
+                .Append('"')
+                .AppendLine();
         }
 
         CommandOutput.Write(context, builder.ToString());
+
         return 0;
     }
 
@@ -239,11 +294,15 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
             var batchResult = await batchHandler.Handle(new GetMemoriesQuery(settings.MemoryIds), ct);
             if (batchResult.IsFailed)
             {
-                CommandOutput.Write(context, $"get failed: {string.Join("; ", batchResult.Errors)}");
+                CommandOutput.Write(
+                    context,
+                    $"get failed: {string.Join("; ", batchResult.Errors)}");
+
                 return 1;
             }
 
             CommandOutput.Write(context, TokenObjectNotation.SerializeMemories(batchResult.Value!));
+
             return 0;
         }
 
@@ -252,20 +311,26 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
 
         if (result.IsFailed)
         {
-            CommandOutput.Write(context, $"get failed: {string.Join("; ", result.Errors)}");
+            CommandOutput.Write(
+                context,
+                $"get failed: {string.Join("; ", result.Errors)}");
+
             return 1;
         }
 
         CommandOutput.Write(context, TokenObjectNotation.SerializeMemory(result.Value!));
+
         return 0;
     }
 
     private static int Fail(CommandContext context, string message)
     {
         CommandOutput.Write(context, message);
+
         return 1;
     }
 
     private static string SanitizeForOutput(string content)
-        => content.Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal);
+        => content.Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal);
 }

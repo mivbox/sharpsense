@@ -9,7 +9,7 @@ public static class DependencyGraphInfrastructureServiceCollectionExtensions
     public static IServiceCollection AddDependencyGraphInfrastructure(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.TryAddScoped<IDependencyGraphRepository, DependencyGraphRepository>();
+        services.TryAddScoped<IGraphPageRepository, GraphPageRepository>();
 
         return services;
     }

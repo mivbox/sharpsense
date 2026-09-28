@@ -1,7 +1,8 @@
 using FluentResults;
+using SharpSense.Application.Indexing;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
-using SharpSense.Application.Shared.Errors;
+using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
@@ -10,13 +11,14 @@ using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Infrastructure.Indexing.CSharp;
 
-public sealed class CSharpLanguageExtractor(
+internal sealed class CSharpLanguageExtractor(
     IWorkspaceLoader workspaceLoader,
     ITargetAnalysisEngine analysisEngine,
-    IRepositoryWorkspace repositoryWorkspace)
+    IRepositoryWorkspace repositoryWorkspace,
+    ICSharpWorkspaceTargetResolver workspaceTargetResolver)
     : ILanguageExtractor
 {
-    public string ExtractorName => "csharp";
+    public WorkspaceSourceKind SourceKind => WorkspaceSourceKind.CSharp;
 
     public async Task<Result<ExtractedNodes>> Extract(
         ExtractionContext context,
@@ -25,19 +27,19 @@ public sealed class CSharpLanguageExtractor(
         ArgumentNullException.ThrowIfNull(context);
         ArgumentException.ThrowIfNullOrWhiteSpace(context.TargetPath);
 
-        if (!IsCSharpWorkspace(context.TargetPath))
+        var workspaceTargetPath = workspaceTargetResolver.ResolveTargetPath(context.TargetPath);
+        if (workspaceTargetPath is null)
         {
             context.Progress?.Report(
-                new IndexingProgress("No C# solution/project found",
-                1,
-                1));
+                new IndexingProgress(
+                    "No C# solution/project found",
+                    1,
+                    1));
 
             return Result.Ok(new ExtractedNodes([], [], [], []));
         }
 
-        var loadedWorkspace = await workspaceLoader.Load(
-            context.TargetPath,
-            ct);
+        var loadedWorkspace = await RefreshWorkspace(context, workspaceTargetPath, ct);
 
         if (loadedWorkspace.IsFailed)
         {
@@ -45,7 +47,7 @@ public sealed class CSharpLanguageExtractor(
         }
 
         var extractionPayload = await analysisEngine.Extract(
-            context.TargetPath,
+            workspaceTargetPath,
             loadedWorkspace.Value.Solution,
             repositoryWorkspace,
             context.Progress,
@@ -56,65 +58,73 @@ public sealed class CSharpLanguageExtractor(
             [.. extractionPayload.Projects.Select(ToIndexedProject)],
             [.. extractionPayload.CodeNodes.Select(ToIndexedCodeNode)],
             [.. extractionPayload.Edges.Select(ToIndexedDependency)],
-            extractionPayload.Diagnostics));
+            extractionPayload.Diagnostics,
+            [.. loadedWorkspace.Value.Solution.Projects
+                .SelectMany(static project => project.Documents.Select(static document => document.FilePath)
+                    .Concat(project.AdditionalDocuments.Select(static document => document.FilePath))
+                    .Concat(project.AnalyzerConfigDocuments.Select(static document => document.FilePath)))
+                .OfType<string>()
+                .Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)],
+            CanReuseForDocumentationChanges: true));
     }
 
-    public async Task<Result<ExtractedNodes>> ExtractIncremental(
-        IncrementalExtractionContext context,
+    private async Task<Result<WorkspaceLoadResult>> RefreshWorkspace(
+        ExtractionContext context,
+        string workspaceTargetPath,
         CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentException.ThrowIfNullOrWhiteSpace(context.TargetPath);
-        ArgumentNullException.ThrowIfNull(context.ChangedFiles);
+        using var activity = SharpSenseTraceSpan.Start("roslyn.workspace.refresh");
+        var sourceOnlyChanges = context.ChangedFiles is { Count: > 0 } &&
+            context.ChangedFiles.All(static change =>
+                change.ActionType == WorkspaceFileChangeAction.Modified &&
+                change.GetCurrentPath() is { } path && IsCSharpFilePath(path));
 
-        var cSharpChanges = context.ChangedFiles
-            .Where(static changedFile => changedFile.GetAffectedPaths().Any(IsCSharpFilePath))
-            .ToArray();
-
-        if (cSharpChanges.Length == 0)
+        activity.AddTag("workspace.refresh.mode", sourceOnlyChanges ? "source" : "reload");
+        if (!sourceOnlyChanges)
         {
-            return Result.Ok(new ExtractedNodes([], [], [], []));
+            return await workspaceLoader.Reload(workspaceTargetPath, ct);
         }
 
-        var loadedWorkspace = await workspaceLoader.Load(
-            context.TargetPath,
-            ct);
-
+        var loadedWorkspace = await workspaceLoader.Load(workspaceTargetPath, ct);
         if (loadedWorkspace.IsFailed)
         {
-            return Result.Fail(loadedWorkspace.Errors);
+            return loadedWorkspace;
         }
 
-        var updatedWorkspace = await workspaceLoader.UpdateDocuments(
-            context.TargetPath,
-            cSharpChanges,
-            ct);
+        if (loadedWorkspace.Value.Solution.Projects.Any(static project => project.AdditionalDocuments.Any()))
+        {
+            // Generators may depend on arbitrary AdditionalFiles that are not source-file
+            // events. Reload these workspaces so the next source edit observes those inputs.
+            activity.AddTag("workspace.refresh.fallback", "additional-files");
 
+            return await workspaceLoader.Reload(workspaceTargetPath, ct);
+        }
+
+        // Existing source edits preserve MSBuild evaluation and Roslyn's compilation caches.
+        // Still extract the complete solution: partial declarations, dependent signatures,
+        // and generated code can change outside the edited documents.
+        var changes = context.ChangedFiles!
+            .Select(change => change with
+            {
+                OldPath = NormalizePath(change.OldPath),
+                NewPath = NormalizePath(change.NewPath)
+            })
+            .ToArray();
+        var updatedWorkspace = await workspaceLoader.UpdateDocuments(workspaceTargetPath, changes, ct);
         if (updatedWorkspace.IsFailed)
         {
-            return Result.Fail(updatedWorkspace.Errors);
+            return updatedWorkspace;
         }
 
-        IReadOnlyList<string> diagnostics =
-        [
-            .. loadedWorkspace.Value.Diagnostics,
-            .. updatedWorkspace.Value.Diagnostics
-        ];
-        var extractionPayload = await analysisEngine.ExtractIncremental(
-            context.TargetPath,
+        return Result.Ok(new WorkspaceLoadResult(
             updatedWorkspace.Value.Solution,
-            repositoryWorkspace,
-            cSharpChanges,
-            context.Progress,
-            diagnostics,
-            ct);
-
-        return Result.Ok(new ExtractedNodes(
-            [.. extractionPayload.Projects.Select(ToIndexedProject)],
-            [.. extractionPayload.CodeNodes.Select(ToIndexedCodeNode)],
-            [.. extractionPayload.Edges.Select(ToIndexedDependency)],
-            extractionPayload.Diagnostics));
+            [.. loadedWorkspace.Value.Diagnostics, .. updatedWorkspace.Value.Diagnostics]));
     }
+
+    private string? NormalizePath(string? path)
+        => string.IsNullOrWhiteSpace(path)
+            ? null
+            : Path.GetFullPath(repositoryWorkspace.ToRepositoryRelativePath(path), repositoryWorkspace.RootPath);
 
     private static IndexedProject ToIndexedProject(ProjectNode projectNode)
         => new(
@@ -146,15 +156,4 @@ public sealed class CSharpLanguageExtractor(
 
     private static bool IsCSharpFilePath(string path)
         => string.Equals(Path.GetExtension(path), ".cs", StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsCSharpWorkspace(string targetPath)
-    {
-        if (File.Exists(targetPath))
-        {
-            return targetPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
-                   targetPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
-        }
-
-        return false;
-    }
 }

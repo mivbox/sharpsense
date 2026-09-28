@@ -1,12 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
+using Spectre.Console;
 using Spectre.Console.Cli;
 
 namespace SharpSense.Cli.Shared;
 
-public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
-    where TSettings : GlobalSettings
+internal abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
+    where TSettings : CliSettings
 {
     protected abstract void Configure(TSettings settings, IServiceCollection services);
 
@@ -39,11 +40,16 @@ public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
                 context.Name,
                 typeof(TSettings).FullName,
                 logFilePath ?? "<disabled>");
+            builder.Services.AddSingleton(executionContext?.Console ?? AnsiConsole.Console);
             Configure(settings, builder.Services);
             executionContext?.ConfigureServices?.Invoke(builder.Services);
             Log.Information("Finished configuring services for {SettingsType}", typeof(TSettings).FullName);
 
             using var host = builder.Build();
+            using var commandCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                ct,
+                host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping);
+            ct = commandCancellation.Token;
             Log.Information("Service provider built successfully for {SettingsType}", typeof(TSettings).FullName);
             await host.StartAsync(ct);
             Log.Information("Host started for {SettingsType}", typeof(TSettings).FullName);
@@ -63,12 +69,20 @@ public abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
                 Log.Information("Host stopped for {SettingsType}", typeof(TSettings).Name);
             }
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return 0;
+        }
         catch (Exception e)
         {
             Log.Error(
                 e,
                 "Command execution failed for {SettingsType}",
                 typeof(TSettings).FullName);
+
+            CommandOutput.WriteError(
+                context,
+                e.GetBaseException().Message);
 
             return 1;
         }

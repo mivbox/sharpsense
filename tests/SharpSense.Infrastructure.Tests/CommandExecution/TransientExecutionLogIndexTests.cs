@@ -10,8 +10,8 @@ public sealed class TransientExecutionLogIndexTests
     [Fact]
     public async Task WhenAppendingAndSearchingLines_ThenItReturnsMatchedLineNumbersAndRanges()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory();
-        var dbContextFactory = inMemoryFactory.CreateDbContextFactory<TransientExecutionLogDbContext>();
+        await using var inMemoryFactory = new InMemoryContextFactory<TransientExecutionLogDbContext>(options => new TransientExecutionLogDbContext(options));
+        var dbContextFactory = inMemoryFactory.CreateDbContextFactory();
         var factory = new TransientExecutionLogIndexFactory(dbContextFactory);
         await using var index = await factory.Create(TestContext.Current.CancellationToken);
 

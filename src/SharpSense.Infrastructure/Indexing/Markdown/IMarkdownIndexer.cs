@@ -1,6 +1,3 @@
-using SharpSense.Domain.KnowledgeGraph.Edges;
-using SharpSense.Domain.KnowledgeGraph.Nodes;
-
 namespace SharpSense.Infrastructure.Indexing.Markdown;
 
 /// <summary>
@@ -8,7 +5,7 @@ namespace SharpSense.Infrastructure.Indexing.Markdown;
 /// edges that the indexing pipeline persists. Implementations own Markdown parsing, heading chunking, and document-link
 /// resolution so discovery code can remain focused on locating and reading files.
 /// </summary>
-public interface IMarkdownIndexer
+internal interface IMarkdownIndexer
 {
     /// <summary>
     /// Indexes the supplied Markdown payload into document nodes and document-link or hierarchy edges using the supplied

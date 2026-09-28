@@ -1,22 +1,26 @@
 using AwesomeAssertions;
 using FluentResults;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using ModelContextProtocol;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using Moq;
 using SharpSense.Application.CommandExecution.Abstractions;
+using SharpSense.Application.CommandExecution.ExecuteProcess;
 using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Context360.GetNodeContext.Models;
 using SharpSense.Application.Context360.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.Models;
-using SharpSense.Application.Inheritors.GetInheritors.Models;
-using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
+using SharpSense.Application.ImpactAnalysis.Models;
+using SharpSense.Application.Inheritors.GetInheritors.Models;
 using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Memory.AttachMemory.Models;
 using SharpSense.Application.Memory.GetNodeMemories.Models;
-using SharpSense.Application.Refactoring.Abstractions;
-using SharpSense.Application.Refactoring.Models;
 using SharpSense.Application.Shared.Abstractions;
+using SharpSense.Application.Shared.Errors;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Application.Trace.Abstractions;
@@ -24,6 +28,9 @@ using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Mcp;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Result = FluentResults.Result;
 
 namespace SharpSense.IntegrationTests;
 
@@ -50,27 +57,29 @@ public sealed class SharpSenseMcpToolsTests
         executeLogIndex.Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
         processRunner.Setup(candidate => candidate.Execute(
-                It.Is<CommandProcessRequest>(request =>
+            It.Is<CommandProcessRequest>(request =>
                     request.Command == "dotnet build SharpSense.sln" &&
                     request.WorkingDirectory == "/repo"),
-                It.IsAny<Func<string, CancellationToken, Task>>(),
-                CancellationToken.None))
+            It.IsAny<Func<string, CancellationToken, Task>>(),
+            CancellationToken.None))
             .Returns(async (
                 CommandProcessRequest _,
                 Func<string, CancellationToken, Task> onOutput,
                 CancellationToken innerCt) =>
             {
                 await onOutput("Build succeeded in 13.7s", innerCt);
+
                 return Result.Ok(new CommandProcessResult(0));
             });
 
         var result = await SharpSenseMcpTools.ctx_execute(
-            processRunner.Object,
-            executeLogIndexFactory.Object,
-            Options.Create(new SharpSenseCliOptions
-            {
-                RepositoryRoot = "/repo"
-            }),
+            new ExecuteProcessCommandHandler(
+                processRunner.Object,
+                executeLogIndexFactory.Object,
+                Options.Create(new WorkspaceExecutionOptions
+                {
+                    RepositoryRoot = "/repo"
+                })),
             "dotnet build SharpSense.sln",
             "Build succeeded",
             CancellationToken.None);
@@ -105,20 +114,21 @@ public sealed class SharpSenseMcpToolsTests
         executeLogIndex.Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
         processRunner.Setup(candidate => candidate.Execute(
-                It.Is<CommandProcessRequest>(request =>
+            It.Is<CommandProcessRequest>(request =>
                     request.Command == "missing-command" &&
                     request.WorkingDirectory == "/repo"),
-                It.IsAny<Func<string, CancellationToken, Task>>(),
-                CancellationToken.None))
+            It.IsAny<Func<string, CancellationToken, Task>>(),
+            CancellationToken.None))
             .ReturnsAsync(Result.Fail<CommandProcessResult>("Failed to start command 'missing-command'."));
 
         var result = await SharpSenseMcpTools.ctx_execute(
-            processRunner.Object,
-            executeLogIndexFactory.Object,
-            Options.Create(new SharpSenseCliOptions
-            {
-                RepositoryRoot = "/repo"
-            }),
+            new ExecuteProcessCommandHandler(
+                processRunner.Object,
+                executeLogIndexFactory.Object,
+                Options.Create(new WorkspaceExecutionOptions
+                {
+                    RepositoryRoot = "/repo"
+                })),
             "missing-command",
             "Error",
             CancellationToken.None);
@@ -132,13 +142,13 @@ public sealed class SharpSenseMcpToolsTests
     [Fact]
     public async Task WhenContextHasMatches_ThenItFormatsCompressedToonOutput()
     {
-        var handler = new Mock<IQueryHandler<GetNodeContextQuery, Context360Result>>(MockBehavior.Strict);
+        var handler = new Mock<IQueryHandler<GetNodeContextQuery, Result<Context360Result>>>(MockBehavior.Strict);
         var memoryHandler = new Mock<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>>(MockBehavior.Strict);
         handler.Setup(candidate => candidate.Handle(
-                It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
-                CancellationToken.None))
+            It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
+            TestContext.Current.CancellationToken))
             .ReturnsAsync(
-                new Context360Result(
+                Result.Ok(new Context360Result(
                     new Context360Node(
                         42,
                         "PaymentProcessor.ProcessPayment(string, int)",
@@ -161,15 +171,19 @@ public sealed class SharpSenseMcpToolsTests
                     [
                         new Context360RelatedNode(11, "PaymentProcessor")
                     ],
-                    []));
+                    [])));
 
-        var result = await SharpSenseMcpTools.context(
+        var result = await InvokeContextTool(
             handler.Object,
             memoryHandler.Object,
             42,
-            ct: CancellationToken.None);
+            EdgeCategory.Structural,
+            TestContext.Current.CancellationToken);
 
-        result.Should().Be(
+        result.IsError.Should().NotBe(true);
+        result.Content.Should().ContainSingle();
+        var text = result.Content.OfType<TextContentBlock>().Should().ContainSingle().Which.Text;
+        text.Should().Be(
             "node:" + Environment.NewLine +
             "  id: 42" + Environment.NewLine +
             "  name: PaymentProcessor.ProcessPayment(string, int)" + Environment.NewLine +
@@ -187,20 +201,48 @@ public sealed class SharpSenseMcpToolsTests
             "structural:" + Environment.NewLine +
             "  parents: [PaymentProcessor (Id:11)]" + Environment.NewLine +
             "  children: []");
-        handler.Verify(candidate => candidate.Handle(
+        handler.Verify(
+            candidate => candidate.Handle(
                 It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
-                CancellationToken.None),
+                TestContext.Current.CancellationToken),
             Times.Once);
+    }
+
+    [Theory]
+    [InlineData(42, ServiceErrorCode.NotFound, "No persisted node exists for id 42.")]
+    [InlineData(0, ServiceErrorCode.InvalidArgument, "NodeId must be greater than zero.")]
+    public async Task WhenContextFails_ThenItReportsAMcpToolErrorWithoutLoadingMemories(
+        int nodeId,
+        ServiceErrorCode errorCode,
+        string message)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var handler = new Mock<IQueryHandler<GetNodeContextQuery, Result<Context360Result>>>(MockBehavior.Strict);
+        handler
+            .Setup(candidate => candidate.Handle(new GetNodeContextQuery(nodeId, 10), ct))
+            .ReturnsAsync(Result.Fail<Context360Result>(new ServiceError(errorCode, message)));
+        var memoryHandler = new Mock<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>>(MockBehavior.Strict);
+
+        var result = await InvokeContextTool(handler.Object, memoryHandler.Object, nodeId, EdgeCategory.Semantic, ct);
+
+        result.IsError.Should().BeTrue();
+        result.Content.Should().ContainSingle();
+        var text = result.Content.OfType<TextContentBlock>().Should().ContainSingle().Which.Text;
+        text.Should().Be($"context failed: {message}");
+        memoryHandler.VerifyNoOtherCalls();
     }
 
     [Fact]
     public async Task WhenAttachMemorySucceeds_ThenItReturnsConciseSuccessMessage()
     {
-        var tags = new[] { "security" };
+        var tags = new[]
+        {
+            "security"
+        };
         var handler = new Mock<ICommandHandler<AttachMemoryCommand, Result>>(MockBehavior.Strict);
         handler.Setup(candidate => candidate.Handle(
-                new AttachMemoryCommand(42, "Security review", tags, SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention),
-                CancellationToken.None))
+            new AttachMemoryCommand(42, "Security review", tags, SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention),
+            CancellationToken.None))
             .ReturnsAsync(Result.Ok());
 
         var result = await SharpSenseMcpTools.attach_memory(
@@ -320,35 +362,6 @@ public sealed class SharpSenseMcpToolsTests
     }
 
     [Fact]
-    public async Task WhenRefactorSymbolSucceeds_ThenItFormatsCompressedToonOutput()
-    {
-        var refactorSymbolService = new Mock<IRefactorSymbolService>(MockBehavior.Strict);
-        refactorSymbolService.Setup(candidate => candidate.RenameSymbol(
-                42,
-                "Updated",
-                CancellationToken.None))
-            .ReturnsAsync(new RefactorResult(
-                true,
-                ["src/Fixture.App/MessageProvider.cs"],
-                string.Empty));
-
-        var result = await SharpSenseMcpTools.refactor_symbol(
-            refactorSymbolService.Object,
-            42,
-            "Updated",
-            CancellationToken.None);
-
-        result.Should().Be(
-            "refactor_success: true" + Environment.NewLine +
-            "modified_files:" + Environment.NewLine +
-            "  - src/Fixture.App/MessageProvider.cs");
-        refactorSymbolService.Verify(candidate => candidate.RenameSymbol(
-            42,
-            "Updated",
-            CancellationToken.None), Times.Once);
-    }
-
-    [Fact]
     public async Task WhenTraceNodeUsesDefaultDirection_ThenItCallsTheCalleeNavigator()
     {
         var impactHandler = new Mock<IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult>>(MockBehavior.Strict);
@@ -398,5 +411,51 @@ public sealed class SharpSenseMcpToolsTests
         traceNavigator.Verify(candidate => candidate.GetRootNode("node-root", CancellationToken.None), Times.Once);
         traceHandler.Verify(candidate => candidate.Handle(new TraceQuery("node-root"), CancellationToken.None), Times.Once);
         impactHandler.VerifyNoOtherCalls();
+    }
+
+    private static async Task<CallToolResult> InvokeContextTool(
+        IQueryHandler<GetNodeContextQuery, Result<Context360Result>> handler,
+        IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>> memoryHandler,
+        int nodeId,
+        EdgeCategory edgeCategories,
+        CancellationToken ct)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(handler);
+        services.AddSingleton(memoryHandler);
+        await using var provider = services.BuildServiceProvider();
+        await using var transport = new StreamServerTransport(Stream.Null, Stream.Null);
+        await using var server = McpServer.Create(transport, new McpServerOptions(), null, provider);
+        var serializerOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<EdgeCategory>());
+        var tool = McpServerTool.Create(
+            SharpSenseMcpTools.context,
+            new McpServerToolCreateOptions
+            {
+                Services = provider,
+                SerializerOptions = serializerOptions
+            });
+        var parameters = new CallToolRequestParams
+        {
+            Name = "context",
+            Arguments = new Dictionary<string, JsonElement>
+            {
+                ["nodeId"] = JsonSerializer.SerializeToElement(nodeId),
+                ["edgeCategories"] = JsonSerializer.SerializeToElement(edgeCategories, serializerOptions)
+            }
+        };
+        var request = new RequestContext<CallToolRequestParams>(
+            server,
+            new JsonRpcRequest
+            {
+                Id = new RequestId(1),
+                Method = "tools/call"
+            },
+            parameters)
+        {
+            Services = provider
+        };
+
+        return await tool.InvokeAsync(request, ct);
     }
 }

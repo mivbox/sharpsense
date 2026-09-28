@@ -2,7 +2,7 @@ namespace SharpSense.Application.Indexing.Models;
 
 public static class WorkspaceIndexingPathRules
 {
-    private static readonly HashSet<string> IgnoredDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> _ignoredDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
     {
         ".git",
         "bin",
@@ -21,6 +21,6 @@ public static class WorkspaceIndexingPathRules
             [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
             StringSplitOptions.RemoveEmptyEntries);
 
-        return segments.Any(IgnoredDirectoryNames.Contains);
+        return segments.Any(_ignoredDirectoryNames.Contains);
     }
 }

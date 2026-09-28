@@ -1,21 +1,20 @@
-using System.Diagnostics;
-using System.IO.Abstractions;
-using System.IO.Abstractions.TestingHelpers;
-using System.Security.Cryptography;
-using System.Text;
 using AwesomeAssertions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.DependencyInjection;
-using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Diagnostics;
 using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Storage;
+using System.Diagnostics;
+using System.IO.Abstractions;
+using System.IO.Abstractions.TestingHelpers;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace SharpSense.Infrastructure.Tests.CodeAnalysis.Roslyn;
 
@@ -48,14 +47,8 @@ public sealed class RoslynTargetAnalysisEngineTests
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "Contracts.IMessageProvider");
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "App.MessageProvider");
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "App.MessageConsumer.Render()");
-        // One symbol = one CodeNode. The persisted IX_CodeNodes_FullyQualifiedName unique index
-        // enforces this invariant, so the extractor payload must never carry a duplicate FQDN.
-        // If a future fixture starts sharing a symbol across projects (which currently nothing
-        // here does) the failing assertion below is the first line of defence.
-        payload.CodeNodes
-            .Select(static codeNode => codeNode.FullyQualifiedName)
-            .Distinct(StringComparer.Ordinal)
-            .Should().HaveCount(payload.CodeNodes.Count);
+        payload.CodeNodes.Select(node => node.CanonicalId)
+            .Should().OnlyHaveUniqueItems();
         AssertContainsEdge(
             payload.Edges,
             fullyQualifiedNamesById,
@@ -87,6 +80,55 @@ public sealed class RoslynTargetAnalysisEngineTests
     }
 
     [Fact]
+    public async Task WhenProjectsDeclareMatchingNames_ThenKeepsTheirNodesAndCallsSeparate()
+    {
+        var fileSystem = CreateRepositoryFileSystem();
+        var workspace = CreateRepositoryWorkspace(fileSystem);
+        await using var services = CreateServiceProvider(fileSystem);
+        var engine = services.GetRequiredService<ITargetAnalysisEngine>();
+        var solution = CreateFixtureSolution().Solution;
+        const string source = """
+            namespace Shared;
+            public class Options
+            {
+                public void Save() { }
+                public void Run() { Save(); }
+            }
+            """;
+
+        foreach (var project in solution.Projects.ToArray())
+        {
+            solution = solution.AddDocument(
+                DocumentId.CreateNewId(project.Id),
+                "Options.cs",
+                SourceText.From(source),
+                filePath: $"/repo/{project.Name}/Options.cs");
+        }
+
+        var result = await engine.Extract(
+            "/repo/CommandPipelineFixture.sln",
+            solution,
+            workspace,
+            ct: TestContext.Current.CancellationToken);
+
+        var options = result.CodeNodes.Where(node => node.FullyQualifiedName == "Shared.Options")
+            .ToArray();
+        options.Should().HaveCount(2);
+        options.Select(node => node.ProjectId).Should().OnlyHaveUniqueItems();
+        foreach (var option in options)
+        {
+            var caller = result.CodeNodes.Single(node =>
+                node.ProjectId == option.ProjectId && node.FullyQualifiedName == "Shared.Options.Run()");
+            var callee = result.CodeNodes.Single(node =>
+                node.ProjectId == option.ProjectId && node.FullyQualifiedName == "Shared.Options.Save()");
+            result.Edges.Should().Contain(edge => edge.EdgeType == EdgeType.MethodCall &&
+                edge.CallerId == caller.CanonicalId && edge.CalleeId == callee.CanonicalId);
+            result.Edges.Should().NotContain(edge => edge.EdgeType == EdgeType.MethodCall &&
+                edge.CallerId == caller.CanonicalId && edge.CalleeId != callee.CanonicalId);
+        }
+    }
+
+    [Fact]
     public async Task WhenExtractingProject_ThenReturnsProjectBackedPayload()
     {
         var fileSystem = CreateRepositoryFileSystem();
@@ -97,7 +139,7 @@ public sealed class RoslynTargetAnalysisEngineTests
 
         var payload = await engine.Extract(
             "/repo/App/App.csproj",
-            fixture.AppProject,
+            fixture.AppProject.Solution,
             workspace,
             ct: TestContext.Current.CancellationToken);
 
@@ -195,7 +237,7 @@ public sealed class RoslynTargetAnalysisEngineTests
     }
 
     [Fact]
-    public async Task WhenExtractingIncrementalModifiedDocument_ThenReturnsDeltaNodesAndEdges()
+    public async Task WhenExtractingModifiedSolution_ThenReturnsUpdatedNodesAndEdges()
     {
         var fileSystem = CreateRepositoryFileSystem();
         var workspace = CreateRepositoryWorkspace(fileSystem);
@@ -226,24 +268,19 @@ public sealed class RoslynTargetAnalysisEngineTests
             fixture.MessageProviderDocumentId,
             SourceText.From(updatedSource));
 
-        var payload = await engine.ExtractIncremental(
+        var payload = await engine.Extract(
             "/repo/CommandPipelineFixture.sln",
             updatedSolution,
             workspace,
-            [
-                new WorkspaceFileChange(
-                    WorkspaceFileChangeAction.Modified,
-                    NewPath: "/repo/App/MessageProvider.cs")
-            ],
             ct: TestContext.Current.CancellationToken);
         var fullyQualifiedNamesById = payload.CodeNodes.ToDictionary(
             static codeNode => codeNode.CanonicalId,
             static codeNode => codeNode.FullyQualifiedName,
             StringComparer.Ordinal);
 
-        payload.Projects.Should().BeEmpty();
+        payload.Projects.Should().NotBeEmpty();
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "App.MessageProvider.GetCopiedMessage()");
-        payload.CodeNodes.Should().OnlyContain(codeNode => codeNode.RelativeFilePath == "App/MessageProvider.cs");
+        payload.CodeNodes.Should().Contain(codeNode => codeNode.RelativeFilePath == "App/MessageProvider.cs");
         AssertContainsEdge(
             payload.Edges,
             fullyQualifiedNamesById,
@@ -253,7 +290,7 @@ public sealed class RoslynTargetAnalysisEngineTests
     }
 
     [Fact]
-    public async Task WhenExtractingIncrementalAddedDocument_ThenReturnsNewNodes()
+    public async Task WhenExtractingSolutionWithAddedDocument_ThenReturnsNewNodes()
     {
         var fileSystem = CreateRepositoryFileSystem();
         var workspace = CreateRepositoryWorkspace(fileSystem);
@@ -275,19 +312,14 @@ public sealed class RoslynTargetAnalysisEngineTests
                 """),
             filePath: "/repo/App/IncrementalMessage.cs");
 
-        var payload = await engine.ExtractIncremental(
+        var payload = await engine.Extract(
             "/repo/CommandPipelineFixture.sln",
             updatedSolution,
             workspace,
-            [
-                new WorkspaceFileChange(
-                    WorkspaceFileChangeAction.Added,
-                    NewPath: "/repo/App/IncrementalMessage.cs")
-            ],
             ct: TestContext.Current.CancellationToken);
 
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "App.IncrementalMessage");
-        payload.CodeNodes.Should().OnlyContain(codeNode => codeNode.RelativeFilePath == "App/IncrementalMessage.cs");
+        payload.CodeNodes.Should().Contain(codeNode => codeNode.RelativeFilePath == "App/IncrementalMessage.cs");
     }
 
     [Fact]
@@ -331,14 +363,11 @@ public sealed class RoslynTargetAnalysisEngineTests
             workspace,
             ct: TestContext.Current.CancellationToken);
         var documentedMethod = payload.CodeNodes.Should()
-            .ContainSingle(codeNode => codeNode.FullyQualifiedName == "App.DocumentedProcessor.Process(string)")
-            .Subject;
+            .ContainSingle(codeNode => codeNode.FullyQualifiedName == "App.DocumentedProcessor.Process(string)").Subject;
         var fallbackMethod = payload.CodeNodes.Should()
-            .ContainSingle(codeNode => codeNode.FullyQualifiedName == "App.MessageConsumer.Render()")
-            .Subject;
+            .ContainSingle(codeNode => codeNode.FullyQualifiedName == "App.MessageConsumer.Render()").Subject;
         var interfaceMethod = payload.CodeNodes.Should()
-            .ContainSingle(codeNode => codeNode.FullyQualifiedName == "Contracts.IMessageProvider.GetMessage()")
-            .Subject;
+            .ContainSingle(codeNode => codeNode.FullyQualifiedName == "Contracts.IMessageProvider.GetMessage()").Subject;
 
         documentedMethod.Summary.Should().Be("Processes inbound messages.\nWrites audit entries and returns null when empty.");
         documentedMethod.Summary.Should().NotContain("Ignored parameter text");
@@ -395,23 +424,26 @@ public sealed class RoslynTargetAnalysisEngineTests
 
     private static MockFileSystem CreateRepositoryFileSystem()
     {
-        return new MockFileSystem(new Dictionary<string, MockFileData>
-        {
-            ["/repo/.git/HEAD"] = new("ref: refs/heads/main"),
-            ["/repo/CommandPipelineFixture.sln"] = new(string.Empty),
-            ["/repo/App/App.csproj"] = new("<Project Sdk=\"Microsoft.NET.Sdk\"></Project>"),
-            ["/repo/Contracts/Contracts.csproj"] = new("<Project Sdk=\"Microsoft.NET.Sdk\"></Project>")
-        }, "/repo");
+        return new MockFileSystem(
+            new Dictionary<string, MockFileData>
+            {
+                ["/repo/.git/HEAD"] = new("ref: refs/heads/main"),
+                ["/repo/CommandPipelineFixture.sln"] = new(string.Empty),
+                ["/repo/App/App.csproj"] = new("<Project Sdk=\"Microsoft.NET.Sdk\"></Project>"),
+                ["/repo/Contracts/Contracts.csproj"] = new("<Project Sdk=\"Microsoft.NET.Sdk\"></Project>")
+            },
+            "/repo");
     }
 
     private static IRepositoryWorkspace CreateRepositoryWorkspace(MockFileSystem fileSystem)
-        => new RepositoryWorkspaceFactory(fileSystem).CreateFromWorkingDirectory("/repo");
+        => new RepositoryWorkspace("/repo", "/test-storage/index.db", fileSystem);
 
     private static ServiceProvider CreateServiceProvider(IFileSystem fileSystem)
     {
         var services = new ServiceCollection();
         services.AddSingleton(fileSystem);
         services.AddIndexingInfrastructure();
+
         return services.BuildServiceProvider();
     }
 
@@ -643,7 +675,9 @@ public sealed class RoslynTargetAnalysisEngineTests
     private static string ComputeHash(string bodyText)
     {
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(bodyText));
-        return Convert.ToHexString(hashBytes).ToLowerInvariant();
+
+        return Convert.ToHexString(hashBytes)
+            .ToLowerInvariant();
     }
 
     private static string ComputeSyntaxHash<TSyntaxNode>(string source)

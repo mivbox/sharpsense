@@ -1,6 +1,8 @@
-using System.Text;
 using Serilog;
 using Serilog.Events;
+using SharpSense.Infrastructure.Storage;
+using System.IO.Abstractions;
+using System.Text;
 
 namespace SharpSense.Cli.Shared;
 
@@ -22,6 +24,7 @@ internal static class SharpSenseLogging
             enableFileLogging ? GetLogFilePath(commandName) : null,
             enableConsoleLogging,
             enableFileLogging);
+
         return configuration.CreateLogger();
     }
 
@@ -35,14 +38,14 @@ internal static class SharpSenseLogging
     public static string GetLogFilePath(string? commandName)
     {
         var loggingDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ".SharpSense",
+            SharpSenseHome.Resolve(new FileSystem()),
             "logs");
 
-        Directory.CreateDirectory(loggingDirectory);
-
         var safeCommandName = CreateSafeFileNameSegment(commandName);
-        return Path.Combine(loggingDirectory, $"{safeCommandName}.log");
+
+        return Path.Combine(
+            loggingDirectory,
+            $"{safeCommandName}.log");
     }
 
     public static void ConfigureLogger(
@@ -55,8 +58,7 @@ internal static class SharpSenseLogging
         ArgumentNullException.ThrowIfNull(configuration);
 
         configuration
-            .MinimumLevel.Is(isVerbose ? LogEventLevel.Verbose : LogEventLevel.Information)
-            .Enrich.FromLogContext();
+            .MinimumLevel.Is(isVerbose ? LogEventLevel.Verbose : LogEventLevel.Information).Enrich.FromLogContext();
 
         if (enableFileLogging)
         {
@@ -80,7 +82,8 @@ internal static class SharpSenseLogging
     {
         var normalizedValue = string.IsNullOrWhiteSpace(value)
             ? _defaultLogFileName
-            : value.Trim().ToLowerInvariant();
+            : value.Trim()
+                .ToLowerInvariant();
 
         var builder = new StringBuilder(normalizedValue.Length);
         foreach (var character in normalizedValue)

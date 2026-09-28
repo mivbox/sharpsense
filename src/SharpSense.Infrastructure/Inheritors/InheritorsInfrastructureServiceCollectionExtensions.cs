@@ -11,6 +11,7 @@ public static class InheritorsInfrastructureServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.TryAddScoped<IInheritorFinder, InheritorFinder>();
+
         return services;
     }
 }

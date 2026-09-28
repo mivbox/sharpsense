@@ -5,11 +5,9 @@ using SharpSense.Application.Inheritors;
 using SharpSense.Application.Inheritors.GetInheritors.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
-using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Inheritors;
 using SharpSense.Infrastructure.Persistence;
-using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
 using System.Text.Json;
@@ -23,32 +21,28 @@ internal sealed class InheritorsCommand : AbstractAsyncCommand<InheritorsCommand
     public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "<node-id>")]
-        public int NodeId { get; init; }
-
-        [CommandOption("--repo-root <path>")]
-        public string? RepositoryRoot { get; init; }
+        public int NodeId
+        {
+            get; init;
+        }
 
         [CommandOption("--toon")]
-        public bool UseToonFormat { get; init; }
+        public bool UseToonFormat
+        {
+            get; init;
+        }
 
         public override ValidationResult Validate()
             => NodeId <= 0
                 ? ValidationResult.Error("A positive node id is required.")
-                : ValidationResult.Success();
+                : base.Validate();
     }
 
     protected override void Configure(
         Settings settings,
         IServiceCollection services)
     {
-        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-
-        services.Configure<SharpSenseCliOptions>(options =>
-        {
-            options.RepositoryRoot = rawRoot;
-        });
-        services.AddRepositoryWorkspace(rawRoot);
-        services.AddSharpSenseConfiguration(rawRoot);
+        services.AddSelectedWorkspace(settings);
         services.AddInheritors();
         services.AddInheritorsInfrastructure();
         services.AddPersistence();
@@ -71,6 +65,7 @@ internal sealed class InheritorsCommand : AbstractAsyncCommand<InheritorsCommand
             : JsonSerializer.Serialize(result, TokenObjectNotation.JsonOptions);
 
         CommandOutput.Write(context, output);
+
         return 0;
     }
 }

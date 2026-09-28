@@ -1,14 +1,14 @@
-using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
+using System.Globalization;
 
 namespace SharpSense.Infrastructure.Shared;
 
-public static class CodeNodeNavigationQueries
+internal static class CodeNodeNavigationQueries
 {
     public static IQueryable<CodeNode> ProjectCodeNodes(
         SharpSenseDbContext context,
@@ -19,21 +19,21 @@ public static class CodeNodeNavigationQueries
            join projectGraphNode in context.GraphNodes.AsNoTracking() on codeNode.ProjectNodeId equals projectGraphNode.Id into projectGraphNodes
            from projectGraphNode in projectGraphNodes.DefaultIfEmpty()
            select new CodeNode
-            {
-                Id = codeNode.Id,
-                CanonicalId = graphNode.CanonicalId,
-                ProjectId = projectGraphNode == null ? null : projectGraphNode.CanonicalId,
-                FullyQualifiedName = codeNode.FullyQualifiedName,
+           {
+               Id = codeNode.Id,
+               CanonicalId = graphNode.CanonicalId,
+               ProjectId = projectGraphNode == null ? null : projectGraphNode.CanonicalId,
+               FullyQualifiedName = codeNode.FullyQualifiedName,
                DisplayName = codeNode.DisplayName,
                NodeType = codeNode.NodeType,
-                RelativeFilePath = document.RelativePath,
-                StartLine = codeNode.StartLine,
-                EndLine = codeNode.EndLine,
-                Summary = codeNode.Summary,
-                SearchText = codeNode.SearchText,
-                BodyHash = codeNode.BodyHash,
-                VectorEmbedding = codeNode.VectorEmbedding
-            };
+               RelativeFilePath = document.RelativePath,
+               StartLine = codeNode.StartLine,
+               EndLine = codeNode.EndLine,
+               Summary = codeNode.Summary,
+               SearchText = codeNode.SearchText,
+               BodyHash = codeNode.BodyHash,
+               VectorEmbedding = codeNode.VectorEmbedding
+           };
 
     public static IQueryable<CodeNodeResult> ProjectCodeNodeResults(
         SharpSenseDbContext context,
@@ -79,7 +79,8 @@ public static class CodeNodeNavigationQueries
            {
                CallerId = callerNode.CanonicalId,
                CalleeId = calleeNode.CanonicalId,
-               EdgeType = dependencyEdge.EdgeType
+               EdgeType = dependencyEdge.EdgeType,
+               Metadata = dependencyEdge.Metadata
            };
 
     public static async Task<CodeNode?> FindRootNode(
@@ -93,10 +94,10 @@ public static class CodeNodeNavigationQueries
         if (int.TryParse(nodeIdentifier, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedId))
         {
             var rootNodeById = await ProjectCodeNodes(
-                    context,
-                    context.CodeNodes
+                context,
+                context.CodeNodes
                         .AsNoTracking()
-                        .Where(codeNode => codeNode.Id == parsedId))
+                    .Where(codeNode => codeNode.Id == parsedId))
                 .FirstOrDefaultAsync(ct);
 
             if (rootNodeById is not null)
@@ -106,10 +107,10 @@ public static class CodeNodeNavigationQueries
         }
 
         var rootNode = await ProjectCodeNodes(
-                context,
-                context.CodeNodes
+            context,
+            context.CodeNodes
                     .AsNoTracking()
-                    .OrderBy(static codeNode => codeNode.Id))
+                .OrderBy(static codeNode => codeNode.Id))
             .Where(codeNode => codeNode.CanonicalId == nodeIdentifier || codeNode.FullyQualifiedName == nodeIdentifier)
             .FirstOrDefaultAsync(ct);
 
@@ -119,10 +120,10 @@ public static class CodeNodeNavigationQueries
         }
 
         return await ProjectCodeNodes(
-                context,
-                context.CodeNodes
-                    .AsNoTracking()
-                    .OrderBy(static codeNode => codeNode.Id))
+            context,
+            context.CodeNodes
+                .AsNoTracking()
+                .OrderBy(static codeNode => codeNode.Id))
             .Where(codeNode => EF.Functions.Collate(codeNode.FullyQualifiedName, "NOCASE") == nodeIdentifier)
             .FirstOrDefaultAsync(ct);
     }

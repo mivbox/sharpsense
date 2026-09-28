@@ -4,7 +4,7 @@ using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.Persistence.Configuration;
 
-public sealed class DirectoryRecordConfiguration : IEntityTypeConfiguration<DirectoryRecord>
+internal sealed class DirectoryRecordConfiguration : IEntityTypeConfiguration<DirectoryRecord>
 {
     public void Configure(EntityTypeBuilder<DirectoryRecord> builder)
     {
@@ -32,7 +32,11 @@ public sealed class DirectoryRecordConfiguration : IEntityTypeConfiguration<Dire
 
         builder.HasIndex(directory => directory.Path)
             .IsUnique();
-        builder.HasIndex(directory => new { directory.ParentId, directory.Name })
+        builder.HasIndex(directory => new
+        {
+            directory.ParentId,
+            directory.Name
+        })
             .IsUnique();
         builder.HasIndex(directory => directory.ParentId);
     }

@@ -4,7 +4,7 @@ using SharpSense.Domain.KnowledgeGraph.Nodes;
 
 namespace SharpSense.Infrastructure.ImpactAnalysis;
 
-public static class ImpactAnalysisMapper
+internal static class ImpactAnalysisMapper
 {
     public static ImpactedCodeNode ToImpactedCodeNode(CodeNode codeNode)
     {

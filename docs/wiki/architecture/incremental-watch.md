@@ -1,46 +1,48 @@
----
-title: "Incremental Watch"
-type: architecture
-tags: [incremental-watch, cqrs, implemented]
-created: 2026-04-26
-updated: 2026-05-06
-confidence: high
----
+# Watch reconciliation
 
-## The Problem
+Watch mode maintains the graph for the selected workspace. Every successful update commits one complete graph, while the active watch session can reuse unchanged language contributions after safe documentation-only edits.
 
-Watch mode has to batch noisy filesystem events, preserve correct rename and delete semantics, and recover from watcher failures without corrupting the index or forcing the CLI to guess what changed.
+## Processing a change
 
-## The Approach
+1. Repository watchers batch file and directory events.
+2. `WorkspaceChangeFilter` checks the workspace's sources and relevant dependency/config inputs.
+3. Ignored batches return without claiming an index commit.
+4. Relevant batches invoke the named source plan, carrying changed-file information for adapters that can reuse state. Documentation-only file changes may reuse previously committed C# and TypeScript contributions while extracting the selected Markdown set again.
+5. Independent language groups run asynchronously, with at most three groups active. Sources within one language run serially so adapters do not concurrently mutate shared language state.
+6. Contributions are merged in source-plan order, embeddings are reused or generated, and one complete graph snapshot is committed. Reusable contributions become current only after that commit succeeds.
 
-`AnalyzeCommand` always performs a full Target index first. That full pass now reuses persisted embeddings where possible and short-circuits persistence entirely when the extracted graph is identical, so repeated no-op `analyze` runs no longer rewrite the SQLite database. When `--watch` is enabled, it resolves the repository root from `IOptions<SharpSenseCliOptions>` and hands control to `IWorkspaceWatcher`. `WorkspaceWatcher` now lives on the [[architecture/virtual-file-system]] boundary with a dual-watcher topology: a filtered file watcher handles high-frequency file I/O, while a directory watcher listens only for directory-name changes. Both watchers are constructed through `IFileSystemWatcherFactory`, share the same debounce queue, and keep the `knownDirectories` cache in sync through the injected `IFileSystem`. Fast-path `.git` events are dropped before any directory bookkeeping. File events still reduce to file-scoped `WorkspaceFileChange` records, but relevant directory deletes and renames now emit `DirectoryDeleted` and `DirectoryRenamed` actions instead of forcing immediate watcher-side recovery or enumerating the disk inside the watcher. `UpdateWorkspaceFilesCommandHandler` expands those directory actions by combining persisted old document paths from `IKnowledgeGraphRepository` with new-side discovery from `IWorkspaceFileDiscoverer`, producing the file-level batch consumed by the existing C# and Markdown extractors plus `ReplaceWorkspaceFiles(...)`. For modified C# files, the incremental path now compares persisted `SearchText` and `BodyHash` fingerprints before regenerating embeddings or rewriting rows, so unchanged methods stay untouched while stale methods refresh in place. `WorkspaceLoader` still retries transient reads and then falls back to reloading the Roslyn workspace before the CLI-level recovery path is considered. The CLI/MCP refactor entrypoints still stop at the Roslyn write boundary and rely on this same watcher pipeline to refresh persistence asynchronously. If the batch handler still fails after loader-level recovery and directory expansion, `AnalyzeCommand` runs a full reindex and continues inside the current watcher session. If the watcher itself reports a fatal error, `AnalyzeCommand` runs a full reindex and then restarts the outer watch loop. The incremental persistence side of this flow is documented in [[persistence/sqlite-schema]] and the write entrypoints are documented in [[cli/refactor-command]].
+A failed extraction leaves the last committed graph available. Failure or cancellation invalidates the reusable contribution cache; unfinished workers must settle before the session is disposed. UI watch records the failure and waits for another change; CLI watch includes recovery handling for watcher/update failures. Neither behavior makes a failed index current.
 
-## Components Involved
+## Language behavior
 
-| Component | Role |
+| Language | Relevant inputs and reconciliation |
 | --- | --- |
-| `AnalyzeCommand` | Owns watch-mode startup, recovery, and restart decisions. |
-| `IWorkspaceWatcher` | Application contract for debounced workspace change batches. |
-| `IFileSystemWatcherFactory` | Creates the concrete watcher at the infrastructure edge without hiding the dependency. |
-| `IFileSystem` | Supplies directory existence checks and directory-rename expansion without direct `System.IO` calls. |
-| `WorkspaceWatcher` | `FileSystemWatcher`-based implementation with paired file/directory watchers, queueing, debounce, and fatal-error signaling. |
-| `WorkspaceFileChange` | Captures file actions plus directory delete/rename actions before handler-side expansion. |
-| `UpdateWorkspaceFilesCommand` | CQRS payload that carries the changed-file batch into the indexing pipeline. |
-| `UpdateWorkspaceFilesCommandHandler` | Expands directory actions into file-level replacements before extraction and persistence. |
-| `IWorkspaceFileDiscoverer` | Discovers new-side files for directory renames through the canonical discovery boundary. |
-| `IKnowledgeGraphRepository` | Supplies persisted old document paths and replaces the merged incremental file set. |
-| `RefactorCommand` / MCP `refactor_node` | Write-capable entrypoints that stop at the Roslyn disk mutation and rely on the watcher for downstream index refresh. |
-| `KnowledgeGraphIndexing` | Persists the resulting incremental node and edge updates by repository-relative file path. |
+| C# | Selected project/solution inputs, source membership, linked source files, and compilation/generator inputs. Existing Markdown file modifications or deletions reuse the committed C# contribution only when those paths are absent from Roslyn source, additional, and analyzer-config documents. Added or renamed documentation refreshes C# conservatively because new files can match `AdditionalFiles` globs. Suitable C# source edits can update a warm Roslyn workspace; structural and configuration changes require reloading. |
+| TypeScript | Selected files, imports, aliases, extended configurations, and project references. Documentation-only file changes can reuse the committed contribution. Code/configuration changes rebuild the selected dependency graph because consumers outside the edited file may be affected. |
+| Markdown | Selected documentation paths and directory changes. Rebuilding the selected document set restores links when targets appear, disappear, or change headings. Supported documentation-only extensions are `.md`, `.markdown`, `.mdown`, and `.mkd`. |
 
-## Strict Rules
+Contribution reuse requires the same scoped watch session, a successful prior commit, and unchanged selected sources. Full analysis, code/configuration changes, mixed-language changes, and directory events take the conservative extraction path. Standard SDK analyzer references alone do not disable safe existing-document reuse.
 
-1. Emit file-scoped change batches only for C# and Markdown paths, but allow `DirectoryDeleted` and `DirectoryRenamed` for relevant directories because the handler expands them into those same file-level targets.
-2. Construct watchers through `IFileSystemWatcherFactory`, not `new FileSystemWatcher()`, and keep the split between the filtered file watcher and the directory-name watcher.
-3. Apply the `.git` fast-path ignore before directory bookkeeping so source-control churn never mutates `knownDirectories` or spends queue capacity.
-4. Do not enumerate directory trees or force full reindex recovery inside `WorkspaceWatcher` for relevant directory deletes and renames; that translation belongs in `UpdateWorkspaceFilesCommandHandler`.
-5. Align rename discovery semantics with [[architecture/file-discovery]] by using `IWorkspaceFileDiscoverer` for the new-side directory view and persisted document paths for the old-side delete view.
-6. Keep recovery ownership in the CLI: `IWorkspaceWatcher` surfaces fatal infrastructure failures, while `AnalyzeCommand` decides when to reindex or restart.
-7. Persist incremental changes by repository-relative `RelativeFilePath`, not by whole-database resets, whenever a batch can be handled incrementally.
-8. Treat transient modified-file instability as a Roslyn workspace-refresh concern first; only escalate to CLI full-index recovery when loader retries and workspace reload cannot keep the batch incremental.
-9. Reuse stored embeddings only when both `SearchText` and `BodyHash` still match; any signature or XML-doc drift must refresh the node even if the method body hash is unchanged.
-10. Write-capable surfaces such as [[cli/refactor-command]] and MCP `refactor_node` must stop at the Roslyn file mutation boundary; watcher-driven indexing remains the single path that updates persistence asynchronously after those writes.
+Complete reconciliation prevents stale edges or abandoned documents from surviving merely because they were outside the latest event batch. Persisted canonical identities and unchanged embeddings can still be reused. Verbose logs identify each source contribution as `extracted` or `reused`, allowing cache behavior to be checked without inferring it from elapsed time or unchanged IDs.
+
+Native filesystem notifications can report both creation and modification when an existing Markdown file is saved. After initialization, the watcher uses known Markdown paths to classify these duplicate creation notifications as modifications. Previously unseen paths remain additions, even when the first native notification says modification. Initial reconciliation and renames retain conservative handling so newly discovered generator inputs cannot be mistaken for safe existing-document edits.
+
+## Lifecycle
+
+A filesystem lease permits one index/watch writer per workspace across CLI and UI processes. Source mutations take the same lease. Stop watch before changing the workspace definition, then restart; configuration is a session snapshot, not a live-reloaded input.
+
+Filesystem subscriptions start before the initial index. Edits queued during that index are reconciled before watch reports itself ready; cancellation stops the session and releases its subscriptions and lease.
+
+The lease is an open OS handle on `.index.lock`; a leftover file does not indicate a running watcher. UI job status describes jobs owned by that UI host, while [graph statistics](../cli/doctor-command.md) describe persisted indexing outcomes.
+
+See [analyze](../cli/analyze-command.md), [source discovery](file-discovery.md), and [SQLite persistence](../persistence/sqlite-schema.md).
+
+## Shared analysis notifications
+
+Full and incremental handlers publish typed notifications through `IAnalysisNotifier`: operation start, phase transitions, source activity/reuse, embedding progress, diagnostics, committed summaries, ignored batches, failure, and cancellation. Operation IDs and ordered sequences keep parallel source reports attributable without deriving state from display messages.
+
+The internal CLI presentation reducer `AnalysisSnapshotStore` reduces these notifications into bounded immutable presentation state. It retains the current source for each language, bounded diagnostics, and the last committed summary; late progress cannot reopen a finished operation. Existing extractor progress reporters are adapted at the indexing boundary.
+
+The Spectre CLI renders snapshots from one presenter loop. UI-owned sessions project them into workspace job status and publish bounded SSE snapshots. Neither presentation layer controls the indexing commit or blocks language workers on terminal/network output. CLI prompts remain separate in `IWorkspaceInteractions`.
+
+Graph revision advances only on a persisted commit; status sequence advances on progress and lifecycle changes. Cancellation can arrive just after persistence, so the UI retains a committed revision while stopping. Closing an SSE subscription never cancels its workspace job.

@@ -4,7 +4,7 @@ using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.Persistence.Configuration;
 
-public sealed class CodeNodeConfiguration : IEntityTypeConfiguration<CodeNodeRecord>
+internal sealed class CodeNodeConfiguration : IEntityTypeConfiguration<CodeNodeRecord>
 {
     public void Configure(EntityTypeBuilder<CodeNodeRecord> builder)
     {
@@ -67,7 +67,6 @@ public sealed class CodeNodeConfiguration : IEntityTypeConfiguration<CodeNodeRec
 
         builder.HasIndex(codeNode => codeNode.ProjectNodeId);
         builder.HasIndex(codeNode => codeNode.DocumentId);
-        builder.HasIndex(codeNode => codeNode.FullyQualifiedName)
-            .IsUnique();
+        builder.HasIndex(codeNode => codeNode.FullyQualifiedName);
     }
 }

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
@@ -8,7 +9,7 @@ using SharpSense.Infrastructure.Shared;
 
 namespace SharpSense.Infrastructure.Trace;
 
-public sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
+internal sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
     : ITraceNavigator
 {
     public async Task<CodeNodeResult?> GetRootNode(string identifier, CancellationToken ct)
@@ -17,6 +18,7 @@ public sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbCont
 
         await using var context = await dbContextFactory.CreateDbContextAsync(ct);
         var rootNode = await CodeNodeNavigationQueries.FindRootNode(context, identifier, ct);
+
         return rootNode is null
             ? null
             : new CodeNodeResult(
@@ -61,12 +63,39 @@ public sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbCont
         }
 
         return await CodeNodeNavigationQueries.ProjectCodeNodeResults(
-                context,
-                context.CodeNodes
-                    .AsNoTracking()
-                    .Where(codeNode => calleeIds.Contains(codeNode.Id))
-                    .OrderBy(static codeNode => codeNode.FullyQualifiedName)
-                    .ThenBy(static codeNode => codeNode.Id))
+            context,
+            context.CodeNodes
+                .AsNoTracking()
+                .Where(codeNode => calleeIds.Contains(codeNode.Id))
+                .OrderBy(static codeNode => codeNode.FullyQualifiedName)
+                .ThenBy(static codeNode => codeNode.Id))
             .ToArrayAsync(ct);
+    }
+
+    public async Task<ImpactedDependencyEdge[]> GetDependencies(IReadOnlyCollection<CodeNodeResult> nodes, CancellationToken ct)
+    {
+        await using var db = await dbContextFactory.CreateDbContextAsync(ct);
+        var byId = nodes.ToDictionary(node => node.Id);
+        var ids = byId.Keys.ToArray();
+        var edgeTypes = KnowledgeGraphEdgeTypes.Functional;
+        var edges = await db.DependencyEdges
+            .AsNoTracking()
+            .Where(edge =>
+                EF.Parameter(ids).Contains(edge.CallerNodeId) &&
+                EF.Parameter(ids).Contains(edge.CalleeNodeId) &&
+                edgeTypes.Contains(edge.EdgeType))
+            .Select(edge => new
+            {
+                edge.CallerNodeId,
+                edge.CalleeNodeId,
+                edge.EdgeType
+            })
+            .ToArrayAsync(ct);
+
+        return edges.Select(edge => new ImpactedDependencyEdge(
+            byId[edge.CallerNodeId].CanonicalId,
+            byId[edge.CalleeNodeId].CanonicalId,
+            edge.EdgeType))
+            .ToArray();
     }
 }

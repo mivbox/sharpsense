@@ -17,6 +17,7 @@ public sealed class SystemCommandRunnerTests
             (line, _) =>
             {
                 outputLines.Add(line);
+
                 return Task.CompletedTask;
             },
             TestContext.Current.CancellationToken);

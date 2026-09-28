@@ -1,6 +1,7 @@
-namespace SharpSense.Application.Memory.AttachMemory.Models;
 
 using SharpSense.Domain.KnowledgeGraph.Enums;
+
+namespace SharpSense.Application.Memory.AttachMemory.Models;
 
 public sealed record AttachMemoryCommand(
     int NodeId,

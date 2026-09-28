@@ -15,10 +15,10 @@ public sealed class MemoryStoreTests
     [Fact]
     public async Task WhenBodyHashChangesAfterAttach_ThenReturnedMemoryIsMarkedStale()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(UseMigrations: true));
-        await using (var seedContext = await inMemoryFactory.GetContext<SharpSenseDbContext>(TestContext.Current.CancellationToken))
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new InMemoryContextFactoryOptions(UseMigrations: true));
+        await using (var seedContext = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken))
         {
-            await KnowledgeGraphFixture.SeedAsync(seedContext);
+            await KnowledgeGraphFixture.Seed(seedContext);
             var targetNode = await seedContext.CodeNodes.SingleAsync(
                 candidate => candidate.Id == KnowledgeGraphFixture.TargetNodeId,
                 TestContext.Current.CancellationToken);
@@ -30,7 +30,7 @@ public sealed class MemoryStoreTests
         embeddings.Setup(candidate => candidate.Generate("Needs authentication review", TestContext.Current.CancellationToken))
             .ReturnsAsync(new TextEmbedding("Needs authentication review", [0.1f, 0.2f]));
         var store = new MemoryStore(
-            inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
+            inMemoryFactory.CreateDbContextFactory(),
             embeddings.Object);
 
         var attachResult = await store.AttachMemory(
@@ -40,7 +40,7 @@ public sealed class MemoryStoreTests
             SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
             TestContext.Current.CancellationToken);
 
-        await using (var updateContext = await inMemoryFactory.GetContext<SharpSenseDbContext>(TestContext.Current.CancellationToken))
+        await using (var updateContext = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken))
         {
             var targetNode = await updateContext.CodeNodes.SingleAsync(
                 candidate => candidate.Id == KnowledgeGraphFixture.TargetNodeId,
@@ -67,10 +67,10 @@ public sealed class MemoryStoreTests
     [Fact]
     public async Task WhenContentHashAlreadyExists_ThenAttachReusesPersistedEmbedding()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(UseMigrations: true));
-        await using (var seedContext = await inMemoryFactory.GetContext<SharpSenseDbContext>(TestContext.Current.CancellationToken))
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new InMemoryContextFactoryOptions(UseMigrations: true));
+        await using (var seedContext = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken))
         {
-            await KnowledgeGraphFixture.SeedAsync(seedContext);
+            await KnowledgeGraphFixture.Seed(seedContext);
             foreach (var node in await seedContext.CodeNodes.ToArrayAsync(TestContext.Current.CancellationToken))
             {
                 node.BodyHash = "stable-hash";
@@ -83,7 +83,7 @@ public sealed class MemoryStoreTests
         embeddings.Setup(candidate => candidate.Generate("Reusable memory", TestContext.Current.CancellationToken))
             .ReturnsAsync(new TextEmbedding("Reusable memory", [0.4f, 0.6f]));
         var store = new MemoryStore(
-            inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
+            inMemoryFactory.CreateDbContextFactory(),
             embeddings.Object);
 
         var firstResult = await store.AttachMemory(
@@ -99,10 +99,14 @@ public sealed class MemoryStoreTests
             SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
             TestContext.Current.CancellationToken);
 
-        await using var verifyContext = await inMemoryFactory.GetContext<SharpSenseDbContext>(TestContext.Current.CancellationToken);
+        await using var verifyContext = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken);
         var persistedEmbeddings = (await verifyContext.MemoryNodes
-                .Select(static candidate => new { candidate.CreatedAt, candidate.VectorEmbedding })
-                .ToArrayAsync(TestContext.Current.CancellationToken))
+                .Select(static candidate => new
+                {
+                    candidate.CreatedAt,
+                    candidate.VectorEmbedding
+                })
+            .ToArrayAsync(TestContext.Current.CancellationToken))
             .OrderBy(static candidate => candidate.CreatedAt)
             .Select(static candidate => candidate.VectorEmbedding)
             .ToArray();

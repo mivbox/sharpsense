@@ -1,15 +1,15 @@
 using Microsoft.EntityFrameworkCore;
-using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.Abstractions;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
-using SharpSense.Domain.KnowledgeGraph.Enums;
+using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Domain.KnowledgeGraph.Edges;
+using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Shared;
 
 namespace SharpSense.Infrastructure.ImpactAnalysis;
 
-public sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
+internal sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbContextFactory)
     : IImpactAnalyzer
 {
     public async Task<ImpactAnalysisResult> Analyze(ImpactAnalysisQuery query, CancellationToken ct)
@@ -33,8 +33,14 @@ public sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCont
             : 1;
         var impactedNodeIds = new HashSet<int>();
         var impactedEdges = new HashSet<(int CallerNodeId, int CalleeNodeId, Domain.KnowledgeGraph.Enums.EdgeType EdgeType)>();
-        var visitedNodeIds = new HashSet<int> { rootNode.Id };
-        var frontierNodeIds = new[] { rootNode.Id };
+        var visitedNodeIds = new HashSet<int>
+        {
+            rootNode.Id
+        };
+        var frontierNodeIds = new[]
+        {
+            rootNode.Id
+        };
 
         for (var depth = 0; depth < maxTraversalDepth && frontierNodeIds.Length > 0; depth++)
         {
@@ -67,20 +73,24 @@ public sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCont
         var orderedImpactedNodes = impactedNodeIds.Count == 0
             ? []
             : await CodeNodeNavigationQueries.ProjectCodeNodes(
-                    context,
-                    context.CodeNodes
+                context,
+                context.CodeNodes
                         .AsNoTracking()
-                        .Where(codeNode => impactedNodeIds.Contains(codeNode.Id))
-                        .OrderBy(codeNode => codeNode.FullyQualifiedName)
-                        .ThenBy(codeNode => codeNode.Id))
+                    .Where(codeNode => impactedNodeIds.Contains(codeNode.Id))
+                    .OrderBy(codeNode => codeNode.FullyQualifiedName)
+                    .ThenBy(codeNode => codeNode.Id))
                 .ToArrayAsync(ct)
                 ;
         var edgeNodeIds = impactedEdges
-            .SelectMany(static edge => new[] { edge.CallerNodeId, edge.CalleeNodeId })
+            .SelectMany(static edge => new[]
+            {
+                edge.CallerNodeId,
+                edge.CalleeNodeId
+            })
             .Distinct()
             .ToArray();
         var canonicalIdsByNodeId = edgeNodeIds.Length == 0
-            ? new Dictionary<int, string>()
+            ? []
             : await context.GraphNodes
                 .AsNoTracking()
                 .Where(graphNode => edgeNodeIds.Contains(graphNode.Id))

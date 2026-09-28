@@ -1,3 +1,4 @@
+using FluentResults;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -7,14 +8,14 @@ using SharpSense.Application.Context360.Models;
 using SharpSense.Application.Memory;
 using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
-using SharpSense.Application.Shared.Options;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Context360;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
-using SharpSense.Infrastructure.Storage;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using System.ComponentModel;
+using System.Text.Json;
 
 namespace SharpSense.Cli.Context;
 
@@ -25,32 +26,35 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
     public sealed class Settings : GlobalSettings
     {
         [CommandOption("--node-id <NODE_ID>")]
-        public int NodeId { get; init; }
+        public int NodeId
+        {
+            get; init;
+        }
+
+        [CommandOption("--toon")]
+        [Description("Use compact TOON output instead of JSON.")]
+        public bool UseToonFormat
+        {
+            get; init;
+        }
 
         [CommandOption("--include-memories")]
-        public bool IncludeMemories { get; init; }
-
-        [CommandOption("--repo-root <path>")]
-        public string? RepositoryRoot { get; init; }
+        public bool IncludeMemories
+        {
+            get; init;
+        }
 
         public override ValidationResult Validate()
             => NodeId <= 0
                 ? ValidationResult.Error("A positive node id is required.")
-                : ValidationResult.Success();
+                : base.Validate();
     }
 
     protected override void Configure(
         Settings settings,
         IServiceCollection services)
     {
-        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-
-        services.Configure<SharpSenseCliOptions>(options =>
-        {
-            options.RepositoryRoot = rawRoot;
-        });
-        services.AddRepositoryWorkspace(rawRoot);
-        services.AddSharpSenseConfiguration(rawRoot);
+        services.AddSelectedWorkspace(settings);
         services.AddContext360();
         services.AddContext360Infrastructure();
         services.AddMemory();
@@ -66,12 +70,19 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
     {
         await using var scope = host.Services.CreateAsyncScope();
         var services = scope.ServiceProvider;
-        var contextHandler = services.GetRequiredService<IQueryHandler<GetNodeContextQuery, Context360Result>>();
+        var contextHandler = services.GetRequiredService<IQueryHandler<GetNodeContextQuery, Result<Context360Result>>>();
         var result = await contextHandler.Handle(
             new GetNodeContextQuery(
                 settings.NodeId,
                 10),
             ct);
+
+        if (result.IsFailed)
+        {
+            CommandOutput.WriteError(context, string.Join("; ", result.Errors.Select(error => error.Message)));
+
+            return 1;
+        }
 
         SharpSense.Domain.KnowledgeGraph.Nodes.MemoryNode[]? semanticContext = null;
         if (settings.IncludeMemories)
@@ -83,7 +94,31 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
                 : [];
         }
 
-        CommandOutput.Write(context, TokenObjectNotation.SerializeContext360(result, semanticContext));
+        var nodeContext = result.Value;
+        var output = settings.UseToonFormat
+            ? TokenObjectNotation.SerializeContext360(nodeContext, semanticContext)
+            : JsonSerializer.Serialize(
+                new
+                {
+                    nodeContext.TargetNode,
+                    nodeContext.Callers,
+                    nodeContext.Implementers,
+                    nodeContext.Callees,
+                    nodeContext.Inherits,
+                    nodeContext.Parents,
+                    nodeContext.Children,
+                    Memories = semanticContext?.Select(static memory => new
+                    {
+                        memory.Id,
+                        memory.Intent,
+                        memory.IsStale,
+                        memory.Tags
+                    })
+                },
+                TokenObjectNotation.JsonOptions);
+
+        CommandOutput.Write(context, output);
+
         return 0;
     }
 }

@@ -8,5 +8,6 @@ public enum NodeType
     Property,
     Field,
     Document,
-    Memory
+    Memory,
+    Component
 }

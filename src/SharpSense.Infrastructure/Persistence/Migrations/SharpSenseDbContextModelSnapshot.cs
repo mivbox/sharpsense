@@ -68,8 +68,7 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("DocumentId");
 
-                    b.HasIndex("FullyQualifiedName")
-                        .IsUnique();
+                    b.HasIndex("FullyQualifiedName");
 
                     b.HasIndex("ProjectNodeId");
 
@@ -86,6 +85,9 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("EdgeType")
                         .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Metadata")
                         .HasColumnType("TEXT");
 
                     b.HasKey("CallerNodeId", "CalleeNodeId", "EdgeType");
@@ -218,6 +220,31 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
                     b.ToTable("GraphNodes", (string)null);
                 });
 
+            modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.IndexRunStateRecord", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("GraphRevision")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("initial");
+
+                    b.Property<string>("LastAttemptJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastSuccessfulIndexJson")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("IndexRunState", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_IndexRunState_Singleton", "Id = 1");
+                        });
+                });
+
             modelBuilder.Entity("SharpSense.Infrastructure.Persistence.Records.MemoryNodeRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -249,10 +276,8 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("TargetFullyQualifiedName")
-                        .IsRequired()
-                        .HasMaxLength(2048)
-                        .HasColumnType("TEXT");
+                    b.Property<int>("TargetCodeNodeId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<byte[]>("VectorEmbedding")
                         .HasColumnType("BLOB");
@@ -263,7 +288,7 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("TargetFullyQualifiedName");
+                    b.HasIndex("TargetCodeNodeId");
 
                     b.ToTable("MemoryNodes", (string)null);
                 });
@@ -365,8 +390,7 @@ namespace SharpSense.Infrastructure.Persistence.Migrations
                 {
                     b.HasOne("SharpSense.Infrastructure.Persistence.Records.CodeNodeRecord", null)
                         .WithMany()
-                        .HasForeignKey("TargetFullyQualifiedName")
-                        .HasPrincipalKey("FullyQualifiedName")
+                        .HasForeignKey("TargetCodeNodeId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

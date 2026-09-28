@@ -5,7 +5,7 @@ using SharpSense.Application.Shared.Models;
 
 namespace SharpSense.Application.Inheritors.GetInheritors;
 
-public sealed class GetInheritorsQueryHandler(IInheritorFinder inheritorFinder)
+internal sealed class GetInheritorsQueryHandler(IInheritorFinder inheritorFinder)
     : IQueryHandler<GetInheritorsQuery, CodeNodeResult[]>
 {
     public Task<CodeNodeResult[]> Handle(

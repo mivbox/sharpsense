@@ -1,10 +1,10 @@
-using System.Data.Common;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using System.Data.Common;
 
 namespace SharpSense.Infrastructure.Persistence;
 
-public sealed class SqlitePragmaInterceptor : DbConnectionInterceptor
+internal sealed class SqlitePragmaInterceptor : DbConnectionInterceptor
 {
     private const string _pragmaSql = "PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;";
 
@@ -60,7 +60,8 @@ public sealed class SqlitePragmaInterceptor : DbConnectionInterceptor
         {
             // GTFO, this should never happen, but if we cannot load sqlite-vec extension we cannot run the application
             throw new InvalidOperationException(
-                "Failed to load sqlite-vec extension into the SQLite connection.", e);
+                "Failed to load sqlite-vec extension into the SQLite connection.",
+                e);
         }
     }
 

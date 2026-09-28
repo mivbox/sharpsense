@@ -1,10 +1,19 @@
 namespace SharpSense.Infrastructure.Persistence.Records;
 
-public sealed class DirectoryClosureRecord
+internal sealed class DirectoryClosureRecord
 {
-    public int AncestorDirectoryId { get; set; }
+    public int AncestorDirectoryId
+    {
+        get; set;
+    }
 
-    public int DescendantDirectoryId { get; set; }
+    public int DescendantDirectoryId
+    {
+        get; set;
+    }
 
-    public int Depth { get; set; }
+    public int Depth
+    {
+        get; set;
+    }
 }

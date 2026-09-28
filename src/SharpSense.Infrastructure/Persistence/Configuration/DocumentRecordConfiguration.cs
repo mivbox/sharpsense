@@ -4,7 +4,7 @@ using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.Persistence.Configuration;
 
-public sealed class DocumentRecordConfiguration : IEntityTypeConfiguration<DocumentRecord>
+internal sealed class DocumentRecordConfiguration : IEntityTypeConfiguration<DocumentRecord>
 {
     public void Configure(EntityTypeBuilder<DocumentRecord> builder)
     {
@@ -40,7 +40,11 @@ public sealed class DocumentRecordConfiguration : IEntityTypeConfiguration<Docum
             .HasForeignKey(document => document.DirectoryId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(document => new { document.DirectoryId, document.FileName })
+        builder.HasIndex(document => new
+        {
+            document.DirectoryId,
+            document.FileName
+        })
             .IsUnique();
         builder.HasIndex(document => document.RelativePath)
             .IsUnique();

@@ -14,6 +14,7 @@ public static class InheritorsServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.TryAddTransient<IQueryHandler<GetInheritorsQuery, CodeNodeResult[]>, GetInheritorsQueryHandler>();
+
         return services;
     }
 }

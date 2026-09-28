@@ -4,7 +4,7 @@ using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.Persistence.Configuration;
 
-public sealed class GraphNodeRecordConfiguration : IEntityTypeConfiguration<GraphNodeRecord>
+internal sealed class GraphNodeRecordConfiguration : IEntityTypeConfiguration<GraphNodeRecord>
 {
     public void Configure(EntityTypeBuilder<GraphNodeRecord> builder)
     {

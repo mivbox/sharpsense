@@ -18,8 +18,8 @@ public static class FileSystemMockFactory
         file.Setup(candidate => candidate.Exists(It.IsAny<string>()))
             .Returns((string candidatePath) => fileContentsByPath.ContainsKey(candidatePath));
         file.Setup(candidate => candidate.ReadAllTextAsync(
-                It.IsAny<string>(),
-                TestContext.Current.CancellationToken))
+            It.IsAny<string>(),
+            TestContext.Current.CancellationToken))
             .Returns((string candidatePath, CancellationToken _) => Task.FromResult(fileContentsByPath[candidatePath]));
         path.Setup(candidate => candidate.IsPathRooted(It.IsAny<string>()))
             .Returns((string candidatePath) => candidatePath.StartsWith("/", StringComparison.Ordinal));

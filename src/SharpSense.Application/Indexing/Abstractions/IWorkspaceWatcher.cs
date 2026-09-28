@@ -19,8 +19,12 @@ public interface IWorkspaceWatcher
     /// <param name="repositoryRoot">Absolute repository root path whose contents should be observed.</param>
     /// <param name="onBatchChanged">Callback that receives each debounced batch of relevant workspace file changes.</param>
     /// <param name="ct"><see cref="CancellationToken"/> for the current watch session.</param>
+    /// <param name="initialize">Optional initial indexing, executed after subscribing while changes are buffered.</param>
+    /// <param name="onReady">Called after initialization and all buffered changes have been reconciled.</param>
     Task Watch(
         string repositoryRoot,
         Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task> onBatchChanged,
-        CancellationToken ct);
+        CancellationToken ct,
+        Func<CancellationToken, Task>? initialize = null,
+        Action? onReady = null);
 }

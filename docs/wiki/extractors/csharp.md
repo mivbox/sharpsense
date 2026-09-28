@@ -1,45 +1,29 @@
----
-title: "CSharp"
-type: extractor
-tags: [csharp, roslyn, implemented]
-created: 2026-04-26
-updated: 2026-05-14
-confidence: high
----
+# C# extraction
 
-## Target Language
+C# sources use Roslyn and MSBuild. Select explicit `.csproj`, `.sln`, or `.slnx` inputs in a [workspace](../cli/workspace-command.md); there is no positional analyze target.
 
-C#. `CSharpLanguageExtractor` is the Roslyn-backed extractor that turns a Target into project nodes, code nodes, dependency edges, and diagnostics while keeping MSBuild loading separate from in-memory analysis.
+## Analysis
 
-## Full Index Logic
+The workspace loader resolves project membership, references, parse options, and compilation context. Referenced projects may be loaded for semantic resolution while selected projects determine the emitted graph scope.
 
-1. `CSharpLanguageExtractor.Extract()` sends the Target path, a fresh `RoslynWorkspaceOptions`, and the optional progress reporter to `IWorkspaceLoader`.
-2. `IWorkspaceLoader` opens or reuses the MSBuild-backed workspace snapshot for the Target, using the [[architecture/virtual-file-system]] seam for path and file checks.
-3. `CSharpLanguageExtractor` then hands the already-loaded `Solution` plus repository workspace details to `ITargetAnalysisEngine`.
-4. `ITargetAnalysisEngine` creates repository-relative project ids and project nodes for the ordered projects in the workspace snapshot.
-5. `NodeExtractor` walks the ordered projects and documents to emit `CodeNode` records plus the symbol maps needed for edge construction.
-6. For C# declarations, `RoslynSymbolUtilities` now extracts only `<summary>` and `<remarks>` text, strips nested XML formatting, ignores low-signal tags such as `<param>`, `<returns>`, and `<exception>`, and stores that intent text separately from the rendered signature.
-7. `NodeExtractor` also computes a one-way SHA-256 hash from the declaration syntax after stripping every `SyntaxTrivia` entry (whitespace, formatting, comments) from the declaration tokens. Trivia-only edits therefore leave `BodyHash` stable, while structural code changes still invalidate the persisted hash.
-8. `EdgeExtractor` consumes the same Roslyn snapshot and symbol maps to emit dependency edges.
-9. Roslyn edge extraction now emits structural `ParentOf` relationships in addition to functional edges: projects parent top-level types, containing types parent nested types, and types parent declared methods, properties, and fields. Namespaces stay unmodeled, so top-level types attach directly to their project node.
-10. Member dependency extraction also re-walks lambda expressions passed as invocation arguments, so mocking-style calls such as `Setup(x => x.ProcessPayment())` can still emit a `MethodCall` edge to the interface method discovered inside the lambda body.
-11. The extractor returns projects, code nodes, edges, and diagnostics to the indexing pipeline described in [[persistence/sqlite-schema]].
+Node and edge extraction uses syntax and semantic symbols to identify declarations, calls, type relationships, and structural containment. XML `summary` and `remarks` contribute searchable documentation. Method-body hashes ignore trivia so formatting-only changes need not invalidate existing embeddings or memories.
 
-## Incremental Logic
+Canonical C# identity includes the owning project. Two projects can declare the same fully qualified name and still produce distinct graph nodes. Partial declarations within one project are consolidated by symbol identity. Do not deduplicate unrelated projects solely by name.
 
-1. `ExtractIncremental()` filters the incoming batch to C#-affected changes only.
-2. `IWorkspaceLoader.Load()` ensures the Target is present in the workspace cache, and `IWorkspaceLoader.UpdateDocuments()` applies modified-document text updates in place when possible.
-3. Modified-document reads now retry across short transient failures; if the file still cannot be read stably, the loader falls back to reloading the Roslyn workspace instead of failing the whole batch immediately.
-4. Any add, delete, rename, or unresolved file also forces a workspace reload so Roslyn state never drifts from the real Target.
-5. `ITargetAnalysisEngine.ExtractIncremental()` analyzes only the changed documents from the updated in-memory `Solution`.
-6. Incremental C# indexing now compares the newly extracted `SearchText` and trivia-insensitive `BodyHash` against the persisted rows for the changed files. Matching nodes reuse their stored vector embedding, while new or stale nodes regenerate embeddings before persistence.
-7. The resulting nodes and edges flow through the RelativeFilePath-targeted overwrite path coordinated by [[architecture/incremental-watch]].
-8. Because the analysis engine accepts in-memory `Solution` and `Project` models directly, the default Roslyn tests can exercise extraction through `AdhocWorkspace` instead of temp directories.
+## Errors and warnings
 
-## Dependencies
+SharpSense consumes Roslyn's syntax and semantic models without requiring a successful compiler emit. Code containing compiler errors can still contribute declarations and resolvable relationships when its projects load; unresolved relationships may be absent.
 
-- Roslyn `MSBuildWorkspace` and `Microsoft.Build.Locator` for loading C# Targets.
-- `IWorkspaceLoader`, `WorkspaceLoader`, `MsBuildWorkspaceFactory`, and `MsBuildLocatorRegistration` for workspace lifecycle management.
-- `ITargetAnalysisEngine`, `NodeExtractor`, and `EdgeExtractor` for syntax and semantic extraction over already-loaded Roslyn models.
-- `IRepositoryWorkspace` for repository-relative project and document paths.
-- [[architecture/virtual-file-system]] for filesystem-backed path and content access.
+Warning promotion is disabled only in SharpSense's design-time MSBuild workspace. MSBuild and NuGet warnings, including vulnerability advisories, remain available in index diagnostics. This does not edit project files, change normal build or CI policies, disable NuGet auditing, or repair vulnerable dependencies.
+
+Roslyn reports both MSBuild warnings and errors as workspace failures. SharpSense recovers their original severity from private temporary MSBuild diagnostic logs and deletes those captures after loading. Only failures matched to recorded warning events are treated as warnings; unknown failures remain fatal.
+
+Actual project-loading errors remain fatal. Errors already recorded in restore assets are not silently reclassified as warnings. Missing SDKs, failed package resolution, invalid projects, and unreadable required inputs can prevent loading; the previous committed graph is preserved if a required source fails.
+
+## Watching and limitations
+
+Suitable modified-file events can update documents in a warm Roslyn workspace. Project membership, structural changes, and generator/configuration inputs can require reloading. A named-workspace update still extracts and reconciles the complete selected graph, rather than persisting only the changed file.
+
+Analysis depends on the repository's SDK, package restore, and MSBuild configuration. Dynamic dispatch, reflection, external implementation details, and runtime-only relationships are not a guarantee of complete static graph coverage. Review indexing diagnostics when loading or extraction fails.
+
+See [source discovery](../architecture/file-discovery.md), [watch reconciliation](../architecture/incremental-watch.md), and [identity persistence](../persistence/sqlite-schema.md).

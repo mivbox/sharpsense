@@ -1,23 +1,45 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.Storage;
 
 public static class RepositoryWorkspaceServiceCollectionExtensions
 {
+    public static IServiceCollection AddWorkspaceCatalog(this IServiceCollection services)
+    {
+        services.AddFileSystem();
+        services.TryAddSingleton<IWorkspaceCatalog, WorkspaceCatalog>();
+        services.TryAddScoped<IWorkspaceScope, WorkspaceScope>();
+
+        return services;
+    }
+
     public static IServiceCollection AddRepositoryWorkspace(
         this IServiceCollection services,
-        string workingDirectory)
+        string workingDirectory,
+        string? workspaceNameOrId = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
 
+        services.AddWorkspaceCatalog();
+        services.TryAddSingleton(provider => provider.GetRequiredService<IWorkspaceCatalog>()
+            .Resolve(workspaceNameOrId, workingDirectory));
+        services.TryAddSingleton(provider => provider.GetRequiredService<WorkspaceSelection>().Workspace);
+
+        return services;
+    }
+
+    public static IServiceCollection AddRepositoryWorkspace(
+        this IServiceCollection services,
+        WorkspaceSelection selection)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(selection);
+
         services.AddFileSystem();
-        services.TryAddSingleton<IRepositoryWorkspaceFactory, RepositoryWorkspaceFactory>();
-        services.TryAddSingleton<IRepositoryWorkspace>(ctx =>
-            ctx.GetRequiredService<IRepositoryWorkspaceFactory>()
-                .CreateFromWorkingDirectory(workingDirectory));
+        services.AddSingleton(selection);
+        services.AddSingleton(selection.Workspace);
 
         return services;
     }

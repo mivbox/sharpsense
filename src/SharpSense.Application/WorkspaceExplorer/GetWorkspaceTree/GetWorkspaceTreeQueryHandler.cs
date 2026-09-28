@@ -7,7 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace SharpSense.Application.WorkspaceExplorer.GetWorkspaceTree;
 
 [ExcludeFromCodeCoverage(Justification = "Application layer proxy, no logic to test.")]
-public sealed class GetWorkspaceTreeQueryHandler(IWorkspaceTreeRepository workspaceTreeRepository)
+internal sealed class GetWorkspaceTreeQueryHandler(IWorkspaceTreeRepository workspaceTreeRepository)
     : IQueryHandler<GetWorkspaceTreeQuery, WorkspaceTreeResult>
 {
     public Task<WorkspaceTreeResult> Handle(

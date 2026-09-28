@@ -1,0 +1,41 @@
+<Project>
+  <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectName)').EndsWith('Tests'))">
+    <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(IsTestProject)' == 'true'">
+    <PackageReference Include="AwesomeAssertions" />
+    <PackageReference Include="coverlet.collector">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Moq" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup Condition="'$(IsTestProject)' == 'true'">
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'SharpSense.Application'">
+    <InternalsVisibleTo Include="SharpSense.Application.Tests" />
+    <InternalsVisibleTo Include="SharpSense.Infrastructure.Tests" />
+    <InternalsVisibleTo Include="SharpSense.IntegrationTests" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'SharpSense.Infrastructure'">
+    <InternalsVisibleTo Include="SharpSense.Cli.Tests" />
+    <InternalsVisibleTo Include="SharpSense.Infrastructure.Tests" />
+    <InternalsVisibleTo Include="SharpSense.IntegrationTests" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'SharpSense.Cli'">
+    <InternalsVisibleTo Include="SharpSense.Cli.Tests" />
+    <InternalsVisibleTo Include="SharpSense.IntegrationTests" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'SharpSense.Application' Or '$(MSBuildProjectName)' == 'SharpSense.Infrastructure' Or '$(MSBuildProjectName)' == 'SharpSense.Cli'">
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+</Project>

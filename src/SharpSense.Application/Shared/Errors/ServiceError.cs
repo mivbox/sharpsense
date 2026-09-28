@@ -8,7 +8,7 @@ namespace SharpSense.Application.Shared.Errors;
 /// has a canonical code so the CLI, MCP, and any future HTTP transport can map the failure to a
 /// uniform exit status without re-parsing free-form messages.
 /// </summary>
-public class ServiceError : Error
+public sealed class ServiceError : Error
 {
     public ServiceError(ServiceErrorCode errorCode)
     {
@@ -22,5 +22,8 @@ public class ServiceError : Error
         ErrorCode = errorCode;
     }
 
-    public ServiceErrorCode ErrorCode { get; }
+    public ServiceErrorCode ErrorCode
+    {
+        get;
+    }
 }

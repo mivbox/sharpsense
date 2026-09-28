@@ -2,9 +2,10 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Moq;
+using SharpSense.Application.Indexing;
 using SharpSense.Application.Indexing.Abstractions;
-using SharpSense.Application.Indexing.IndexTarget;
-using SharpSense.Application.Indexing.IndexTarget.Models;
+using SharpSense.Application.Indexing.IndexWorkspace;
+using SharpSense.Application.Indexing.IndexWorkspace.Models;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Indexing.UpdateWorkspaceFiles;
 using SharpSense.Application.Indexing.UpdateWorkspaceFiles.Models;
@@ -14,7 +15,6 @@ using SharpSense.Application.Shared.Options;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Persistence;
-using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Infrastructure.Shared;
 using SharpSense.Testkit;
 
@@ -25,19 +25,21 @@ public sealed class KnowledgeGraphIndexingTests
     [Fact]
     public async Task WhenIndexingTargetWithDocumentNodes_ThenPersistsDocumentNodesAndLinks()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
-            UseMigrations: true,
-            LoadVectorExtension: true));
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
+                UseMigrations: true,
+                LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext(
             ct: TestContext.Current.CancellationToken);
         var indexing = CreateIndexing(
-            inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
+            inMemoryFactory.CreateDbContextFactory(),
             fullMarkdownNodes: CreateGuideAndReferenceDocuments(),
             incrementalMarkdownNodes: EmptyNodes(),
             workspacePaths: CreateWorkspacePaths());
 
         await indexing.Index(
-            new IndexTargetCommand(),
+            new IndexWorkspaceCommand(),
             TestContext.Current.CancellationToken);
         context.ChangeTracker.Clear();
 
@@ -49,12 +51,12 @@ public sealed class KnowledgeGraphIndexingTests
             .OrderBy(codeNode => codeNode.CanonicalId)
             .ToArrayAsync(TestContext.Current.CancellationToken);
         var documentEdges = await CodeNodeNavigationQueries.ProjectDependencyEdges(
-                context,
-                context.DependencyEdges
+            context,
+            context.DependencyEdges
                     .AsNoTracking()
-                    .Where(edge => edge.EdgeType == EdgeType.DocumentLink)
-                    .OrderBy(edge => edge.CallerNodeId)
-                    .ThenBy(edge => edge.CalleeNodeId))
+                .Where(edge => edge.EdgeType == EdgeType.DocumentLink)
+                .OrderBy(edge => edge.CallerNodeId)
+                .ThenBy(edge => edge.CalleeNodeId))
             .ToArrayAsync(TestContext.Current.CancellationToken);
         var directories = await context.Directories
             .AsNoTracking()
@@ -69,13 +71,13 @@ public sealed class KnowledgeGraphIndexingTests
         documentNodes.Select(static node => node.CanonicalId)
             .Should()
             .Equal(
-                "code:doc:docs/Guide.md#document-root",
-                "code:doc:docs/Reference.md#document-root");
+            "code:doc:docs/Guide.md#document-root",
+            "code:doc:docs/Reference.md#document-root");
         documentNodes.Select(static node => node.RelativeFilePath)
             .Should()
             .Equal(
-                "docs/Guide.md",
-                "docs/Reference.md");
+            "docs/Guide.md",
+            "docs/Reference.md");
         documentEdges.Should().ContainSingle();
         documentEdges[0].CallerId.Should().Be("code:doc:docs/Guide.md#document-root");
         documentEdges[0].CalleeId.Should().Be("code:doc:docs/Reference.md#document-root");
@@ -88,46 +90,56 @@ public sealed class KnowledgeGraphIndexingTests
     [Fact]
     public async Task WhenReindexingUnchangedTarget_ThenPreservesPersistedIntegerIds()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
-            UseMigrations: true,
-            LoadVectorExtension: true));
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
+                UseMigrations: true,
+                LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext(
             ct: TestContext.Current.CancellationToken);
         var indexing = CreateIndexing(
-            inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
+            inMemoryFactory.CreateDbContextFactory(),
             fullMarkdownNodes: CreateGuideAndReferenceDocuments(),
             incrementalMarkdownNodes: EmptyNodes(),
             workspacePaths: CreateWorkspacePaths());
 
-        await indexing.Index(new IndexTargetCommand(), TestContext.Current.CancellationToken);
+        await indexing.Index(new IndexWorkspaceCommand(), TestContext.Current.CancellationToken);
         var persistedIds = await context.CodeNodes
             .AsNoTracking()
             .Join(
-                context.GraphNodes.AsNoTracking(),
-                codeNode => codeNode.Id,
-                graphNode => graphNode.Id,
-                (codeNode, graphNode) => new { codeNode.Id, graphNode.CanonicalId })
+            context.GraphNodes.AsNoTracking(),
+            codeNode => codeNode.Id,
+            graphNode => graphNode.Id,
+            (codeNode, graphNode) => new
+            {
+                codeNode.Id,
+                graphNode.CanonicalId
+            })
             .OrderBy(candidate => candidate.CanonicalId)
             .ToDictionaryAsync(
-                candidate => candidate.CanonicalId,
-                candidate => candidate.Id,
-                TestContext.Current.CancellationToken);
+            candidate => candidate.CanonicalId,
+            candidate => candidate.Id,
+            TestContext.Current.CancellationToken);
 
-        await indexing.Index(new IndexTargetCommand(), TestContext.Current.CancellationToken);
+        await indexing.Index(new IndexWorkspaceCommand(), TestContext.Current.CancellationToken);
         context.ChangeTracker.Clear();
 
         var reindexedIds = await context.CodeNodes
             .AsNoTracking()
             .Join(
-                context.GraphNodes.AsNoTracking(),
-                codeNode => codeNode.Id,
-                graphNode => graphNode.Id,
-                (codeNode, graphNode) => new { codeNode.Id, graphNode.CanonicalId })
+            context.GraphNodes.AsNoTracking(),
+            codeNode => codeNode.Id,
+            graphNode => graphNode.Id,
+            (codeNode, graphNode) => new
+            {
+                codeNode.Id,
+                graphNode.CanonicalId
+            })
             .OrderBy(candidate => candidate.CanonicalId)
             .ToDictionaryAsync(
-                candidate => candidate.CanonicalId,
-                candidate => candidate.Id,
-                TestContext.Current.CancellationToken);
+            candidate => candidate.CanonicalId,
+            candidate => candidate.Id,
+            TestContext.Current.CancellationToken);
 
         reindexedIds.Should().BeEquivalentTo(persistedIds);
     }
@@ -135,18 +147,20 @@ public sealed class KnowledgeGraphIndexingTests
     [Fact]
     public async Task WhenUpdatingWorkspaceFilesForModifiedMarkdown_ThenReplacesDocumentNodesAndSearchRows()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
-            UseMigrations: true,
-            LoadVectorExtension: true));
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
+                UseMigrations: true,
+                LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext(
             ct: TestContext.Current.CancellationToken);
         var indexing = CreateIndexing(
-            inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
+            inMemoryFactory.CreateDbContextFactory(),
             fullMarkdownNodes: CreateGettingStartedDocuments(),
             incrementalMarkdownNodes: CreateIncrementalGuideDocuments(),
             workspacePaths: CreateWorkspacePaths());
 
-        await indexing.Index(new IndexTargetCommand(), TestContext.Current.CancellationToken);
+        await indexing.Index(new IndexWorkspaceCommand(), TestContext.Current.CancellationToken);
 
         await indexing.UpdateIncremental(
             new UpdateWorkspaceFilesCommand(
@@ -168,13 +182,13 @@ public sealed class KnowledgeGraphIndexingTests
             .ToArrayAsync(TestContext.Current.CancellationToken);
         var oldSearchCount = await context.Database
             .SqlQueryRaw<int>(
-                "SELECT COUNT(*) AS Value FROM CodeNodeSearch WHERE CanonicalId = {0}",
-                "code:doc:docs/Guide.md#getting-started")
+            "SELECT COUNT(*) AS Value FROM CodeNodeSearch WHERE CanonicalId = {0}",
+            "code:doc:docs/Guide.md#getting-started")
             .SingleAsync(TestContext.Current.CancellationToken);
         var newSearchCount = await context.Database
             .SqlQueryRaw<int>(
-                "SELECT COUNT(*) AS Value FROM CodeNodeSearch WHERE CanonicalId = {0}",
-                "code:doc:docs/Guide.md#incremental-guide")
+            "SELECT COUNT(*) AS Value FROM CodeNodeSearch WHERE CanonicalId = {0}",
+            "code:doc:docs/Guide.md#incremental-guide")
             .SingleAsync(TestContext.Current.CancellationToken);
 
         guideNodes.Should().Contain(static node => node.CanonicalId == "code:doc:docs/Guide.md#incremental-guide");
@@ -186,18 +200,24 @@ public sealed class KnowledgeGraphIndexingTests
     [Fact]
     public async Task WhenUpdatingWorkspaceFilesForModifiedMarkdown_ThenPreservesInboundEdgesFromUnchangedDocuments()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
-            UseMigrations: true,
-            LoadVectorExtension: true));
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
+                UseMigrations: true,
+                LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext(
             ct: TestContext.Current.CancellationToken);
         var indexing = CreateIndexing(
-            inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
+            inMemoryFactory.CreateDbContextFactory(),
             fullMarkdownNodes: CreateLinkedDocuments(),
-            incrementalMarkdownNodes: CreateUpdatedLinkedDocuments(),
+            incrementalMarkdownNodes: CreateUpdatedLinkedDocuments() with
+            {
+                CodeNodes = [.. CreateLinkedDocuments().CodeNodes.Where(node => node.RelativeFilePath.EndsWith("DocA.md", StringComparison.Ordinal)), .. CreateUpdatedLinkedDocuments().CodeNodes],
+                Edges = CreateLinkedDocuments().Edges
+            },
             workspacePaths: CreateWorkspacePaths());
 
-        await indexing.Index(new IndexTargetCommand(), TestContext.Current.CancellationToken);
+        await indexing.Index(new IndexWorkspaceCommand(), TestContext.Current.CancellationToken);
 
         await indexing.UpdateIncremental(
             new UpdateWorkspaceFilesCommand(
@@ -212,21 +232,30 @@ public sealed class KnowledgeGraphIndexingTests
         var inboundEdgeCount = await context.DependencyEdges
             .AsNoTracking()
             .Join(
-                context.GraphNodes.AsNoTracking(),
-                edge => edge.CallerNodeId,
-                graphNode => graphNode.Id,
-                (edge, callerNode) => new { edge, callerNode })
+            context.GraphNodes.AsNoTracking(),
+            edge => edge.CallerNodeId,
+            graphNode => graphNode.Id,
+            (edge, callerNode) => new
+            {
+                edge,
+                callerNode
+            })
             .Join(
-                context.GraphNodes.AsNoTracking(),
-                candidate => candidate.edge.CalleeNodeId,
-                graphNode => graphNode.Id,
-                (candidate, calleeNode) => new { candidate.edge, candidate.callerNode, calleeNode })
+            context.GraphNodes.AsNoTracking(),
+            candidate => candidate.edge.CalleeNodeId,
+            graphNode => graphNode.Id,
+            (candidate, calleeNode) => new
+            {
+                candidate.edge,
+                candidate.callerNode,
+                calleeNode
+            })
             .CountAsync(
-                candidate =>
+            candidate =>
                     candidate.callerNode.CanonicalId == "code:doc:docs/DocA.md#document-root" &&
                     candidate.calleeNode.CanonicalId == "code:doc:docs/DocB.md#document-root" &&
                     candidate.edge.EdgeType == EdgeType.DocumentLink,
-                TestContext.Current.CancellationToken);
+            TestContext.Current.CancellationToken);
 
         inboundEdgeCount.Should().Be(1);
     }
@@ -234,18 +263,24 @@ public sealed class KnowledgeGraphIndexingTests
     [Fact]
     public async Task WhenUpdatingWorkspaceFilesForDeletedMarkdown_ThenRemovesDocumentNodesAndSearchRows()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
-            UseMigrations: true,
-            LoadVectorExtension: true));
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
+                UseMigrations: true,
+                LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext(
             ct: TestContext.Current.CancellationToken);
         var indexing = CreateIndexing(
-            inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
+            inMemoryFactory.CreateDbContextFactory(),
             fullMarkdownNodes: CreateLinkedDocuments(),
-            incrementalMarkdownNodes: EmptyNodes(),
+            incrementalMarkdownNodes: CreateLinkedDocuments() with
+            {
+                CodeNodes = [.. CreateLinkedDocuments().CodeNodes.Where(node => node.RelativeFilePath.EndsWith("DocA.md", StringComparison.Ordinal))],
+                Edges = []
+            },
             workspacePaths: CreateWorkspacePaths());
 
-        await indexing.Index(new IndexTargetCommand(), TestContext.Current.CancellationToken);
+        await indexing.Index(new IndexWorkspaceCommand(), TestContext.Current.CancellationToken);
 
         await indexing.UpdateIncremental(
             new UpdateWorkspaceFilesCommand(
@@ -260,17 +295,21 @@ public sealed class KnowledgeGraphIndexingTests
         var deletedNodeCount = await context.CodeNodes
             .AsNoTracking()
             .Join(
-                context.Documents.AsNoTracking(),
-                codeNode => codeNode.DocumentId,
-                document => document.Id,
-                (codeNode, document) => new { codeNode, document })
+            context.Documents.AsNoTracking(),
+            codeNode => codeNode.DocumentId,
+            document => document.Id,
+            (codeNode, document) => new
+            {
+                codeNode,
+                document
+            })
             .CountAsync(
-                candidate => candidate.document.RelativePath == "docs/DocB.md",
-                TestContext.Current.CancellationToken);
+            candidate => candidate.document.RelativePath == "docs/DocB.md",
+            TestContext.Current.CancellationToken);
         var searchCount = await context.Database
             .SqlQueryRaw<int>(
-                "SELECT COUNT(*) AS Value FROM CodeNodeSearch WHERE CanonicalId = {0}",
-                "code:doc:docs/DocB.md#document-root")
+            "SELECT COUNT(*) AS Value FROM CodeNodeSearch WHERE CanonicalId = {0}",
+            "code:doc:docs/DocB.md#document-root")
             .SingleAsync(TestContext.Current.CancellationToken);
 
         deletedNodeCount.Should().Be(0);
@@ -281,18 +320,20 @@ public sealed class KnowledgeGraphIndexingTests
     [Fact]
     public async Task WhenUpdatingWorkspaceFilesForDeletedDirectory_ThenRemovesContainedDocumentNodes()
     {
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
-            UseMigrations: true,
-            LoadVectorExtension: true));
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
+                UseMigrations: true,
+                LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext(
             ct: TestContext.Current.CancellationToken);
         var indexing = CreateIndexing(
-            inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
+            inMemoryFactory.CreateDbContextFactory(),
             fullMarkdownNodes: CreateNestedDirectoryDocuments(),
             incrementalMarkdownNodes: EmptyNodes(),
             workspacePaths: CreateWorkspacePaths());
 
-        await indexing.Index(new IndexTargetCommand(), TestContext.Current.CancellationToken);
+        await indexing.Index(new IndexWorkspaceCommand(), TestContext.Current.CancellationToken);
 
         await indexing.UpdateIncremental(
             new UpdateWorkspaceFilesCommand(
@@ -307,13 +348,17 @@ public sealed class KnowledgeGraphIndexingTests
         var deletedNodeCount = await context.CodeNodes
             .AsNoTracking()
             .Join(
-                context.Documents.AsNoTracking(),
-                codeNode => codeNode.DocumentId,
-                document => document.Id,
-                (codeNode, document) => new { codeNode, document })
+            context.Documents.AsNoTracking(),
+            codeNode => codeNode.DocumentId,
+            document => document.Id,
+            (codeNode, document) => new
+            {
+                codeNode,
+                document
+            })
             .CountAsync(
-                candidate => candidate.document.RelativePath.StartsWith("docs/Legacy/"),
-                TestContext.Current.CancellationToken);
+            candidate => candidate.document.RelativePath.StartsWith("docs/Legacy/"),
+            TestContext.Current.CancellationToken);
         var documentPaths = await context.Documents
             .AsNoTracking()
             .Select(static document => document.RelativePath)
@@ -326,34 +371,30 @@ public sealed class KnowledgeGraphIndexingTests
     [Fact]
     public async Task WhenUpdatingWorkspaceFilesForRenamedDirectory_ThenReplacesContainedDocumentPaths()
     {
-        var expectedDiscoveryGlobs = new[] { "**/*.cs", "**/*.md", "**/*.markdown", "**/*.mdown", "**/*.mkd" };
-        await using var inMemoryFactory = new InMemoryContextFactory(new InMemoryContextFactoryOptions(
-            UseMigrations: true,
-            LoadVectorExtension: true));
-        await using var context = await inMemoryFactory.GetContext<SharpSenseDbContext>(
+        var expectedDiscoveryGlobs = new[]
+        {
+            "**/*.cs",
+            "**/*.ts",
+            "**/*.tsx",
+            "**/*.md",
+            "**/*.markdown",
+            "**/*.mdown",
+            "**/*.mkd"
+        };
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(
+                UseMigrations: true,
+                LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext(
             ct: TestContext.Current.CancellationToken);
-        var workspaceFileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
-        workspaceFileDiscoverer.Setup(candidate => candidate.GetAllowedFiles(
-                "/repo/docs/Current",
-                It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(expectedDiscoveryGlobs)),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(
-            [
-                new DiscoveredFile(
-                    "/repo/docs/Current/Guide.md",
-                    "docs/Current/Guide.md"),
-                new DiscoveredFile(
-                    "/repo/docs/Current/node_modules/Generated.md",
-                    "docs/Current/node_modules/Generated.md")
-            ]);
         var indexing = CreateIndexing(
-            inMemoryFactory.CreateDbContextFactory<SharpSenseDbContext>(),
+            inMemoryFactory.CreateDbContextFactory(),
             fullMarkdownNodes: CreateLegacyGuideDocuments(),
             incrementalMarkdownNodes: CreateCurrentGuideDocuments(),
-            workspacePaths: CreateWorkspacePaths(),
-            workspaceFileDiscoverer: workspaceFileDiscoverer.Object);
+            workspacePaths: CreateWorkspacePaths());
 
-        await indexing.Index(new IndexTargetCommand(), TestContext.Current.CancellationToken);
+        await indexing.Index(new IndexWorkspaceCommand(), TestContext.Current.CancellationToken);
 
         await indexing.UpdateIncremental(
             new UpdateWorkspaceFilesCommand(
@@ -372,7 +413,6 @@ public sealed class KnowledgeGraphIndexingTests
 
         documentPaths.Should().Contain("docs/Current/Guide.md");
         documentPaths.Should().NotContain("docs/Legacy/Guide.md");
-        workspaceFileDiscoverer.VerifyAll();
     }
 
     private static ExtractedNodes CreateGuideAndReferenceDocuments()
@@ -567,16 +607,18 @@ public sealed class KnowledgeGraphIndexingTests
         var workspacePaths = new Mock<IIndexingWorkspacePaths>(MockBehavior.Strict);
         workspacePaths.SetupGet(candidate => candidate.RootPath)
             .Returns("/repo");
-        workspacePaths.Setup(candidate => candidate.GetRequiredTargetPath("SharpSense.sln"))
-            .Returns("/repo/SharpSense.sln");
+        workspacePaths.Setup(candidate => candidate.GetRequiredTargetPath("docs"))
+            .Returns("/repo/docs");
         workspacePaths.Setup(candidate => candidate.ToRepositoryRelativePath(It.IsAny<string>()))
             .Returns((string? path) => NormalizeRepositoryPath(path));
         workspacePaths.Setup(candidate => candidate.TryToRepositoryRelativePath(It.IsAny<string>(), out It.Ref<string>.IsAny))
             .Returns((string? path, out string relativePath) =>
             {
                 relativePath = NormalizeRepositoryPath(path);
+
                 return !string.IsNullOrWhiteSpace(relativePath);
             });
+
         return workspacePaths;
     }
 
@@ -588,6 +630,7 @@ public sealed class KnowledgeGraphIndexingTests
         }
 
         var normalizedPath = path.Replace('\\', '/');
+
         return normalizedPath.StartsWith("/repo/", StringComparison.Ordinal)
             ? normalizedPath["/repo/".Length..]
             : normalizedPath;
@@ -597,43 +640,24 @@ public sealed class KnowledgeGraphIndexingTests
         IDbContextFactory<SharpSenseDbContext> dbContextFactory,
         ExtractedNodes fullMarkdownNodes,
         ExtractedNodes incrementalMarkdownNodes,
-        Mock<IIndexingWorkspacePaths> workspacePaths,
-        IWorkspaceFileDiscoverer? workspaceFileDiscoverer = null)
+        Mock<IIndexingWorkspacePaths> workspacePaths)
     {
         var markdownExtractor = new Mock<ILanguageExtractor>(MockBehavior.Strict);
-        markdownExtractor.SetupGet(candidate => candidate.ExtractorName)
-            .Returns("markdown");
-        markdownExtractor.Setup(candidate => candidate.Extract(
-                It.IsAny<ExtractionContext>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(fullMarkdownNodes);
-        markdownExtractor.Setup(candidate => candidate.ExtractIncremental(
-                It.IsAny<IncrementalExtractionContext>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(incrementalMarkdownNodes);
-
-        var cSharpExtractor = new Mock<ILanguageExtractor>(MockBehavior.Strict);
-        cSharpExtractor.SetupGet(candidate => candidate.ExtractorName)
-            .Returns("csharp");
-        cSharpExtractor.Setup(candidate => candidate.Extract(
-                It.IsAny<ExtractionContext>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(EmptyNodes());
-        cSharpExtractor.Setup(candidate => candidate.ExtractIncremental(
-                It.IsAny<IncrementalExtractionContext>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(EmptyNodes());
+        markdownExtractor.SetupGet(candidate => candidate.SourceKind)
+            .Returns(WorkspaceSourceKind.Markdown);
+        markdownExtractor.Setup(candidate => candidate.Extract(It.IsAny<ExtractionContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ExtractionContext context, CancellationToken _) =>
+                context.ChangedFiles is null ? fullMarkdownNodes : incrementalMarkdownNodes);
 
         return new KnowledgeGraphIndexing(
-            [cSharpExtractor.Object, markdownExtractor.Object],
+            [markdownExtractor.Object],
             new NoOpEmbeddingGenerator(),
             new KnowledgeGraphRepository(dbContextFactory),
             workspacePaths.Object,
-            workspaceFileDiscoverer ?? new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict).Object,
-            Options.Create(new SharpSenseCliOptions
+            Options.Create(new WorkspaceExecutionOptions
             {
                 RepositoryRoot = "/repo",
-                TargetPath = "SharpSense.sln",
+                WorkspaceSources = [new(WorkspaceSourceKind.Markdown, "docs/**/*.md")],
                 SkipEmbeddings = true
             }));
     }
@@ -655,26 +679,38 @@ public sealed class KnowledgeGraphIndexingTests
         IEmbeddingGenerator embeddingGenerator,
         IKnowledgeGraphRepository knowledgeGraphRepository,
         IIndexingWorkspacePaths workspacePaths,
-        IWorkspaceFileDiscoverer workspaceFileDiscoverer,
-        IOptions<SharpSenseCliOptions> options)
+        IOptions<WorkspaceExecutionOptions> options)
     {
-        private readonly IndexTargetCommandHandler _indexTargetHandler = new(
-            extractors,
+        private readonly IndexWorkspaceCommandHandler _indexTargetHandler = new IndexWorkspaceCommandHandler(
             embeddingGenerator,
             knowledgeGraphRepository,
             workspacePaths,
-            options);
+            options,
+            new WorkspaceExtractionCoordinator(
+                extractors,
+                workspacePaths,
+                Moq.Mock.Of<IWorkspaceChangeFilter>(),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
+            Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);
 
-        private readonly UpdateWorkspaceFilesCommandHandler _updateWorkspaceFilesHandler = new(
-            extractors,
-            embeddingGenerator,
-            knowledgeGraphRepository,
-            workspacePaths,
-            workspaceFileDiscoverer,
-            options);
+        private readonly UpdateWorkspaceFilesCommandHandler _updateWorkspaceFilesHandler = new UpdateWorkspaceFilesCommandHandler(
+            new IndexWorkspaceCommandHandler(
+                embeddingGenerator,
+                knowledgeGraphRepository,
+                workspacePaths,
+                options,
+                new WorkspaceExtractionCoordinator(
+                    extractors,
+                    workspacePaths,
+                    Moq.Mock.Of<IWorkspaceChangeFilter>(),
+                    Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
+                Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance),
+            Mock.Of<IWorkspaceChangeFilter>(filter => filter.IsRelevant(It.IsAny<IReadOnlyList<WorkspaceFileChange>>()) == true));
 
         public Task Index(
-            IndexTargetCommand command,
+            IndexWorkspaceCommand command,
             CancellationToken ct)
             => _indexTargetHandler.Handle(command, ct);
 

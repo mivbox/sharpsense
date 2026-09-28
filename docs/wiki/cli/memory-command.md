@@ -1,77 +1,31 @@
----
-title: "Memory Command"
-type: cli
-tags: [spectre, memory, semantic, implemented]
-created: 2026-06-06
-updated: 2026-06-06
-confidence: high
----
+# Memories
 
-## Command
+Memories attach Markdown notes to indexed code or document nodes in one workspace.
 
-`sharp-sense memory <action> [options]` exposes the persistent semantic-memory layer to the terminal. The same
-handlers back the MCP `attach_memory` and `delete_memory` tools, so the CLI and the MCP surface stay in lock-step.
-
-## Actions
-
-| Action  | Example                                              | Purpose                                                                                  |
-|---------|------------------------------------------------------|------------------------------------------------------------------------------------------|
-| `add`   | `sharpsense memory add --node-id 42 --content "..." --intent Invariant` | Attach a markdown memory to a code node, with optional `--tag` and `--intent` flags. |
-| `list`  | `sharpsense memory list --node-id 42 --intent-filter Invariant` | List every memory currently attached to a code node, optionally filtered by intent. |
-| `get`   | `sharpsense memory get --memory-id <guid>` or `--memory-ids g1,g2` | Fetch the full markdown content of one or many memories in one round-trip. |
-| `remove`| `sharpsense memory remove --memory-id <guid>`        | Remove a previously attached memory by its persistent Guid.                               |
-
-## Options
-
-| Setting        | Source                          | Purpose                                                                |
-|----------------|---------------------------------|------------------------------------------------------------------------|
-| `Action`       | positional `<action>`           | `add`, `list`, or `remove`.                                            |
-| `NodeId`       | `--node-id <NODE_ID>`           | Required for `add` and `list`. The persisted integer handle from search. |
-| `MemoryId`     | `--memory-id <MEMORY_ID>`       | Required for `remove`. The persistent `Guid` of the memory.            |
-| `Content`      | `--content <CONTENT>`           | Required for `add`. Markdown memory payload.                            |
-| `Tags`         | `--tag <TAG>` (repeatable)      | Optional for `add`. Lowercased, de-duplicated, sorted.                 |
-| `RepositoryRoot` | `--repo-root <path>`          | Override the repository root used for the persisted index.              |
-| `IsVerbose`    | `-v\|--verbose`                 | Enable verbose command-host logging.                                    |
-
-## Exit Codes
-
-| Code | Meaning                                                                                     |
-|------|---------------------------------------------------------------------------------------------|
-| `0`  | Success — memory was attached, listed, or removed.                                          |
-| `1`  | Operation failed (unknown node, empty content, unknown Guid, etc.) — the message is printed. |
-
-## Lifecycle & Cascade
-
-- The CLI/MCP boundary uses the persisted integer `NodeId`; the FQDN is resolved internally and never crosses
-  the tool boundary.
-- Memories are immutable once attached. The only write verbs are `add` (attach) and `remove` (delete).
-- The `IsStale` flag on a memory flips to `true` automatically when the target method's `BodyHash` changes
-  during a re-parse. The agent should then `remove` the stale memory and re-`add` the corrected one.
-- When a code node is removed from the index (e.g. the underlying file is deleted and the workspace is
-  re-parsed), the SQLite cascade foreign key on `MemoryNodeRecord.TargetFullyQualifiedName` automatically
-  removes the matching memories. See [[persistence/sqlite-schema]].
-
-## Composition
-
-The command follows the standard CLI composition recipe (see [[architecture/host-composition]]):
-
-```
-services.AddRepositoryWorkspace(root);
-services.AddMemory();
-services.AddMemoryInfrastructure();
-services.AddPersistence();
+```bash
+sharpsense memory add --workspace product --node-id 42 \
+  --content "Keep this operation idempotent." --intent Invariant --tag reliability
+sharpsense memory list --workspace product --node-id 42
+sharpsense memory list --workspace product --node-id 42 --intent-filter Invariant
+sharpsense memory get --workspace product --memory-id <memory-guid>
+sharpsense memory get --workspace product --memory-ids <first-guid>,<second-guid>
+sharpsense memory remove --workspace product --memory-id <memory-guid>
 ```
 
-`Program.CommandApp.cs` wires the command via `AddCommand<MemoryCommand>("memory")` exactly once; no direct
-service registration is permitted in `Program.cs`.
+Replace placeholder IDs with values returned by search or memory commands. Quote values containing shell-special characters.
 
-## Inline memory shape in `context` and `trace`
+| Option | Purpose |
+| --- | --- |
+| `--node-id` | Required for add and list; an integer ID in the selected workspace. |
+| `--content` | Required Markdown content for add. |
+| `--memory-id` | A memory GUID for get or remove. |
+| `--memory-ids` | Comma-separated GUIDs for batch get. |
+| `--tag` | Repeatable tags for add; normalized and deduplicated. |
+| `--intent` | Convention, Invariant, Todo, Warning, or Decision; defaults to Convention. |
+| `--intent-filter` | Repeatable intent filters for list. |
 
-`sharpsense context --include-memories` and `sharpsense trace --include-memories` surface attached memories
-inline as `id + tags + stale` (no content) plus a `hint` line for stale memories. To retrieve the full
-markdown, use `sharpsense memory get --memory-id <id>` (or the MCP `get_memory` tool).
+Memories are immutable. Delete and attach a replacement when content changes. A memory is marked stale when its saved target hash differs from the current node hash.
 
-## Related Pages
+Persistence binds memories to `CodeNodes.Id`, not a globally unique symbol name. Reindexing preserves memories while the owning canonical node survives; removing that node cascades deletion of its memories. Changing workspace sources can therefore remove attached notes after the next index.
 
-* [[cli/mcp-command]] - the MCP `attach_memory` / `delete_memory` / `get_memory` tools that share the same handlers.
-* [[persistence/sqlite-schema]] - the cascade FK, the UNIQUE FQDN constraint, and the memory table shape.
+[Context](context-command.md) and [trace](trace-command.md) include memory metadata only when requested. Retrieve full text with get. The [MCP tools](mcp-command.md) and UI share the same memory handlers and workspace isolation.

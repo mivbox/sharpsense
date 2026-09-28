@@ -4,6 +4,7 @@ using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 using SharpSense.Infrastructure.Indexing.CSharp;
 using SharpSense.Infrastructure.Indexing.Markdown;
+using SharpSense.Infrastructure.Indexing.TypeScript;
 using SharpSense.Infrastructure.Indexing.Watching;
 using SharpSense.Infrastructure.Storage;
 
@@ -19,18 +20,26 @@ public static class IndexingInfrastructureServiceCollectionExtensions
         services.AddSingleton<IMsBuildWorkspaceFactory, MsBuildWorkspaceFactory>();
         services.TryAddSingleton<NodeExtractor>();
         services.TryAddSingleton<EdgeExtractor>();
-        services.TryAddSingleton<IWorkspaceLoader, WorkspaceLoader>();
+        services.TryAddScoped<IWorkspaceLoader, WorkspaceLoader>();
         services.TryAddSingleton<ITargetAnalysisEngine>(serviceProvider => new RoslynTargetAnalysisEngine(
             serviceProvider.GetRequiredService<NodeExtractor>(),
             serviceProvider.GetRequiredService<EdgeExtractor>(),
             serviceProvider.GetRequiredService<System.IO.Abstractions.IFileSystem>()));
         services.TryAddSingleton<IMarkdownIndexer, MarkdownIndexer>();
         services.TryAddSingleton<IWorkspaceWatcher, WorkspaceWatcher>();
-        services.TryAddSingleton<IWorkspaceFileDiscoverer, WorkspaceFileDiscoverer>();
-        services.TryAddSingleton<IIndexingWorkspacePaths, IndexingWorkspacePaths>();
+        services.TryAddScoped<IWorkspaceFileDiscoverer, WorkspaceFileDiscoverer>();
+        services.TryAddScoped<IIndexingWorkspacePaths, IndexingWorkspacePaths>();
+        services.TryAddScoped<IWorkspaceChangeFilter, WorkspaceChangeFilter>();
         services.TryAddScoped<DocumentDiscoverer>();
+        services.TryAddScoped<TsConfigResolver>();
+        services.TryAddScoped<TypeScriptSourceDiscoverer>();
+        services.TryAddScoped<ICSharpWorkspaceTargetResolver, CSharpWorkspaceTargetResolver>();
+        services.AddTransient<ITypeScriptExtractionPass, CodeNodeExtractionPass>();
+        services.AddTransient<ITypeScriptExtractionPass, ImportDependencyPass>();
+        services.AddTransient<ITypeScriptExtractionPass, HttpEdgeExtractionPass>();
         services.AddTransient<ILanguageExtractor, CSharpLanguageExtractor>();
         services.AddTransient<ILanguageExtractor, MarkdownDocumentExtractor>();
+        services.AddTransient<ILanguageExtractor, TypeScriptLanguageExtractor>();
         services.TryAddScoped<IKnowledgeGraphRepository, KnowledgeGraphRepository>();
 
         return services;

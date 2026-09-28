@@ -1,9 +1,7 @@
-using System.Reflection;
 using AwesomeAssertions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using SharpSense.Infrastructure.Persistence;
 
 namespace SharpSense.Infrastructure.Tests.CodeAnalysis.Roslyn;
 
@@ -73,13 +71,7 @@ public sealed class RoslynSymbolUtilitiesTests
             .DescendantNodes()
             .OfType<TSyntaxNode>()
             .Single();
-        var utilitiesType = typeof(SharpSenseDbContext).Assembly.GetType(
-            "SharpSense.Infrastructure.CodeAnalysis.Roslyn.RoslynSymbolUtilities",
-            throwOnError: true)!;
-        var computeBodyHash = utilitiesType.GetMethod(
-            "ComputeBodyHash",
-            BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Static)!;
 
-        return (string?)computeBodyHash.Invoke(null, [declaration]);
+        return SharpSense.Infrastructure.CodeAnalysis.Roslyn.RoslynSymbolUtilities.ComputeBodyHash(declaration);
     }
 }

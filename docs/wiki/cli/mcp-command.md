@@ -1,144 +1,36 @@
----
-title: "Mcp Command"
-type: cli
-tags: [spectre, mcp, implemented]
-created: 2026-04-26
-updated: 2026-05-14
-confidence: high
----
+# MCP server
 
-## Command
+Start a stdio MCP server bound to a registered workspace:
 
-`sharp-sense mcp` starts the stdio MCP host for SharpSense tools. It exposes the same indexed read surfaces as [[cli/search-command]], [[cli/trace-command]], [[cli/inheritors-command]], and [[cli/context-command]], the execution-focused `ctx_execute` surface shared with [[cli/execute-command]], plus the write-capable `attach_memory`, `delete_memory`, and `refactor_symbol` surfaces, plus the read-only `get_memory` retrieval tool that returns the full markdown of a memory by its persistent Guid. MCP caller tracing still uses the broader `ImpactAnalysisQuery` defaults instead of the CLI trace command's direct-caller shortcut, and both `context` and `trace_node` accept an `EdgeCategory` mask so semantic memory stays opt-in. Shared bootstrapping still follows [[architecture/host-composition]].
-
-Memory metadata is rendered inline as `id + tags + stale` (no content) to keep context small; the agent calls `get_memory(memoryId)` to retrieve the full markdown when it actually needs to act on a memory. Stale memories surface an inline `hint: "call delete_memory + attach_memory to refresh"`.
-
-## Options
-
-| Setting | Source | Purpose |
-| --- | --- | --- |
-| `RepositoryRoot` | `--repo-root <path>` | Resolves the repository workspace used by the MCP tools. |
-| `IsVerbose` | `-v\|--verbose` | Enables verbose host logging for the long-lived stdio process. |
-
-`McpCommand.Configure()` writes `RepositoryRoot` into `IOptions<SharpSenseCliOptions>`, loads `SharpSenseConfig`, and composes the feature modules needed by the MCP tool surface.
-
-## Tool Surface
-
-| Tool | Backing query | Purpose |
-| --- | --- | --- |
-| `ctx_execute` | `CommandExecutionReducer` | Runs a local command, indexes streamed output in a transient DbContext-backed FTS5 store, and returns reduced TOON log excerpts or a compact summary when no query hits are found. |
-| `semantic_search` | `HybridSearchQuery` | Hybrid BM25 + vector search over indexed code nodes, formatted as hierarchical directory/file TOON blocks for token-efficient handoff. |
-| `attach_memory` | `AttachMemoryCommand` | Persists markdown memory against the current FQDN/body-hash snapshot of a code node id. Accepts an `intent` argument (Convention / Invariant / Todo / Warning / Decision) so the agent can filter retrievals by intent. |
-| `delete_memory` | `DeleteMemoryCommand` | Removes a previously attached memory by its persistent Guid; memories are immutable once written. |
-| `get_memory` | `GetMemoryQuery` | Returns the full markdown content of a single memory by its persistent Guid; inline metadata only carries id + intent + tags + stale. |
-| `get_memories` | `GetMemoriesQuery` | Batch fetch the full content of multiple memories in one round-trip. Pass `memoryIds: Guid[]`; returns one rendered memory block per id. |
-| `trace_node` | `TraceQuery` / `ImpactAnalysisQuery` + `IMemoryReader` | Downstream callees or upstream caller blast radius for a known node id, with optional inline semantic memory metadata. |
-| `get_inheritors` | `GetInheritorsQuery` | Direct derived classes or interface implementers for a persisted node id. |
-| `context` | `GetNodeContextQuery` + `GetNodeMemoriesQuery` | Immediate callers, callees, inheritance breadth, and optional `semantic_context` memories for a persisted node id as compressed TOON. |
-| `refactor_symbol` | `IRefactorSymbolService` | Semantically rename a persisted symbol, update Roslyn references when applicable, and return compact TOON write results. |
-
-## Example Outputs and Rough Token Cost
-
-These examples use real fixture outputs and rough token estimates based on output length (`~characters / 4`), so expect model-specific variance.
-
-### `ctx_execute`
-
-Approximate output size for this sample: `~90` tokens.
-
-```text
-command: dotnet build SharpSense.sln
-status: success
-exit_code: 0
-working_directory: /repo
-query: Build succeeded
-metrics:
-  captured_lines: 1201
-  matched_lines: 1
-  block_count: 1
-  truncated: false
-summary: Returned 1 merged block(s) from 1 matched line(s) across 1201 captured line(s).
-output:
-  - span: 1201-1201
-    text: |
-      1201| Build succeeded in 13.7s
+```bash
+sharpsense mcp --workspace product
 ```
 
-### `semantic_search`
+Configure your MCP client to launch executable `sharpsense` with arguments `["mcp", "--workspace", "product"]`. Pass the same absolute `SHARPSENSE_HOME` environment value if the workspace uses a custom home. The workspace must be registered and analyzed before graph queries are useful.
 
-Approximate output size for this sample: `~60` tokens.
+`--workspace` is required, even if `workspace use` has saved a CLI default. Changing that default does not affect running servers. The host keeps one workspace for its lifetime. Run a separate server process to expose a different workspace. Standard output is reserved for MCP transport; diagnostic logging does not replace protocol responses.
 
-```text
-src/SharpSense.Infrastructure/DependencyGraph/:
-  DependencyGraphMapper.cs:
-    - [M] `553` ToExternalGraphNode L20-21
-    - [M] `556` ToGraphNode L32-47
+## Tools
 
-src/SharpSense.Domain/KnowledgeGraph/Nodes/:
-  ProjectNode.cs:
-    - [P] `373` Id L5
-```
+| Tool | Purpose |
+| --- | --- |
+| `graph_stats` | Read graph coverage, database state, indexing timings, and recorded diagnostics; no node ID needed. |
+| `semantic_search` | Hybrid keyword/vector search, with a result limit that defaults to 10. |
+| `context` | Bounded immediate relationships for a node ID. |
+| `trace_node` | Caller or callee navigation for a known node; caller traversal uses impact-analysis defaults. |
+| `get_inheritors` | Direct derived classes and interface implementers. |
+| `attach_memory` | Attach Markdown content, optional tags, and an intent to a node. |
+| `delete_memory` | Delete a memory by GUID. |
+| `get_memory` | Fetch one memory's full content. |
+| `get_memories` | Fetch several memories in one request. |
+| `ctx_execute` | Run a local command in the workspace repository and return bounded matching output excerpts. |
 
-### `context`
+Refactoring and rename tools are not part of the version 1 surface.
 
-Approximate output size for this sample: `~80` tokens.
+Start with graph statistics if index state is uncertain. Search for a relevant node, request context, and trace only the necessary direction. Node IDs belong to this server's workspace. Context and trace include semantic-memory metadata only when the requested edge-category mask includes it; fetch full notes separately.
 
-```text
-node:
-  id: 42
-  name: PaymentProcessor.ProcessPayment(string, int)
-  kind: M
-  file: src/Fixture.App/PaymentProcessor.cs:12-30
+`context` reports invalid or missing node IDs as tool errors with `isError: true` and a readable explanation. Successful results retain the compact TOON text.
 
-incoming:
-  callers: [HttpEndpoint.Handle (Id:7)]
-  implementers: [PaymentProcessorBase (Id:8)]
+`ctx_execute` runs real local commands with the server process's filesystem permissions. It launches an executable without a shell, so shell operators are not interpreted. Its optional FTS query selects context windows; an omitted or unmatched query returns a summary. See [command execution](execute-command.md).
 
-outgoing:
-  callees: [ReceiptWriter.WriteReceipt (Id:9)]
-  inherits: [IPaymentProcessor (Id:10)]
-```
-
-### `trace_node`
-
-Approximate output size for this sample: `~40` tokens.
-
-```text
-- [M] `1` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28
-  -> [M] `3` MessageProvider.GetMessage @ src/Fixture.App/MessageProvider.cs:L7-11
-```
-
-### `get_inheritors`
-
-Approximate output size for this sample: `~30` tokens.
-
-```text
-[C] `7` DerivedAlpha @ src/Fixture.App/DerivedAlpha.cs:3-16
-[C] `8` DerivedBeta @ src/Fixture.App/DerivedBeta.cs:3-17
-```
-
-### `refactor_symbol`
-
-Approximate output size for this sample: `~20` tokens.
-
-```text
-refactor_success: true
-modified_files:
-  - src/Fixture.App/PaymentProcessor.cs
-  - src/Fixture.App/CheckoutController.cs
-```
-
-## Execution Flow
-
-1. `Program.CommandApp.cs` routes `mcp` to `McpCommand`.
-2. `AbstractAsyncCommand<TSettings>` builds the host using the shared rules in [[architecture/host-composition]].
-3. `Configure()` resolves the repository root and registers repository workspace, `SharpSenseConfig`, command execution, Context360, hybrid search, memory, refactoring, indexing infrastructure, embeddings, inheritors, impact analysis, trace, and persistence.
-4. The command adds the MCP server with stdio transport and registers `SharpSenseMcpTools` as the tool surface.
-5. Tool serialization adds `JsonStringEnumConverter<TraceDirection>` and `JsonStringEnumConverter<EdgeCategory>` so trace directions and semantic-edge masks stay stable across the protocol boundary.
-6. `ctx_execute` resolves `ICommandExecutor`, runs the raw command string inside the configured repository root, streams output through the transient FTS5 reducer from [[architecture/windowed-execution-pipeline]], and renders metadata-first TOON through `TokenObjectNotation.SerializeCommandExecutionResult()`.
-7. `semantic_search` resolves `HybridSearchQuery` and serializes hits through `TokenObjectNotation.SerializeSemanticSearch()`, the shared hierarchical TOON serializer used by `sharp-sense search --toon`.
-8. `attach_memory` dispatches `AttachMemoryCommand` through the memory write slice, normalizes tags, reuses embeddings by `ContentHash` when possible, and persists `MemoryNodes` with the cascade FK documented in [[persistence/sqlite-schema]]. `delete_memory` dispatches `DeleteMemoryCommand` through the same slice and removes the row by `Guid Id`. `get_memory` dispatches `GetMemoryQuery` to the same `IMemoryRepository` and returns the full markdown content (including the `IsStale` flag) so the agent can act on the memory. All three methods emit `SharpSenseTraceSpan.Start` traces and return `FluentResults.Result` for expected domain failures. The memory contract is a single `IMemoryRepository` (no separate reader/writer) so callers do not have to thread a pair through DI.
-9. `trace_node` resolves the root node through `ITraceNavigator`, then formats either direct callees or caller chains through the dedicated trace serializers in `TokenObjectNotation`; when `EdgeCategory.Semantic` is present, it also loads stale-aware memories and renders them inline on each owning node.
-10. `context` dispatches `GetNodeContextQuery` through `IQueryHandler<GetNodeContextQuery, Context360Result>` and can additionally dispatch `GetNodeMemoriesQuery` when the semantic edge mask is enabled, then renders the combined shape through `TokenObjectNotation.SerializeContext360()`.
-11. `get_inheritors` resolves `GetInheritorsQuery` through the `IInheritorFinder` read slice and formats direct class inheritors or interface implementers with the shared flat TOON output formatter.
-12. `refactor_symbol` resolves `IRefactorSymbolService`, performs a semantic rename against either the Roslyn workspace or the Markdown strategy, and returns `TokenObjectNotation.SerializeRefactorResult()` without waiting for downstream index refresh.
-13. `Execute()` waits for the stdio host to shut down while the registered tools resolve queries on demand.
+Install the [SharpSense skills plugin](skills-command.md) separately through Codex or Copilot. The plugin supplies agent instructions; the MCP connection remains configured in your client.

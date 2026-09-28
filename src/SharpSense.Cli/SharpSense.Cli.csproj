@@ -1,12 +1,11 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <FrontendProjectDir>../SharpSense.UI</FrontendProjectDir>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>$(NetCoreAppVersion)</TargetFramework>
     <OutputType>Exe</OutputType>
-    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
+    <!-- No-build packaging reuses the manifest already embedded in the assembly. -->
+    <GenerateEmbeddedFilesManifest Condition="'$(NoBuild)' != 'true'">true</GenerateEmbeddedFilesManifest>
 
     <IsPackable>true</IsPackable>
     <PackAsTool>true</PackAsTool>
@@ -32,38 +31,43 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedSkillFile Include="../../.agents/skills/**/SKILL.md" Exclude="../../.agents/skills/terse/**">
-      <TargetPath>SharpSense.Skills/%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
-    </EmbeddedSkillFile>
-    <EmbeddedResource Include="@(EmbeddedSkillFile)"/>
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\SharpSense.Application\SharpSense.Application.csproj"/>
     <ProjectReference Include="..\SharpSense.Infrastructure\SharpSense.Infrastructure.csproj"/>
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="JetBrains.Annotations" Version="2025.2.4"/>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.6">
+    <PackageReference Include="JetBrains.Annotations"/>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi"/>
+    <!-- Load MSBuild dependencies from the SDK selected by Microsoft.Build.Locator. -->
+    <PackageReference Include="Microsoft.Build.Framework" ExcludeAssets="runtime" PrivateAssets="all"/>
+    <PackageReference Include="Microsoft.NET.StringTools" ExcludeAssets="runtime" PrivateAssets="all"/>
+    <PackageReference Include="Microsoft.OpenApi"/>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.6"/>
-    <PackageReference Include="ModelContextProtocol" Version="1.2.0"/>
-    <PackageReference Include="OpenTelemetry" Version="1.15.3"/>
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3"/>
-    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3"/>
-    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2"/>
-    <PackageReference Include="Serilog" Version="4.3.1"/>
-    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0"/>
-    <PackageReference Include="Serilog.Sinks.File" Version="7.0.0"/>
-    <PackageReference Include="Spectre.Console.Cli" Version="0.55.0"/>
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded"/>
+    <PackageReference Include="ModelContextProtocol"/>
+    <PackageReference Include="OpenTelemetry"/>
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol"/>
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting"/>
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore"/>
+    <PackageReference Include="Serilog"/>
+    <PackageReference Include="Serilog.AspNetCore"/>
+    <PackageReference Include="Serilog.Sinks.File"/>
+    <PackageReference Include="Spectre.Console.Cli"/>
+    <PackageReference Include="Spectre.Console"/>
   </ItemGroup>
 
   <Target Name="BuildFrontend" BeforeTargets="BeforeBuild" Condition="'$(DesignTimeBuild)' != 'true' and '$(FrontendBuildCompleted)' != 'true'">
-    <Exec Command="bun install" WorkingDirectory="$(FrontendProjectDir)"/>
-    <Exec Command="bun run build" WorkingDirectory="$(FrontendProjectDir)"/>
+    <Exec Command="pnpm install --frozen-lockfile" WorkingDirectory="$(FrontendProjectDir)"/>
+    <Exec Command="pnpm run build" WorkingDirectory="$(FrontendProjectDir)"/>
+    <PropertyGroup>
+      <FrontendBuildCompleted>true</FrontendBuildCompleted>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="EmbedFrontend" BeforeTargets="BeforeBuild" DependsOnTargets="BuildFrontend" Condition="'$(DesignTimeBuild)' != 'true'">
     <ItemGroup>
       <FrontendDistFile Include="$(FrontendProjectDir)/dist/**/*.*"/>
       <FrontendDistFile Update="@(FrontendDistFile)">
@@ -71,9 +75,6 @@
       </FrontendDistFile>
       <EmbeddedResource Include="@(FrontendDistFile)"/>
     </ItemGroup>
-    <PropertyGroup>
-      <FrontendBuildCompleted>true</FrontendBuildCompleted>
-    </PropertyGroup>
   </Target>
 
   <Target Name="PreventExoticRuntimesFromPublishing" AfterTargets="ResolvePackageAssets">

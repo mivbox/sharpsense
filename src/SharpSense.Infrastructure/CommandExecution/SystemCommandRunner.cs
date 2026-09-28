@@ -1,8 +1,8 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using FluentResults;
 using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.Models;
+using System.ComponentModel;
+using System.Diagnostics;
 
 namespace SharpSense.Infrastructure.CommandExecution;
 
@@ -87,6 +87,7 @@ internal sealed class SystemCommandRunner : ICommandProcessRunner
         {
             TryKill(process);
             var captureException = GetCaptureException(standardOutputTask, standardErrorTask) ?? ex;
+
             return Result.Fail<CommandProcessResult>($"Failed while capturing command output: {captureException.Message}");
         }
     }

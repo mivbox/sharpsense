@@ -1,5 +1,5 @@
-using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
+using SharpSense.Application.HybridSearch.Models;
 
 namespace SharpSense.Application.HybridSearch.Abstractions;
 

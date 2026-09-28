@@ -1,0 +1,6 @@
+src/shared/api/generated/
+openapi/
+pnpm-lock.yaml
+node_modules/
+dist/
+coverage/

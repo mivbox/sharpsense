@@ -1,17 +1,16 @@
-using System.Data;
-using System.Data.Common;
-using System.Globalization;
-using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.HybridSearch.Abstractions;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Domain.KnowledgeGraph.Enums;
-using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Infrastructure.Shared;
+using System.Data;
+using System.Data.Common;
+using System.Globalization;
+using System.Runtime.CompilerServices;
 
 namespace SharpSense.Infrastructure.HybridSearch;
 
@@ -23,7 +22,7 @@ namespace SharpSense.Infrastructure.HybridSearch;
 /// <c>CodeNodes</c> row — so memory-tagged content can promote its target node. Project/NodeType filters and
 /// the optional tag filter push into the CTEs so ranking only happens over the relevant subset.
 /// </summary>
-public sealed class HybridSearcher(
+internal sealed class HybridSearcher(
     IDbContextFactory<SharpSenseDbContext> dbContextFactory,
     IEmbeddingGenerator embeddingsService,
     IKeywordCandidateProvider keywordProvider)
@@ -62,18 +61,20 @@ public sealed class HybridSearcher(
             }
         }
 
-        var matchQuery = await keywordProvider.GetMatchQueryAsync(query, ct);
+        var matchQuery = await keywordProvider.GetMatchQuery(query, ct);
         if (string.IsNullOrWhiteSpace(matchQuery))
         {
             return new HybridSearchResult(query.SearchText, []);
         }
 
-        var embedding = await embeddingsService.Generate(query.SearchText, ct).ConfigureAwait(false);
+        var embedding = await embeddingsService.Generate(query.SearchText, ct)
+            .ConfigureAwait(false);
         var queryVector = embedding.Vector;
 
-        var rankedIds = await ExecuteHybridRankingAsync(
+        var rankedIds = await ExecuteHybridRanking(
             context,
             matchQuery,
+            query.SearchText,
             queryVector,
             projectNodeId,
             query.IncludedNodeTypes ?? [],
@@ -104,9 +105,10 @@ public sealed class HybridSearcher(
             HybridSearchMapper.ToSearchHit(orderedNodes));
     }
 
-    private static async Task<int[]> ExecuteHybridRankingAsync(
+    private static async Task<int[]> ExecuteHybridRanking(
         SharpSenseDbContext context,
         string matchQuery,
+        string searchText,
         float[] queryVector,
         int? projectNodeId,
         IReadOnlyCollection<NodeType> includedNodeTypes,
@@ -133,13 +135,19 @@ public sealed class HybridSearcher(
         AddParameter(command, "@candidateLimit", candidateLimit);
         AddParameter(command, "@resultLimit", resultLimit);
         AddParameter(command, "@rrf", RrfConstant);
-        AddParameter(command, "@memorySearchText", matchQuery.ToLowerInvariant());
+        AddParameter(
+            command,
+            "@memorySearchText",
+            searchText.Trim()
+                .Trim('"')
+                .ToLowerInvariant());
 
         MemorySearchSql.AddTagFilterParameters(command, tagFilters);
 
         var rankedIds = new List<int>();
         await using var reader = await command.ExecuteReaderAsync(ct);
-        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        while (await reader.ReadAsync(ct)
+            .ConfigureAwait(false))
         {
             if (!reader.IsDBNull(0))
             {
@@ -163,17 +171,18 @@ public sealed class HybridSearcher(
             memory_bm25 AS (
                 SELECT c.Id AS Id, ROW_NUMBER() OVER (ORDER BY memory_hits.score DESC) AS rank
                 FROM (
-                    SELECT m.TargetFullyQualifiedName AS fqn,
+                    SELECT m.TargetCodeNodeId AS node_id,
                            (CASE WHEN instr(lower(m.Content), @memorySearchText) > 0 THEN 12 ELSE 0 END
-                            + CASE WHEN instr(lower(m.TargetFullyQualifiedName), @memorySearchText) > 0 THEN 8 ELSE 0 END
+                            + CASE WHEN instr(lower(owner.FullyQualifiedName), @memorySearchText) > 0 THEN 8 ELSE 0 END
                             + CASE WHEN EXISTS (SELECT 1 FROM json_each(m.TagsJson) AS tag WHERE instr(lower(CAST(tag.value AS TEXT)), @memorySearchText) > 0) THEN 10 ELSE 0 END
                            ) AS score
                     FROM MemoryNodes m
+                    INNER JOIN CodeNodes owner ON owner.Id = m.TargetCodeNodeId
                     WHERE (instr(lower(m.Content), @memorySearchText) > 0
-                           OR instr(lower(m.TargetFullyQualifiedName), @memorySearchText) > 0
+                           OR instr(lower(owner.FullyQualifiedName), @memorySearchText) > 0
                            OR EXISTS (SELECT 1 FROM json_each(m.TagsJson) AS tag WHERE instr(lower(CAST(tag.value AS TEXT)), @memorySearchText) > 0)){{memoryTagFilterClause}}
                 ) memory_hits
-                INNER JOIN CodeNodes c ON c.FullyQualifiedName = memory_hits.fqn
+                INNER JOIN CodeNodes c ON c.Id = memory_hits.node_id
                 WHERE (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
                   AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))
                 ORDER BY memory_hits.score DESC
@@ -182,7 +191,7 @@ public sealed class HybridSearcher(
             memory_vec AS (
                 SELECT c.Id AS Id, ROW_NUMBER() OVER (ORDER BY vec_distance_cosine(m.VectorEmbedding, vec_f32(@queryVector)) ASC) AS rank
                 FROM MemoryNodes m
-                INNER JOIN CodeNodes c ON c.FullyQualifiedName = m.TargetFullyQualifiedName
+                INNER JOIN CodeNodes c ON c.Id = m.TargetCodeNodeId
                 WHERE m.VectorEmbedding IS NOT NULL{{memoryTagFilterClause}}
                   AND (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
                   AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))
@@ -209,7 +218,7 @@ public sealed class HybridSearcher(
               """;
 
         return
-            $$"""
+        $$"""
             WITH code_bm25 AS (
                 SELECT CAST(c.Id AS INTEGER) AS Id, ROW_NUMBER() OVER (ORDER BY bm25(CodeNodeSearch) ASC) AS rank
                 FROM CodeNodeSearch
@@ -251,12 +260,15 @@ public sealed class HybridSearcher(
     private static string SerializeNodeTypes(IReadOnlyCollection<NodeType> nodeTypes)
         => nodeTypes.Count == 0
             ? "[]"
-            : "[" + string.Join(",", nodeTypes.Select(static nodeType => $"\"{nodeType}\"")) + "]";
+            : "[" + string.Join(
+                ",",
+                nodeTypes.Select(static nodeType => $"\"{nodeType}\"")) + "]";
 
     private static byte[] ConvertToBytes(float[] vector)
     {
         var bytes = new byte[vector.Length * sizeof(float)];
         Buffer.BlockCopy(vector, 0, bytes, 0, bytes.Length);
+
         return bytes;
     }
 

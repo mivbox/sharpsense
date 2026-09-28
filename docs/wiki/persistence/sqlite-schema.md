@@ -1,47 +1,36 @@
----
-title: "SQLite Schema"
-type: persistence
-tags: [sqlite, embeddings, implemented]
-created: 2026-04-26
-updated: 2026-05-14
-confidence: high
----
+# SQLite persistence
 
-## Schema
+Each registered workspace owns `<home>/workspaces/<workspace-guid>/index.db`. The default home is `~/.sharpsense`; `SHARPSENSE_HOME` can select another absolute path. Workspaces never share graph rows or memories merely because they use the same repository.
 
-`SharpSenseDbContext` exposes the persisted graph and search entities with model configuration applied from the persistence assembly. `DependencyEdges` are keyed by `(CallerId, CalleeId, EdgeType)`, `ProjectNodes` enforce a unique index on `RelativeFilePath`, and the search/persistence layer now stores both deterministic code rows and persistent semantic memory rows.
+## Persisted model
 
-`CodeNodes` now split identity into two layers:
+| Table | Purpose |
+| --- | --- |
+| `GraphNodes` | Integer graph identity, unique canonical ID, and node kind. |
+| `Directories` / `DirectoryClosures` | Repository-relative directory hierarchy and descendant relationships. |
+| `Documents` | Indexed file identity and directory membership. |
+| `ProjectNodes` | Project graph metadata and associated project document. |
+| `CodeNodes` | Symbol/document-chunk metadata, source locations, search text, hashes, and embeddings. |
+| `DependencyEdges` | Typed relationships between graph nodes. |
+| `MemoryNodes` | Immutable Markdown notes attached to code-node IDs. |
+| `IndexRunState` | Bounded records of the latest successful index and latest attempt. |
 
-- `Id INTEGER PRIMARY KEY` is the compact persisted handle used by [[cli/search-command]] and [[cli/trace-command]].
-- `CanonicalId TEXT UNIQUE` preserves the deterministic semantic identity that dependency edges and the UI graph still use.
-- `DisplayName` stores the namespace-trimmed C# signature or compact document name rendered by TOON and MCP output.
+FTS5 provides keyword lookup; sqlite-vec supplies vector-distance operations. The workspace explorer projects from normalized directory/document/project tables rather than a dedicated tree table.
 
-`MemoryNodes` are the persistent semantic layer for human/AI-authored intent. Each row stores `Guid Id`, `TargetFullyQualifiedName`, a snapshotted `TargetCodeHash`, markdown `Content`, `ContentHash`, JSON `TagsJson`, optional `VectorEmbedding`, and `CreatedAt`. `MemoryNodes` link to `CodeNodes` via a foreign key on `TargetFullyQualifiedName` with `ON DELETE CASCADE`, so deleting a code node (or wiping its `Document` / `ProjectNode` / `GraphNode` in the parser UPSERT path) automatically destroys every memory that was attached to it. The matching `IX_CodeNodes_FullyQualifiedName_NoCase` index is now a `UNIQUE` constraint that doubles as the EF Core alternate key used by the FK principal lookup, so two `CodeNodes` can never share the same `FullyQualifiedName`. `NodeExtractor` enforces the same invariant upstream by keying its per-`Extract` emission cache by `FullyQualifiedName` (which is project-independent after `RoslynSymbolUtilities.Canonicalize` collapses `OriginalDefinition` / `ReducedFrom`), so a single symbol visible in more than one `.csproj` compilation still produces exactly one `CodeNode` per analyze pass. `KnowledgeGraphRepository.UpsertCodeNodes` carries a small defence-in-batch dedup on the same key as a safety net for any future regression in the extractor.
+## Identity and memories
 
-`CodeNodes` now persist two semantic-indexing fields in addition to the rendered signature and vector: `SearchText` stores the exact text used to generate embeddings, and `BodyHash` stores the SHA-256 fingerprint of the declaration syntax after trivia has been stripped. `Summary` remains the extracted human-readable documentation text (`summary`/`remarks`) and never stores raw method bodies.
+`GraphNodes.CanonicalId` is unique. Numeric node IDs are compact handles within one workspace. C# canonical identity includes project ownership, so `CodeNodes.FullyQualifiedName` is not globally unique and cannot be the memory foreign key.
 
-The migrations provision one FTS5 virtual table, `CodeNodeSearch`, with `Id`, `CanonicalId`, `DisplayName`, `FullyQualifiedName`, `SearchText`, and `RelativeFilePath`. `Id` and `CanonicalId` are stored but not full-text indexed; lexical ranking uses `DisplayName`, `FullyQualifiedName`, `SearchText`, and `RelativeFilePath`. A separate `IX_CodeNodes_FullyQualifiedName_NoCase` index supports case-insensitive fallback lookup for trace identifiers.
+`MemoryNodes.TargetCodeNodeId` references `CodeNodes.Id` with cascade deletion. The record stores the target hash, content/hash, tags, intent, embedding, and creation time. Staleness is computed by comparing its saved target hash with the current node.
 
-Embeddings still live directly in `CodeNodes.VectorEmbedding`, and `HybridSearcher` calculates cosine distance from that column rather than from a separate vec0 table.
+Graph reconciliation retains surviving canonical identities and their memories. Removed nodes cascade-delete attached memories; this also applies when a source is removed from the workspace and the next index drops its nodes. A merged workspace starts with its own empty database and does not copy memories.
 
-## Read/Write Patterns
+## Writes and compatibility
 
-A full Target index first loads the current persisted snapshot. If the extracted graph is identical after vector reuse, persistence short-circuits and leaves the SQLite file untouched. When the graph has changed, the repository still rebuilds the full persisted graph inside one transaction, preserving integer ids by reapplying the existing `CanonicalId -> Id` map before rewriting `CodeNodes`, `ProjectNodes`, `Documents`, `Directories`, and `CodeNodeSearch`.
+Selected source graphs are extracted and merged before one transactional replacement. Embeddings can be reused when their relevant content/hash is unchanged. A required extraction failure leaves the previous committed graph intact; diagnostics record the failed attempt separately.
 
-`HybridSearcher` reads ranked candidates from `CodeNodeSearch`, returns integer ids, and calculates vector similarity directly against `CodeNodes.VectorEmbedding` with `vec_distance_cosine(VectorEmbedding, vec_f32($queryVector))`. When `IncludeMemories` is enabled, the same search path can also widen candidate discovery through `MemoryNodes`, pre-filter memory rows with `json_each(TagsJson)`, and merge their keyword/vector relevance back onto the owning code-node id. `CodeNodeNavigationQueries.FindRootNode()` resolves an incoming trace identifier by trying integer `Id`, then exact `CanonicalId` / `FullyQualifiedName`, then `FullyQualifiedName COLLATE NOCASE`. `WorkspaceTreeRepository` reads immediate explorer rows from `WorkspaceTreeNodes` without consulting the live filesystem, which keeps [[cli/ui-command]] aligned with [[architecture/workspace-tree]].
+An OS-held indexing lease excludes concurrent index/watch writers and source mutations for the same workspace. CLI analysis takes the lease before database initialization. Read operations remain workspace-scoped.
 
-## Target Overwrites
+Catalog listing/resolution and doctor do not create or migrate a database. Supported schema upgrades use migrations; incompatible legacy data is preserved and reported rather than automatically deleted or silently adopted into a named workspace.
 
-Incremental writes are scoped by repository-relative `RelativeFilePath`, not by whole-database resets. `GetAffectedRelativePaths()` normalizes changed file paths through `IRepositoryWorkspace`, filters them to C# and Markdown files, and sorts them with an OS-aware comparer. `UpdateIncremental()` then:
-
-1. Loads the persisted code nodes for the changed repository-relative paths and compares them to the new extraction payload.
-2. Reuses stored vector embeddings when both `SearchText` and `BodyHash` still match, so unchanged methods avoid re-embedding.
-3. Updates only the changed or newly added `CodeNodes`, deletes removed `CodeNodes`, and keeps untouched rows in place.
-4. Replaces dependency edges rooted in the changed caller ids and deletes inbound edges to removed callees.
-5. Updates only the affected `CodeNodeSearch` rows instead of rebuilding the full FTS table.
-6. Inserts or removes `Documents` / `Directories` only when changed paths add, remove, or rename files.
-
-`AttachMemoryCommand` writes `MemoryNodes` independently of the indexing overwrite path. Memory writes reuse existing embeddings when `ContentHash` already exists, but memory staleness is computed lazily at read time by comparing the current `CodeNodes.BodyHash` to the persisted `TargetCodeHash`.
-
-This is the persistence half of [[architecture/incremental-watch]], and it relies on the repository-relative paths produced by [[architecture/file-discovery]], the explorer pattern described in [[architecture/workspace-tree]], and the extractors.
+See [workspace storage](../cli/workspace-command.md#storage), [hybrid search](../architecture/hybrid-search-pipeline.md), and [graph statistics](../cli/doctor-command.md).

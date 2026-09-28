@@ -8,8 +8,9 @@ public static class HybridSearchInfrastructureServiceCollectionExtensions
     public static IServiceCollection AddHybridSearchInfrastructure(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.AddSingleton<IKeywordCandidateProvider, SqliteKeywordCandidateProvider>();
-        services.AddSingleton<IHybridSearcher, HybridSearcher>();
+        services.AddScoped<IKeywordCandidateProvider, SqliteKeywordCandidateProvider>();
+        services.AddScoped<IHybridSearcher, HybridSearcher>();
+
         return services;
     }
 }

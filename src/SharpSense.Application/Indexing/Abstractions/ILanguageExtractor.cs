@@ -13,11 +13,10 @@ namespace SharpSense.Application.Indexing.Abstractions;
 [PublicAPI]
 public interface ILanguageExtractor
 {
-    /// <summary>
-    /// Gets the stable extractor identifier used by the indexing orchestrator to attribute tracing, progress, and
-    /// diagnostics to the extractor that produced a given batch of results.
-    /// </summary>
-    string ExtractorName { get; }
+    WorkspaceSourceKind SourceKind
+    {
+        get;
+    }
 
     /// <summary>
     /// Extracts all knowledge-graph data handled by this strategy for the absolute target path described by the supplied
@@ -28,26 +27,11 @@ public interface ILanguageExtractor
     /// <param name="context">The indexing context containing the absolute target path and shared progress reporter.</param>
     /// <param name="ct"><see cref="CancellationToken"/> for the current indexing operation.</param>
     /// <returns>
-    /// <see cref="Result.Ok(T)"/> with the extracted batch, or <see cref="Result.Fail(string)"/> with one or more
+    /// A successful result containing the extracted batch, or a failed result with one or more
     /// <see cref="SharpSense.Application.Shared.Errors.ServiceError"/> entries when the underlying workspace load
     /// or analysis pipeline reports a typed failure.
     /// </returns>
     Task<Result<ExtractedNodes>> Extract(
         ExtractionContext context,
-        CancellationToken ct);
-
-    /// <summary>
-    /// Extracts only the knowledge-graph delta for the changed workspace files described by the supplied context.
-    /// Implementations are responsible for honoring cancellation, reporting progress when appropriate, and returning
-    /// only the replacement nodes and dependency edges that should be persisted for the current change set.
-    /// </summary>
-    /// <param name="context">The incremental indexing context containing the watched target path and file changes.</param>
-    /// <param name="ct"><see cref="CancellationToken"/> for the current indexing operation.</param>
-    /// <returns>
-    /// <see cref="Result.Ok(T)"/> with the extracted delta, or <see cref="Result.Fail(string)"/> when the underlying
-    /// incremental reload reports a typed failure.
-    /// </returns>
-    Task<Result<ExtractedNodes>> ExtractIncremental(
-        IncrementalExtractionContext context,
         CancellationToken ct);
 }

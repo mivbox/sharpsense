@@ -1,37 +1,23 @@
----
-title: "File Discovery"
-type: architecture
-tags: [csharp, markdown, implemented]
-created: 2026-04-26
-updated: 2026-05-04
-confidence: high
----
+# Source discovery
 
-## The Problem
+A named workspace's `Sources` collection is the complete user-selected input plan. Paths are stored relative to its canonical repository root; the location of `workspace.yaml` and the process's later working directory do not change their meaning.
 
-Indexing and incremental updates need one canonical way to discover allowed files, anchor include globs to a Target, and hand extractors a normalized repository-relative path. If each component discovers files differently, `.gitignore` handling and relative-path semantics drift apart.
+| Source kind | Input | Discovery boundary |
+| --- | --- | --- |
+| C# | `.csproj`, `.sln`, or `.slnx` | Roslyn/MSBuild project membership and semantic dependencies. |
+| TypeScript | A tsconfig file or directory | `.ts` and `.tsx` files, supported config membership, and repository-local imports. |
+| Markdown | File, directory, or glob | Explicit selected documentation paths and supported Markdown extensions. |
 
-## The Approach
+C# project references can be loaded to resolve symbols while the selected projects determine emitted scope. TypeScript imports and project/config references may include shared repository files outside the initially selected folder. These are language dependency rules, not automatic selection of every neighboring project.
 
-SharpSense makes `IWorkspaceFileDiscoverer` the canonical discovery boundary, and the whole flow now sits on the [[architecture/virtual-file-system]] seam. `DocumentDiscoverer` reads `IncludePaths` from `SharpSenseConfig`, resolves the Target directory through `IRepositoryWorkspace`, asks `IWorkspaceFileDiscoverer` for the allowed files, reads the resulting payloads through `IFileSystem`, and hands each Markdown document to `IMarkdownIndexer`. `WorkspaceFileDiscoverer` normalizes the configured globs, matches them under the Target directory, converts each absolute match to a repository-relative path, applies `.gitignore` through the Ignore engine, and emits `DiscoveredFile` records. Downstream components such as [[extractors/markdown]] then index content by using `DiscoveredFile.RelativeFilePath` directly instead of recomputing paths. Watch-mode directory renames now reuse this same boundary: `UpdateWorkspaceFilesCommandHandler` asks `IWorkspaceFileDiscoverer` for `**/*.cs` plus Markdown matches under the renamed directory, then combines the discovered `RelativeFilePath` values with persisted old paths to expand directory actions into file-level incremental replacements.
+Markdown selections are combined into one pass, which allows links between selected documents to resolve consistently. No default documentation glob is silently added to a named workspace. During watch, safe documentation-only file changes can reuse committed C# and TypeScript contributions while rerunning this complete Markdown pass; [watch reconciliation](incremental-watch.md) describes the input-sensitive reuse rules.
 
-## Components Involved
+`WorkspaceCatalog` validates source shape and repository containment. Extraction also handles missing or invalid required inputs as failures, preserving the last committed graph. `WorkspaceGraphMerger` combines overlapping results and rejects incompatible duplicate identities rather than choosing an arbitrary definition.
 
-| Component | Role |
-| --- | --- |
-| `SharpSenseConfig` | Supplies the `IncludePaths` globs for document discovery. |
-| `IRepositoryWorkspace` | Resolves the Target directory and converts absolute paths into repository-relative paths. |
-| `IFileSystem` | Supplies file reads, existence checks, and path normalization for discovery and document loading. |
-| `IWorkspaceFileDiscoverer` | Defines the allowed-file contract for discovery. |
-| `WorkspaceFileDiscoverer` | Applies glob matching, `.gitignore`, and separator normalization before returning `DiscoveredFile` records. |
-| `DiscoveredFile` | Carries the absolute file path plus the normalized repository-relative path for extractors. |
-| `IMarkdownIndexer` | Converts raw Markdown text plus the canonical relative path into document nodes and edges. |
-| `DocumentDiscoverer` | Reuses the allowed-file set, reads files through `IFileSystem`, and streams Markdown content into the indexer. |
+## Filesystem filtering
 
-## Strict Rules
+`IWorkspaceFileDiscoverer` provides glob-based discovery with normalized repository-relative paths and the root `.gitignore` rules. Language adapters apply their own membership and generated/dependency-directory exclusions. C# membership follows MSBuild rather than treating a filesystem glob as a project.
 
-1. Run file discovery through `IWorkspaceFileDiscoverer` so `.gitignore` and separator normalization stay centralized.
-2. Read discovered files through injected `IFileSystem`, not direct `System.IO` helpers.
-3. Anchor include globs to the active Target directory, not to arbitrary process working directories.
-4. Treat `DiscoveredFile.RelativeFilePath` as the canonical repository-relative path; extractors must not recalculate it.
-5. Keep discovery scoped to C# and Markdown Targets, because those are the only indexed asset types. Watch-mode directory rename expansion must use `IWorkspaceFileDiscoverer` for the new-side file view so extension filtering, `.gitignore`, and relative-path semantics stay aligned with [[architecture/incremental-watch]].
+TypeScript excludes dependency/build directories such as `node_modules`, `dist`, and `coverage`. Its supported source extensions are currently `.ts` and `.tsx`; JavaScript and `.mts`/`.cts` are not part of this source-discovery contract.
+
+See [workspace setup](../cli/workspace-command.md), [TypeScript extraction](../extractors/typescript.md), and [watch reconciliation](incremental-watch.md).

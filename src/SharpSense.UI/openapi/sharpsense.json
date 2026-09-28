@@ -1,0 +1,3284 @@
+{
+  "components": {
+    "schemas": {
+      "AddMemoryRequest": {
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "intent": {
+            "$ref": "#/components/schemas/MemoryIntent"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        },
+        "required": [
+          "content",
+          "tags"
+        ],
+        "type": "object"
+      },
+      "AddMemoryResponse": {
+        "properties": {
+          "intent": {
+            "$ref": "#/components/schemas/MemoryIntent"
+          },
+          "nodeId": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "nodeId",
+          "intent"
+        ],
+        "type": "object"
+      },
+      "AnalysisOperationKind": {
+        "enum": [
+          "Full",
+          "Incremental"
+        ]
+      },
+      "AnalysisPhase": {
+        "enum": [
+          "Discovery",
+          "Extraction",
+          "Embeddings",
+          "Persistence",
+          null
+        ]
+      },
+      "AnalysisSnapshot": {
+        "properties": {
+          "completedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "completedItems": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "diagnostics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "lastCommittedSummary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AnalysisSummary"
+              }
+            ]
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "operationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "operationKind": {
+            "$ref": "#/components/schemas/AnalysisOperationKind"
+          },
+          "phase": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AnalysisPhase"
+              }
+            ]
+          },
+          "sequence": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisSourceStatus"
+            },
+            "type": "array"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "summary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AnalysisSummary"
+              }
+            ]
+          },
+          "totalItems": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "sequence",
+          "operationKind",
+          "state",
+          "phase",
+          "startedAt",
+          "updatedAt",
+          "completedAt",
+          "message",
+          "completedItems",
+          "totalItems",
+          "sources",
+          "diagnostics",
+          "summary",
+          "lastCommittedSummary"
+        ],
+        "type": "object"
+      },
+      "AnalysisSourceStatus": {
+        "properties": {
+          "completedItems": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WorkspaceSourceKind"
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "totalItems": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "path",
+          "state",
+          "completedItems",
+          "totalItems",
+          "message"
+        ],
+        "type": "object"
+      },
+      "AnalysisSummary": {
+        "properties": {
+          "diagnosticCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "documents": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "edges": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "extractedSources": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "generatedEmbeddings": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "nodes": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "projects": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "reusedEmbeddings": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "reusedSources": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "projects",
+          "nodes",
+          "edges",
+          "documents",
+          "extractedSources",
+          "reusedSources",
+          "reusedEmbeddings",
+          "generatedEmbeddings",
+          "diagnosticCount"
+        ],
+        "type": "object"
+      },
+      "CodeNodeResult": {
+        "properties": {
+          "canonicalId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "endLine": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "fullyQualifiedName": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "nodeType": {
+            "$ref": "#/components/schemas/NodeType"
+          },
+          "projectId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "relativeFilePath": {
+            "type": "string"
+          },
+          "startLine": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "canonicalId",
+          "projectId",
+          "fullyQualifiedName",
+          "displayName",
+          "nodeType",
+          "relativeFilePath",
+          "startLine",
+          "endLine",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "Context360Node": {
+        "properties": {
+          "endLine": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/NodeType"
+          },
+          "name": {
+            "type": "string"
+          },
+          "relativeFilePath": {
+            "type": "string"
+          },
+          "startLine": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "relativeFilePath",
+          "startLine",
+          "endLine"
+        ],
+        "type": "object"
+      },
+      "Context360RelatedNode": {
+        "properties": {
+          "codeNodeId": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "Context360Result": {
+        "properties": {
+          "callees": {
+            "items": {
+              "$ref": "#/components/schemas/Context360RelatedNode"
+            },
+            "type": "array"
+          },
+          "callers": {
+            "items": {
+              "$ref": "#/components/schemas/Context360RelatedNode"
+            },
+            "type": "array"
+          },
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/Context360RelatedNode"
+            },
+            "type": "array"
+          },
+          "implementers": {
+            "items": {
+              "$ref": "#/components/schemas/Context360RelatedNode"
+            },
+            "type": "array"
+          },
+          "inherits": {
+            "items": {
+              "$ref": "#/components/schemas/Context360RelatedNode"
+            },
+            "type": "array"
+          },
+          "parents": {
+            "items": {
+              "$ref": "#/components/schemas/Context360RelatedNode"
+            },
+            "type": "array"
+          },
+          "targetNode": {
+            "$ref": "#/components/schemas/Context360Node"
+          }
+        },
+        "required": [
+          "targetNode",
+          "callers",
+          "implementers",
+          "callees",
+          "inherits",
+          "parents",
+          "children"
+        ],
+        "type": "object"
+      },
+      "ContextRequest": {
+        "properties": {
+          "maxRelated": {
+            "default": 10,
+            "format": "int32",
+            "type": "integer"
+          },
+          "nodeId": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "nodeId"
+        ],
+        "type": "object"
+      },
+      "CreateWorkspaceRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "repositoryRoot": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceSource"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "repositoryRoot",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "DeleteMemoryResponse": {
+        "properties": {
+          "memoryId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok",
+          "memoryId"
+        ],
+        "type": "object"
+      },
+      "DiscoverWorkspaceRequest": {
+        "properties": {
+          "repositoryRoot": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repositoryRoot"
+        ],
+        "type": "object"
+      },
+      "EdgeType": {
+        "enum": [
+          "ProjectReference",
+          "ParentOf",
+          "MethodCall",
+          "Implements",
+          "Instantiates",
+          "FieldAccess",
+          "ServiceRegistration",
+          "DocumentLink",
+          "Import",
+          "HttpRequest"
+        ]
+      },
+      "EdgeTypeStats": {
+        "properties": {
+          "count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "edgeType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "edgeType",
+          "count"
+        ],
+        "type": "object"
+      },
+      "GraphConnectionNode": {
+        "properties": {
+          "codeNodeId": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "relativePath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "type",
+          "relativePath",
+          "projectId",
+          "codeNodeId"
+        ],
+        "type": "object"
+      },
+      "GraphEdgesPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GraphPageEdge"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "revision": {
+            "type": "string"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          }
+        },
+        "required": [
+          "revision",
+          "items",
+          "nextCursor",
+          "totalCount"
+        ],
+        "type": "object"
+      },
+      "GraphNodeConnection": {
+        "properties": {
+          "node": {
+            "$ref": "#/components/schemas/GraphConnectionNode"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNodeRelationship"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "node",
+          "relationships"
+        ],
+        "type": "object"
+      },
+      "GraphNodeConnectionsPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GraphNodeConnection"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "node": {
+            "$ref": "#/components/schemas/GraphConnectionNode"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          }
+        },
+        "required": [
+          "node",
+          "revision",
+          "items",
+          "nextCursor",
+          "totalCount"
+        ],
+        "type": "object"
+      },
+      "GraphNodeRelationship": {
+        "properties": {
+          "direction": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "direction",
+          "metadata"
+        ],
+        "type": "object"
+      },
+      "GraphNodesPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GraphPageNode"
+            },
+            "type": "array"
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "revision": {
+            "type": "string"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          }
+        },
+        "required": [
+          "revision",
+          "items",
+          "nextCursor",
+          "totalCount"
+        ],
+        "type": "object"
+      },
+      "GraphPageEdge": {
+        "properties": {
+          "metadata": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scope": {
+            "type": "string"
+          },
+          "source": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "target": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "target",
+          "type",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "GraphPageNode": {
+        "properties": {
+          "codeNodeId": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "isClickable": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "relativePath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "scope": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "type",
+          "relativePath",
+          "projectId",
+          "scope",
+          "isClickable"
+        ],
+        "type": "object"
+      },
+      "GraphStatsSnapshot": {
+        "properties": {
+          "codeNodeCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "databasePath": {
+            "type": "string"
+          },
+          "databaseState": {
+            "type": "string"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/IndexDiagnostic"
+            },
+            "type": "array"
+          },
+          "edgeCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "edgeTypes": {
+            "items": {
+              "$ref": "#/components/schemas/EdgeTypeStats"
+            },
+            "type": "array"
+          },
+          "embeddedNodeCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "fileCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "graphNodeCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "isIndexed": {
+            "type": "boolean"
+          },
+          "languages": {
+            "items": {
+              "$ref": "#/components/schemas/LanguageStats"
+            },
+            "type": "array"
+          },
+          "lastAttempt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IndexRunSummary"
+              }
+            ]
+          },
+          "lastSuccessfulIndex": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/IndexRunSummary"
+              }
+            ]
+          },
+          "memoryCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "projectCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repositoryRoot": {
+            "type": "string"
+          },
+          "workspaceId": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workspaceName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "repositoryRoot",
+          "databasePath",
+          "databaseState",
+          "isIndexed",
+          "graphNodeCount",
+          "codeNodeCount",
+          "edgeCount",
+          "fileCount",
+          "projectCount",
+          "embeddedNodeCount",
+          "memoryCount",
+          "languages",
+          "edgeTypes",
+          "lastSuccessfulIndex",
+          "lastAttempt",
+          "diagnostics"
+        ],
+        "type": "object"
+      },
+      "HybridSearchHit": {
+        "properties": {
+          "canonicalId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "endLine": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "fullyQualifiedName": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "nodeType": {
+            "$ref": "#/components/schemas/NodeType"
+          },
+          "projectId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "relativeFilePath": {
+            "type": "string"
+          },
+          "startLine": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "canonicalId",
+          "projectId",
+          "fullyQualifiedName",
+          "displayName",
+          "nodeType",
+          "relativeFilePath",
+          "startLine",
+          "endLine",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "HybridSearchResult": {
+        "properties": {
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/HybridSearchHit"
+            },
+            "type": "array"
+          },
+          "searchText": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "searchText",
+          "hits"
+        ],
+        "type": "object"
+      },
+      "ImpactAnalysisResult": {
+        "properties": {
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/ImpactedDependencyEdge"
+            },
+            "type": "array"
+          },
+          "impactedNodes": {
+            "items": {
+              "$ref": "#/components/schemas/ImpactedCodeNode"
+            },
+            "type": "array"
+          },
+          "targetSymbol": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetSymbol",
+          "impactedNodes",
+          "dependencies"
+        ],
+        "type": "object"
+      },
+      "ImpactRequest": {
+        "properties": {
+          "maxDepth": {
+            "default": 3,
+            "format": "int32",
+            "type": "integer"
+          },
+          "nodeId": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "nodeId"
+        ],
+        "type": "object"
+      },
+      "ImpactedCodeNode": {
+        "properties": {
+          "canonicalId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "endLine": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "fullyQualifiedName": {
+            "type": "string"
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "nodeType": {
+            "$ref": "#/components/schemas/NodeType"
+          },
+          "projectId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "relativeFilePath": {
+            "type": "string"
+          },
+          "startLine": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "canonicalId",
+          "projectId",
+          "fullyQualifiedName",
+          "displayName",
+          "nodeType",
+          "relativeFilePath",
+          "startLine",
+          "endLine",
+          "summary"
+        ],
+        "type": "object"
+      },
+      "ImpactedDependencyEdge": {
+        "properties": {
+          "calleeId": {
+            "type": "string"
+          },
+          "callerId": {
+            "type": "string"
+          },
+          "edgeType": {
+            "$ref": "#/components/schemas/EdgeType"
+          }
+        },
+        "required": [
+          "callerId",
+          "calleeId",
+          "edgeType"
+        ],
+        "type": "object"
+      },
+      "IndexDiagnostic": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "filePath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "suggestion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "code",
+          "severity",
+          "message"
+        ],
+        "type": "object"
+      },
+      "IndexPhaseTiming": {
+        "properties": {
+          "durationMs": {
+            "format": "double",
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "durationMs"
+        ],
+        "type": "object"
+      },
+      "IndexRunSummary": {
+        "properties": {
+          "completedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/IndexDiagnostic"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "durationMs": {
+            "format": "double",
+            "type": "number"
+          },
+          "extractedNodeCount": {
+            "format": "int64",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "generatedEmbeddingCount": {
+            "format": "int64",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/IndexPhaseTiming"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "reusedEmbeddingCount": {
+            "format": "int64",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "scope": {
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "startedAt",
+          "completedAt",
+          "durationMs",
+          "outcome",
+          "kind",
+          "scope"
+        ],
+        "type": "object"
+      },
+      "InheritorsRequest": {
+        "properties": {
+          "nodeId": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "nodeId"
+        ],
+        "type": "object"
+      },
+      "LanguageStats": {
+        "properties": {
+          "embeddedNodeCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "fileCount": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "language": {
+            "type": "string"
+          },
+          "nodeCount": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "language",
+          "fileCount",
+          "nodeCount",
+          "embeddedNodeCount"
+        ],
+        "type": "object"
+      },
+      "MemoryIntent": {
+        "enum": [
+          "Convention",
+          "Invariant",
+          "Todo",
+          "Warning",
+          "Decision"
+        ]
+      },
+      "MemoryNode": {
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "contentHash": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "intent": {
+            "$ref": "#/components/schemas/MemoryIntent"
+          },
+          "isStale": {
+            "type": "boolean"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "targetCodeHash": {
+            "type": "string"
+          },
+          "targetFullyQualifiedName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "targetFullyQualifiedName",
+          "targetCodeHash",
+          "content",
+          "contentHash",
+          "tags",
+          "intent",
+          "createdAt",
+          "isStale"
+        ],
+        "type": "object"
+      },
+      "MergeWorkspacesRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "workspaceIds": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "workspaceIds"
+        ],
+        "type": "object"
+      },
+      "NodeType": {
+        "enum": [
+          "Class",
+          "Interface",
+          "Method",
+          "Property",
+          "Field",
+          "Document",
+          "Memory",
+          "Component"
+        ]
+      },
+      "ProblemDetails": {
+        "properties": {
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "SearchRequest": {
+        "properties": {
+          "limit": {
+            "default": 10,
+            "format": "int32",
+            "type": "integer"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "type": "object"
+      },
+      "StartWorkspaceIndexingRequest": {
+        "properties": {
+          "skipEmbeddings": {
+            "default": false,
+            "type": "boolean"
+          },
+          "watch": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "ToolDescriptor": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "requiresNode": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "requiresNode"
+        ],
+        "type": "object"
+      },
+      "TraceRequest": {
+        "properties": {
+          "direction": {
+            "default": "callee",
+            "type": "string"
+          },
+          "maxDepth": {
+            "default": 3,
+            "format": "int32",
+            "type": "integer"
+          },
+          "nodeId": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "nodeId"
+        ],
+        "type": "object"
+      },
+      "TraceResponse": {
+        "properties": {
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/ImpactedDependencyEdge"
+            },
+            "type": "array"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/CodeNodeResult"
+            },
+            "type": "array"
+          },
+          "root": {
+            "$ref": "#/components/schemas/CodeNodeResult"
+          },
+          "truncated": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "root",
+          "direction",
+          "nodes",
+          "dependencies"
+        ],
+        "type": "object"
+      },
+      "UpdateWorkspaceRequest": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceSource"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "WorkspaceCatalogResponse": {
+        "properties": {
+          "initialWorkspaceId": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "workspaces",
+          "initialWorkspaceId"
+        ],
+        "type": "object"
+      },
+      "WorkspaceDiscoveryResponse": {
+        "properties": {
+          "repositoryRoot": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceSourceOverview"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "repositoryRoot",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "WorkspaceIndexingStatus": {
+        "properties": {
+          "analysis": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AnalysisSnapshot"
+              }
+            ]
+          },
+          "completedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "completedItems": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "diagnostics": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "jobId": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sequence": {
+            "default": 0,
+            "format": "int64",
+            "type": "integer"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "streamId": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "totalItems": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "watch": {
+            "type": "boolean"
+          },
+          "workspaceId": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "jobId",
+          "state",
+          "watch",
+          "startedAt",
+          "completedAt",
+          "message",
+          "completedItems",
+          "totalItems",
+          "diagnostics",
+          "revision"
+        ],
+        "type": "object"
+      },
+      "WorkspaceOverview": {
+        "properties": {
+          "directoryCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "documentCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "edgeCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "indexed": {
+            "type": "boolean"
+          },
+          "memoryCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "nodeCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "projectCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "repositoryRoot": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceSourceOverview"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "workspaceId": {
+            "format": "uuid",
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "repositoryRoot",
+          "indexed",
+          "projectCount",
+          "documentCount",
+          "nodeCount",
+          "edgeCount",
+          "memoryCount",
+          "directoryCount"
+        ],
+        "type": "object"
+      },
+      "WorkspaceSource": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/WorkspaceSourceKind"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "WorkspaceSourceKind": {
+        "enum": [
+          "CSharp",
+          "TypeScript",
+          "Markdown"
+        ]
+      },
+      "WorkspaceSourceOverview": {
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "path"
+        ],
+        "type": "object"
+      },
+      "WorkspaceSummary": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "repositoryRoot": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceSourceOverview"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "repositoryRoot",
+          "sources"
+        ],
+        "type": "object"
+      },
+      "WorkspaceTreeNode": {
+        "properties": {
+          "childCount": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "hasChildren": {
+            "type": "boolean"
+          },
+          "id": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "isSelectable": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "parentId": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "parentId",
+          "path",
+          "label",
+          "kind",
+          "hasChildren",
+          "childCount",
+          "isSelectable"
+        ],
+        "type": "object"
+      },
+      "WorkspaceTreeResult": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceTreeNode"
+            },
+            "type": "array"
+          },
+          "parentDirectoryId": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
+          },
+          "parentPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "parentPath",
+          "nodes"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "SharpSense.Cli | v1",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.1",
+  "paths": {
+    "/api/graph/edges/page": {
+      "get": {
+        "operationId": "GetGraphEdgesPage",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directoryIds",
+            "schema": {
+              "items": {
+                "format": "int32",
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeTotal",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphEdgesPage"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Graph"
+        ]
+      }
+    },
+    "/api/graph/nodes/page": {
+      "get": {
+        "operationId": "GetGraphNodesPage",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directoryIds",
+            "schema": {
+              "items": {
+                "format": "int32",
+                "type": "integer"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeTotal",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphNodesPage"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Graph"
+        ]
+      }
+    },
+    "/api/graph/nodes/{nodeId}/connections": {
+      "get": {
+        "operationId": "GetGraphNodeConnections",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "nodeId",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeTotal",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphNodeConnectionsPage"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Graph"
+        ]
+      }
+    },
+    "/api/memory": {
+      "get": {
+        "operationId": "GetMemories",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "schema": {
+              "items": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryNode"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "tags": [
+          "Memory"
+        ]
+      }
+    },
+    "/api/memory/node/{nodeId}": {
+      "get": {
+        "operationId": "GetNodeMemories",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "nodeId",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "intents",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryNode"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "tags": [
+          "Memory"
+        ]
+      },
+      "post": {
+        "operationId": "AddMemory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "nodeId",
+            "required": true,
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddMemoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddMemoryResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Memory"
+        ]
+      }
+    },
+    "/api/memory/{memoryId}": {
+      "delete": {
+        "operationId": "DeleteMemory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memoryId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteMemoryResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Memory"
+        ]
+      },
+      "get": {
+        "operationId": "GetMemory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "memoryId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryNode"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Memory"
+        ]
+      }
+    },
+    "/api/overview": {
+      "get": {
+        "operationId": "GetWorkspaceOverview",
+        "parameters": [
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOverview"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Workspace"
+        ]
+      }
+    },
+    "/api/tools": {
+      "get": {
+        "operationId": "GetTools",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ToolDescriptor"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Tools"
+        ]
+      }
+    },
+    "/api/tools/context": {
+      "post": {
+        "operationId": "GetNodeContext",
+        "parameters": [
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContextRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Context360Result"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Context"
+        ]
+      }
+    },
+    "/api/tools/graph-stats": {
+      "get": {
+        "operationId": "GetGraphStats",
+        "parameters": [
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphStatsSnapshot"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Tools"
+        ]
+      }
+    },
+    "/api/tools/impact": {
+      "post": {
+        "operationId": "GetImpact",
+        "parameters": [
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImpactRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImpactAnalysisResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Impact"
+        ]
+      }
+    },
+    "/api/tools/inheritors": {
+      "post": {
+        "operationId": "GetInheritors",
+        "parameters": [
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InheritorsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CodeNodeResult"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Inheritors"
+        ]
+      }
+    },
+    "/api/tools/search": {
+      "post": {
+        "operationId": "SearchWorkspace",
+        "parameters": [
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HybridSearchResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "tags": [
+          "Search"
+        ]
+      }
+    },
+    "/api/tools/trace": {
+      "post": {
+        "operationId": "TraceNode",
+        "parameters": [
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TraceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Trace"
+        ]
+      }
+    },
+    "/api/tree": {
+      "get": {
+        "operationId": "GetWorkspaceTree",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceTreeResult"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "tags": [
+          "Workspace"
+        ]
+      }
+    },
+    "/api/workspaces": {
+      "get": {
+        "operationId": "ListWorkspaces",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceCatalogResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Workspaces"
+        ]
+      },
+      "post": {
+        "operationId": "CreateWorkspace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkspaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSummary"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "tags": [
+          "Workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/discover": {
+      "post": {
+        "operationId": "DiscoverWorkspaceSources",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoverWorkspaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDiscoveryResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "tags": [
+          "Workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/merge": {
+      "post": {
+        "operationId": "MergeWorkspaces",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeWorkspacesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSummary"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "tags": [
+          "Workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}": {
+      "get": {
+        "operationId": "GetWorkspace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSummary"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "tags": [
+          "Workspaces"
+        ]
+      },
+      "put": {
+        "operationId": "UpdateWorkspace",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkspaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceSummary"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          }
+        },
+        "tags": [
+          "Workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}/indexing": {
+      "delete": {
+        "operationId": "StopWorkspaceIndexing",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceIndexingStatus"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Workspace indexing"
+        ]
+      },
+      "get": {
+        "operationId": "GetWorkspaceIndexingStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceIndexingStatus"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "Workspace indexing"
+        ]
+      },
+      "post": {
+        "operationId": "StartWorkspaceIndexing",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartWorkspaceIndexingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceIndexingStatus"
+                }
+              }
+            },
+            "description": "Accepted"
+          }
+        },
+        "tags": [
+          "Workspace indexing"
+        ]
+      }
+    },
+    "/api/workspaces/{workspaceId}/indexing/events": {
+      "get": {
+        "operationId": "StreamWorkspaceIndexingStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspaceId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceIndexingStatus"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Stream current workspace indexing status; reconnects start with a complete snapshot.",
+        "tags": [
+          "Workspace indexing"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Workspaces"
+    },
+    {
+      "name": "Workspace"
+    },
+    {
+      "name": "Graph"
+    },
+    {
+      "name": "Tools"
+    },
+    {
+      "name": "Search"
+    },
+    {
+      "name": "Context"
+    },
+    {
+      "name": "Trace"
+    },
+    {
+      "name": "Inheritors"
+    },
+    {
+      "name": "Impact"
+    },
+    {
+      "name": "Workspace indexing"
+    },
+    {
+      "name": "Memory"
+    }
+  ]
+}

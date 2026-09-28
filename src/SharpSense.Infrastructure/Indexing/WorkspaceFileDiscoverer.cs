@@ -1,13 +1,13 @@
-using GitIgnore = Ignore.Ignore;
 using Microsoft.Extensions.FileSystemGlobbing;
-using System.IO.Abstractions;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Storage;
+using System.IO.Abstractions;
+using GitIgnore = Ignore.Ignore;
 
 namespace SharpSense.Infrastructure.Indexing;
 
-public sealed class WorkspaceFileDiscoverer(
+internal sealed class WorkspaceFileDiscoverer(
     IRepositoryWorkspace repositoryWorkspace,
     IFileSystem fileSystem) : IWorkspaceFileDiscoverer
 {
@@ -53,7 +53,7 @@ public sealed class WorkspaceFileDiscoverer(
 
         foreach (var absolutePath in fileSystem.Directory
                      .EnumerateFiles(absoluteTargetDirectory, "*", SearchOption.AllDirectories)
-                     .OrderBy(static path => path, GetPathComparer()))
+            .OrderBy(static path => path, GetPathComparer()))
         {
             ct.ThrowIfCancellationRequested();
 

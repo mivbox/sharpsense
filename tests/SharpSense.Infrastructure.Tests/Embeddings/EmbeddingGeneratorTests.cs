@@ -22,16 +22,22 @@ public sealed class EmbeddingGeneratorTests
             },
             innerGenerator);
         var progress = new CollectingProgress();
-        var inputs = new[] { "alpha", "beta", "gamma", "delta", "epsilon" };
+        var inputs = new[]
+        {
+            "alpha",
+            "beta",
+            "gamma",
+            "delta",
+            "epsilon"
+        };
 
         var embeddings = await generator.GenerateBatch(inputs, progress, CancellationToken.None);
 
         innerGenerator.RequestedBatches.Should()
-            .HaveCount(3)
-            .And.SatisfyRespectively(
-                batch => batch.Should().Equal("alpha", "beta"),
-                batch => batch.Should().Equal("gamma", "delta"),
-                batch => batch.Should().Equal("epsilon"));
+            .HaveCount(3).And.SatisfyRespectively(
+            batch => batch.Should().Equal("alpha", "beta"),
+            batch => batch.Should().Equal("gamma", "delta"),
+            batch => batch.Should().Equal("epsilon"));
         embeddings.Select(static embedding => embedding.Text)
             .Should()
             .Equal(inputs);
@@ -39,13 +45,15 @@ public sealed class EmbeddingGeneratorTests
             .Should()
             .ContainInOrder(0, 1, 2, 2, 3, 4, 4, 5);
         progress.Updates.Should()
-            .Contain(update => update.CurrentTask.Contains("batch 2/3", StringComparison.Ordinal))
-            .And.Contain(update => update.CurrentTask.Contains("5/5", StringComparison.Ordinal));
+            .Contain(update => update.CurrentTask.Contains("batch 2/3", StringComparison.Ordinal)).And.Contain(update => update.CurrentTask.Contains("5/5", StringComparison.Ordinal));
     }
 
     private sealed class CollectingProgress : IProgress<EmbeddingGenerationProgress>
     {
-        public List<EmbeddingGenerationProgress> Updates { get; } = [];
+        public List<EmbeddingGenerationProgress> Updates
+        {
+            get;
+        } = [];
 
         public void Report(EmbeddingGenerationProgress value)
             => Updates.Add(value);
@@ -53,7 +61,10 @@ public sealed class EmbeddingGeneratorTests
 
     private sealed class RecordingEmbeddingGenerator : IEmbeddingGenerator<string, Embedding<float>>
     {
-        public List<string[]> RequestedBatches { get; } = [];
+        public List<string[]> RequestedBatches
+        {
+            get;
+        } = [];
 
         public void Dispose()
         {
@@ -71,7 +82,8 @@ public sealed class EmbeddingGeneratorTests
                 new GeneratedEmbeddings<Embedding<float>>(
                     batch.Select(
                         (_, index) =>
-                            new Embedding<float>(new float[] { index + 1 }))));
+                            new Embedding<float>(new float[] { index + 1
+                                    }))));
         }
 
         public object? GetService(Type serviceType, object? serviceKey = null)

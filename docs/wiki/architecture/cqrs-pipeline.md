@@ -1,48 +1,29 @@
----
-title: "CQRS Pipeline"
-type: architecture
-tags: [cqrs, spectre, implemented]
-created: 2026-04-26
-updated: 2026-05-11
-confidence: high
----
+# Commands and queries
 
-## The Problem
+Application features expose command/query handlers through shared interfaces. CLI, MCP, and HTTP adapters select the workspace, bind input, invoke the handler, and format the result.
 
-SharpSense has to move three different kinds of data through the same runtime: host configuration, command-side event batches, and query-side request payloads. If those concerns leak into each other, CLI routes become hard to compose, handlers gain orchestration logic, and incremental indexing stops looking like pure CQRS traffic.
+`IndexWorkspaceCommandHandler` owns indexing orchestration: build the explicit source plan, coordinate bounded asynchronous language workers, merge their contributions, reuse or generate embeddings, and commit through `IKnowledgeGraphRepository`. Sources within each language run serially; independent languages can run concurrently. It records indexing phases and diagnostics. `UpdateWorkspaceFilesCommandHandler` filters watch events and routes relevant named-workspace changes through the same complete-graph reconciliation, reusing safe committed contributions for documentation-only edits. Cache publication follows the database commit, and failure or cancellation invalidates reusable state.
 
-## The Approach
+Read slices expose focused contracts for hybrid search, node context, traces, inheritors, workspace exploration, graph loading, and statistics. Infrastructure implements their query boundaries against the selected database. Memory commands share a repository boundary for add/delete and retrieval.
 
-SharpSense binds long-lived command configuration once during [[architecture/host-composition]] by writing CLI values into `IOptions<SharpSenseCliOptions>` and loading `sharpsense.yaml` into `SharpSenseConfig`. The CQRS records stay narrow on both sides of the boundary:
+`ExecuteProcessCommandHandler` owns process execution and bounded output reduction behind process/log-index contracts. CLI `execute` and MCP `ctx_execute` invoke the same handler; Infrastructure owns process startup and the transient SQLite output index.
 
-* `IndexTargetCommand` carries only full-index runtime signals (`Progress` and `EmbeddingProgress`).
-* `UpdateWorkspaceFilesCommand` carries only incremental runtime signals (`ChangedFiles` and `Progress`).
-* `HybridSearchQuery` carries only the search text and optional query filters.
-* `TraceQuery`, `ImpactAnalysisQuery`, `GetInheritorsQuery`, `GetNodeContextQuery`, `GetDependencyGraphNodesQuery`, and `GetDependencyGraphEdgesQuery` carry only the traversal or hydration request data needed for the current call.
+`GetNodeContextQueryHandler` returns typed results for invalid or missing node IDs. CLI writes expected failures to stderr and returns a nonzero exit code; MCP marks its tool result with `isError: true`. HTTP maps failures to problem responses without a separate existence lookup. Cancellation and unexpected storage failures still propagate.
 
-`ICommandHandler<TCommand>` and `IQueryHandler<TQuery, TResult>` implementations stay thin and delegate to feature orchestrators such as `IKnowledgeGraphIndexing`, `IHybridSearcher`, `ITraceNavigator`, `IImpactAnalyzer`, `IInheritorFinder`, `IContextRepository`, and `IDependencyGraphRepository`. `Context360` now follows the same read-side transport as the other query features: both [[cli/context-command]] and MCP `context` dispatch `GetNodeContextQuery`, while the handler stays responsible for validation and request normalization and the repository stays responsible for shaping the read model. That keeps the public routes in [[cli/analyze-command]], [[cli/context-command]], [[cli/search-command]], [[cli/trace-command]], [[cli/inheritors-command]], [[cli/mcp-command]], and [[cli/ui-command]] stable even as the underlying infrastructure changes.
+`GetTraceGraphQueryHandler` owns the browser's caller/callee traversal behind `ITraceNavigator` and `IImpactAnalyzer`. The HTTP adapter maps its result to the existing `TraceResponse` schema. Traversal retains the depth range of 1–10 and the callee budget of 1,000 visible nodes including the root; `Truncated` reports omitted callees. Caller traversal retains the impact analyzer's behavior. CLI/MCP tracing retains its existing query contracts and output.
 
-## Components Involved
+## Boundaries
 
-| Component | Role |
-| --- | --- |
-| `SharpSenseCliOptions` / `SharpSenseConfig` | Host-scoped configuration for repository roots, Target paths, watch flags, embeddings switches, and include paths. |
-| `ICommandHandler<TCommand>` | Minimal command-side abstraction used for mutation flows such as full and incremental indexing. |
-| `IQueryHandler<TQuery, TResult>` | Minimal query-side abstraction used for read flows such as search, trace, impact analysis, inheritor lookup, and dependency graph retrieval. |
-| `GetNodeContextQuery` / `GetNodeContextQueryHandler` / `IContextRepository` | Read-side record, thin handler, and repository boundary for Context360 breadth lookups shared by CLI and MCP. |
-| `IndexTargetCommand` / `UpdateWorkspaceFilesCommand` | Write-side records that carry only progress and changed-file event data. |
-| `HybridSearchQuery` / `TraceQuery` / `ImpactAnalysisQuery` / `GetInheritorsQuery` / `GetNodeContextQuery` / `GetDependencyGraphNodesQuery` / `GetDependencyGraphEdgesQuery` | Read-side records that carry only the request data for the current lookup. |
-| `IndexTargetCommandHandler`, `UpdateWorkspaceFilesCommandHandler`, and the query handlers | Thin adapters that forward records to the relevant feature orchestrator. |
-| `KnowledgeGraphIndexing` | Scoped orchestration component that consumes extractors, persistence, repository workspace, embeddings, and `IOptions<SharpSenseCliOptions>`. |
-| `InheritorFinder` | Read-side navigator that maps persisted `DependencyEdges` inheritance semantics onto TOON-ready `CodeNodeResult` rows for class and interface targets. |
+- Domain owns graph concepts and identities.
+- Application owns use cases, source-plan contracts, and orchestration.
+- Infrastructure owns Roslyn, Tree-sitter, Markdig, filesystem integration, embeddings, and SQLite persistence.
+- CLI owns command/MCP presentation and the HTTP host.
+- UI features use generated API contracts and workspace-scoped query clients.
 
-## Strict Rules
+Keep command/query models beside their handlers, shared feature models in the feature's `Models/`, and infrastructure-facing interfaces in `Abstractions/`. See [vertical slices](vertical-slice-application.md).
 
-1. Keep host configuration in `IOptions<SharpSenseCliOptions>` or `SharpSenseConfig`. `TargetPath`, `RepositoryRoot`, `Watch`, `SkipEmbeddings`, and include-path settings must not be copied into CQRS command or query records.
-2. Keep command payloads limited to runtime event data such as `ChangedFiles`, `Progress`, and `EmbeddingProgress`.
-3. Keep query payloads limited to the current request data such as search text, identifiers, depth limits, and optional filters.
-4. Keep handlers thin and register them through modular `Add*` extension methods instead of duplicating orchestration logic in the route or handler body.
-5. Use "Target" or "Workspace" terminology when documenting indexed boundaries.
-6. Split large read models into multiple query records when transport cost differs by shape; in the UI graph flow, node hydration and edge hydration must stay independently addressable.
-7. When persisted edge semantics are overloaded, isolate the interpretation inside the read-side navigator instead of leaking that storage quirk into MCP or route code.
-8. Prefer query handlers for read flows; if multiple routes share the same read contract, share the query record and handler instead of introducing a route-specific Application service.
+Expected indexing failures return results and retain the previous graph. Transport adapters convert failures to appropriate command exit codes or HTTP responses. A committed graph update is distinct from an ignored filesystem event, which must not imply new index data.
+
+Workspace identity stays explicit for each host, request, or background job; see [host composition](host-composition.md).
+
+Indexing has one persistence contract: reconcile the complete selected graph. There is no file-delta extractor or repository API. `GraphSnapshot` normalizes and compares graphs, `PersistedGraphBuilder` preserves identities while constructing records, and `GraphPersistence` performs database operations. `KnowledgeGraphRepository` owns the transaction and revision change; the extraction cache is published only after commit.

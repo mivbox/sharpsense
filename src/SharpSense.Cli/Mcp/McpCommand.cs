@@ -1,33 +1,33 @@
-using ModelContextProtocol;
-using System.Diagnostics.CodeAnalysis;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using SharpSense.Application.Context360;
+using ModelContextProtocol;
 using Serilog;
-using SharpSense.Application.Inheritors;
-using SharpSense.Application.Refactoring;
-using SharpSense.Application.Shared.Options;
+using SharpSense.Application.CommandExecution;
+using SharpSense.Application.Context360;
+using SharpSense.Application.GraphStats;
 using SharpSense.Application.HybridSearch;
 using SharpSense.Application.ImpactAnalysis;
+using SharpSense.Application.Inheritors;
 using SharpSense.Application.Memory;
 using SharpSense.Application.Trace;
-using SharpSense.Infrastructure.Context360;
-using SharpSense.Infrastructure.CommandExecution;
+using SharpSense.Application.Trace.Models;
 using SharpSense.Cli.Shared;
+using SharpSense.Infrastructure.CommandExecution;
+using SharpSense.Infrastructure.Context360;
 using SharpSense.Infrastructure.Embeddings;
+using SharpSense.Infrastructure.GraphStats;
 using SharpSense.Infrastructure.HybridSearch;
-using SharpSense.Infrastructure.Inheritors;
 using SharpSense.Infrastructure.ImpactAnalysis;
-using SharpSense.Infrastructure.Indexing;
+using SharpSense.Infrastructure.Inheritors;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
-using SharpSense.Infrastructure.Refactoring;
-using SharpSense.Infrastructure.Storage;
 using SharpSense.Infrastructure.Trace;
+using Spectre.Console;
 using Spectre.Console.Cli;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SharpSense.Cli.Mcp;
 
@@ -41,36 +41,31 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
     public sealed class Settings : GlobalSettings
     {
-        [CommandOption("--repo-root <path>")]
-        public string? RepositoryRoot { get; init; }
+        public override ValidationResult Validate() => string.IsNullOrWhiteSpace(Workspace)
+            ? ValidationResult.Error("MCP requires --workspace <name-or-id>; it never uses the CLI default workspace.")
+            : base.Validate();
     }
 
     protected override void Configure(Settings settings, IServiceCollection services)
     {
-        Logger.Debug("Configuring MCP command with repository root: {RepositoryRoot}",
+        Logger.Debug(
+            "Configuring MCP command with repository root: {RepositoryRoot}",
             settings.RepositoryRoot);
 
-        var rawRoot = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-
-        services.Configure<SharpSenseCliOptions>(options =>
-        {
-            options.RepositoryRoot = rawRoot;
-        });
-        services.AddRepositoryWorkspace(rawRoot);
-        services.AddSharpSenseConfiguration(rawRoot);
-        services.AddCommandExecutionInfrastructure();
+        services.AddSelectedWorkspace(settings);
+        services.AddCommandExecution()
+            .AddCommandExecutionInfrastructure();
         services.AddContext360();
         services.AddContext360Infrastructure();
+        services.AddGraphStats()
+            .AddGraphStatsInfrastructure();
         services.AddHybridSearch();
         services.AddHybridSearchInfrastructure();
         services.AddMemory();
         services.AddMemoryInfrastructure();
         services.AddEmbeddingsInfrastructure();
-        services.AddRefactoring();
-        services.AddRefactoringInfrastructure();
         services.AddInheritors();
         services.AddInheritorsInfrastructure();
-        services.AddIndexingInfrastructure();
         services.AddImpactAnalysis();
         services.AddImpactAnalysisInfrastructure();
         services.AddTrace();
@@ -89,6 +84,7 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
         CancellationToken ct)
     {
         await host.WaitForShutdownAsync(ct);
+
         return 0;
     }
 
@@ -97,6 +93,7 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
         var serializerOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
         serializerOptions.Converters.Add(new JsonStringEnumConverter<SharpSense.Domain.KnowledgeGraph.Enums.EdgeCategory>());
         serializerOptions.Converters.Add(new JsonStringEnumConverter<TraceDirection>());
+
         return serializerOptions;
     }
 }

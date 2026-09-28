@@ -2,27 +2,46 @@ using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.Storage;
 
-public sealed class RepositoryWorkspace : IRepositoryWorkspace
+internal sealed class RepositoryWorkspace : IRepositoryWorkspace
 {
     private readonly IFileSystem _fileSystem;
 
     internal RepositoryWorkspace(
         string rootPath,
         string databasePath,
-        IFileSystem fileSystem)
+        IFileSystem fileSystem,
+        WorkspaceDefinition? definition = null)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         RootPath = NormalizeRootPath(rootPath, _fileSystem);
         DatabasePath = _fileSystem.Path.GetFullPath(databasePath);
+        Definition = definition;
     }
 
-    public string RootPath { get; }
+    public string RootPath
+    {
+        get;
+    }
 
-    public string DatabasePath { get; }
+    public string DatabasePath
+    {
+        get;
+    }
+
+    public Guid? WorkspaceId => Definition?.Id;
+
+    public string? WorkspaceName => Definition?.Name;
+
+    public WorkspaceDefinition? Definition
+    {
+        get;
+    }
 
     public string ToRepositoryRelativePath(string? filePath) =>
-        !TryToRepositoryRelativePath(filePath, out var relativePath) ?
-            throw new InvalidOperationException($"File path '{filePath}' must be located under repository root '{RootPath}'.") :
+        !TryToRepositoryRelativePath(filePath, out var relativePath)
+        ?
+            throw new InvalidOperationException($"File path '{filePath}' must be located under repository root '{RootPath}'.")
+        :
             relativePath;
 
     public string GetRequiredTargetDirectoryPath(string targetPath)
@@ -35,7 +54,7 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
         }
 
         return _fileSystem.Path.GetDirectoryName(absoluteTargetPath)
-               ?? throw new InvalidOperationException($"Unable to determine the target directory for '{absoluteTargetPath}'.");
+            ?? throw new InvalidOperationException($"Unable to determine the target directory for '{absoluteTargetPath}'.");
     }
 
     public bool TryToRepositoryRelativePath(string? filePath, out string relativePath)
@@ -47,9 +66,11 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
             return false;
         }
 
-        var absolutePath = NormalizeRootPath(_fileSystem.Path.IsPathRooted(filePath)
-            ? filePath
-            : _fileSystem.Path.Combine(RootPath, filePath), _fileSystem);
+        var absolutePath = NormalizeRootPath(
+            _fileSystem.Path.IsPathRooted(filePath)
+                ? filePath
+                : _fileSystem.Path.Combine(RootPath, filePath),
+            _fileSystem);
 
         if (!IsSameOrSubPath(absolutePath))
         {
@@ -71,9 +92,11 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
             return false;
         }
 
-        var absolutePath = NormalizeRootPath(_fileSystem.Path.IsPathRooted(filePath)
-            ? filePath
-            : _fileSystem.Path.Combine(RootPath, filePath), _fileSystem);
+        var absolutePath = NormalizeRootPath(
+            _fileSystem.Path.IsPathRooted(filePath)
+                ? filePath
+                : _fileSystem.Path.Combine(RootPath, filePath),
+            _fileSystem);
         var comparison = OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase
             : StringComparison.Ordinal;
@@ -83,12 +106,13 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
             : RootPath + Path.DirectorySeparatorChar;
 
         return string.Equals(RootPath, absolutePath, comparison) ||
-               absolutePath.StartsWith(rootPathWithSeparator, comparison);
+            absolutePath.StartsWith(rootPathWithSeparator, comparison);
     }
 
     public string NormalizeDirectorySeparators(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
+
         return path.Replace('\\', '/');
     }
 
@@ -108,7 +132,9 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
         if (!_fileSystem.File.Exists(absoluteTargetPath) &&
             !_fileSystem.Directory.Exists(absoluteTargetPath))
         {
-            throw new FileNotFoundException($"Target path '{absoluteTargetPath}' was not found.", absoluteTargetPath);
+            throw new FileNotFoundException(
+                $"Target path '{absoluteTargetPath}' was not found.",
+                absoluteTargetPath);
         }
 
         return absoluteTargetPath;
@@ -134,13 +160,14 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
         return NormalizeRootPath(workingDirectory, fileSystem);
     }
 
-    private static string NormalizeRootPath(
+    internal static string NormalizeRootPath(
         string path,
         IFileSystem fileSystem)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         var fullPath = fileSystem.Path.GetFullPath(path);
         var resolvedPath = ResolveExistingPath(fullPath, fileSystem);
+
         return TrimEndingDirectorySeparatorPreservingRoot(fileSystem.Path.GetFullPath(resolvedPath));
     }
 
@@ -157,8 +184,8 @@ public sealed class RepositoryWorkspace : IRepositoryWorkspace
         var resolvedPath = root;
         var segments = fullPath[root.Length..]
             .Split(
-                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
-                StringSplitOptions.RemoveEmptyEntries);
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries);
 
         foreach (var segment in segments)
         {

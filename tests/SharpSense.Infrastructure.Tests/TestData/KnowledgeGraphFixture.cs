@@ -49,7 +49,7 @@ internal static class KnowledgeGraphFixture
     public const string MessageProviderTypeDisplayName = "MessageProvider";
     public const string CachedMessageDisplayName = "MessageProvider.GetCachedMessage()";
 
-    public static async Task SeedAsync(SharpSenseDbContext context)
+    public static async Task Seed(SharpSenseDbContext context)
     {
         context.Directories.AddRange(
             new DirectoryRecord
@@ -455,7 +455,7 @@ internal static class KnowledgeGraphFixture
 
         await context.SaveChangesAsync();
 
-        if (await FtsTableExistsAsync(context))
+        if (await FtsTableExists(context))
         {
             await context.Database.ExecuteSqlRawAsync(
                 """
@@ -473,7 +473,7 @@ internal static class KnowledgeGraphFixture
         }
     }
 
-    private static async Task<bool> FtsTableExistsAsync(SharpSenseDbContext context)
+    private static async Task<bool> FtsTableExists(SharpSenseDbContext context)
     {
         var connection = context.Database.GetDbConnection();
         if (connection.State != System.Data.ConnectionState.Open)
@@ -484,6 +484,7 @@ internal static class KnowledgeGraphFixture
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='CodeNodeSearch');";
         var result = await command.ExecuteScalarAsync();
+
         return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture) == 1;
     }
 }
