@@ -4,6 +4,8 @@ Historical implementation notes follow. Each dated entry describes behavior at t
 
 ## Version 1
 
+- `2026-09-28` — Aligned CLI context output with search and trace: JSON is the default and `--toon` selects the existing compact formatter. Optional memories remain metadata-only in both formats. MCP context output is unchanged. See [context](cli/context-command.md).
+
 - `2026-09-27` — Returned typed context failures across CLI, MCP and HTTP, removed the duplicate HTTP context lookup, and moved browser trace traversal into an internal application query handler while preserving response payloads and traversal limits. Context failures preserve stderr in the CLI and set the MCP tool-error flag. Added handler and transport behavior coverage. See [CQRS](architecture/cqrs-pipeline.md) and [context](cli/context-command.md).
 
 - `2026-09-27` — Added portable development skills and aligned the SharpSense plugin skills with current search, graph and output-reduction behavior. Moved command execution into an application handler and the analysis snapshot reducer into CLI presentation; grouped graph queries with their operation models. Stale-memory hints now require source verification before replacement or deletion. See [skills plugin](cli/skills-command.md), [CQRS](architecture/cqrs-pipeline.md), [windowed execution](architecture/windowed-execution-pipeline.md), and [host composition](architecture/host-composition.md).

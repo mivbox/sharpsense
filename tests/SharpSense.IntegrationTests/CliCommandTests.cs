@@ -179,6 +179,51 @@ public sealed class CliCommandTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WhenContextRunsWithoutToon_ThenItOutputsNodeRelationshipsAsJson(bool includeMemories)
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+        var memoryOptions = includeMemories ? new[] { "--include-memories" } : [];
+
+        var exitCode = await app.RunAsync(
+            ["context", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot, .. memoryOptions],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        using var json = JsonDocument.Parse(console.Output);
+        var context = json.RootElement;
+        var target = context.GetProperty("targetNode");
+        target.GetProperty("id")
+            .GetInt32().Should().Be(CliCommandTestDatabase.SeedNodeId);
+        target.GetProperty("name")
+            .GetString().Should().Be("MessageConsumer.Render()");
+        target.GetProperty("kind")
+            .GetString().Should().Be("Method");
+        var caller = context.GetProperty("callers")
+            .EnumerateArray().Should().ContainSingle().Which;
+        caller.GetProperty("id")
+            .GetInt32().Should().Be(CliCommandTestDatabase.CallerNodeId);
+        var callee = context.GetProperty("callees")
+            .EnumerateArray().Should().ContainSingle().Which;
+        callee.GetProperty("id")
+            .GetInt32().Should().Be(CliCommandTestDatabase.CalleeNodeId);
+        foreach (var relationship in new[] { "implementers", "inherits", "parents", "children" })
+        {
+            context.GetProperty(relationship)
+                .EnumerateArray().Should().BeEmpty();
+        }
+
+        context.TryGetProperty("memories", out var memories).Should().Be(includeMemories);
+        if (includeMemories)
+        {
+            memories.EnumerateArray().Should().BeEmpty();
+        }
+    }
+
     [Fact]
     public async Task WhenContextRunsForMethodNode_ThenItOutputsImmediateCallersAndCalleesAsToon()
     {
@@ -187,7 +232,7 @@ public sealed class CliCommandTests
         var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["context", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot],
+            ["context", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot, "--toon"],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -219,7 +264,7 @@ public sealed class CliCommandTests
         var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["context", "--node-id", CliCommandTestDatabase.InterfaceNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot],
+            ["context", "--node-id", CliCommandTestDatabase.InterfaceNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot, "--toon"],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -251,7 +296,7 @@ public sealed class CliCommandTests
         var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["context", "--node-id", CliCommandTestDatabase.DerivedClassNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot],
+            ["context", "--node-id", CliCommandTestDatabase.DerivedClassNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot, "--toon"],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -640,31 +685,55 @@ public sealed class CliCommandTests
         getConsole.Output.Should().Contain("tags: [convention]");
     }
 
-    [Fact]
-    public async Task WhenContextRunsWithIncludeMemories_ThenItPrintsMemoryHint()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WhenContextRunsWithIncludeMemories_ThenItPrintsOnlyMemoryMetadata(bool useToon)
     {
         await using var database = await CliCommandTestDatabase.Create();
         using var seedConsole = new TestConsole();
         var seedApp = CreateCommandApp(seedConsole, database);
         var ct = TestContext.Current.CancellationToken;
 
-        await seedApp.RunAsync(
-            ["memory", "add", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--content", "Always greet politely", "--repo-root", RepositoryRoot],
+        var addExitCode = await seedApp.RunAsync(
+            ["memory", "add", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--content", "Always greet politely", "--tag", "convention", "--repo-root", RepositoryRoot],
             ct);
+        addExitCode.Should().Be(0);
+        var memoryId = await GetSingleMemoryId(database, ct);
 
         using var contextConsole = new TestConsole();
         var contextApp = CreateCommandApp(contextConsole, database);
+        var outputOptions = useToon ? new[] { "--toon" } : [];
 
         var exitCode = await contextApp.RunAsync(
-            ["context", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--include-memories", "--repo-root", RepositoryRoot],
+            ["context", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--include-memories", "--repo-root", RepositoryRoot, .. outputOptions],
             ct);
 
         exitCode.Should().Be(0);
-        contextConsole.Output.Should().Contain("memories: 1 (");
-        contextConsole.Output.Should().Contain("semantic_context:");
-        contextConsole.Output.Should().Contain("stale=false");
-        // The inline shape must NEVER leak the content.
         contextConsole.Output.Should().NotContain("Always greet politely");
+        if (useToon)
+        {
+            contextConsole.Output.Should().Contain("memories: 1 (");
+            contextConsole.Output.Should().Contain("semantic_context:");
+            contextConsole.Output.Should().Contain($"id={memoryId}");
+            contextConsole.Output.Should().Contain("stale=false");
+        }
+        else
+        {
+            using var json = JsonDocument.Parse(contextConsole.Output);
+            var memory = json.RootElement.GetProperty("memories")
+                .EnumerateArray().Should().ContainSingle().Which;
+            memory.GetProperty("id")
+                .GetGuid().Should().Be(memoryId);
+            memory.GetProperty("intent")
+                .GetString().Should().Be("Convention");
+            memory.GetProperty("isStale")
+                .GetBoolean().Should().BeFalse();
+            memory.GetProperty("tags")
+                .EnumerateArray()
+                .Select(tag => tag.GetString()).Should().Equal("convention");
+            memory.TryGetProperty("content", out _).Should().BeFalse();
+        }
     }
 
     private static async Task<Guid> GetSingleMemoryId(CliCommandTestDatabase database, CancellationToken ct)

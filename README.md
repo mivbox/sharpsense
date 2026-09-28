@@ -117,6 +117,8 @@ sharpsense doctor --workspace commerce --json
 sharpsense mcp --workspace commerce
 ```
 
+Query commands such as `search`, `context` and `trace` return JSON by default. Add `--toon` for compact TOON output.
+
 Interactive analysis shows elapsed time, phase, per-language source activity, embeddings, saving, and a committed
 summary. Watch mode distinguishes reconciliation, idle, updates, recovery, and stopping. Redirected output uses
 concise milestones. Unknown totals stay indeterminate rather than presenting an overall percentage.

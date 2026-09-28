@@ -14,6 +14,8 @@ using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using System.ComponentModel;
+using System.Text.Json;
 
 namespace SharpSense.Cli.Context;
 
@@ -25,6 +27,13 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
     {
         [CommandOption("--node-id <NODE_ID>")]
         public int NodeId
+        {
+            get; init;
+        }
+
+        [CommandOption("--toon")]
+        [Description("Use compact TOON output instead of JSON.")]
+        public bool UseToonFormat
         {
             get; init;
         }
@@ -85,7 +94,30 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
                 : [];
         }
 
-        CommandOutput.Write(context, TokenObjectNotation.SerializeContext360(result.Value, semanticContext));
+        var nodeContext = result.Value;
+        var output = settings.UseToonFormat
+            ? TokenObjectNotation.SerializeContext360(nodeContext, semanticContext)
+            : JsonSerializer.Serialize(
+                new
+                {
+                    nodeContext.TargetNode,
+                    nodeContext.Callers,
+                    nodeContext.Implementers,
+                    nodeContext.Callees,
+                    nodeContext.Inherits,
+                    nodeContext.Parents,
+                    nodeContext.Children,
+                    Memories = semanticContext?.Select(static memory => new
+                    {
+                        memory.Id,
+                        memory.Intent,
+                        memory.IsStale,
+                        memory.Tags
+                    })
+                },
+                TokenObjectNotation.JsonOptions);
+
+        CommandOutput.Write(context, output);
 
         return 0;
     }
