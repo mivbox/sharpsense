@@ -120,7 +120,7 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
             return base.Validate();
         }
 
-        private static bool TryParseIntent(string raw, out SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent intent)
+        private static bool TryParseIntent(string raw, out Domain.KnowledgeGraph.Enums.MemoryIntent intent)
             => Enum.TryParse(raw, ignoreCase: true, out intent);
     }
 
@@ -157,8 +157,8 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
     {
         var handler = services.GetRequiredService<ICommandHandler<AttachMemoryCommand, Result>>();
         var intent = string.IsNullOrWhiteSpace(settings.IntentRaw)
-            ? SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention
-            : Enum.Parse<SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent>(settings.IntentRaw, ignoreCase: true);
+            ? Domain.KnowledgeGraph.Enums.MemoryIntent.Convention
+            : Enum.Parse<Domain.KnowledgeGraph.Enums.MemoryIntent>(settings.IntentRaw, ignoreCase: true);
         var result = await handler.Handle(
             new AttachMemoryCommand(settings.NodeId!.Value, settings.Content!, settings.Tags, intent),
             ct);
@@ -229,11 +229,11 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
 
     private static async Task<int> ListMemories(CommandContext context, Settings settings, IServiceProvider services, CancellationToken ct)
     {
-        SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent[]? intentFilter = null;
+        Domain.KnowledgeGraph.Enums.MemoryIntent[]? intentFilter = null;
         if (settings.IntentFilterRaw is { Length: > 0 })
         {
             intentFilter = settings.IntentFilterRaw
-                .Select(static raw => Enum.Parse<SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent>(raw, ignoreCase: true))
+                .Select(static raw => Enum.Parse<Domain.KnowledgeGraph.Enums.MemoryIntent>(raw, ignoreCase: true))
                 .ToArray();
         }
 

@@ -85,7 +85,7 @@ public sealed class WorkspaceIndexLeaseTests
 
         ((Action)(() => otherCatalog.AcquireIndexLease(selection))).Should().ThrowExactly<WorkspaceDefinitionChangedException>();
 
-        System.IO.Directory.Exists(differentHome).Should().BeFalse();
+        Directory.Exists(differentHome).Should().BeFalse();
     }
 
     private sealed class Fixture : IDisposable

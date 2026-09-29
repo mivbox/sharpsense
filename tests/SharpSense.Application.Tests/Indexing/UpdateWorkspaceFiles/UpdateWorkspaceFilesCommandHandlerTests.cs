@@ -496,9 +496,9 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests
                 new WorkspaceExtractionCoordinator(
                     extractors ?? [],
                     workspacePaths ?? new Mock<IIndexingWorkspacePaths>(MockBehavior.Strict).Object,
-                    Moq.Mock.Of<IWorkspaceChangeFilter>(),
+                    Mock.Of<IWorkspaceChangeFilter>(),
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
-                Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
+                Mock.Of<GraphStats.Abstractions.IIndexRunStore>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance),
             Mock.Of<IWorkspaceChangeFilter>(filter => filter.IsRelevant(It.IsAny<IReadOnlyList<WorkspaceFileChange>>()) == true));
 }

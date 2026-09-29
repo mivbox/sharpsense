@@ -73,7 +73,7 @@ public sealed class CSharpWorkspaceRefreshTests
                 new WorkspaceExtractionCoordinator(
                     [extractor],
                     paths,
-                    Moq.Mock.Of<IWorkspaceChangeFilter>(),
+                    Mock.Of<IWorkspaceChangeFilter>(),
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
                 Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);
@@ -86,7 +86,7 @@ public sealed class CSharpWorkspaceRefreshTests
                     new WorkspaceExtractionCoordinator(
                         [extractor],
                         paths,
-                        Moq.Mock.Of<IWorkspaceChangeFilter>(),
+                        Mock.Of<IWorkspaceChangeFilter>(),
                         Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
                     Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance),
@@ -179,7 +179,7 @@ public sealed class CSharpWorkspaceRefreshTests
                     new WorkspaceExtractionCoordinator(
                         [freshExtractor],
                         paths,
-                        Moq.Mock.Of<IWorkspaceChangeFilter>(),
+                        Mock.Of<IWorkspaceChangeFilter>(),
                         Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
                     Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);

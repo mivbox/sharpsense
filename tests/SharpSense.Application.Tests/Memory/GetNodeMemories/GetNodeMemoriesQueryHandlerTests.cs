@@ -19,13 +19,13 @@ public sealed class GetNodeMemoriesQueryHandlerTests
             "Security review",
             "content-hash",
             ["security"],
-            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
+            Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
             DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
             false);
         var memoryRepository = new Mock<IMemoryRepository>(MockBehavior.Strict);
         memoryRepository.Setup(candidate => candidate.GetNodeMemories(
             It.Is<IReadOnlyCollection<int>>(nodeIds => nodeIds.Count == 1 && nodeIds.Contains(42)),
-            It.IsAny<IReadOnlyCollection<SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent>?>(),
+            It.IsAny<IReadOnlyCollection<Domain.KnowledgeGraph.Enums.MemoryIntent>?>(),
             CancellationToken.None))
             .ReturnsAsync(new Dictionary<int, MemoryNode[]>
             {
@@ -46,7 +46,7 @@ public sealed class GetNodeMemoriesQueryHandlerTests
         var memoryRepository = new Mock<IMemoryRepository>(MockBehavior.Strict);
         memoryRepository.Setup(candidate => candidate.GetNodeMemories(
             It.Is<IReadOnlyCollection<int>>(nodeIds => nodeIds.Count == 1 && nodeIds.Contains(42)),
-            It.IsAny<IReadOnlyCollection<SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent>?>(),
+            It.IsAny<IReadOnlyCollection<Domain.KnowledgeGraph.Enums.MemoryIntent>?>(),
             CancellationToken.None))
             .ReturnsAsync(new Dictionary<int, MemoryNode[]>());
         var handler = new GetNodeMemoriesQueryHandler(memoryRepository.Object);

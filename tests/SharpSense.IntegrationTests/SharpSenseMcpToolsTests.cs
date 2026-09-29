@@ -241,7 +241,7 @@ public sealed class SharpSenseMcpToolsTests
         };
         var handler = new Mock<ICommandHandler<AttachMemoryCommand, Result>>(MockBehavior.Strict);
         handler.Setup(candidate => candidate.Handle(
-            new AttachMemoryCommand(42, "Security review", tags, SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention),
+            new AttachMemoryCommand(42, "Security review", tags, MemoryIntent.Convention),
             CancellationToken.None))
             .ReturnsAsync(Result.Ok());
 
@@ -250,7 +250,7 @@ public sealed class SharpSenseMcpToolsTests
             42,
             "Security review",
             tags,
-            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention,
+            MemoryIntent.Convention,
             CancellationToken.None);
 
         result.Should().Be("attached memory to node 42 (intent=Convention)");

@@ -63,7 +63,7 @@ public sealed class DeleteMemoryTests
             nodeId,
             "Always greet politely.",
             ["convention"],
-            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention,
+            MemoryIntent.Convention,
             CancellationToken.None);
         attach.IsSuccess.Should().BeTrue();
 

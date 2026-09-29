@@ -9,7 +9,7 @@ public sealed class ProgramCommandAppTests
     public async Task WhenVersion_ThenReportsCliAssemblyVersionWithoutStartingCommandServices()
     {
         using var console = new TestConsole();
-        var app = global::SharpSense.Cli.Program.CreateCommandApp(
+        var app = Program.CreateCommandApp(
             console,
             configureServices: _ => throw new InvalidOperationException("Version must not start workspace services."),
             enableFileLogging: false);
@@ -44,7 +44,7 @@ public sealed class ProgramCommandAppTests
         {
             using var console = new TestConsole();
             var servicesStarted = false;
-            var app = global::SharpSense.Cli.Program.CreateCommandApp(
+            var app = Program.CreateCommandApp(
                 console,
                 _ =>
             {
@@ -64,7 +64,7 @@ public sealed class ProgramCommandAppTests
     [Fact]
     public void WhenFileLoggingIsDisabledWithoutAdditionalOverrides_ThenExecutionContextPreservesTheFlag()
     {
-        var executionContext = global::SharpSense.Cli.Program.CreateExecutionContext(
+        var executionContext = Program.CreateExecutionContext(
             console: null,
             configureServices: null,
             enableFileLogging: false);
@@ -78,7 +78,7 @@ public sealed class ProgramCommandAppTests
     [Fact]
     public void WhenDefaultSettingsHaveNoOverrides_ThenExecutionContextIsOmitted()
     {
-        var executionContext = global::SharpSense.Cli.Program.CreateExecutionContext(
+        var executionContext = Program.CreateExecutionContext(
             console: null,
             configureServices: null,
             enableFileLogging: true);

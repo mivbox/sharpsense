@@ -19,7 +19,7 @@ public sealed class WorkspaceInteractionsTests
     public async Task WhenBareWorkspaceAndRoot_ThenShowHelpWithoutStartingServices(bool workspace, bool explicitHelp, int expectedExit)
     {
         using var console = new TestConsole();
-        var app = global::SharpSense.Cli.Program.CreateCommandApp(
+        var app = Program.CreateCommandApp(
             console,
             _ => throw new InvalidOperationException("Help must not start command services."),
             enableFileLogging: false);
@@ -269,7 +269,7 @@ public sealed class WorkspaceInteractionsTests
         public async Task<(int Exit, string Output)> Run(params string[] args)
         {
             using var console = new TestConsole();
-            var app = global::SharpSense.Cli.Program.CreateCommandApp(
+            var app = Program.CreateCommandApp(
                 console,
                 services =>
             {

@@ -334,7 +334,7 @@ public sealed class AnalysisNotificationsTests
             _coordinator = new(
                 Workers,
                 paths,
-                Moq.Mock.Of<IWorkspaceChangeFilter>(),
+                Mock.Of<IWorkspaceChangeFilter>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance);
             Repository.Setup(repository => repository.ReplaceWorkspace(It.IsAny<ExtractedNodes>(), It.IsAny<CancellationToken>()))
                 .Returns<ExtractedNodes, CancellationToken>((_, token) => Commit(token));
@@ -345,7 +345,7 @@ public sealed class AnalysisNotificationsTests
                 paths,
                 options,
                 _coordinator,
-                Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
+                Mock.Of<GraphStats.Abstractions.IIndexRunStore>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);
             Update = new UpdateWorkspaceFilesCommandHandler(
                 Full,

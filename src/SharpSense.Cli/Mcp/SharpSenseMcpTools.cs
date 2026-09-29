@@ -130,7 +130,7 @@ internal sealed class SharpSenseMcpTools
         [Description("The persisted integer ID of the target node.")] int nodeId,
         [Description("The markdown-formatted memory payload to attach.")] string content,
         [Description("Optional tags used for filtering and classification.")] string[]? tags = null,
-        [Description("The memory's intent classification. One of: Convention, Invariant, Todo, Warning, Decision. Defaults to Convention.")] SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent intent = SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention,
+        [Description("The memory's intent classification. One of: Convention, Invariant, Todo, Warning, Decision. Defaults to Convention.")] MemoryIntent intent = MemoryIntent.Convention,
         CancellationToken ct = default)
     {
         using var activity = SharpSenseTraceSpan.Start("mcp.tool.attach_memory");

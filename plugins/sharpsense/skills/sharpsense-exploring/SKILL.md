@@ -21,25 +21,6 @@ Give the worker the question, intended workspace and checkout, and this brief:
 > Read targeted source files when needed to verify behaviour. Return a concise map with supporting file and line
 > references, observed branches and uncertainties. Do not edit source or curate memories during discovery.
 
-## Bind the workspace
-
-When MCP is available, call `graph_stats {}` once per connection before discovery, or reuse an already verified binding. Confirm the
-workspace name/ID, root and language coverage match the question. Its `repositoryRoot` response field names the
-workspace root, which may contain several repositories. Numeric node IDs belong only to that workspace.
-
-MCP is bound when it starts: explicit `--workspace` wins, otherwise exactly one registered root must contain
-its launch directory. It never uses the `workspace use` CLI default. A session cannot switch workspaces with a
-tool argument. If the binding is wrong, use the correct server or explicit CLI workspace; ask only when the
-intended workspace is unclear.
-
-Record available indexing timestamps and diagnostics. `databaseState: ready` and a successful index timestamp
-show recorded state, not proof that current files match the index. If relevant sources are missing or changed,
-use source evidence and explain the coverage limit. Reindex only when authorised for the task:
-
-```bash
-sharpsense analyze --workspace <name-or-id>
-```
-
 ## Follow the question
 
 1. `semantic_search({query: "<symbol or concept>"})` finds candidate nodes. Choose by symbol, file and project;
@@ -57,15 +38,8 @@ sharpsense analyze --workspace <name-or-id>
 Use only the calls needed for the question. Search takes plain text: `payment handler` searches quoted prefix
 terms joined with OR. Punctuation such as `*`, `:`, dots and path separators is handled safely; FTS operators,
 column selectors and quoted phrases have no special query meaning. Tokens shorter than two characters are
-ignored; punctuation-only input returns no hits. Use a more specific symbol term or inspect paths and projects to narrow candidates; adding OR terms can broaden results.
-
-If MCP is unavailable, use explicit CLI selection or ordinary source tools:
-
-```bash
-sharpsense search "payment handler" --workspace commerce --toon
-sharpsense context --node-id 42 --workspace commerce --include-memories --toon
-sharpsense trace 42 --direction callee --workspace commerce --include-memories --toon
-```
+ignored; punctuation-only input returns no hits. Use a more specific symbol term or inspect paths and projects to narrow
+candidates; adding OR terms can broaden results.
 
 CLI caller tracing defaults to immediate callers; MCP caller tracing defaults to depth three. Do not claim
 identical coverage when falling back between them. Use current source to fill gaps in either result.
@@ -87,10 +61,6 @@ Summary: observed behaviour, inferences and unresolved questions
 A map need not include every possible branch. The parent agent checks the cited source before implementation
 or a strong behavioural claim, and verifies stale notes before relying on them. Include the workspace and
 material coverage limits in the user-facing explanation.
-
-Example: for "How does checkout work?", bind the commerce workspace, search `checkout`, inspect the selected
-handler's context and callees, then read its implementation and error handling. Report the validated path and
-any unresolved dynamic dispatch rather than presenting graph order as execution order.
 
 ## Memory hygiene
 

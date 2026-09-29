@@ -7,14 +7,16 @@ namespace SharpSense.Cli.Shared;
 
 internal static class WorkspaceCommandServices
 {
-    public static IServiceCollection AddSelectedWorkspace(this IServiceCollection services, GlobalSettings settings, bool discoverFromDirectory = false)
+    public static IServiceCollection AddSelectedWorkspace(this IServiceCollection services,
+        GlobalSettings settings,
+        bool discoverFromDirectory = false)
     {
         if (discoverFromDirectory && settings.Workspace is null)
         {
             var workingDirectory = CommandPathResolver.ResolveWorkspaceRoot(settings.WorkspaceRoot);
             services.AddWorkspaceCatalog();
-            services.TryAddSingleton(provider => provider.GetRequiredService<IWorkspaceCatalog>()
-                .ResolveFromDirectory(workingDirectory));
+            services.TryAddSingleton(provider =>
+                provider.GetRequiredService<IWorkspaceCatalog>().ResolveFromDirectory(workingDirectory));
         }
 
         services.AddRepositoryWorkspace(settings.Workspace);

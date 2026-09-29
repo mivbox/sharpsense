@@ -34,9 +34,9 @@ public sealed class NamedWorkspaceIndexingTests
             new WorkspaceExtractionCoordinator(
                 [],
                 new WorkspacePaths(),
-                Moq.Mock.Of<IWorkspaceChangeFilter>(),
+                Mock.Of<IWorkspaceChangeFilter>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
-            Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
+            Mock.Of<GraphStats.Abstractions.IIndexRunStore>(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);
 
         var result = await handler.Handle(new IndexWorkspaceCommand(), CancellationToken.None);
@@ -227,9 +227,9 @@ public sealed class NamedWorkspaceIndexingTests
             new WorkspaceExtractionCoordinator(
                 extractors,
                 new WorkspacePaths(),
-                Moq.Mock.Of<IWorkspaceChangeFilter>(),
+                Mock.Of<IWorkspaceChangeFilter>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
-            Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
+            Mock.Of<GraphStats.Abstractions.IIndexRunStore>(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);
 
     private static IndexedProject Project(string name) => new(

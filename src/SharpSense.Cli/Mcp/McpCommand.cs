@@ -38,9 +38,7 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
 
     [UsedImplicitly]
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
-    public sealed class Settings : GlobalSettings
-    {
-    }
+    public sealed class Settings : GlobalSettings;
 
     protected override void Configure(Settings settings, IServiceCollection services)
     {
@@ -87,7 +85,7 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
     private static JsonSerializerOptions CreateToolSerializerOptions()
     {
         var serializerOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
-        serializerOptions.Converters.Add(new JsonStringEnumConverter<SharpSense.Domain.KnowledgeGraph.Enums.EdgeCategory>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<Domain.KnowledgeGraph.Enums.EdgeCategory>());
         serializerOptions.Converters.Add(new JsonStringEnumConverter<TraceDirection>());
 
         return serializerOptions;

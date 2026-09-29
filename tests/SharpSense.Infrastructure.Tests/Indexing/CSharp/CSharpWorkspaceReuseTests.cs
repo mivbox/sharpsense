@@ -68,7 +68,7 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
             using var coordinator = new WorkspaceExtractionCoordinator(
                 extractors,
                 paths,
-                Moq.Mock.Of<IWorkspaceChangeFilter>(),
+                Mock.Of<IWorkspaceChangeFilter>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance);
             var options = Options.Create(new WorkspaceExecutionOptions
             {

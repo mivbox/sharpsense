@@ -5,10 +5,6 @@ namespace SharpSense.Infrastructure.Storage;
 /// <summary>Manages named workspace definitions and exclusive indexing leases in the SharpSense home directory.</summary>
 public interface IWorkspaceCatalog
 {
-    string HomeDirectory
-    {
-        get;
-    }
     Guid? GetDefaultWorkspaceId();
     WorkspaceSelection Use(string nameOrId);
     IDisposable AcquireIndexLease(WorkspaceSelection selection);
