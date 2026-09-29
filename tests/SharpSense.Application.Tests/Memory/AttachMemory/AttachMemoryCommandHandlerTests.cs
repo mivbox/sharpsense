@@ -22,7 +22,7 @@ public sealed class AttachMemoryCommandHandlerTests
             42,
             "Security review",
             It.Is<string[]?>(candidateTags => candidateTags != null && candidateTags.SequenceEqual(tags)),
-            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention,
+            Domain.KnowledgeGraph.Enums.MemoryIntent.Convention,
             CancellationToken.None))
             .ReturnsAsync(Result.Ok());
         var handler = new AttachMemoryCommandHandler(memoryRepository.Object);

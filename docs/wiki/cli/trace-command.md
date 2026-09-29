@@ -17,3 +17,5 @@ The identifier can resolve an indexed node, but the numeric ID from search is th
 MCP `trace_node` shares query infrastructure, but its caller traversal uses impact-analysis defaults rather than the CLI's immediate-caller shortcut. UI trace controls can also set their own bounds. Treat each transport's parameters as part of the query.
 
 See [context](context-command.md) for a bounded immediate overview and [inheritors](inheritors-command.md) for direct type relationships.
+
+Traces show static graph relationships. They do not establish runtime execution order or cover every dynamic branch; verify relevant conditions and ordering in source.

@@ -720,7 +720,7 @@ public sealed class UiCommandIntegrationTests
                 },
                 ct);
             renamed.StatusCode.Should().Be(HttpStatusCode.OK);
-            catalog.Resolve("renamed-first", RepositoryRoot).Definition.Id.Should().Be(firstId);
+            catalog.Resolve("renamed-first").Definition.Id.Should().Be(firstId);
 
             using var schema = JsonDocument.Parse(await globalClient.GetStringAsync("/openapi/v1.json", ct));
             foreach (var path in schema.RootElement.GetProperty("paths")

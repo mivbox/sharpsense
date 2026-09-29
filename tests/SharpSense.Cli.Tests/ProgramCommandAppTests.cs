@@ -9,7 +9,7 @@ public sealed class ProgramCommandAppTests
     public async Task WhenVersion_ThenReportsCliAssemblyVersionWithoutStartingCommandServices()
     {
         using var console = new TestConsole();
-        var app = global::SharpSense.Cli.Program.CreateCommandApp(
+        var app = Program.CreateCommandApp(
             console,
             configureServices: _ => throw new InvalidOperationException("Version must not start workspace services."),
             enableFileLogging: false);
@@ -20,20 +20,6 @@ public sealed class ProgramCommandAppTests
         console.Output.Trim().Should().MatchRegex(@"^\d+\.\d+\.\d+(?:[-+].+)?$");
     }
 
-    [Fact]
-    public async Task WhenMcp_ThenRequiresAnExplicitWorkspaceBeforeStartingCommandServices()
-    {
-        using var console = new TestConsole();
-        var servicesStarted = false;
-        var app = global::SharpSense.Cli.Program.CreateCommandApp(console, _ => servicesStarted = true, enableFileLogging: false);
-
-        var exitCode = await app.RunAsync(["mcp"], TestContext.Current.CancellationToken);
-
-        exitCode.Should().NotBe(0);
-        console.Output.Should().Contain("MCP requires --workspace");
-        servicesStarted.Should().BeFalse();
-    }
-
     [Theory]
     [InlineData("")]
     [InlineData(" ")]
@@ -41,6 +27,7 @@ public sealed class ProgramCommandAppTests
     {
         string[][] commands =
         [
+            ["mcp"],
             ["analyze"],
             ["doctor"],
             ["workspace", "show"],
@@ -57,7 +44,7 @@ public sealed class ProgramCommandAppTests
         {
             using var console = new TestConsole();
             var servicesStarted = false;
-            var app = global::SharpSense.Cli.Program.CreateCommandApp(
+            var app = Program.CreateCommandApp(
                 console,
                 _ =>
             {
@@ -77,7 +64,7 @@ public sealed class ProgramCommandAppTests
     [Fact]
     public void WhenFileLoggingIsDisabledWithoutAdditionalOverrides_ThenExecutionContextPreservesTheFlag()
     {
-        var executionContext = global::SharpSense.Cli.Program.CreateExecutionContext(
+        var executionContext = Program.CreateExecutionContext(
             console: null,
             configureServices: null,
             enableFileLogging: false);
@@ -91,7 +78,7 @@ public sealed class ProgramCommandAppTests
     [Fact]
     public void WhenDefaultSettingsHaveNoOverrides_ThenExecutionContextIsOmitted()
     {
-        var executionContext = global::SharpSense.Cli.Program.CreateExecutionContext(
+        var executionContext = Program.CreateExecutionContext(
             console: null,
             configureServices: null,
             enableFileLogging: true);

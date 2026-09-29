@@ -27,9 +27,9 @@ internal abstract class WorkspaceCatalogCommand<TSettings> : AbstractAsyncComman
 
 internal class WorkspaceSourceSettings : CliSettings
 {
-    [CommandOption("--repo-root <path>")]
+    [CommandOption("--workspace-root|--repo-root <path>")]
     [Description("Resolve source paths against this directory. Defaults to the current directory.")]
-    public string? RepositoryRoot
+    public string? WorkspaceRoot
     {
         get; init;
     }
@@ -94,7 +94,7 @@ internal static class WorkspaceOutput
 
         var text = new StringBuilder();
         text.AppendLine($"{verb} workspace '{selection.Definition.Name}' ({selection.Definition.Id}).");
-        text.AppendLine($"Repository: {selection.Definition.RepositoryRoot}");
+        text.AppendLine($"Workspace root: {selection.Definition.WorkspaceRoot}");
         text.AppendLine($"Configuration: {selection.ConfigurationPath}");
         foreach (var source in selection.Definition.Sources)
         {
@@ -130,7 +130,7 @@ internal static class WorkspaceOutput
             CommandOutput.Write(
                 context,
                 $"{selection.Definition.Name} ({selection.Definition.Id}){marker}{Environment.NewLine}" +
-                $"  {selection.Definition.RepositoryRoot} — {selection.Definition.Sources.Length} source(s){Environment.NewLine}");
+                $"  {selection.Definition.WorkspaceRoot} — {selection.Definition.Sources.Length} source(s){Environment.NewLine}");
         }
     }
 
@@ -162,7 +162,7 @@ internal static class WorkspaceOutput
     {
         selection.Definition.Id,
         selection.Definition.Name,
-        selection.Definition.RepositoryRoot,
+        RepositoryRoot = selection.Definition.WorkspaceRoot,
         selection.Definition.Sources,
         selection.ConfigurationPath,
         selection.Workspace.DatabasePath,
@@ -186,7 +186,7 @@ internal sealed class WorkspaceCreateCommand : WorkspaceCatalogCommand<Workspace
 
     protected override async Task<int> Execute(CommandContext context, Settings settings, IHost host, CancellationToken ct)
     {
-        var root = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
+        var root = CommandPathResolver.ResolveWorkspaceRoot(settings.WorkspaceRoot);
         var sources = settings.GetSources(root);
         if (settings.Json && (string.IsNullOrWhiteSpace(settings.Name) || sources.Length == 0))
         {
@@ -298,9 +298,7 @@ internal sealed class WorkspaceShowCommand : WorkspaceCatalogCommand<WorkspaceSh
     protected override Task<int> Execute(CommandContext context, Settings settings, IHost host, CancellationToken ct)
     {
         var selection = host.Services.GetRequiredService<IWorkspaceCatalog>()
-            .Resolve(
-            settings.Name ?? settings.Workspace,
-            CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot));
+            .Resolve(settings.Name ?? settings.Workspace);
         WorkspaceOutput.Write(context, selection, settings.Json, "Selected");
 
         return Task.FromResult(0);
@@ -324,7 +322,7 @@ internal sealed class WorkspaceAddCommand : WorkspaceCatalogCommand<WorkspaceMut
 {
     protected override Task<int> Execute(CommandContext context, WorkspaceMutationSettings settings, IHost host, CancellationToken ct)
     {
-        var sourceBase = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
+        var sourceBase = CommandPathResolver.ResolveWorkspaceRoot(settings.WorkspaceRoot);
         var selection = host.Services.GetRequiredService<IWorkspaceCatalog>()
             .AddSources(settings.Name, settings.GetSources(sourceBase));
         WorkspaceOutput.Write(context, selection, settings.Json, "Updated");
@@ -337,7 +335,7 @@ internal sealed class WorkspaceRemoveCommand : WorkspaceCatalogCommand<Workspace
 {
     protected override Task<int> Execute(CommandContext context, WorkspaceMutationSettings settings, IHost host, CancellationToken ct)
     {
-        var sourceBase = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
+        var sourceBase = CommandPathResolver.ResolveWorkspaceRoot(settings.WorkspaceRoot);
         var removal = host.Services.GetRequiredService<IWorkspaceCatalog>()
             .RemoveSources(settings.Name, settings.GetSources(sourceBase));
         WorkspaceOutput.WriteRemoval(context, removal, settings.Json);

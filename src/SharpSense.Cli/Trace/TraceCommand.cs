@@ -130,7 +130,7 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
                 throw new InvalidOperationException($"Unsupported direction '{direction}'.");
         }
 
-        IReadOnlyDictionary<int, SharpSense.Domain.KnowledgeGraph.Nodes.MemoryNode[]>? memoriesByNodeId = null;
+        IReadOnlyDictionary<int, Domain.KnowledgeGraph.Nodes.MemoryNode[]>? memoriesByNodeId = null;
         if (settings.IncludeMemories && rootNode is not null)
         {
             var memoryRepository = services.GetRequiredService<IMemoryRepository>();

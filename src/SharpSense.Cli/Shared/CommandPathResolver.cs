@@ -2,12 +2,12 @@ namespace SharpSense.Cli.Shared;
 
 internal static class CommandPathResolver
 {
-    public static string ResolveRepositoryRoot(string? repositoryRoot)
+    public static string ResolveWorkspaceRoot(string? workspaceRoot)
     {
         var workingDirectory = Environment.CurrentDirectory;
-        var rootCandidate = string.IsNullOrWhiteSpace(repositoryRoot)
+        var rootCandidate = string.IsNullOrWhiteSpace(workspaceRoot)
             ? workingDirectory
-            : ResolvePath(workingDirectory, repositoryRoot);
+            : ResolvePath(workingDirectory, workspaceRoot);
 
         return NormalizeDirectory(rootCandidate);
     }

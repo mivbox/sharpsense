@@ -379,7 +379,7 @@ public sealed class WorkspaceExtractionCoordinatorTests
             _coordinator = new(
                 Workers,
                 _paths,
-                Moq.Mock.Of<IWorkspaceChangeFilter>(),
+                Mock.Of<IWorkspaceChangeFilter>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance);
             _repository.Setup(repository => repository.ReplaceWorkspace(It.IsAny<ExtractedNodes>(), It.IsAny<CancellationToken>()))
                 .Callback<ExtractedNodes, CancellationToken>((nodes, token) =>
@@ -404,7 +404,7 @@ public sealed class WorkspaceExtractionCoordinatorTests
                 _paths,
                 Microsoft.Extensions.Options.Options.Create(Options),
                 _coordinator,
-                Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
+                Mock.Of<GraphStats.Abstractions.IIndexRunStore>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);
 
         public Task<Result<IndexWorkspaceOutcome>> Run(params WorkspaceFileChange[] changes)

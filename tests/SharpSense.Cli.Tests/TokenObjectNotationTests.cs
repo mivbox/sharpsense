@@ -87,7 +87,7 @@ public sealed class TokenObjectNotationTests
                     "Security review note",
                     "content-hash",
                     ["security", "tech-debt"],
-                    SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
+                    MemoryIntent.Invariant,
                     DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
                     true)
             ]);
@@ -259,7 +259,7 @@ public sealed class TokenObjectNotationTests
                         "Security review note",
                         "content-hash",
                         ["security"],
-                        SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
+                        MemoryIntent.Invariant,
                         DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
                         false)
                 ]
@@ -282,7 +282,7 @@ public sealed class TokenObjectNotationTests
             "Use \"debug\" mode for security review",
             "content-hash",
             ["security"],
-            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
+            MemoryIntent.Invariant,
             DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
             false);
 
@@ -306,7 +306,7 @@ public sealed class TokenObjectNotationTests
             "Stale invariant",
             "content-hash",
             [],
-            SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
+            MemoryIntent.Invariant,
             DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
             true);
 

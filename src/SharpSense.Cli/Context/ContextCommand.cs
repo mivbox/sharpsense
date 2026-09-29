@@ -84,7 +84,7 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
             return 1;
         }
 
-        SharpSense.Domain.KnowledgeGraph.Nodes.MemoryNode[]? semanticContext = null;
+        Domain.KnowledgeGraph.Nodes.MemoryNode[]? semanticContext = null;
         if (settings.IncludeMemories)
         {
             var memoryRepository = services.GetRequiredService<IMemoryRepository>();

@@ -13,7 +13,7 @@ client's capabilities and the user's instructions.
 
 - Preserve the user's command, working scope and authorization. Output reduction does not authorize commits,
   pushes, deployments or additional commands.
-- `ctx_execute` runs in the bound workspace's repository root. Confirm this is the intended working directory.
+- `ctx_execute` runs in the bound workspace's root, which may contain several repositories. Confirm this is the intended working directory.
 - The tool launches a process without an implicit shell. Quote arguments containing spaces; shell pipes,
   redirection, variable expansion and command chaining are not interpreted unless an explicit shell is invoked.
 - Supply a relevant FTS query to retrieve matching lines with surrounding context. For example:

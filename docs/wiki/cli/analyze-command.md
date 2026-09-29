@@ -15,7 +15,7 @@ The command takes no positional solution or directory. Configure C# projects/sol
 | `--watch` | After the initial index, process relevant filesystem changes until stopped. |
 | `--no-embeddings` | Skip generating embeddings; structural graph queries remain available. |
 | `--no-cache` | Regenerate embeddings instead of reusing matching persisted vectors. |
-| `--repo-root <path>` | Use this directory when resolving an implicit workspace. |
+| `--workspace-root <path>` | Set the source-path base for interactive workspace setup; `--repo-root` is an alias. It does not select a workspace. |
 | `-v` / `--verbose` | Enable verbose logging. |
 
 Interactive output uses an injected Spectre console to show elapsed time, named phases, and concurrent language/source activity. Embedding and source counts appear when known; there is no estimated overall percentage. Completion summaries report committed node/edge/document counts and available source/embedding reuse. Bounded diagnostics remain visible. Redirected output uses concise milestones and never prompts.

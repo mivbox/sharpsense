@@ -111,7 +111,7 @@ internal static class WorkspaceCatalogEndpoints
             var result = discovery.Discover(request.RepositoryRoot, ct);
 
             return new WorkspaceDiscoveryResponse(
-                result.RepositoryRoot,
+                result.WorkspaceRoot,
                 result.Sources.Select(static source =>
                     new WorkspaceSourceOverview(source.Kind.ToString(), source.Path))
                     .ToArray());
@@ -128,7 +128,7 @@ internal static class WorkspaceCatalogEndpoints
     private static WorkspaceSummary ToSummary(WorkspaceSelection selection) => new(
         selection.Definition.Id,
         selection.Definition.Name,
-        selection.Definition.RepositoryRoot,
+        selection.Definition.WorkspaceRoot,
         selection.Definition.Sources.Select(static source => new WorkspaceSourceOverview(source.Kind.ToString(), source.Path))
             .ToArray());
 }

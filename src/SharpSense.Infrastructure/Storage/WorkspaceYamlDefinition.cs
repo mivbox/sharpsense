@@ -2,11 +2,8 @@ using SharpSense.Application.Indexing;
 
 namespace SharpSense.Infrastructure.Storage;
 
-/// <summary>
-/// A named, home-owned selection of sources beneath a configured workspace root.
-/// Source paths are relative to <see cref="WorkspaceRoot"/>, never to the configuration file.
-/// </summary>
-public sealed class WorkspaceDefinition
+// Keep the legacy YAML key at the persistence boundary. New files serialize WorkspaceDefinition directly.
+internal sealed class WorkspaceYamlDefinition
 {
     public int Version
     {
@@ -23,10 +20,15 @@ public sealed class WorkspaceDefinition
         get; set;
     } = string.Empty;
 
-    public string WorkspaceRoot
+    public string? WorkspaceRoot
     {
         get; set;
-    } = string.Empty;
+    }
+
+    public string? RepositoryRoot
+    {
+        get; set;
+    }
 
     public WorkspaceSource[] Sources
     {

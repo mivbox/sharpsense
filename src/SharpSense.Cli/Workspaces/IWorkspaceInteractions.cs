@@ -12,7 +12,7 @@ internal interface IWorkspaceInteractions
     }
     Task<WorkspaceSelection?> SelectWorkspace(IReadOnlyList<WorkspaceSelection> choices, CancellationToken ct);
     Task<string> ReadName(string? current, CancellationToken ct);
-    Task<string> ReadRepositoryRoot(string current, CancellationToken ct);
+    Task<string> ReadWorkspaceRoot(string current, CancellationToken ct);
     Task<IReadOnlyList<WorkspaceSource>> SelectSources(string root, CancellationToken ct);
     Task<bool> Confirm(string message, CancellationToken ct);
     void ShowConfiguration(string name, string root, IReadOnlyList<WorkspaceSource> sources);

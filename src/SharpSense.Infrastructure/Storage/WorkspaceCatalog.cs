@@ -85,7 +85,7 @@ internal sealed class WorkspaceCatalog : IWorkspaceCatalog
             var selected = selection.Definition;
             if (current.Version != selected.Version || current.Id != selected.Id ||
                 !string.Equals(current.Name, selected.Name, StringComparison.Ordinal) ||
-                !PathsEqual(current.RepositoryRoot, selected.RepositoryRoot) ||
+                !PathsEqual(current.WorkspaceRoot, selected.WorkspaceRoot) ||
                 !current.Sources.SequenceEqual(selected.Sources))
             {
                 throw new WorkspaceDefinitionChangedException(
@@ -142,9 +142,8 @@ internal sealed class WorkspaceCatalog : IWorkspaceCatalog
             .ToArray();
     }
 
-    public WorkspaceSelection Resolve(string? nameOrId, string workingDirectory)
+    public WorkspaceSelection Resolve(string? nameOrId)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
         if (nameOrId is not null)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(nameOrId);
@@ -167,21 +166,25 @@ internal sealed class WorkspaceCatalog : IWorkspaceCatalog
             }
         }
 
-        var repositoryRoot = RepositoryWorkspace.ResolveRootPathFromWorkingDirectory(workingDirectory, _fileSystem);
-        var hasGitRoot = _fileSystem.Directory.Exists(_fileSystem.Path.Combine(repositoryRoot, ".git")) ||
-                         _fileSystem.File.Exists(_fileSystem.Path.Combine(repositoryRoot, ".git"));
-        var matches = List().Where(selection =>
-                PathsEqual(selection.Workspace.RootPath, repositoryRoot) ||
-                (!hasGitRoot && selection.Workspace.IsSameOrSubPath(repositoryRoot)))
+        throw new InvalidOperationException(
+            "No workspace is selected. Pass '--workspace <name-or-id>' or run 'sharpsense workspace use <name-or-id>' to save a CLI default.");
+    }
+
+    public WorkspaceSelection ResolveFromDirectory(string workingDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
+        var directory = RepositoryWorkspace.NormalizeRootPath(workingDirectory, _fileSystem);
+        var matches = List()
+            .Where(selection => selection.Workspace.IsSameOrSubPath(directory))
             .ToArray();
 
         return matches.Length switch
         {
             1 => matches[0],
             0 => throw new InvalidOperationException(
-                $"No workspace is registered for '{repositoryRoot}'. Run 'sharpsense workspace create', or select an existing workspace with '--workspace <name>'."),
+                $"No workspace matches '{directory}'. Run 'sharpsense workspace create', or select an existing workspace with '--workspace <name-or-id>'."),
             _ => throw new InvalidOperationException(
-                $"Multiple workspaces match '{repositoryRoot}': {string.Join(", ", matches.Select(static selection => selection.Definition.Name))}. Select one with '--workspace <name-or-id>'.")
+                $"Multiple workspaces match '{directory}': {string.Join(", ", matches.Select(static selection => selection.Definition.Name))}. Select one with '--workspace <name-or-id>'.")
         };
     }
 
@@ -198,32 +201,32 @@ internal sealed class WorkspaceCatalog : IWorkspaceCatalog
 
     public WorkspaceSelection Create(
         string name,
-        string repositoryRoot,
+        string workspaceRoot,
         IEnumerable<WorkspaceSource> sources)
     {
         ValidateName(name);
-        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
         ArgumentNullException.ThrowIfNull(sources);
 
-        if (!_fileSystem.Path.IsPathRooted(repositoryRoot))
+        if (!_fileSystem.Path.IsPathRooted(workspaceRoot))
         {
-            throw new ArgumentException("Repository root must be an absolute directory path.", nameof(repositoryRoot));
+            throw new ArgumentException("Workspace root must be an absolute directory path.", nameof(workspaceRoot));
         }
 
-        if (!_fileSystem.Directory.Exists(repositoryRoot))
+        if (!_fileSystem.Directory.Exists(workspaceRoot))
         {
-            throw new DirectoryNotFoundException($"Repository directory '{repositoryRoot}' was not found.");
+            throw new DirectoryNotFoundException($"Workspace directory '{workspaceRoot}' was not found.");
         }
 
         var definition = new WorkspaceDefinition
         {
             Id = Guid.NewGuid(),
             Name = name.Trim(),
-            RepositoryRoot = RepositoryWorkspace.ResolveRootPathFromWorkingDirectory(repositoryRoot, _fileSystem),
+            WorkspaceRoot = workspaceRoot,
             Sources = sources.ToArray()
         };
 
-        NormalizeDefinition(definition, requireExistingSources: true, sourceBasePath: repositoryRoot);
+        NormalizeDefinition(definition, requireExistingSources: true, sourceBasePath: workspaceRoot);
 
         using var catalogLock = AcquireWriteLock();
         EnsureNameAvailable(definition.Name);
@@ -289,7 +292,7 @@ internal sealed class WorkspaceCatalog : IWorkspaceCatalog
         using var catalogLock = AcquireWriteLock();
         var selection = ResolveExplicit(List(), nameOrId);
         using var indexLease = AcquireIndexLease(selection);
-        var requested = NormalizeSources(selection.Definition.RepositoryRoot, sources, requireExistingSources: false);
+        var requested = NormalizeSources(selection.Definition.WorkspaceRoot, sources, requireExistingSources: false);
         var existing = selection.Definition.Sources;
         var removed = existing.Where(source => requested.Any(candidate => SameSource(source, candidate)))
             .ToArray();
@@ -320,10 +323,10 @@ internal sealed class WorkspaceCatalog : IWorkspaceCatalog
             throw new ArgumentException("Select at least two workspaces to merge.", nameof(workspaceNames));
         }
 
-        var repositoryRoot = selections[0].Definition.RepositoryRoot;
-        if (selections.Any(selection => !PathsEqual(selection.Workspace.RootPath, repositoryRoot)))
+        var workspaceRoot = selections[0].Definition.WorkspaceRoot;
+        if (selections.Any(selection => !PathsEqual(selection.Workspace.RootPath, workspaceRoot)))
         {
-            throw new InvalidOperationException("Workspaces can only be merged when they belong to the same repository checkout.");
+            throw new InvalidOperationException("Workspaces can only be merged when they have the same workspace root.");
         }
 
         EnsureNameAvailable(name.Trim(), existing);
@@ -331,7 +334,7 @@ internal sealed class WorkspaceCatalog : IWorkspaceCatalog
         {
             Id = Guid.NewGuid(),
             Name = name.Trim(),
-            RepositoryRoot = repositoryRoot,
+            WorkspaceRoot = workspaceRoot,
             Sources = selections.SelectMany(static selection => selection.Definition.Sources)
                 .ToArray()
         };
@@ -349,12 +352,30 @@ internal sealed class WorkspaceCatalog : IWorkspaceCatalog
             // Allow atomic replacement while a concurrent request reads the preceding snapshot, including on Windows.
             using var stream = _fileSystem.FileStream.New(configurationPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             using var reader = new StreamReader(stream);
-            WorkspaceDefinition definition;
+            WorkspaceYamlDefinition document;
             lock (_deserializationGate)
             {
-                definition = _deserializer.Deserialize<WorkspaceDefinition>(reader)
+                document = _deserializer.Deserialize<WorkspaceYamlDefinition>(reader)
                     ?? throw new InvalidOperationException("Workspace configuration is empty.");
             }
+
+            if (document.RepositoryRoot is { } legacyRoot && document.WorkspaceRoot is { } workspaceRoot &&
+                (!_fileSystem.Path.IsPathRooted(legacyRoot) || !_fileSystem.Path.IsPathRooted(workspaceRoot) ||
+                 !PathsEqual(
+                     RepositoryWorkspace.NormalizeRootPath(legacyRoot, _fileSystem),
+                     RepositoryWorkspace.NormalizeRootPath(workspaceRoot, _fileSystem))))
+            {
+                throw new InvalidOperationException("Workspace workspaceRoot and legacy repositoryRoot must identify the same absolute directory.");
+            }
+
+            var definition = new WorkspaceDefinition
+            {
+                Version = document.Version,
+                Id = document.Id,
+                Name = document.Name,
+                WorkspaceRoot = document.WorkspaceRoot ?? document.RepositoryRoot ?? string.Empty,
+                Sources = document.Sources
+            };
             if (definition.Id != expectedId)
             {
                 throw new InvalidOperationException("Workspace ID must match its storage directory.");
@@ -381,7 +402,7 @@ internal sealed class WorkspaceCatalog : IWorkspaceCatalog
             definition,
             directory,
             _fileSystem.Path.Combine(directory, "workspace.yaml"),
-            new RepositoryWorkspace(definition.RepositoryRoot, databasePath, _fileSystem, definition));
+            new RepositoryWorkspace(definition.WorkspaceRoot, databasePath, _fileSystem, definition));
     }
 
     private void NormalizeDefinition(WorkspaceDefinition definition, bool requireExistingSources, string? sourceBasePath = null)
@@ -398,22 +419,22 @@ internal sealed class WorkspaceCatalog : IWorkspaceCatalog
 
         ValidateName(definition.Name);
         definition.Name = definition.Name.Trim();
-        if (!_fileSystem.Path.IsPathRooted(definition.RepositoryRoot))
+        if (!_fileSystem.Path.IsPathRooted(definition.WorkspaceRoot))
         {
-            throw new InvalidOperationException("Workspace repositoryRoot must be an absolute path.");
+            throw new InvalidOperationException("Workspace workspaceRoot must be an absolute path.");
         }
 
-        definition.RepositoryRoot = RepositoryWorkspace.NormalizeRootPath(definition.RepositoryRoot, _fileSystem);
-        definition.Sources = NormalizeSources(definition.RepositoryRoot, definition.Sources ?? [], requireExistingSources, sourceBasePath);
+        definition.WorkspaceRoot = RepositoryWorkspace.NormalizeRootPath(definition.WorkspaceRoot, _fileSystem);
+        definition.Sources = NormalizeSources(definition.WorkspaceRoot, definition.Sources ?? [], requireExistingSources, sourceBasePath);
     }
 
     private WorkspaceSource[] NormalizeSources(
-        string repositoryRoot,
+        string workspaceRoot,
         IEnumerable<WorkspaceSource> sources,
         bool requireExistingSources,
         string? sourceBasePath = null)
     {
-        var workspace = new RepositoryWorkspace(repositoryRoot, _fileSystem.Path.Combine(HomeDirectory, "unused.db"), _fileSystem);
+        var workspace = new RepositoryWorkspace(workspaceRoot, _fileSystem.Path.Combine(HomeDirectory, "unused.db"), _fileSystem);
         var normalized = new List<WorkspaceSource>();
         foreach (var source in sources)
         {
@@ -429,17 +450,17 @@ internal sealed class WorkspaceCatalog : IWorkspaceCatalog
                 .Contains("..", StringComparer.Ordinal))
             {
                 throw new ArgumentException(
-                    $"Workspace source '{path}' must stay inside the repository root.",
+                    $"Workspace source '{path}' must stay inside the workspace root.",
                     nameof(sources));
             }
 
             var fullPath = _fileSystem.Path.IsPathRooted(path)
                 ? _fileSystem.Path.GetFullPath(path)
-                : _fileSystem.Path.GetFullPath(_fileSystem.Path.Combine(sourceBasePath ?? repositoryRoot, path));
+                : _fileSystem.Path.GetFullPath(_fileSystem.Path.Combine(sourceBasePath ?? workspaceRoot, path));
             if (!workspace.TryToRepositoryRelativePath(fullPath, out var relativePath))
             {
                 throw new ArgumentException(
-                    $"Workspace source '{path}' must stay inside the repository root.",
+                    $"Workspace source '{path}' must stay inside the workspace root.",
                     nameof(sources));
             }
 

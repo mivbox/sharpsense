@@ -46,7 +46,7 @@ public sealed class RepositoryWorkspaceRegistrationTests
         var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
         var expected = catalog.Create("product", "/repo", []);
         var services = new ServiceCollection();
-        services.AddRepositoryWorkspace("/repo", "product");
+        services.AddRepositoryWorkspace("product");
         services.AddSingleton<IFileSystem>(fileSystem);
         services.AddSingleton<IWorkspaceCatalog>(catalog);
 
@@ -75,6 +75,6 @@ public sealed class RepositoryWorkspaceRegistrationTests
         catalog.AddSources("product", [new(WorkspaceSourceKind.Markdown, "notes/**/*.md")]);
 
         snapshot.Definition.Sources.Select(source => source.Path).Should().Equal(["docs/**/*.md"]);
-        catalog.Resolve("product", "/repo").Definition.Sources.Length.Should().Be(2);
+        catalog.Resolve("product").Definition.Sources.Length.Should().Be(2);
     }
 }

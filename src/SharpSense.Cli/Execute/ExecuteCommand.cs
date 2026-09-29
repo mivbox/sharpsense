@@ -91,6 +91,6 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
         return result.Value.ExitCode;
     }
 
-    private static string GetErrorMessage(IEnumerable<FluentResults.IError> errors)
+    private static string GetErrorMessage(IEnumerable<IError> errors)
         => string.Join("; ", errors.Select(static error => error.Message));
 }

@@ -51,7 +51,7 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
 
         services.AddWorkspaceUiServices(new WorkspaceUiOptions(
             settings.Workspace,
-            CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot),
+            CommandPathResolver.ResolveWorkspaceRoot(settings.WorkspaceRoot),
             address));
 
         services.AddDependencyGraph();

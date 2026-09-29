@@ -37,7 +37,7 @@ namespace SharpSense.Cli.Mcp;
 [SuppressMessage("ReSharper", "InconsistentNaming")]
 internal sealed class SharpSenseMcpTools
 {
-    [McpServerTool(ReadOnly = true), Description("Read repository graph statistics, language and embedding coverage, the last successful index, indexing phase timings, and actionable diagnostics. Does not modify the graph. No node ID is required.")]
+    [McpServerTool(ReadOnly = true), Description("Read workspace graph statistics, language and embedding coverage, the last successful index, indexing phase timings, and actionable diagnostics. Does not modify the graph. No node ID is required.")]
     public static async Task<GraphStatsSnapshot> graph_stats(
         IQueryHandler<GetGraphStatsQuery, GraphStatsSnapshot> handler,
         CancellationToken ct = default)
@@ -95,10 +95,10 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool, Description("Run hybrid BM25 and semantic search against the indexed repository.")]
+    [McpServerTool, Description("Run hybrid BM25 and semantic search against the indexed workspace.")]
     public static async Task<string> semantic_search(
         IQueryHandler<HybridSearchQuery, HybridSearchResult> searchHandler,
-        [Description("Free-text query to run against the indexed repository.")] string query,
+        [Description("Plain-text query. Punctuation is handled safely; FTS operators and column selectors are not supported.")] string query,
         [Description("Maximum number of hits to return. Defaults to 10.")] int limit = 10,
         CancellationToken ct = default)
     {
@@ -130,7 +130,7 @@ internal sealed class SharpSenseMcpTools
         [Description("The persisted integer ID of the target node.")] int nodeId,
         [Description("The markdown-formatted memory payload to attach.")] string content,
         [Description("Optional tags used for filtering and classification.")] string[]? tags = null,
-        [Description("The memory's intent classification. One of: Convention, Invariant, Todo, Warning, Decision. Defaults to Convention.")] SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent intent = SharpSense.Domain.KnowledgeGraph.Enums.MemoryIntent.Convention,
+        [Description("The memory's intent classification. One of: Convention, Invariant, Todo, Warning, Decision. Defaults to Convention.")] MemoryIntent intent = MemoryIntent.Convention,
         CancellationToken ct = default)
     {
         using var activity = SharpSenseTraceSpan.Start("mcp.tool.attach_memory");
@@ -253,7 +253,7 @@ internal sealed class SharpSenseMcpTools
         IQueryHandler<GetNodeContextQuery, Result<Context360Result>> handler,
         IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>> memoryHandler,
         [Description("The persisted integer ID of the target node.")] int nodeId,
-        [Description("Optional edge-category mask. Defaults to Structural.")] EdgeCategory edgeCategories = EdgeCategory.Structural,
+        [Description("Optional edge-category mask: None, Structural, Semantic or All. Defaults to Structural; use All to include memory metadata.")] EdgeCategory edgeCategories = EdgeCategory.Structural,
         CancellationToken ct = default)
     {
         using var activity = SharpSenseTraceSpan.Start("mcp.tool.context");
@@ -315,7 +315,7 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool, Description("Trace dependencies for a specific Node ID. Use direction='caller' to see upstream blast radius. Use direction='callee' to see downstream execution path.")]
+    [McpServerTool, Description("Trace dependencies for a specific Node ID. Use direction='caller' to see upstream blast radius. Use direction='callee' to see downstream dependencies. Static relationships do not establish execution order.")]
     public static async Task<string> trace_node(
         IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult> impactHandler,
         IQueryHandler<TraceQuery, CodeNodeResult[]> traceHandler,
@@ -323,7 +323,7 @@ internal sealed class SharpSenseMcpTools
         ITraceNavigator traceNavigator,
         [Description("The exact Node ID to trace.")] string nodeId,
         [Description("Direction of the trace: 'caller' (upstream) or 'callee' (downstream).")] TraceDirection direction = TraceDirection.Callee,
-        [Description("Optional edge-category mask. Defaults to Structural.")] EdgeCategory edgeCategories = EdgeCategory.Structural,
+        [Description("Optional edge-category mask: None, Structural, Semantic or All. Defaults to Structural; use All to include memory metadata.")] EdgeCategory edgeCategories = EdgeCategory.Structural,
         CancellationToken ct = default)
     {
         using var activity = SharpSenseTraceSpan.Start("mcp.tool.trace_node");

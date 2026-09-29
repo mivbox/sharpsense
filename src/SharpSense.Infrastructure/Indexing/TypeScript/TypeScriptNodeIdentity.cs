@@ -14,11 +14,11 @@ internal static class TypeScriptNodeIdentity
 
     public static string CreateDisplayName(
         string exportName,
-        SharpSense.Domain.KnowledgeGraph.Enums.NodeType nodeType)
+        Domain.KnowledgeGraph.Enums.NodeType nodeType)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(exportName);
 
-        return nodeType == SharpSense.Domain.KnowledgeGraph.Enums.NodeType.Method
+        return nodeType == Domain.KnowledgeGraph.Enums.NodeType.Method
             ? $"{exportName}()"
             : exportName;
     }

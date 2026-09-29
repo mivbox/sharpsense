@@ -275,7 +275,7 @@ public sealed class IndexingDiagnosticsTests
                     new WorkspaceExtractionCoordinator(
                         [Extractor.Object],
                         Paths.Object,
-                        Moq.Mock.Of<IWorkspaceChangeFilter>(),
+                        Mock.Of<IWorkspaceChangeFilter>(),
                         Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
                     Store,
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance),
@@ -299,7 +299,7 @@ public sealed class IndexingDiagnosticsTests
                 new WorkspaceExtractionCoordinator(
                     [Extractor.Object],
                     Paths.Object,
-                    Moq.Mock.Of<IWorkspaceChangeFilter>(),
+                    Mock.Of<IWorkspaceChangeFilter>(),
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
                 Store,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);

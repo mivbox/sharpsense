@@ -4,6 +4,8 @@ Historical implementation notes follow. Each dated entry describes behavior at t
 
 ## Version 1
 
+- `2026-09-29` — Made workspace roots independent of Git roots and added compatible reading of `repositoryRoot` while saving `workspaceRoot`. CLI commands use explicit selection or the saved default; MCP alone discovers a unique containing root at startup and never reads that default. Added native Codex/Copilot plugin MCP connections, restored exploration and impact-analysis workflows with source verification, and made semantic search accept only safely quoted plain-text terms. CLI JSON and HTTP field names remain compatible. See [workspaces](cli/workspace-command.md), [MCP](cli/mcp-command.md), [skills](cli/skills-command.md) and [search](architecture/hybrid-search-pipeline.md).
+
 - `2026-09-28` — Aligned CLI context output with search and trace: JSON is the default and `--toon` selects the existing compact formatter. Optional memories remain metadata-only in both formats. MCP context output is unchanged. See [context](cli/context-command.md).
 
 - `2026-09-27` — Returned typed context failures across CLI, MCP and HTTP, removed the duplicate HTTP context lookup, and moved browser trace traversal into an internal application query handler while preserving response payloads and traversal limits. Context failures preserve stderr in the CLI and set the MCP tool-error flag. Added handler and transport behavior coverage. See [CQRS](architecture/cqrs-pipeline.md) and [context](cli/context-command.md).

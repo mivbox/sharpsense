@@ -16,15 +16,13 @@ public static class RepositoryWorkspaceServiceCollectionExtensions
 
     public static IServiceCollection AddRepositoryWorkspace(
         this IServiceCollection services,
-        string workingDirectory,
         string? workspaceNameOrId = null)
     {
         ArgumentNullException.ThrowIfNull(services);
-        ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
 
         services.AddWorkspaceCatalog();
         services.TryAddSingleton(provider => provider.GetRequiredService<IWorkspaceCatalog>()
-            .Resolve(workspaceNameOrId, workingDirectory));
+            .Resolve(workspaceNameOrId));
         services.TryAddSingleton(provider => provider.GetRequiredService<WorkspaceSelection>().Workspace);
 
         return services;

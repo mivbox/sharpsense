@@ -9,17 +9,10 @@ internal sealed class WorkspaceSetup(IWorkspaceCatalog catalog, IWorkspaceIntera
     {
         if (selector is not null || !interactions.IsInteractive || catalog.GetDefaultWorkspaceId() is not null)
         {
-            return catalog.Resolve(selector, root);
+            return catalog.Resolve(selector);
         }
 
-        try
-        {
-            return catalog.Resolve(null, root);
-        }
-        catch (InvalidOperationException)
-        {
-            return await interactions.SelectWorkspace(catalog.List(), ct) ?? await Create(null, root, [], ct);
-        }
+        return await interactions.SelectWorkspace(catalog.List(), ct) ?? await Create(null, root, [], ct);
     }
 
     public async Task<WorkspaceSelection?> Create(string? name, string root, IReadOnlyList<WorkspaceSource> sources, CancellationToken ct)
@@ -38,7 +31,7 @@ internal sealed class WorkspaceSetup(IWorkspaceCatalog catalog, IWorkspaceIntera
         name = string.IsNullOrWhiteSpace(name) ? await interactions.ReadName(null, ct) : name;
         if (sources.Count == 0)
         {
-            root = Path.GetFullPath(await interactions.ReadRepositoryRoot(root, ct), root);
+            root = Path.GetFullPath(await interactions.ReadWorkspaceRoot(root, ct), root);
             sources = await interactions.SelectSources(root, ct);
         }
 

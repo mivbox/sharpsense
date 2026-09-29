@@ -32,7 +32,7 @@ internal sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCo
             ? Math.Max(query.MaxDepth, 1)
             : 1;
         var impactedNodeIds = new HashSet<int>();
-        var impactedEdges = new HashSet<(int CallerNodeId, int CalleeNodeId, Domain.KnowledgeGraph.Enums.EdgeType EdgeType)>();
+        var impactedEdges = new HashSet<(int CallerNodeId, int CalleeNodeId, EdgeType EdgeType)>();
         var visitedNodeIds = new HashSet<int>
         {
             rootNode.Id

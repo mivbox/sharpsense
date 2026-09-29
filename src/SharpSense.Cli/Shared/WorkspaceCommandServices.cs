@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using SharpSense.Application.Shared.Options;
 using SharpSense.Infrastructure.Storage;
 
@@ -6,10 +7,19 @@ namespace SharpSense.Cli.Shared;
 
 internal static class WorkspaceCommandServices
 {
-    public static IServiceCollection AddSelectedWorkspace(this IServiceCollection services, GlobalSettings settings)
+    public static IServiceCollection AddSelectedWorkspace(this IServiceCollection services,
+        GlobalSettings settings,
+        bool discoverFromDirectory = false)
     {
-        var workingDirectory = CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot);
-        services.AddRepositoryWorkspace(workingDirectory, settings.Workspace);
+        if (discoverFromDirectory && settings.Workspace is null)
+        {
+            var workingDirectory = CommandPathResolver.ResolveWorkspaceRoot(settings.WorkspaceRoot);
+            services.AddWorkspaceCatalog();
+            services.TryAddSingleton(provider =>
+                provider.GetRequiredService<IWorkspaceCatalog>().ResolveFromDirectory(workingDirectory));
+        }
+
+        services.AddRepositoryWorkspace(settings.Workspace);
         services.AddOptions<WorkspaceExecutionOptions>()
             .Configure<WorkspaceSelection>((options, selection) =>
             {
