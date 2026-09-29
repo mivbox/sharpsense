@@ -36,7 +36,7 @@ internal sealed class AnalyzeCommand : AbstractAsyncCommand<AnalyzeCommand.Setti
         var selection = await host.Services.GetRequiredService<WorkspaceSetup>()
             .SelectForAnalysis(
             settings.Workspace,
-            CommandPathResolver.ResolveRepositoryRoot(settings.RepositoryRoot),
+            CommandPathResolver.ResolveWorkspaceRoot(settings.WorkspaceRoot),
             ct);
 
         return selection is null

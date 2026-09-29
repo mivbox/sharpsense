@@ -7,21 +7,21 @@ namespace SharpSense.Cli.Shared;
 internal abstract class GlobalSettings : CliSettings
 {
     [CommandOption("-w|--workspace <name-or-id>")]
-    [Description("Select a registered workspace by name or ID, overriding the saved default.")]
+    [Description("Select a registered workspace by name or ID.")]
     public string? Workspace
     {
         get; init;
     }
 
-    [CommandOption("--repo-root <path>")]
-    [Description("Use this directory for workspace lookup when no default or --workspace is set.")]
-    public string? RepositoryRoot
+    [CommandOption("--workspace-root|--repo-root <path>")]
+    [Description("Base directory for workspace setup, UI browsing or MCP discovery; does not select a CLI workspace.")]
+    public string? WorkspaceRoot
     {
         get; init;
     }
 
     public override ValidationResult Validate() =>
         Workspace is not null && string.IsNullOrWhiteSpace(Workspace)
-        ? ValidationResult.Error("--workspace must contain a workspace name or ID; omit it to use the default.")
+        ? ValidationResult.Error("--workspace must contain a workspace name or ID.")
         : ValidationResult.Success();
 }

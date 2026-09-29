@@ -70,7 +70,9 @@ Read [vertical slices](docs/wiki/architecture/vertical-slice-application.md),
 
 - Resolve runtime storage through `SharpSenseHome.Resolve`: an absolute `SHARPSENSE_HOME`, otherwise `~/.sharpsense`.
   Keep logs under `logs/` and workspaces under `workspaces/<workspace-id>`. Do not create project-local YAML config.
-- Keep workspace identity explicit per CLI/MCP host, HTTP request and background job. MCP requires `--workspace`.
+- Keep workspace identity fixed per CLI/MCP host, HTTP request and background job. CLI selection uses explicit
+  `--workspace` or the saved `workspace use` default. Only MCP discovers a workspace from its launch directory
+  when exactly one registered root contains it; MCP never reads the CLI default. `--workspace` overrides discovery.
 - The TypeScript UI remains independent. Preserve pnpm, native Material UI, Kiota-generated API types and TanStack
   Query conventions when UI changes are requested. Do not hand-edit generated clients.
 

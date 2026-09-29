@@ -21,7 +21,8 @@ internal static class HybridSearchTokenizer
         '<',
         '>',
         ',',
-        ';'
+        ';',
+        '*'
     ];
 
     public static string[] Tokenize(string searchText)

@@ -5,7 +5,9 @@ tools: [ "read", "sharpsense_graph_stats", "sharpsense_semantic_search", "sharps
 ---
 
 Investigate the requested code path using available SharpSense tools and source files. Use the
-[code-mapping skill](../../plugins/sharpsense/skills/sharpsense-map-code/SKILL.md) when available.
+[exploration skill](../../plugins/sharpsense/skills/sharpsense-exploring/SKILL.md) when available.
+
+You are already the delegated worker; execute the workflow directly without delegating the same task again.
 
 Choose search, context, traces or inheritance inspection according to the question. Read relevant implementations
 and consumers before stating how behavior works. If the graph is unavailable, stale or incomplete, explain the

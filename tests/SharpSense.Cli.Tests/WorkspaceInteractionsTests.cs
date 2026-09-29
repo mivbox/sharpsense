@@ -101,7 +101,7 @@ public sealed class WorkspaceInteractionsTests
         fixture.Interactions.Verify(x => x.ShowConfiguration("guided", "/repo/docs", It.IsAny<IReadOnlyList<WorkspaceSource>>()), Times.Once);
         if (save)
         {
-            fixture.Catalog.List()[0].Definition.Sources.Should().ContainSingle().Which.Path.Should().Be("docs/*.md");
+            fixture.Catalog.List()[0].Definition.Sources.Should().ContainSingle().Which.Path.Should().Be("*.md");
         }
     }
 
@@ -193,7 +193,7 @@ public sealed class WorkspaceInteractionsTests
         fixture.FileSystem.AddFile(original.Workspace.DatabasePath, new MockFileData("preserved graph"));
         var result = await fixture.Run("workspace", "rename", "old", "new", "--json");
         result.Exit.Should().Be(0);
-        var renamed = fixture.Catalog.Resolve("new", "/repo");
+        var renamed = fixture.Catalog.Resolve("new");
         renamed.Definition.Id.Should().Be(original.Definition.Id);
         fixture.FileSystem.File.ReadAllText(renamed.Workspace.DatabasePath).Should().Be("preserved graph");
         fixture.Catalog.Create("taken", "/repo", []);
@@ -215,7 +215,7 @@ public sealed class WorkspaceInteractionsTests
         fixture.FileSystem.AddFile("/repo/obj/Hidden.csproj", new MockFileData(""));
         fixture.FileSystem.AddFile("/repo/frontend/tsconfig.json", new MockFileData("{}"));
         var discovered = new WorkspaceSourceDiscovery(fixture.FileSystem).Discover("/repo", TestContext.Current.CancellationToken);
-        discovered.RepositoryRoot.Should().Be("/repo");
+        discovered.WorkspaceRoot.Should().Be("/repo");
         discovered.Sources.Count.Should().Be(3);
         discovered.Sources.Should().Contain(new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/*.md"));
         discovered.Sources.Should().NotContain(source => source.Path.StartsWith("node_modules") || source.Path.StartsWith("obj"));
@@ -254,7 +254,7 @@ public sealed class WorkspaceInteractionsTests
         {
             Interactions.Setup(x => x.ReadName(null, It.IsAny<CancellationToken>()))
                 .ReturnsAsync("guided");
-            Interactions.Setup(x => x.ReadRepositoryRoot("/repo", It.IsAny<CancellationToken>()))
+            Interactions.Setup(x => x.ReadWorkspaceRoot("/repo", It.IsAny<CancellationToken>()))
                 .ReturnsAsync("/repo/docs");
             Interactions.Setup(x => x.SelectSources("/repo/docs", It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new[]

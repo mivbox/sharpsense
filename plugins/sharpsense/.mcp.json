@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "sharpsense": {
+      "command": "sharpsense",
+      "args": [
+        "mcp"
+      ],
+      "cwd": ".",
+      "type": "stdio",
+      "tools": [
+        "*"
+      ]
+    }
+  }
+}

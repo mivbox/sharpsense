@@ -1,7 +1,7 @@
 {
   "name": "sharpsense",
-  "version": "1.0.0",
-  "description": "Explore code, assess change impact, and reduce command output with SharpSense skills.",
+  "version": "1.1.0",
+  "description": "Explore code, assess change impact and reduce command output with SharpSense skills and MCP tools.",
   "author": {
     "name": "Mitchel Box"
   },
@@ -17,7 +17,7 @@
   "interface": {
     "displayName": "SharpSense",
     "shortDescription": "Explore code and dependencies with SharpSense.",
-    "longDescription": "Skills for exploring indexed code, assessing change impact, and reducing large command output. Requires a separately configured SharpSense MCP server.",
+    "longDescription": "Skills and an MCP connection for exploring indexed code, assessing change impact and reducing large command output. Requires the SharpSense CLI on PATH and an analysed workspace.",
     "developerName": "Mitchel Box",
     "category": "Productivity",
     "capabilities": [
@@ -30,5 +30,13 @@
       "Assess the impact of this change with SharpSense.",
       "Reduce this command output with SharpSense."
     ]
+  },
+  "mcpServers": {
+    "sharpsense": {
+      "command": "sharpsense",
+      "args": [
+        "mcp"
+      ]
+    }
   }
 }

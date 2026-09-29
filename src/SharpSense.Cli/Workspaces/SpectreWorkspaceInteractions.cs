@@ -16,7 +16,7 @@ internal sealed class SpectreWorkspaceInteractions(IAnsiConsole console, Workspa
             new SelectionPrompt<WorkspaceChoice>()
             .Title("Select a workspace")
                 .UseConverter(static item => item.Selection is { } selection
-                    ? Markup.Escape($"{selection.Definition.Name} — {selection.Definition.RepositoryRoot}")
+                    ? Markup.Escape($"{selection.Definition.Name} — {selection.Definition.WorkspaceRoot}")
                     : "Create a workspace")
                 .AddChoices(items),
             ct);
@@ -35,8 +35,8 @@ internal sealed class SpectreWorkspaceInteractions(IAnsiConsole console, Workspa
         return console.PromptAsync(prompt, ct);
     }
 
-    public Task<string> ReadRepositoryRoot(string current, CancellationToken ct) =>
-        console.PromptAsync(new TextPrompt<string>("Repository directory:").DefaultValue(current), ct);
+    public Task<string> ReadWorkspaceRoot(string current, CancellationToken ct) =>
+        console.PromptAsync(new TextPrompt<string>("Workspace directory:").DefaultValue(current), ct);
 
     public async Task<IReadOnlyList<WorkspaceSource>> SelectSources(string root, CancellationToken ct)
     {
@@ -124,7 +124,7 @@ internal sealed class SpectreWorkspaceInteractions(IAnsiConsole console, Workspa
             table.AddRow(source.Kind.ToString(), Markup.Escape(source.Path));
         }
         console.Write(new Panel(table).Header(Markup.Escape(name)));
-        console.WriteLine($"Repository: {root}");
+        console.WriteLine($"Workspace root: {root}");
     }
 
     private void ShowError(string message) => console.MarkupLine($"[red]Error:[/] {Markup.Escape(message)}");

@@ -40,7 +40,7 @@ public sealed class WorkspaceCommandTests
             .GetString().Should().Be("product");
         document.RootElement.GetProperty("sources")
             .GetArrayLength().Should().Be(5);
-        var selection = fixture.Catalog.Resolve("product", "/repo");
+        var selection = fixture.Catalog.Resolve("product");
         fixture.FileSystem.File.Exists(selection.ConfigurationPath).Should().BeTrue();
         fixture.FileSystem.File.Exists(selection.Workspace.DatabasePath).Should().BeFalse();
         fixture.FileSystem.File.Exists("/repo/sharpsense.yaml").Should().BeFalse();
@@ -52,7 +52,7 @@ public sealed class WorkspaceCommandTests
         var fixture = new Fixture();
         (await fixture.Run("workspace", "create", "backend", "--repo-root", "/repo", "--csharp", "src/Api/Api.csproj")).ExitCode.Should().Be(0);
         (await fixture.Run("workspace", "create", "frontend", "--repo-root", "/repo", "--typescript", "frontend/tsconfig.json")).ExitCode.Should().Be(0);
-        var backend = fixture.Catalog.Resolve("backend", "/repo");
+        var backend = fixture.Catalog.Resolve("backend");
         fixture.FileSystem.AddFile(backend.Workspace.DatabasePath, new MockFileData("preserved database"));
 
         (await fixture.Run("workspace", "add", "backend", "--repo-root", "/repo", "--markdown", "docs/**/*.md")).ExitCode.Should().Be(0);
@@ -60,25 +60,25 @@ public sealed class WorkspaceCommandTests
         var merged = await fixture.Run("workspace", "merge", "product", "backend", "frontend", "--json");
 
         merged.ExitCode.Should().Be(0, merged.Output);
-        var product = fixture.Catalog.Resolve("product", "/repo");
+        var product = fixture.Catalog.Resolve("product");
         product.Definition.Sources.Should().HaveCount(2);
         product.Definition.Id.Should().NotBe(backend.Definition.Id);
         fixture.Catalog.List().Should().HaveCount(3);
-        fixture.Catalog.Resolve("backend", "/repo").Definition.Sources.Should().ContainSingle();
+        fixture.Catalog.Resolve("backend").Definition.Sources.Should().ContainSingle();
         fixture.FileSystem.File.ReadAllText(backend.Workspace.DatabasePath).Should().Be("preserved database");
     }
 
     [Fact]
-    public async Task WhenWorkspaceCreate_ThenResolvesRelativeSourcesBeforeCanonicalizingGitRoot()
+    public async Task WhenWorkspaceCreate_ThenRespectsAnExplicitRootInsideAGitRepository()
     {
         var fixture = new Fixture();
 
         var result = await fixture.Run("workspace", "create", "api", "--repo-root", "/repo/src/Api", "--csharp", "Api.csproj");
 
         result.ExitCode.Should().Be(0, result.Output);
-        var workspace = fixture.Catalog.Resolve("api", "/repo");
-        workspace.Definition.RepositoryRoot.Should().Be("/repo");
-        workspace.Definition.Sources.Should().ContainSingle(source => source.Path == "src/Api/Api.csproj");
+        var workspace = fixture.Catalog.Resolve("api");
+        workspace.Definition.WorkspaceRoot.Should().Be("/repo/src/Api");
+        workspace.Definition.Sources.Should().ContainSingle(source => source.Path == "Api.csproj");
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class WorkspaceCommandTests
 
         legacy.ExitCode.Should().NotBe(0);
         unregistered.ExitCode.Should().Be(1);
-        unregistered.Output.Should().Contain("No workspace is registered");
+        unregistered.Output.Should().Contain("No workspace is selected");
         fixture.Catalog.List().Should().BeEmpty();
     }
 
@@ -133,7 +133,7 @@ public sealed class WorkspaceCommandTests
 
         listed.ExitCode.Should().Be(0);
         ambiguous.ExitCode.Should().Be(1);
-        ambiguous.Output.Should().Contain("Multiple workspaces match");
+        ambiguous.Output.Should().Contain("No workspace is selected");
         selected.ExitCode.Should().Be(0, selected.Output);
         using var document = JsonDocument.Parse(selected.Output);
         document.RootElement.GetProperty("name")
@@ -169,9 +169,9 @@ public sealed class WorkspaceCommandTests
             .GetGuid().Should().Be(second.Definition.Id);
         (await fixture.Run("workspace", "ls")).Output.Should().Contain("(default)");
 
-        var noExplicitMcp = await fixture.Run("mcp");
+        var noExplicitMcp = await fixture.Run("mcp", "--workspace-root", "/repo");
         noExplicitMcp.ExitCode.Should().NotBe(0);
-        noExplicitMcp.Output.Should().Contain("MCP requires --workspace");
+        noExplicitMcp.Output.Should().Contain("Multiple workspaces match");
         fixture.Catalog.GetDefaultWorkspaceId().Should().Be(second.Definition.Id);
         fixture.FileSystem.File.Exists(second.Workspace.DatabasePath).Should().BeFalse();
     }
@@ -203,10 +203,78 @@ public sealed class WorkspaceCommandTests
             services.AddSelectedWorkspace(new McpCommand.Settings
             {
                 Workspace = name
-            });
+            }, discoverFromDirectory: true);
 
             return services.BuildServiceProvider();
         }
+    }
+
+    [Theory]
+    [InlineData("elsewhere")]
+    [InlineData("invalid")]
+    [InlineData("missing")]
+    public void WhenMcpDiscoversAWorkspace_ThenItIgnoresTheSavedDefaultAndKeepsItsInitialBinding(string defaultState)
+    {
+        var fixture = new Fixture();
+        var expected = fixture.Catalog.Create("product", "/repo", []);
+        fixture.FileSystem.AddDirectory("/other");
+        var other = fixture.Catalog.Create("elsewhere", "/other", []);
+        fixture.Catalog.Use("elsewhere");
+        if (defaultState == "invalid")
+        {
+            fixture.FileSystem.File.WriteAllText("/test-home/.sharpsense/default-workspace", "invalid");
+        }
+        else if (defaultState == "missing")
+        {
+            fixture.FileSystem.File.Delete(other.ConfigurationPath);
+        }
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IFileSystem>(fixture.FileSystem);
+        services.AddSingleton<IWorkspaceCatalog>(fixture.Catalog);
+        services.AddSelectedWorkspace(new McpCommand.Settings
+        {
+            WorkspaceRoot = "/repo/frontend"
+        }, discoverFromDirectory: true);
+        using var host = services.BuildServiceProvider();
+
+        var selection = host.GetRequiredService<WorkspaceSelection>();
+        fixture.Catalog.Use("product");
+        fixture.Catalog.Create("overlapping", "/repo", []);
+
+        selection.Definition.Id.Should().Be(expected.Definition.Id);
+        host.GetRequiredService<WorkspaceSelection>().Should().BeSameAs(selection);
+        host.GetRequiredService<IRepositoryWorkspace>().WorkspaceId.Should().Be(expected.Definition.Id);
+    }
+
+    [Theory]
+    [InlineData("--workspace-root")]
+    [InlineData("--repo-root")]
+    public async Task WhenRootOptionIsUsed_ThenCreationPreservesTheRootAndJsonContract(string option)
+    {
+        var fixture = new Fixture();
+
+        var result = await fixture.Run("workspace", "create", "frontend", option, "/repo/frontend", "--typescript", "tsconfig.json", "--json");
+
+        result.ExitCode.Should().Be(0, result.Output);
+        using var json = JsonDocument.Parse(result.Output);
+        json.RootElement.GetProperty("repositoryRoot").GetString().Should().Be("/repo/frontend");
+        var selection = fixture.Catalog.Resolve("frontend");
+        selection.Definition.WorkspaceRoot.Should().Be("/repo/frontend");
+        selection.Definition.Sources.Should().ContainSingle().Which.Path.Should().Be("tsconfig.json");
+    }
+
+    [Fact]
+    public async Task WhenCliHasOneDirectoryMatchAndNoDefault_ThenItStillRequiresWorkspaceSelection()
+    {
+        var fixture = new Fixture();
+        fixture.Catalog.Create("product", "/repo", []);
+
+        var result = await fixture.Run("workspace", "show", "--workspace-root", "/repo");
+
+        result.ExitCode.Should().Be(1);
+        result.Output.Should().Contain("No workspace is selected");
+        result.Output.Should().Contain("workspace use");
     }
 
     [Fact]
@@ -243,19 +311,23 @@ public sealed class WorkspaceCommandTests
             fixture.FileSystem.AddFile(Path.Combine(sourceDirectory, "Api.csproj"), new MockFileData("<Project />"));
             fixture.FileSystem.AddFile(Path.Combine(repositoryRoot, "src", "Core", "Core.csproj"), new MockFileData("<Project />"));
 
+            Environment.CurrentDirectory = useExplicitBase ? taskRoot : repositoryRoot;
+            Environment.SetEnvironmentVariable("PWD", sourceDirectory);
+            string[] createRootOptions = useExplicitBase ? ["--workspace-root", "repo"] : [];
+
+            var created = await fixture.Run(["workspace", "create", "api", .. createRootOptions,
+                "--csharp", "src/Api/Api.csproj", "--markdown", "src/Api/docs/*.md", "--json"]);
+            created.ExitCode.Should().Be(0, created.Output);
+            fixture.Catalog.AddSources("api", [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/*.md")]);
+
             Environment.CurrentDirectory = useExplicitBase ? taskRoot : sourceDirectory;
             Environment.SetEnvironmentVariable("PWD", repositoryRoot);
-            string[] rootOptions = useExplicitBase ? ["--repo-root", "repo/src/Api"] : [];
-
-            var created = await fixture.Run(["workspace", "create", "api", .. rootOptions,
-                "--csharp", "Api.csproj", "--markdown", "docs/*.md", "--json"]);
-            created.ExitCode.Should().Be(0);
-            fixture.Catalog.AddSources("api", [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/*.md")]);
+            string[] rootOptions = useExplicitBase ? ["--workspace-root", "repo/src/Api"] : [];
 
             var added = await fixture.Run(["workspace", "add", "api", .. rootOptions, "--csharp", "../Core/Core.csproj", "--json"]);
 
             added.ExitCode.Should().Be(0);
-            var sources = fixture.Catalog.Resolve("api", repositoryRoot).Definition.Sources;
+            var sources = fixture.Catalog.Resolve("api").Definition.Sources;
             sources.Length.Should().Be(4);
             sources.Should().Contain(new WorkspaceSource(WorkspaceSourceKind.CSharp, "src/Api/Api.csproj"));
             sources.Should().Contain(new WorkspaceSource(WorkspaceSourceKind.CSharp, "src/Core/Core.csproj"));
@@ -273,7 +345,7 @@ public sealed class WorkspaceCommandTests
             document.RootElement.GetProperty("unmatchedSources")
                 .EnumerateArray().Should().ContainSingle().Which.GetProperty("path")
                 .GetString().Should().Be("src/Api/missing/**/*.md");
-            var remaining = fixture.Catalog.Resolve("api", repositoryRoot).Definition.Sources;
+            var remaining = fixture.Catalog.Resolve("api").Definition.Sources;
             remaining.Length.Should().Be(2);
             remaining.Should().Contain(new WorkspaceSource(WorkspaceSourceKind.CSharp, "src/Api/Api.csproj"));
             remaining.Should().Contain(new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/*.md"));
@@ -299,7 +371,7 @@ public sealed class WorkspaceCommandTests
             "--markdown", "typo/**/*.md", .. outputOptions]);
 
         result.ExitCode.Should().Be(0);
-        fixture.Catalog.Resolve("docs", "/repo").Definition.Sources.Should().ContainSingle();
+        fixture.Catalog.Resolve("docs").Definition.Sources.Should().ContainSingle();
         if (json)
         {
             using var document = JsonDocument.Parse(result.Output);
@@ -332,8 +404,8 @@ public sealed class WorkspaceCommandTests
 
         result.ExitCode.Should().Be(0);
         var options = result.Output[result.Output.IndexOf("OPTIONS:", StringComparison.Ordinal)..];
-        options.Should().NotContain("--workspace");
-        options.Contains("--repo-root", StringComparison.Ordinal).Should().Be(hasSourceBase);
+        options.Should().NotContain("--workspace ");
+        options.Contains("--workspace-root", StringComparison.Ordinal).Should().Be(hasSourceBase);
     }
 
     [Fact]
@@ -349,7 +421,7 @@ public sealed class WorkspaceCommandTests
         unsupported.Output.Should().Contain("Unknown option");
         conflicting.ExitCode.Should().NotBe(0);
         conflicting.Output.Should().Contain("either a workspace argument or --workspace");
-        fixture.Catalog.Resolve("docs", "/repo").Definition.Sources.Should().ContainSingle();
+        fixture.Catalog.Resolve("docs").Definition.Sources.Should().ContainSingle();
     }
 
     [Theory]
@@ -403,7 +475,7 @@ public sealed class WorkspaceCommandTests
         }
 
         (await fixture.Run("workspace", "use", "second")).ExitCode.Should().Be(0);
-        fixture.Catalog.Resolve(null, "/elsewhere").Definition.Name.Should().Be("second");
+        fixture.Catalog.Resolve(null).Definition.Name.Should().Be("second");
     }
 
     [Theory]
@@ -423,7 +495,7 @@ public sealed class WorkspaceCommandTests
         blank.Output.Should().Contain("must not be empty");
         conflict.ExitCode.Should().NotBe(0);
         conflict.Output.Should().Contain("either a workspace argument or --workspace");
-        fixture.Catalog.Resolve(null, "/repo").Definition.Name.Should().Be("first");
+        fixture.Catalog.Resolve(null).Definition.Name.Should().Be("first");
     }
 
     private sealed class Fixture

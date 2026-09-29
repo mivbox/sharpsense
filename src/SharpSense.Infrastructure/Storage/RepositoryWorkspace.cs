@@ -140,26 +140,6 @@ internal sealed class RepositoryWorkspace : IRepositoryWorkspace
         return absoluteTargetPath;
     }
 
-    internal static string ResolveRootPathFromWorkingDirectory(
-        string workingDirectory,
-        IFileSystem fileSystem)
-    {
-        var currentDirectory = fileSystem.DirectoryInfo.New(fileSystem.Path.GetFullPath(workingDirectory));
-
-        while (currentDirectory is not null)
-        {
-            var gitPath = fileSystem.Path.Combine(currentDirectory.FullName, ".git");
-            if (fileSystem.Directory.Exists(gitPath) || fileSystem.File.Exists(gitPath))
-            {
-                return NormalizeRootPath(currentDirectory.FullName, fileSystem);
-            }
-
-            currentDirectory = currentDirectory.Parent;
-        }
-
-        return NormalizeRootPath(workingDirectory, fileSystem);
-    }
-
     internal static string NormalizeRootPath(
         string path,
         IFileSystem fileSystem)

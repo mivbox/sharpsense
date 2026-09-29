@@ -50,18 +50,6 @@ public sealed class SqliteKeywordCandidateProviderTests
     }
 
     [Fact]
-    public async Task WhenQueryContainsStandardFtsOperators_ThenItIsForwardedVerbatim()
-    {
-        var provider = new SqliteKeywordCandidateProvider();
-
-        var matchQuery = await provider.GetMatchQuery(
-            new HybridSearchQuery("FullyQualifiedName:Message", Limit: 10),
-            TestContext.Current.CancellationToken);
-
-        matchQuery.Should().Be("FullyQualifiedName:Message");
-    }
-
-    [Fact]
     public async Task WhenMatchQueryIsExpanded_ThenHybridSearcherFindsThePrefixHit()
     {
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
@@ -89,6 +77,11 @@ public sealed class SqliteKeywordCandidateProviderTests
     }
 
     [Theory]
+    [InlineData("*Message")]
+    [InlineData("*.cs")]
+    [InlineData("Example.Message*")]
+    [InlineData("http://localhost:*")]
+    [InlineData("\"Message")]
     [InlineData("C#")]
     [InlineData("null?")]
     [InlineData("http://localhost")]
@@ -112,29 +105,20 @@ public sealed class SqliteKeywordCandidateProviderTests
     }
 
     [Theory]
-    [InlineData("Message OR Provider")]
-    [InlineData("NEAR(Message Provider)")]
-    [InlineData("anchor NEAR (bar baz)")]
-    [InlineData("NEAR\t(Message Provider)")]
-    [InlineData("\"Message Provider\"")]
-    [InlineData("FullyQualifiedName:Message")]
-    [InlineData("-DisplayName:Message")]
-    [InlineData("{DisplayName SearchText}:Message")]
-    [InlineData("- {DisplayName SearchText} : Message")]
-    [InlineData("(-DisplayName:Message)")]
-    [InlineData("Message*")]
-    public async Task WhenUsingExplicitFtsSyntax_ThenQueryRemainsUnchanged(string searchText)
-    {
-        var query = await new SqliteKeywordCandidateProvider().GetMatchQuery(new(searchText), TestContext.Current.CancellationToken);
-        query.Should().Be(searchText);
-    }
-
-    [Theory]
-    [InlineData("-DisplayName:Payment", 0)]
-    [InlineData("{FullyQualifiedName SearchText}:Payment", 0)]
-    [InlineData("{DisplayName SearchText}:Payment", 1)]
-    [InlineData("-{FullyQualifiedName SearchText}:Payment", 1)]
-    public async Task WhenUsingColumnFilters_ThenSqliteAppliesRequestedScope(string searchText, int expectedMatches)
+    [InlineData("*Payment", 2)]
+    [InlineData("*.cs", 2)]
+    [InlineData("Payment.Service*", 2)]
+    [InlineData("DisplayName:Payment", 2)]
+    [InlineData("DisplayName:Payment.Service*", 2)]
+    [InlineData("Payment NOT Other", 3)]
+    [InlineData("Payment AND Unused", 3)]
+    [InlineData("NEAR(Payment Other)", 2)]
+    [InlineData("\"Payment", 2)]
+    [InlineData("\"Payment audit\"", 2)]
+    [InlineData("Payment OR", 2)]
+    [InlineData("http://localhost:*", 0)]
+    [InlineData("DisplayName:", 0)]
+    public async Task WhenInputResemblesFtsSyntax_ThenSqliteSearchesPlainTextTerms(string searchText, int expectedMatches)
     {
         var ct = TestContext.Current.CancellationToken;
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -142,7 +126,9 @@ public sealed class SqliteKeywordCandidateProviderTests
         await using var command = connection.CreateCommand();
         command.CommandText = """
             CREATE VIRTUAL TABLE SearchFixture USING fts5(DisplayName, FullyQualifiedName, SearchText, RelativeFilePath);
-            INSERT INTO SearchFixture VALUES ('Payment', 'Example.Service', 'audit', 'src/Service.cs');
+            INSERT INTO SearchFixture VALUES ('Payment', 'Example.Payment', 'charge card', 'src/Payment.cs');
+            INSERT INTO SearchFixture VALUES ('Other', 'Example.Other', 'Payment audit', 'src/Other.cs');
+            INSERT INTO SearchFixture VALUES ('Unused', 'Example.Unused', 'nothing', 'src/Unused.ts');
             """;
         await command.ExecuteNonQueryAsync(ct);
 
@@ -151,5 +137,24 @@ public sealed class SqliteKeywordCandidateProviderTests
         command.Parameters.AddWithValue("$query", query);
 
         Convert.ToInt32(await command.ExecuteScalarAsync(ct)).Should().Be(expectedMatches);
+    }
+
+    [Theory]
+    [InlineData("*")]
+    [InlineData("***")]
+    [InlineData(":")]
+    [InlineData("\"\"")]
+    [InlineData("()[]:*")]
+    public async Task WhenOnlyPunctuationRemains_ThenSearchReturnsNoHitsWithoutGeneratingAnEmbedding(string searchText)
+    {
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
+        var searcher = new HybridSearcher(factory.CreateDbContextFactory(), embeddings.Object, new SqliteKeywordCandidateProvider());
+
+        var result = await searcher.Search(new HybridSearchQuery(searchText), TestContext.Current.CancellationToken);
+
+        result.SearchText.Should().Be(searchText);
+        result.Hits.Should().BeEmpty();
+        embeddings.VerifyNoOtherCalls();
     }
 }

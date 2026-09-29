@@ -10,7 +10,7 @@ internal static class Program
     {
         var builder = Host.CreateApplicationBuilder(args);
 
-        builder.Services.AddRepositoryWorkspace(Environment.CurrentDirectory);
+        builder.Services.AddRepositoryWorkspace();
         builder.Services.AddPersistence();
 
         using var host = builder.Build();

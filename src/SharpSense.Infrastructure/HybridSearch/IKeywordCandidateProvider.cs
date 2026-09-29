@@ -9,9 +9,8 @@ namespace SharpSense.Infrastructure.HybridSearch;
 internal interface IKeywordCandidateProvider
 {
     /// <summary>
-    /// Returns the FTS5 MATCH expression for the supplied query. Tokens are expanded to prefix terms
-    /// (<c>token*</c>) so partial words match. When the input already contains standard FTS5 operators
-    /// (<c>OR</c>, <c>NOT</c>, <c>column:</c>, <c>NEAR</c>, quoted phrases), it is forwarded verbatim.
+    /// Returns a safely quoted prefix expression for plain-text input. FTS operators and column filters
+    /// have no special meaning. Returns an empty string when no searchable terms remain.
     /// </summary>
     Task<string> GetMatchQuery(HybridSearchQuery query, CancellationToken ct);
 }

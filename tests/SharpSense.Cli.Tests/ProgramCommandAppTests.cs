@@ -20,20 +20,6 @@ public sealed class ProgramCommandAppTests
         console.Output.Trim().Should().MatchRegex(@"^\d+\.\d+\.\d+(?:[-+].+)?$");
     }
 
-    [Fact]
-    public async Task WhenMcp_ThenRequiresAnExplicitWorkspaceBeforeStartingCommandServices()
-    {
-        using var console = new TestConsole();
-        var servicesStarted = false;
-        var app = global::SharpSense.Cli.Program.CreateCommandApp(console, _ => servicesStarted = true, enableFileLogging: false);
-
-        var exitCode = await app.RunAsync(["mcp"], TestContext.Current.CancellationToken);
-
-        exitCode.Should().NotBe(0);
-        console.Output.Should().Contain("MCP requires --workspace");
-        servicesStarted.Should().BeFalse();
-    }
-
     [Theory]
     [InlineData("")]
     [InlineData(" ")]
@@ -41,6 +27,7 @@ public sealed class ProgramCommandAppTests
     {
         string[][] commands =
         [
+            ["mcp"],
             ["analyze"],
             ["doctor"],
             ["workspace", "show"],

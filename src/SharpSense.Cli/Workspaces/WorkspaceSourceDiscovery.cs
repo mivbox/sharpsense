@@ -3,7 +3,7 @@ using System.IO.Abstractions;
 
 namespace SharpSense.Cli.Workspaces;
 
-internal sealed record DiscoveredWorkspaceSources(string RepositoryRoot, IReadOnlyList<WorkspaceSource> Sources);
+internal sealed record DiscoveredWorkspaceSources(string WorkspaceRoot, IReadOnlyList<WorkspaceSource> Sources);
 
 /// <summary>
 /// Offers bounded source candidates without interpreting project files or executing build tooling.
@@ -15,15 +15,15 @@ internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
         ".git", ".sharpsense", "node_modules", "bin", "obj", "dist", "build", ".next", ".turbo", "coverage", "vendor"
     };
 
-    public DiscoveredWorkspaceSources Discover(string repositoryRoot, CancellationToken ct)
+    public DiscoveredWorkspaceSources Discover(string workspaceRoot, CancellationToken ct)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(repositoryRoot);
-        if (!fileSystem.Path.IsPathRooted(repositoryRoot) || !fileSystem.Directory.Exists(repositoryRoot))
+        ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
+        if (!fileSystem.Path.IsPathRooted(workspaceRoot) || !fileSystem.Directory.Exists(workspaceRoot))
         {
-            throw new ArgumentException("Repository root must be an existing absolute directory.", nameof(repositoryRoot));
+            throw new ArgumentException("Workspace root must be an existing absolute directory.", nameof(workspaceRoot));
         }
 
-        var root = fileSystem.Path.GetFullPath(repositoryRoot);
+        var root = fileSystem.Path.GetFullPath(workspaceRoot);
         var pending = new Queue<string>();
         pending.Enqueue(root);
         var candidates = new List<WorkspaceSource>();

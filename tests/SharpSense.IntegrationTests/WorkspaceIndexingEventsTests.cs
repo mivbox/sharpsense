@@ -167,7 +167,7 @@ public sealed class WorkspaceIndexingEventsTests
             {
                 Id = Guid.NewGuid(),
                 Name = "test",
-                RepositoryRoot = "/repo"
+                WorkspaceRoot = "/repo"
             },
             "/home/workspace",
             "/home/workspace/workspace.yaml",

@@ -128,7 +128,7 @@ internal partial class Program
 
             var mcp = config
                 .AddCommand<McpCommand>("mcp")
-                .WithDescription("Start an MCP server over stdio; requires --workspace <name-or-id>.");
+                .WithDescription("Start an MCP server over stdio; use --workspace or discover a unique workspace from this directory.");
             AttachData(mcp, executionContext);
 
             var memory = config

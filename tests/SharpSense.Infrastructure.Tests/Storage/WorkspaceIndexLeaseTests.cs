@@ -17,7 +17,7 @@ public sealed class WorkspaceIndexLeaseTests
         var original = File.ReadAllText(selection.ConfigurationPath);
         using var lease = first.AcquireIndexLease(selection);
 
-        var busy = ((Action)(() => second.AcquireIndexLease(second.Resolve("product", fixture.RepositoryRoot)))).Should().ThrowExactly<WorkspaceIndexBusyException>().Which;
+        var busy = ((Action)(() => second.AcquireIndexLease(second.Resolve("product")))).Should().ThrowExactly<WorkspaceIndexBusyException>().Which;
         busy.Message.Should().Contain("Stop that session");
         ((Action)(() => second.AddSources("product", [new(WorkspaceSourceKind.Markdown, "notes/**/*.md")]))).Should().ThrowExactly<WorkspaceIndexBusyException>();
         ((Action)(() => second.RemoveSources("product", [new(WorkspaceSourceKind.Markdown, "docs/**/*.md")]))).Should().ThrowExactly<WorkspaceIndexBusyException>();
@@ -38,7 +38,7 @@ public sealed class WorkspaceIndexLeaseTests
 
         File.Exists(Path.Combine(selection.DirectoryPath, ".index.lock")).Should().BeTrue();
         var other = new WorkspaceCatalog(new FileSystem(), fixture.Home);
-        using (other.AcquireIndexLease(other.Resolve("product", fixture.RepositoryRoot)))
+        using (other.AcquireIndexLease(other.Resolve("product")))
         {
             ((Action)(() => fixture.Catalog.AcquireIndexLease(selection))).Should().ThrowExactly<WorkspaceIndexBusyException>();
         }

@@ -5,10 +5,15 @@
 ## Query flow
 
 1. Validate the query and resolve an optional project filter.
-2. Ask `IKeywordCandidateProvider` for a safe FTS match expression.
-3. Generate an embedding for the query text.
+2. Ask `IKeywordCandidateProvider` for a safely quoted prefix expression built from plain-text tokens. Return no hits when no searchable terms remain.
+3. Generate an embedding for the original query text.
 4. Rank keyword candidates with FTS5 BM25 and vector candidates with sqlite-vec cosine distance.
 5. Combine ranks with Reciprocal Rank Fusion and hydrate only the selected result nodes.
+
+The SQLite provider splits common symbol/path punctuation (including `*` and `:`), deduplicates case-insensitively,
+drops short or punctuation-only tokens, quotes and escapes each token, appends a prefix wildcard outside the quotes,
+and joins terms with OR. User input is never forwarded as raw FTS syntax. This boundary is shared by CLI, MCP and HTTP;
+`ctx_execute` uses a separate transient output index and keeps its FTS query syntax.
 
 The implementation bounds candidate pools and uses an RRF constant of 60. Keyword and vector ranking are composed in SQL.
 

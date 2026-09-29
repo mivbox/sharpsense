@@ -43,7 +43,7 @@ public sealed class RepositoryWorkspaceTests
     }
 
     [Fact]
-    public void WhenCreatingWorkspaceFromDirectoryWithGitAncestor_ThenUsesGitAncestorAsRootPath()
+    public void WhenCreatingWorkspaceFromDirectoryWithGitAncestor_ThenKeepsTheConfiguredRoot()
     {
         var fileSystem = CreateRepositoryFileSystem();
 
@@ -52,7 +52,7 @@ public sealed class RepositoryWorkspaceTests
 
         var workspace = CreateWorkspace(fileSystem, "/repo/src/Sample");
 
-        workspace.RootPath.Should().Be("/repo");
+        workspace.RootPath.Should().Be("/repo/src/Sample");
     }
 
     [Fact]
@@ -115,7 +115,7 @@ public sealed class RepositoryWorkspaceTests
         MockFileSystem fileSystem,
         string workingDirectory)
         => new RepositoryWorkspace(
-            RepositoryWorkspace.ResolveRootPathFromWorkingDirectory(workingDirectory, fileSystem),
+            workingDirectory,
             "/test-storage/index.db",
             fileSystem);
 }

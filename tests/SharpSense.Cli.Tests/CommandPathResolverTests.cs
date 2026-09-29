@@ -20,7 +20,7 @@ public sealed class CommandPathResolverTests
             Environment.CurrentDirectory = workingDirectory;
             Environment.SetEnvironmentVariable("PWD", Path.GetDirectoryName(workingDirectory));
 
-            var resolvedRepositoryRoot = CommandPathResolver.ResolveRepositoryRoot(repositoryRoot);
+            var resolvedRepositoryRoot = CommandPathResolver.ResolveWorkspaceRoot(repositoryRoot);
 
             resolvedRepositoryRoot.Should().Be(
                 Path.TrimEndingDirectorySeparator(Path.GetFullPath(repositoryRoot ?? ".", Environment.CurrentDirectory)));

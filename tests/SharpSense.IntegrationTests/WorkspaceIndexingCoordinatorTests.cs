@@ -147,7 +147,7 @@ public sealed class WorkspaceIndexingCoordinatorTests
             {
                 Id = Guid.NewGuid(),
                 Name = name,
-                RepositoryRoot = "/repo"
+                WorkspaceRoot = "/repo"
             },
             "/home/workspace",
             "/home/workspace/workspace.yaml",

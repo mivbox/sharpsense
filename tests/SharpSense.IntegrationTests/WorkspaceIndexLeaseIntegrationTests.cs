@@ -98,7 +98,7 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
         await WaitForState(first, fixture.Selection, "watching");
 
         second.Start(
-            otherCatalog.Resolve(fixture.Selection.Definition.Id.ToString(), fixture.RepositoryRoot),
+            otherCatalog.Resolve(fixture.Selection.Definition.Id.ToString()),
             new StartWorkspaceIndexingRequest(SkipEmbeddings: true));
         var rejected = await WaitForState(second, fixture.Selection, "failed");
         rejected.Diagnostics.Should().Contain(message => message.Contains("already being indexed or watched"));
@@ -111,7 +111,7 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
 
         await first.Stop(fixture.Selection.Definition.Id, TestContext.Current.CancellationToken);
         second.Start(
-            otherCatalog.Resolve(fixture.Selection.Definition.Id.ToString(), fixture.RepositoryRoot),
+            otherCatalog.Resolve(fixture.Selection.Definition.Id.ToString()),
             new StartWorkspaceIndexingRequest(SkipEmbeddings: true));
         await WaitForState(second, fixture.Selection, "completed");
         (await DocumentPaths(fixture.Selection)).Should().Equal(["docs/first.md"]);
