@@ -56,14 +56,19 @@ test("query cancellation reaches fetch through the generated Kiota client", asyn
 test("cancelling one query does not cancel another concurrent request", async (context) => {
   const first = new AbortController();
   const second = new AbortController();
-  let notifyStarted!: () => void;
-  const started = new Promise<void>((resolve) => {
-    notifyStarted = resolve;
+  let notifyFirstStarted!: () => void;
+  let notifySecondStarted!: () => void;
+  let completeSecond!: (response: Response) => void;
+  const firstStarted = new Promise<void>((resolve) => {
+    notifyFirstStarted = resolve;
+  });
+  const secondStarted = new Promise<void>((resolve) => {
+    notifySecondStarted = resolve;
   });
   context.mock.method(globalThis, "fetch", (url: string, init: RequestInit) => {
     if (url.endsWith("/overview")) {
       assert.equal(init.signal, first.signal);
-      notifyStarted();
+      notifyFirstStarted();
       return new Promise<Response>((_resolve, reject) => {
         init.signal!.addEventListener(
           "abort",
@@ -73,19 +78,29 @@ test("cancelling one query does not cancel another concurrent request", async (c
       });
     }
     assert.equal(init.signal, second.signal);
-    return Promise.resolve(
-      new Response("[]", { headers: { "Content-Type": "application/json" } }),
-    );
+    notifySecondStarted();
+    return new Promise<Response>((resolve, reject) => {
+      completeSecond = resolve;
+      init.signal!.addEventListener(
+        "abort",
+        () => reject(init.signal!.reason),
+        { once: true },
+      );
+    });
   });
-
   const api = client();
   const pending = api.api.overview.get(requestConfiguration(first.signal));
-  await started;
   const independent = api.api.tools.get(requestConfiguration(second.signal));
+  await Promise.all([firstStarted, secondStarted]);
+
   first.abort();
+
   await assert.rejects(pending, { name: "AbortError" });
-  assert.deepEqual(await independent, []);
   assert.equal(second.signal.aborted, false);
+  completeSecond(
+    new Response("[]", { headers: { "Content-Type": "application/json" } }),
+  );
+  assert.deepEqual(await independent, []);
 });
 
 test("the transport does not retry a failed memory mutation", async (context) => {

@@ -16,15 +16,13 @@ import {
 } from "@mui/material";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
+import type {
+  WorkspaceSource,
+  WorkspaceSummary,
+} from "../../shared/workspace/models";
 import { discoverSources, saveWorkspace } from "./api";
 import { absoluteDiscoveredSource } from "./sourceDiscovery";
-import {
-  sourceKinds,
-  sourceLabels,
-  type WorkspaceSource,
-  type WorkspaceSummary,
-  type WorkspaceInput,
-} from "./models";
+import { sourceKinds, sourceLabels, type WorkspaceInput } from "./models";
 
 export function WorkspaceEditorDialog({
   workspace,

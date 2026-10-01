@@ -1,20 +1,9 @@
+import { clickButton } from "./browserActions";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import puppeteer, {
-  type Browser,
-  type HTTPRequest,
-  type Page,
-} from "puppeteer";
-import { preview } from "vite";
+import type { Browser, HTTPRequest, Page } from "puppeteer";
 import { idleIndexingStatus } from "./indexingFixture";
+import { launchBrowser, startUiPreview } from "./browserFixture";
 
-const uiRoot = fileURLToPath(new URL("../", import.meta.url));
-assert.ok(
-  existsSync(path.join(uiRoot, "dist/index.html")),
-  "Build the UI first.",
-);
 const workspace = {
   id: "87b3339a-c768-4026-8e31-b99132966a90",
   name: "Resilience fixture",
@@ -30,30 +19,13 @@ let catalogUnavailable = false;
 let holdDiscovery = false;
 let releaseDiscovery: (() => void) | undefined;
 let cancelledDiscoveries = 0;
-const server = await preview({
-  configFile: false,
-  root: uiRoot,
-  preview: { host: "127.0.0.1", port: 0, strictPort: true },
-});
+const server = await startUiPreview();
 let browser: Browser | undefined;
 let browserPage: Page | undefined;
 
 try {
-  const address = server.httpServer.address();
-  assert.ok(address && typeof address === "object");
-  const baseUrl = "http://127.0.0.1:" + address.port;
-  browser = await puppeteer.launch({
-    headless: true,
-    executablePath:
-      process.env.PUPPETEER_EXECUTABLE_PATH ??
-      (process.platform === "darwin"
-        ? [
-            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-            "/Applications/Chromium.app/Contents/MacOS/Chromium",
-          ].find(existsSync)
-        : undefined),
-    args: process.env.CI ? ["--no-sandbox", "--disable-dev-shm-usage"] : [],
-  });
+  const { baseUrl } = server;
+  browser = await launchBrowser();
   const page = await browser.newPage();
   browserPage = page;
   page.setDefaultTimeout(20_000);
@@ -174,9 +146,7 @@ try {
 } finally {
   releaseDiscovery?.();
   await browser?.close();
-  await new Promise<void>((resolve, reject) =>
-    server.httpServer.close((error) => (error ? reject(error) : resolve())),
-  );
+  await server.close();
 }
 
 async function respond(request: HTTPRequest) {
@@ -302,42 +272,6 @@ async function fill(page: Page, label: string, value: string) {
     selector,
     value,
   );
-}
-
-async function clickButton(page: Page, text: string) {
-  const handle = await page.waitForFunction(
-    (label) =>
-      [
-        ...(
-          document.querySelector('[role="dialog"]') ?? document
-        ).querySelectorAll("button"),
-      ].find(
-        (button) =>
-          !button.disabled &&
-          button.getClientRects().length > 0 &&
-          button.innerText.replace(/\u200b/g, "").trim() === label,
-      ),
-    {},
-    text,
-  );
-  const element = handle.asElement();
-  assert.ok(element, `Button not found: ${text}`);
-  const button = await element.toElement("button");
-  await button.scrollIntoView();
-  await page.waitForFunction(
-    (target) => {
-      const bounds = target.getBoundingClientRect();
-      const hit = document.elementFromPoint(
-        bounds.x + bounds.width / 2,
-        bounds.y + bounds.height / 2,
-      );
-      return hit !== null && target.contains(hit);
-    },
-    {},
-    button,
-  );
-  await button.asLocator().click();
-  await handle.dispose();
 }
 
 async function values(page: Page, label: string) {

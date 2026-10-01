@@ -1,19 +1,15 @@
+import { clickButton } from "./browserActions";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
-import puppeteer, { type Browser, type Page } from "puppeteer";
-import { preview } from "vite";
+import type { Browser, Page } from "puppeteer";
 import type { WorkspaceIndexingStatus } from "../src/shared/api/generated/models";
+import { launchBrowser, startUiPreview } from "./browserFixture";
 
-const uiRoot = fileURLToPath(new URL("../", import.meta.url));
-assert.ok(existsSync(path.join(uiRoot, "dist/index.html")), "Build UI first.");
 const workspaces = [
   {
     id: "0fb315a3-bae9-43f0-be3c-1b971cb3fef6",
@@ -61,34 +57,14 @@ const api = createServer((request, response) => {
 await new Promise<void>((resolve) => api.listen(0, "127.0.0.1", resolve));
 const apiAddress = api.address();
 assert.ok(apiAddress && typeof apiAddress === "object");
-const server = await preview({
-  configFile: false,
-  root: uiRoot,
-  preview: {
-    host: "127.0.0.1",
-    port: 0,
-    strictPort: true,
-    proxy: { "/api": `http://127.0.0.1:${apiAddress.port}` },
-  },
+const server = await startUiPreview({
+  proxy: { "/api": `http://127.0.0.1:${apiAddress.port}` },
 });
 let browser: Browser | undefined;
 
 try {
-  const address = server.httpServer.address();
-  assert.ok(address && typeof address === "object");
-  const baseUrl = `http://127.0.0.1:${address.port}`;
-  browser = await puppeteer.launch({
-    headless: true,
-    executablePath:
-      process.env.PUPPETEER_EXECUTABLE_PATH ??
-      (process.platform === "darwin"
-        ? [
-            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-            "/Applications/Chromium.app/Contents/MacOS/Chromium",
-          ].find(existsSync)
-        : undefined),
-    args: process.env.CI ? ["--no-sandbox", "--disable-dev-shm-usage"] : [],
-  });
+  const { baseUrl } = server;
+  browser = await launchBrowser();
   const page = await browser.newPage();
   page.setDefaultTimeout(15_000);
   await page.setViewport({ width: 1440, height: 1000 });
@@ -224,9 +200,7 @@ try {
   await browser?.close();
   for (const items of subscribers.values())
     for (const response of items) response.end();
-  await new Promise<void>((resolve, reject) =>
-    server.httpServer.close((error) => (error ? reject(error) : resolve())),
-  );
+  await server.close();
   api.closeAllConnections();
   await new Promise<void>((resolve, reject) =>
     api.close((error) => (error ? reject(error) : resolve())),
@@ -353,24 +327,6 @@ function send(response: ServerResponse, status: WorkspaceIndexingStatus) {
 function json(response: ServerResponse, value: unknown) {
   response.writeHead(200, { "Content-Type": "application/json" });
   response.end(JSON.stringify(value));
-}
-
-async function clickButton(page: Page, text: string) {
-  const handle = await page.waitForFunction(
-    (label) =>
-      [...document.querySelectorAll("button")].find(
-        (button) =>
-          !button.disabled &&
-          button.getClientRects().length > 0 &&
-          button.textContent?.replace(/\u200b/g, "").trim() === label,
-      ),
-    {},
-    text,
-  );
-  const button = handle.asElement();
-  assert.ok(button);
-  await (await button.toElement("button")).click();
-  await handle.dispose();
 }
 
 async function visibleText(page: Page, text: string) {

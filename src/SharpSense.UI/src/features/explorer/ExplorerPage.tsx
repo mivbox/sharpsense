@@ -43,6 +43,9 @@ import { NodeList } from "./NodeList";
 import { GraphTypeFilter } from "./GraphTypeFilter";
 import { GraphLoadingStatus } from "./GraphLoadingStatus";
 import { useGraphProjection } from "./useGraphProjection";
+import { ancestorPaths } from "./workspacePaths";
+import { nodeColors } from "./graphLabels";
+
 const GraphCanvas = lazy(() => import("./GraphCanvas"));
 
 export default function ExplorerPage({
@@ -57,21 +60,7 @@ export default function ExplorerPage({
   onOpenTool: (selection: ToolSelection) => void;
 }) {
   const [expanded, setExpanded] = useState(
-    () =>
-      new Set([
-        "/",
-        ...state.scopes.flatMap((path) =>
-          path
-            .split("/")
-            .slice(0, -1)
-            .map((_, index) =>
-              path
-                .split("/")
-                .slice(0, index + 1)
-                .join("/"),
-            ),
-        ),
-      ]),
+    () => new Set(["/", ...state.scopes.flatMap(ancestorPaths)]),
   );
   const selectedPaths = state.scopes;
   const showEdges = state.edges;
@@ -132,15 +121,6 @@ export default function ExplorerPage({
       selected: undefined,
       filter: "",
     });
-  };
-  const colors: Record<string, string> = {
-    project: "#a6b3ff",
-    class: "#80cbc4",
-    interface: "#ce93d8",
-    method: "#90caf9",
-    property: "#ffcc80",
-    field: "#ef9a9a",
-    document: "#b0bec5",
   };
   return (
     <Stack spacing={2}>
@@ -411,7 +391,7 @@ export default function ExplorerPage({
                       width: 6,
                       height: 6,
                       borderRadius: "50%",
-                      bgcolor: colors[type] ?? "#b0bec5",
+                      bgcolor: nodeColors[type] ?? "#b0bec5",
                     }}
                   />
                   <Typography variant="caption" color="text.secondary">

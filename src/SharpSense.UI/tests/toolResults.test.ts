@@ -138,9 +138,14 @@ test("impact and inheritors use their generated response fields and tolerate opt
     renderResult({ tool: "inheritors", data: [], elapsedMs: 1 }),
     /No inheriting symbols/,
   );
-  assert.ok(
-    contextOverview({}).groups.every((group) => group.items.length === 0),
-  );
+  assert.deepEqual(contextOverview({}).groups, [
+    { title: "Callers", items: [] },
+    { title: "Callees", items: [] },
+    { title: "Implementations", items: [] },
+    { title: "Inherits", items: [] },
+    { title: "Parents", items: [] },
+    { title: "Children", items: [] },
+  ]);
   assert.equal(traceOverview({}).dependencyCount, undefined);
   assert.deepEqual(impactOverview({}).groups[0]?.items, []);
 });
@@ -260,7 +265,7 @@ function renderResult(result: ToolResult): string {
   );
 }
 
-test("large typed results render one page while retaining every result", () => {
+test("large typed results render the first page and navigation without changing the input", () => {
   const impactedNodes = Array.from({ length: 5_000 }, (_, index) => ({
     id: index + 1,
     displayName: `Symbol${index + 1}`,
@@ -272,11 +277,14 @@ test("large typed results render one page while retaining every result", () => {
     data: { targetSymbol: "Fixture.Target", impactedNodes, dependencies: [] },
     elapsedMs: 1,
   } satisfies ToolResult;
+  const originalResult = structuredClone(result);
+
   const markup = renderResult(result);
+
   assert.equal((markup.match(/as tool target"/g) ?? []).length, 50);
   assert.match(markup, /Use Symbol50 as tool target/);
   assert.doesNotMatch(markup, /Use Symbol51 as tool target/);
   assert.match(markup, /Impacted symbols pages/);
   assert.match(markup, /Go to page 100/);
-  assert.equal(result.data.impactedNodes?.length, 5_000);
+  assert.deepEqual(result, originalResult);
 });

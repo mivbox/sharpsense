@@ -1,6 +1,8 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useWorkspaceApi } from "../../shared/workspace/context";
 import type { TreeNode } from "../../shared/api/models";
+import { ancestorPaths } from "./workspacePaths";
+
 export { useScopedGraph } from "./useGraphPages";
 
 export function useWorkspaceTree(
@@ -12,17 +14,7 @@ export function useWorkspaceTree(
     queryKey: ["tree", "/"],
     queryFn: ({ signal }) => getTree("/", signal),
   });
-  const requiredParents = selectedPaths.flatMap((path) =>
-    path
-      .split("/")
-      .slice(0, -1)
-      .map((_, index) =>
-        path
-          .split("/")
-          .slice(0, index + 1)
-          .join("/"),
-      ),
-  );
+  const requiredParents = selectedPaths.flatMap(ancestorPaths);
   const paths = [...new Set([...expandedPaths, ...requiredParents])]
     .filter((path) => path !== "/" && path !== "")
     .sort();

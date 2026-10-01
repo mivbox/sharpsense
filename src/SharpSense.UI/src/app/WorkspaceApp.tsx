@@ -35,7 +35,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { LoadingRows } from "../shared/ui/States";
 import { IndexStatusDialog } from "../features/diagnostics/IndexStatusDialog";
 
-import type { WorkspaceSummary } from "../features/workspaces/models";
+import type { WorkspaceSummary } from "../shared/workspace/models";
 import { useWorkspace } from "../shared/workspace/context";
 import { IndexingControls } from "../features/workspaces/IndexingControls";
 

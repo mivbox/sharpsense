@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import puppeteer from "puppeteer";
+import { launchBrowser } from "./browserFixture";
 
 const baseUrl = process.env.SHARPSENSE_PROFILE_URL;
 const workspace = process.env.SHARPSENSE_PROFILE_WORKSPACE;
@@ -16,15 +15,7 @@ const artifacts =
   process.env.SHARPSENSE_PROFILE_ARTIFACTS ??
   (await mkdtemp(path.join(tmpdir(), "sharpsense-graph-profile-")));
 await mkdir(artifacts, { recursive: true });
-const executablePath =
-  process.env.PUPPETEER_EXECUTABLE_PATH ??
-  [
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-  ].find(existsSync);
-const browser = await puppeteer.launch({
-  headless: true,
-  executablePath,
+const browser = await launchBrowser({
   args: [
     "--enable-unsafe-swiftshader",
     ...(process.env.CI ? ["--no-sandbox", "--disable-dev-shm-usage"] : []),
@@ -199,6 +190,14 @@ try {
     "Real graph profile must not emit browser errors.",
   );
   assert.ok(
+    [...responses.values()].some((response) => response.kind === "nodes"),
+    "The profile must fetch node pages.",
+  );
+  assert.ok(
+    [...responses.values()].some((response) => response.kind === "edges"),
+    "The profile must fetch edge pages.",
+  );
+  assert.ok(
     [...responses.values()].every((response) => response.status === 200),
   );
   const timings = await page.evaluate(
@@ -206,6 +205,14 @@ try {
       (window as unknown as { graphProfileMetrics: unknown })
         .graphProfileMetrics,
   );
+  assert.ok(timings && typeof timings === "object");
+  for (const key of ["firstNodesMs", "firstSettledCanvasMs", "completeMs"]) {
+    assert.ok(key in timings, "Missing timing: " + key);
+    const value: unknown = (timings as Record<string, unknown>)[key];
+    assert.ok(
+      typeof value === "number" && Number.isFinite(value) && value >= 0,
+    );
+  }
   const report = {
     workspace,
     counts,

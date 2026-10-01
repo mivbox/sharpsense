@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 import type { WorkspaceApi } from "../api/workspaceApi";
-import type { WorkspaceSummary } from "../../features/workspaces/models";
+import type { WorkspaceSummary } from "./models";
 
 export const WorkspaceContext = createContext<{
   workspace: WorkspaceSummary;
