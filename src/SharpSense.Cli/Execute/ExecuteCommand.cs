@@ -21,28 +21,21 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
     public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "<command>")]
-        public string Command
-        {
-            get; init;
-        } = string.Empty;
+        public string Command { get; init; } = string.Empty;
 
         [CommandOption("-q|--query <QUERY>")]
-        public string? Query
-        {
-            get; init;
-        }
+        public string? Query { get; init; }
 
         [CommandOption("--toon")]
-        public bool UseToonFormat
-        {
-            get; init;
-        }
+        public bool UseToonFormat { get; init; }
 
         public override ValidationResult Validate()
             => string.IsNullOrWhiteSpace(Command)
                 ? ValidationResult.Error("A non-empty command is required.")
                 : base.Validate();
     }
+
+    protected override int CancellationExitCode => 130;
 
     protected override void Configure(
         Settings settings,
@@ -77,7 +70,7 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
                             status = "error",
                             errorMessage
                         },
-                        TokenObjectNotation.JsonOptions));
+                        CliJsonOptions.Default));
 
             return 1;
         }
@@ -86,7 +79,7 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
             context,
             settings.UseToonFormat
                 ? TokenObjectNotation.SerializeCommandExecutionResult(result.Value)
-                : JsonSerializer.Serialize(result.Value, TokenObjectNotation.JsonOptions));
+                : JsonSerializer.Serialize(result.Value, CliJsonOptions.Default));
 
         return result.Value.ExitCode;
     }

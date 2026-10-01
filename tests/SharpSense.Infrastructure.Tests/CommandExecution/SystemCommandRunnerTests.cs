@@ -29,6 +29,29 @@ public sealed class SystemCommandRunnerTests
     }
 
     [Fact]
+    public async Task WhenByteLimitIsReached_ThenReturnsChildExitAndReportsTruncation()
+    {
+        var lines = new List<string>();
+        var runner = new SystemCommandRunner();
+
+        var result = await runner.Execute(
+            new CommandProcessRequest("dotnet --version", AppContext.BaseDirectory, MaxCapturedBytes: 1),
+            (line, _) =>
+            {
+                lines.Add(line);
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.ExitCode.Should().Be(0);
+        result.Value.TotalLines.Should().BeGreaterThanOrEqualTo(1);
+        result.Value.CaptureTruncated.Should().BeTrue();
+        lines.Should().ContainSingle().Which.Length.Should().Be(1);
+    }
+
+    [Fact]
     public async Task WhenOutputCallbackFails_ThenItReturnsTheOriginalCaptureError()
     {
         var runner = new SystemCommandRunner();

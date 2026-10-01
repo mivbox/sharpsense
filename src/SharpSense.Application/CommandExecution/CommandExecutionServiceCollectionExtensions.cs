@@ -14,7 +14,8 @@ public static class CommandExecutionServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.TryAddTransient<ICommandHandler<ExecuteProcessCommand, Result<CommandExecutionResult>>, ExecuteProcessCommandHandler>();
+        services
+            .TryAddTransient<ICommandHandler<ExecuteProcessCommand, Result<CommandExecutionResult>>, ExecuteProcessCommandHandler>();
 
         return services;
     }

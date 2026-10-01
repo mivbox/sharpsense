@@ -80,7 +80,13 @@ internal sealed class TransientExecutionLogIndex(TransientExecutionLogDbContext 
                      """)
                 .ToArrayAsync(ct);
 
-            return Result.Ok<ExecutionLogLine[]>([.. lines.Select(static line => new ExecutionLogLine(line.LineNumber, line.Text))]);
+            return Result.Ok<ExecutionLogLine[]>(
+                [
+                    .. lines
+                        .Select(static line => new ExecutionLogLine(
+                            line.LineNumber,
+                            line.Text))
+                ]);
         }
         catch (DbException ex)
         {
@@ -93,14 +99,8 @@ internal sealed class TransientExecutionLogIndex(TransientExecutionLogDbContext 
 
     private sealed class ExecutionLogLineRow
     {
-        public int LineNumber
-        {
-            get; init;
-        }
+        public int LineNumber { get; init; }
 
-        public string Text
-        {
-            get; init;
-        } = string.Empty;
+        public string Text { get; init; } = string.Empty;
     }
 }

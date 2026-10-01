@@ -26,6 +26,11 @@ internal sealed class SystemCommandRunner : ICommandProcessRunner
             return Result.Fail<CommandProcessResult>("Working directory must not be empty.");
         }
 
+        if (request.MaxCapturedLines <= 0 || request.MaxCapturedBytes <= 0)
+        {
+            return Result.Fail<CommandProcessResult>("Output capture limits must be greater than zero.");
+        }
+
         var parsedCommand = CommandInvocationParser.Parse(request.Command);
         if (parsedCommand.IsFailed)
         {
@@ -53,17 +58,9 @@ internal sealed class SystemCommandRunner : ICommandProcessRunner
 
         using var executionCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
         using var cancellationRegistration = executionCancellation.Token.Register(() => TryKill(process));
-        using var gate = new SemaphoreSlim(1, 1);
-        var standardOutputTask = ReadLines(
-            process.StandardOutput,
-            onOutput,
-            gate,
-            executionCancellation.Token);
-        var standardErrorTask = ReadLines(
-            process.StandardError,
-            onOutput,
-            gate,
-            executionCancellation.Token);
+        using var capture = new BoundedCommandOutput(request.MaxCapturedLines, request.MaxCapturedBytes, onOutput);
+        var standardOutputTask = capture.Read(process.StandardOutput, executionCancellation.Token);
+        var standardErrorTask = capture.Read(process.StandardError, executionCancellation.Token);
 
         CancelOnFault(standardOutputTask, executionCancellation);
         CancelOnFault(standardErrorTask, executionCancellation);
@@ -76,7 +73,7 @@ internal sealed class SystemCommandRunner : ICommandProcessRunner
                 standardErrorTask,
                 waitForExitTask);
 
-            return Result.Ok(new CommandProcessResult(process.ExitCode));
+            return Result.Ok(new CommandProcessResult(process.ExitCode, capture.TotalLines, capture.Truncated));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -112,26 +109,6 @@ internal sealed class SystemCommandRunner : ICommandProcessRunner
         }
 
         return startInfo;
-    }
-
-    private static async Task ReadLines(
-        StreamReader reader,
-        Func<string, CancellationToken, Task> onOutput,
-        SemaphoreSlim gate,
-        CancellationToken ct)
-    {
-        while (await reader.ReadLineAsync(ct) is { } line)
-        {
-            await gate.WaitAsync(ct);
-            try
-            {
-                await onOutput(line, ct);
-            }
-            finally
-            {
-                gate.Release();
-            }
-        }
     }
 
     private static void CancelOnFault(
