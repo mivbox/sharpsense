@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\"/>
+    <None Include="../../LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
@@ -48,10 +49,6 @@
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded"/>
     <PackageReference Include="ModelContextProtocol"/>
-    <PackageReference Include="OpenTelemetry"/>
-    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol"/>
-    <PackageReference Include="OpenTelemetry.Extensions.Hosting"/>
-    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore"/>
     <PackageReference Include="Serilog"/>
     <PackageReference Include="Serilog.AspNetCore"/>
     <PackageReference Include="Serilog.Sinks.File"/>
@@ -95,6 +92,21 @@
       <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)' == 'linux-x86'" />
       <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)' == 'linux-arm'" />
       <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)" Condition="'%(RuntimeTargetsCopyLocalItems.RuntimeIdentifier)' == 'linux-armel'" />
+    </ItemGroup>
+  </Target>
+
+  <!-- The BERT embedder uses base ONNX Runtime. GenAI serves an unused chat connector.
+       TypeScript/TSX need only their two grammars and the Tree-sitter core library. -->
+  <Target Name="TrimUnusedNativeAssets" AfterTargets="ResolvePackageAssets">
+    <ItemGroup>
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)"
+          Condition="'%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'TreeSitter.DotNet' and !$([System.Text.RegularExpressions.Regex]::IsMatch('%(RuntimeTargetsCopyLocalItems.Filename)', '^(lib)?tree-sitter(-typescript|-tsx)?$'))" />
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)"
+          Condition="'%(NativeCopyLocalItems.NuGetPackageId)' == 'TreeSitter.DotNet' and !$([System.Text.RegularExpressions.Regex]::IsMatch('%(NativeCopyLocalItems.Filename)', '^(lib)?tree-sitter(-typescript|-tsx)?$'))" />
+      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)"
+          Condition="'%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'Microsoft.ML.OnnxRuntimeGenAI'" />
+      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)"
+          Condition="'%(NativeCopyLocalItems.NuGetPackageId)' == 'Microsoft.ML.OnnxRuntimeGenAI'" />
     </ItemGroup>
   </Target>
 
