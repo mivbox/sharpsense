@@ -10,12 +10,12 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { stopChildProcess } from "./stopChildProcess";
+import { availablePort } from "./availablePort";
 
 type Node = {
   id: number;
@@ -565,17 +565,4 @@ async function command(file: string, args: string[]) {
   } finally {
     clearTimeout(timer);
   }
-}
-async function availablePort() {
-  const server = createServer();
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const address = server.address();
-  assert.ok(address && typeof address !== "string");
-  await new Promise<void>((resolve, reject) =>
-    server.close((error) => (error ? reject(error) : resolve())),
-  );
-  return address.port;
 }

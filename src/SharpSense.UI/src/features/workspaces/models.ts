@@ -1,11 +1,8 @@
-export type SourceKind = "CSharp" | "TypeScript" | "Markdown";
-export type WorkspaceSource = { kind: SourceKind; path: string };
-export type WorkspaceSummary = {
-  id: string;
-  name: string;
-  repositoryRoot: string;
-  sources: WorkspaceSource[];
-};
+import type {
+  SourceKind,
+  WorkspaceSummary,
+} from "../../shared/workspace/models";
+
 export type WorkspaceInput = Omit<WorkspaceSummary, "id">;
 export const sourceKinds: SourceKind[] = ["CSharp", "TypeScript", "Markdown"];
 export const sourceLabels: Record<SourceKind, string> = {

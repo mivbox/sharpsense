@@ -75,13 +75,14 @@ test("graph statistics links need no node and render metrics instead of symbol r
         },
       },
       loading: false,
-      onInspect: () => assert.fail("Statistics must not select a symbol"),
+      onInspect: () => {},
     }),
   );
   assert.match(markup, /Graph nodes/);
   assert.match(markup, /Memories/);
   assert.match(markup, /50.0%/);
   assert.doesNotMatch(markup, /No related symbols/);
+  assert.doesNotMatch(markup, /as tool target/);
 });
 
 test("unavailable timestamps and durations stay unknown", () => {

@@ -1,23 +1,12 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
-import puppeteer, {
-  type Browser,
-  type HTTPRequest,
-  type Page,
-} from "puppeteer";
-import { preview } from "vite";
+import type { Browser, HTTPRequest, Page } from "puppeteer";
 import { idleIndexingStatus } from "./indexingFixture";
+import { launchBrowser, startUiPreview } from "./browserFixture";
 
-const uiRoot = fileURLToPath(new URL("../", import.meta.url));
-assert.ok(
-  existsSync(path.join(uiRoot, "dist/index.html")),
-  "Build the UI before inspector tests.",
-);
 const artifacts =
   process.env.SHARPSENSE_E2E_ARTIFACTS ??
   (await mkdtemp(path.join(tmpdir(), "sharpsense-inspector-artifacts-")));
@@ -46,28 +35,13 @@ const errors: string[] = [];
 const unsafeLabel =
   "<img src=x onerror=window.__graphLabelExecuted=true> · List<T>";
 const requests: { url: URL; workspace: string; scenario: Scenario }[] = [];
-const server = await preview({
-  configFile: false,
-  root: uiRoot,
-  preview: { host: "127.0.0.1", port: 0, strictPort: true },
-});
+const server = await startUiPreview();
 let browser: Browser | undefined;
 let page: Page | undefined;
 
 try {
-  const address = server.httpServer.address();
-  assert.ok(address && typeof address === "object");
-  const baseUrl = "http://127.0.0.1:" + address.port;
-  browser = await puppeteer.launch({
-    headless: true,
-    executablePath:
-      process.env.PUPPETEER_EXECUTABLE_PATH ??
-      (process.platform === "darwin"
-        ? [
-            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-            "/Applications/Chromium.app/Contents/MacOS/Chromium",
-          ].find(existsSync)
-        : undefined),
+  const { baseUrl } = server;
+  browser = await launchBrowser({
     args: [
       "--enable-unsafe-swiftshader",
       ...(process.env.CI ? ["--no-sandbox", "--disable-dev-shm-usage"] : []),
@@ -301,9 +275,7 @@ try {
 } finally {
   releaseHeld?.();
   await browser?.close();
-  await new Promise<void>((resolve, reject) =>
-    server.httpServer.close((error) => (error ? reject(error) : resolve())),
-  );
+  await server.close();
 }
 
 function node(id: number, beta: boolean) {

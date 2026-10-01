@@ -1,14 +1,15 @@
+import { clickButton } from "./browserActions";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import puppeteer, { type Browser, type Page } from "puppeteer";
+import type { Browser, Page } from "puppeteer";
 import { stopChildProcess } from "./stopChildProcess";
+import { availablePort } from "./availablePort";
+import { launchBrowser } from "./browserFixture";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const cliDll =
@@ -23,7 +24,7 @@ const home = path.join(fixture, "home");
 const artifacts =
   process.env.SHARPSENSE_E2E_ARTIFACTS ??
   (await mkdtemp(path.join(tmpdir(), "sharpsense-global-ui-artifacts-")));
-const port = await freePort();
+const port = await availablePort();
 const baseUrl = `http://127.0.0.1:${port}`;
 let server: ChildProcess | undefined;
 let browser: Browser | undefined;
@@ -69,9 +70,8 @@ try {
     }
   });
   assert.deepEqual((await catalog()).workspaces, []);
-  browser = await puppeteer.launch({
-    headless: true,
-    executablePath: executable(),
+  browser = await launchBrowser({
+    includeEdge: true,
     args: ["--no-sandbox", "--enable-unsafe-swiftshader"],
   });
   const page = await browser.newPage();
@@ -312,42 +312,6 @@ async function waitForIndexedUi(page: Page, nodes: number, watching = false) {
   );
 }
 
-async function clickButton(page: Page, text: string) {
-  const handle = await page.waitForFunction(
-    (label) =>
-      Array.from(
-        (
-          document.querySelector('[role="dialog"]') ?? document
-        ).querySelectorAll("button"),
-      ).find(
-        (button) =>
-          !button.disabled &&
-          button.getClientRects().length > 0 &&
-          button.innerText.replace(/\u200b/g, "").trim() === label,
-      ),
-    {},
-    text,
-  );
-  const element = handle.asElement();
-  assert.ok(element, `Button not found: ${text}`);
-  const button = await element.toElement("button");
-  await button.scrollIntoView();
-  await page.waitForFunction(
-    (target) => {
-      const bounds = target.getBoundingClientRect();
-      const hit = document.elementFromPoint(
-        bounds.x + bounds.width / 2,
-        bounds.y + bounds.height / 2,
-      );
-      return hit !== null && target.contains(hit);
-    },
-    {},
-    button,
-  );
-  await button.asLocator().click();
-  await handle.dispose();
-}
-
 async function fieldSelector(page: Page, text: string) {
   await page.waitForFunction(
     (name) =>
@@ -420,26 +384,4 @@ async function waitUntil(predicate: () => Promise<boolean>) {
   throw new Error(
     `Timed out waiting for workspace state. ${serverOutput.slice(-4000)}`,
   );
-}
-async function freePort(): Promise<number> {
-  const socket = createServer();
-  await new Promise<void>((resolve) => socket.listen(0, "127.0.0.1", resolve));
-  const address = socket.address();
-  assert.ok(address && typeof address !== "string");
-  const port = address.port;
-  await new Promise<void>((resolve, reject) =>
-    socket.close((error) => (error ? reject(error) : resolve())),
-  );
-  return port;
-}
-
-function executable() {
-  if (process.env.PUPPETEER_EXECUTABLE_PATH)
-    return process.env.PUPPETEER_EXECUTABLE_PATH;
-  if (process.platform !== "darwin") return undefined;
-  return [
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  ].find(existsSync);
 }

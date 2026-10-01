@@ -2,18 +2,15 @@ import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import puppeteer, {
-  type Browser,
-  type HTTPRequest,
-  type Page,
-} from "puppeteer";
+import type { Browser, HTTPRequest, Page } from "puppeteer";
 import type { GraphNode, GraphPage } from "../src/shared/api/models";
 import { stopChildProcess } from "./stopChildProcess";
+import { availablePort } from "./availablePort";
+import { launchBrowser } from "./browserFixture";
 
 type GraphPageNode = Omit<GraphNode, "id" | "projectId"> & {
   id: number;
@@ -111,9 +108,8 @@ try {
   assert.equal(catalog.workspaces.length, 1);
   assert.equal(catalog.workspaces[0]?.name, "browser-fixture");
   workspaceId = catalog.workspaces[0]!.id;
-  browser = await puppeteer.launch({
-    headless: true,
-    executablePath: executable(),
+  browser = await launchBrowser({
+    includeEdge: true,
     args: [
       "--enable-unsafe-swiftshader",
       ...(process.env.CI ? ["--no-sandbox", "--disable-dev-shm-usage"] : []),
@@ -247,6 +243,9 @@ try {
     selectedNode.codeNodeId,
   );
   await page.click('[data-expand-path="src"]');
+  await page.waitForSelector('[data-tree-path="src/Fixture"]', {
+    hidden: true,
+  });
   await page.waitForFunction(
     (id) =>
       document.querySelector('[data-testid="selected-node-id"]')
@@ -1161,19 +1160,6 @@ async function command(file: string, args: string[]) {
     clearTimeout(timer);
   }
 }
-async function availablePort() {
-  const socket = createServer();
-  await new Promise<void>((resolve, reject) => {
-    socket.once("error", reject);
-    socket.listen(0, "127.0.0.1", resolve);
-  });
-  const address = socket.address();
-  assert.ok(address && typeof address !== "string");
-  await new Promise<void>((resolve, reject) =>
-    socket.close((error) => (error ? reject(error) : resolve())),
-  );
-  return address.port;
-}
 async function ready(url: string, child: ChildProcess) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -1200,16 +1186,6 @@ function workspaceUrl(baseUrl: string, route: string) {
   const url = new URL(route, baseUrl);
   url.searchParams.set("workspace", workspaceId);
   return url.href;
-}
-function executable() {
-  if (process.env.PUPPETEER_EXECUTABLE_PATH)
-    return process.env.PUPPETEER_EXECUTABLE_PATH;
-  if (process.platform !== "darwin") return undefined;
-  return [
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-  ].find(existsSync);
 }
 
 async function clickVisibleGraphNode(page: Page) {

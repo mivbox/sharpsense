@@ -6,7 +6,7 @@ import WorkspaceApp from "./WorkspaceApp";
 import { explorerDefaults } from "./searchState";
 import { WorkspacesPage } from "../features/workspaces/WorkspacesPage";
 import { workspaceCatalogOptions } from "../features/workspaces/queries";
-import type { WorkspaceSummary } from "../features/workspaces/models";
+import type { WorkspaceSummary } from "../shared/workspace/models";
 import { WorkspaceProvider } from "../shared/workspace/WorkspaceProvider";
 import { ErrorState, LoadingRows } from "../shared/ui/States";
 

@@ -24,7 +24,7 @@ import { ErrorState, LoadingRows } from "../../shared/ui/States";
 import { workspaceCatalogOptions } from "./queries";
 import { WorkspaceEditorDialog } from "./WorkspaceEditorDialog";
 import { MergeWorkspacesDialog } from "./MergeWorkspacesDialog";
-import type { WorkspaceSummary } from "./models";
+import type { WorkspaceSummary } from "../../shared/workspace/models";
 
 export function WorkspacesPage({
   onOpen,

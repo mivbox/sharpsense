@@ -13,7 +13,7 @@ import {
   Typography,
 } from "@mui/material";
 import { mergeWorkspaces } from "./api";
-import type { WorkspaceSummary } from "./models";
+import type { WorkspaceSummary } from "../../shared/workspace/models";
 
 export function MergeWorkspacesDialog({
   workspaces,

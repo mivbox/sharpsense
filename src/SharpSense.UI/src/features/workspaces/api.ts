@@ -1,15 +1,14 @@
+import type {
+  WorkspaceSummary,
+  SourceKind,
+} from "../../shared/workspace/models";
 import { apiClient } from "../../shared/api/client";
 import {
   requestConfiguration,
   workspaceRequest,
 } from "../../shared/api/transport";
 import type { WorkspaceSummary as ApiWorkspaceSummary } from "../../shared/api/generated/models";
-import {
-  sourceKinds,
-  type WorkspaceSummary,
-  type WorkspaceInput,
-  type SourceKind,
-} from "./models";
+import { sourceKinds, type WorkspaceInput } from "./models";
 
 function workspace(value: ApiWorkspaceSummary | undefined): WorkspaceSummary {
   if (!value?.id || !value.name || !value.repositoryRoot)

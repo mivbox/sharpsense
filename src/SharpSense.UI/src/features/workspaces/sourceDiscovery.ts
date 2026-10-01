@@ -1,4 +1,4 @@
-import type { WorkspaceSource } from "./models";
+import type { WorkspaceSource } from "../../shared/workspace/models";
 
 /** Discovery paths belong to its canonical root, not necessarily the entered directory. */
 export function absoluteDiscoveredSource(

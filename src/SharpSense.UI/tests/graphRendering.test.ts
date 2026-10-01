@@ -215,7 +215,9 @@ test("worker layout keeps finite positions for cycles and disconnected nodes", (
   };
   const layout = createGraphLayout(request);
   layout.simulation.tick(10);
-  assert.ok(layoutPositions(layout.nodes).every(Number.isFinite));
+  const initialPositions = layoutPositions(layout.nodes);
+  assert.equal(initialPositions.length, 12);
+  assert.ok(initialPositions.every(Number.isFinite));
   const appended = createGraphLayout(
     {
       ...request,
@@ -228,7 +230,9 @@ test("worker layout keeps finite positions for cycles and disconnected nodes", (
   assert.equal(appended.nodes[0], layout.nodes[0]);
   assert.equal(appended.nodes.length, 5);
   appended.simulation.tick();
-  assert.ok(layoutPositions(appended.nodes).every(Number.isFinite));
+  const appendedPositions = layoutPositions(appended.nodes);
+  assert.equal(appendedPositions.length, 15);
+  assert.ok(appendedPositions.every(Number.isFinite));
 });
 
 test("layout backpressure constructs only the latest pending graph snapshot", () => {

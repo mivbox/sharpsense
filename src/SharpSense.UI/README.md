@@ -147,3 +147,7 @@ profiling work idle during measurement; results depend on the machine and exclud
 Use MUI's components, palette, typography, spacing, and responsive layout props. Keep custom CSS stylesheets out of the UI.
 Run `pnpm --dir src/SharpSense.UI run format` from the repository root after editing handwritten files. ESLint and Prettier check the source and TypeScript tooling;
 generated Kiota files and the OpenAPI snapshot are excluded from formatting and linting.
+
+Workspace identity types live in `src/shared/workspace/models.ts`. The shared query-client factory creates a
+new client per workspace provider and a separate catalog client. Browser suites share browser discovery,
+Vite preview startup, and ephemeral-port allocation while retaining their own scenarios and cleanup.

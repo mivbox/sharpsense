@@ -1,16 +1,7 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import puppeteer, { type Browser, type HTTPRequest } from "puppeteer";
-import { preview } from "vite";
+import type { Browser, HTTPRequest } from "puppeteer";
 import { idleIndexingStatus } from "./indexingFixture";
-
-const uiRoot = fileURLToPath(new URL("../", import.meta.url));
-assert.ok(
-  existsSync(path.join(uiRoot, "dist/index.html")),
-  "Build the UI before running the search selection regression.",
-);
+import { launchBrowser, startUiPreview } from "./browserFixture";
 
 const original = {
   id: 42,
@@ -30,29 +21,12 @@ const workspace = {
 };
 let hits = [original];
 const errors: string[] = [];
-const server = await preview({
-  configFile: false,
-  root: uiRoot,
-  preview: { host: "127.0.0.1", port: 0, strictPort: true },
-});
+const server = await startUiPreview();
 let browser: Browser | undefined;
 
 try {
-  const address = server.httpServer.address();
-  assert.ok(address && typeof address === "object");
-  const baseUrl = "http://127.0.0.1:" + address.port;
-  browser = await puppeteer.launch({
-    headless: true,
-    executablePath:
-      process.env.PUPPETEER_EXECUTABLE_PATH ??
-      (process.platform === "darwin"
-        ? [
-            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-            "/Applications/Chromium.app/Contents/MacOS/Chromium",
-          ].find(existsSync)
-        : undefined),
-    args: process.env.CI ? ["--no-sandbox", "--disable-dev-shm-usage"] : [],
-  });
+  const { baseUrl } = server;
+  browser = await launchBrowser();
   const page = await browser.newPage();
   page.setDefaultTimeout(10_000);
   await page.setViewport({ width: 1440, height: 1000 });
@@ -119,9 +93,7 @@ try {
   );
 } finally {
   await browser?.close();
-  await new Promise<void>((resolve, reject) =>
-    server.httpServer.close((error) => (error ? reject(error) : resolve())),
-  );
+  await server.close();
 }
 
 async function respond(request: HTTPRequest) {
