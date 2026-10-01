@@ -280,3 +280,7 @@ dotnet test SharpSense.sln --no-build -c Release
 ```
 
 After building the frontend once, backend-only builds can reuse its assets with `-p:FrontendBuildCompleted=true`.
+
+## License
+
+SharpSense is available under the [MIT license](https://github.com/mivbox/sharpsense/blob/main/LICENSE).

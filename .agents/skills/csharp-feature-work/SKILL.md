@@ -18,24 +18,16 @@ that match the requested change. Use the framework, dependencies and build confi
   create a new mediator, generic repository or dispatch layer merely to make a small feature look uniform.
 - Preserve established transaction ownership and pass cancellation through the operation.
 
-## Match the surrounding C#
+## Implement and verify
 
-- Default implementations to `internal sealed`; retain inheritance where it has a purpose. Public types should
-  serve cross-assembly contracts, transport models, shared options/value APIs or registration entry points.
-- Use file-scoped namespaces, Allman braces, `_camelCase` private fields and meaningful blank lines. Follow
-  `.editorconfig` and the repository's naming conventions, including its custom async-method convention.
-- Put wrapped arguments and initializer members on separate lines. Put successive LINQ, EF, DI and Moq calls on
-  separate lines. Keep short assertions readable; use named locals when nested expressions obscure the decision.
-- Preserve comments explaining a decision or invariant. Remove obsolete callers and dead branches when replacing
-  an implementation. Extract helpers when they make the operation easier to understand.
-- Use the repository's established result/error contract for expected failures. Keep transport mapping outside
-  the handler, and preserve unexpected failures and cancellation.
+Use the existing result/error contract for expected failures. Keep transport mapping outside the handler, and
+preserve unexpected exceptions and cancellation. Follow the repository's naming, visibility and formatting
+conventions.
 
-A typical registration shape, adapted to the local interfaces and service lifetime:
+For production readability and responsibility cleanup, the companion
+[csharp-clean-code](../csharp-clean-code/SKILL.md) provides focused examples. For regression coverage, use
+[csharp-behavior-tests](../csharp-behavior-tests/SKILL.md). Read the guidance needed for the task rather than loading
+all references.
 
-```csharp
-services.TryAddTransient<ICommandHandler<DeleteItemCommand, Result>, DeleteItemCommandHandler>();
-```
-
-Review the final diff for inconsistent formatting, accidental public APIs, unnecessary indirection and lost
-explanations. Run the affected build/tests and existing formatter checks as appropriate to the change.
+Review the final diff for changed contracts, scope ownership and unnecessary indirection. Run affected
+build/tests and the existing formatter checks. Do not introduce architecture changes merely to match an example.

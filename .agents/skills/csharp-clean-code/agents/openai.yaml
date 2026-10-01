@@ -1,0 +1,6 @@
+interface:
+  display_name: "Clean C# Code"
+  short_description: "Write readable C# in the user's ServiceKit style"
+  default_prompt: "Use $csharp-clean-code to implement or simplify this C# code while preserving its behavior and local architecture."
+policy:
+  allow_implicit_invocation: true

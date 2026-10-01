@@ -30,7 +30,7 @@ Refactoring and rename tools are not part of the version 1 surface.
 
 Verify the workspace identity and language coverage with `graph_stats` before discovery. Its timestamps and ready state do not guarantee filesystem freshness. Search for a relevant node, request context, and trace only the necessary direction. Node IDs belong to this server's workspace. Use `edgeCategories: "All"` on context or trace to include memory metadata; the default `"Structural"` omits it. Fetch full notes separately. Caller traces default to depth three; CLI caller tracing defaults to immediate callers. Static traces show dependencies, not runtime execution order.
 
-`context` reports invalid or missing node IDs as tool errors with `isError: true` and a readable explanation. Successful results retain the compact TOON text.
+`context`, `semantic_search`, `ctx_execute`, and the memory tools report expected application failures with `isError: true` and a readable explanation. Successful results retain the existing compact text. An executed child command's nonzero exit code remains part of the `ctx_execute` payload, distinct from failure to start or validate the tool request.
 
 `ctx_execute` runs real local commands with the server process's filesystem permissions. It launches an executable without a shell, so shell operators are not interpreted. Its optional FTS query selects context windows; an omitted or unmatched query returns a summary. See [command execution](execute-command.md).
 
