@@ -16,28 +16,23 @@ public sealed class ContextRepositoryTests
         var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
             options => new SharpSenseDbContext(options),
-            new InMemoryContextFactoryOptions(
-            UseMigrations: true));
+            new InMemoryContextFactoryOptions(UseMigrations: true));
         await using var context = await inMemoryFactory.GetContext(ct);
-        await KnowledgeGraphFixture.Seed(context);
+        await KnowledgeGraphFixture.Seed(context, TestContext.Current.CancellationToken);
         var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory());
 
-        var result = await repository.GetNodeContext(
-            KnowledgeGraphFixture.TargetNodeId,
-            10,
-            ct);
+        var result = await repository.GetNodeContext(KnowledgeGraphFixture.TargetNodeId, 10, ct);
 
         result.Should().NotBeNull();
         result!.TargetNode.Name.Should().Be(KnowledgeGraphFixture.TargetDisplayName);
-        result.Callers.Select(static node => node.Name).Should().Equal(
-            "MessageConsumer.Render",
-            "ServiceRegistration.Configure");
+        result.Callers
+            .Select(static node => node.Name).Should().Equal("MessageConsumer.Render", "ServiceRegistration.Configure");
         result.Implementers.Should().BeEmpty();
-        result.Callees.Select(static node => node.Name).Should().Equal(
-            "MessageFormatter.Format",
-            "Message");
+        result.Callees
+            .Select(static node => node.Name).Should().Equal("MessageFormatter.Format", "Message");
         result.Inherits.Should().BeEmpty();
-        result.Parents.Select(static node => node.Name).Should().Equal("MessageProvider");
+        result.Parents
+            .Select(static node => node.Name).Should().Equal("MessageProvider");
         result.Children.Should().BeEmpty();
     }
 
@@ -47,16 +42,12 @@ public sealed class ContextRepositoryTests
         var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
             options => new SharpSenseDbContext(options),
-            new InMemoryContextFactoryOptions(
-            UseMigrations: true));
+            new InMemoryContextFactoryOptions(UseMigrations: true));
         await using var context = await inMemoryFactory.GetContext(ct);
-        await KnowledgeGraphFixture.Seed(context);
+        await KnowledgeGraphFixture.Seed(context, TestContext.Current.CancellationToken);
         var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory());
 
-        var result = await repository.GetNodeContext(
-            999,
-            10,
-            ct);
+        var result = await repository.GetNodeContext(999, 10, ct);
 
         result.Should().BeNull();
     }
@@ -67,26 +58,24 @@ public sealed class ContextRepositoryTests
         var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
             options => new SharpSenseDbContext(options),
-            new InMemoryContextFactoryOptions(
-            UseMigrations: true));
+            new InMemoryContextFactoryOptions(UseMigrations: true));
         await using var context = await inMemoryFactory.GetContext(ct);
-        await KnowledgeGraphFixture.Seed(context);
+        await KnowledgeGraphFixture.Seed(context, TestContext.Current.CancellationToken);
         var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory());
 
-        var result = await repository.GetNodeContext(
-            KnowledgeGraphFixture.MessageProviderTypeNodeId,
-            10,
-            ct);
+        var result = await repository.GetNodeContext(KnowledgeGraphFixture.MessageProviderTypeNodeId, 10, ct);
 
         result.Should().NotBeNull();
         result!.Callers.Should().BeEmpty();
         result.Implementers.Should().BeEmpty();
         result.Callees.Should().BeEmpty();
         result.Inherits.Should().BeEmpty();
-        result.Parents.Select(static node => node.Name).Should().Equal("Fixture.App");
-        result.Children.Select(static node => node.Name).Should().Equal(
-            "MessageProvider.GetCachedMessage",
-            "MessageProvider.GetMessage");
+        result.Parents
+            .Select(static node => node.Name).Should().Equal("Fixture.App");
+        result.Children
+            .Select(static node => node.Name).Should().Equal(
+                "MessageProvider.GetCachedMessage",
+                "MessageProvider.GetMessage");
     }
 
     [Fact]
@@ -95,23 +84,20 @@ public sealed class ContextRepositoryTests
         var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
             options => new SharpSenseDbContext(options),
-            new InMemoryContextFactoryOptions(
-            UseMigrations: true));
+            new InMemoryContextFactoryOptions(UseMigrations: true));
         await using var context = await inMemoryFactory.GetContext(ct);
         await SeedMarkdownHierarchy(context, ct);
         var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory());
 
-        var result = await repository.GetNodeContext(
-            101,
-            10,
-            ct);
+        var result = await repository.GetNodeContext(101, 10, ct);
 
         result.Should().NotBeNull();
         result!.Callers.Should().BeEmpty();
         result.Implementers.Should().BeEmpty();
         result.Callees.Should().BeEmpty();
         result.Inherits.Should().BeEmpty();
-        result.Parents.Select(static node => node.Name).Should().Equal("Guide");
+        result.Parents
+            .Select(static node => node.Name).Should().Equal("Guide");
         result.Children.Should().BeEmpty();
     }
 

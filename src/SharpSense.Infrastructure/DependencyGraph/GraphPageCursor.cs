@@ -63,7 +63,10 @@ internal sealed record GraphPageCursor(
         }
         catch (Exception exception) when (exception is FormatException or JsonException)
         {
-            throw new ArgumentException("Graph cursor is invalid or belongs to another workspace, scope, or page type.", nameof(value), exception);
+            throw new ArgumentException(
+                "Graph cursor is invalid or belongs to another workspace, scope, or page type.",
+                nameof(value),
+                exception);
         }
     }
 }

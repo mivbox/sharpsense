@@ -57,7 +57,7 @@ internal sealed class SharpSenseMcpTools
     }
 
     [McpServerTool, Description("Run a local command, index its streamed output with a transient full-text search index, and return compact reduced context blocks for the supplied query.")]
-    public static async Task<string> ctx_execute(
+    public static async Task<CallToolResult> ctx_execute(
         ICommandHandler<ExecuteProcessCommand, Result<CommandExecutionResult>> handler,
         [Description("The OS command to run without a shell. Quote the full string when it contains spaces.")] string command,
         [Description("Optional FTS query used to locate relevant output lines. When omitted or unmatched, only a compact summary is returned.")] string? query = null,
@@ -75,9 +75,11 @@ internal sealed class SharpSenseMcpTools
             {
                 activity.AddTag("execution.success", false);
 
-                return TokenObjectNotation.SerializeCommandExecutionFailure(
-                    command,
-                    GetErrorMessage(result.Errors));
+                return TextResult(
+                    TokenObjectNotation.SerializeCommandExecutionFailure(
+                        command,
+                        GetErrorMessage(result.Errors)),
+                    isError: true);
             }
 
             activity.AddTag("execution.success", result.Value.Success);
@@ -86,7 +88,7 @@ internal sealed class SharpSenseMcpTools
             activity.AddTag("execution.block_count", result.Value.BlockCount);
             activity.AddTag("execution.truncated", result.Value.Truncated);
 
-            return TokenObjectNotation.SerializeCommandExecutionResult(result.Value);
+            return TextResult(TokenObjectNotation.SerializeCommandExecutionResult(result.Value));
         }
         catch (Exception ex)
         {
@@ -96,8 +98,8 @@ internal sealed class SharpSenseMcpTools
     }
 
     [McpServerTool, Description("Run hybrid BM25 and semantic search against the indexed workspace.")]
-    public static async Task<string> semantic_search(
-        IQueryHandler<HybridSearchQuery, HybridSearchResult> searchHandler,
+    public static async Task<CallToolResult> semantic_search(
+        IQueryHandler<HybridSearchQuery, Result<HybridSearchResult>> searchHandler,
         [Description("Plain-text query. Punctuation is handled safely; FTS operators and column selectors are not supported.")] string query,
         [Description("Maximum number of hits to return. Defaults to 10.")] int limit = 10,
         CancellationToken ct = default)
@@ -113,9 +115,16 @@ internal sealed class SharpSenseMcpTools
                 new HybridSearchQuery(query, normalizedLimit),
                 ct);
 
-            activity.AddTag("search.result.count", result.Hits.Length);
+            if (result.IsFailed)
+            {
+                activity.SetError();
 
-            return TokenObjectNotation.SerializeSemanticSearch(result.Hits);
+                return TextResult($"semantic_search failed: {GetErrorMessage(result.Errors)}", isError: true);
+            }
+
+            activity.AddTag("search.result.count", result.Value.Hits.Length);
+
+            return TextResult(TokenObjectNotation.SerializeSemanticSearch(result.Value.Hits));
         }
         catch (Exception ex)
         {
@@ -125,7 +134,7 @@ internal sealed class SharpSenseMcpTools
     }
 
     [McpServerTool, Description("Attach persistent semantic memory to a persisted code node id. The intent classifies the memory so it can be filtered at retrieval time.")]
-    public static async Task<string> attach_memory(
+    public static async Task<CallToolResult> attach_memory(
         ICommandHandler<AttachMemoryCommand, Result> handler,
         [Description("The persisted integer ID of the target node.")] int nodeId,
         [Description("The markdown-formatted memory payload to attach.")] string content,
@@ -146,9 +155,11 @@ internal sealed class SharpSenseMcpTools
 
             activity.AddTag("memory.success", result.IsSuccess);
 
-            return result.IsSuccess
-                ? $"attached memory to node {nodeId} (intent={intent})"
-                : $"attach_memory failed: {GetErrorMessage(result.Errors)}";
+            return TextResult(
+                result.IsSuccess
+                    ? $"attached memory to node {nodeId} (intent={intent})"
+                    : $"attach_memory failed: {GetErrorMessage(result.Errors)}",
+                isError: result.IsFailed);
         }
         catch (Exception ex)
         {
@@ -158,7 +169,7 @@ internal sealed class SharpSenseMcpTools
     }
 
     [McpServerTool, Description("Remove a previously attached semantic memory by its persistent Guid.")]
-    public static async Task<string> delete_memory(
+    public static async Task<CallToolResult> delete_memory(
         ICommandHandler<DeleteMemoryCommand, Result> handler,
         [Description("The persistent Guid of the memory to remove.")] Guid memoryId,
         CancellationToken ct = default)
@@ -172,9 +183,11 @@ internal sealed class SharpSenseMcpTools
             var result = await handler.Handle(new DeleteMemoryCommand(memoryId), ct);
             activity.AddTag("memory.success", result.IsSuccess);
 
-            return result.IsSuccess
-                ? $"deleted memory {memoryId}"
-                : $"delete_memory failed: {GetErrorMessage(result.Errors)}";
+            return TextResult(
+                result.IsSuccess
+                    ? $"deleted memory {memoryId}"
+                    : $"delete_memory failed: {GetErrorMessage(result.Errors)}",
+                isError: result.IsFailed);
         }
         catch (Exception ex)
         {
@@ -184,7 +197,7 @@ internal sealed class SharpSenseMcpTools
     }
 
     [McpServerTool, Description("Fetch the full markdown content of a previously attached semantic memory by its persistent Guid. Use this after context or trace surfaces a memory id and you need the full text.")]
-    public static async Task<string> get_memory(
+    public static async Task<CallToolResult> get_memory(
         IQueryHandler<GetMemoryQuery, Result<MemoryNode>> handler,
         [Description("The persistent Guid of the memory to fetch.")] Guid memoryId,
         CancellationToken ct = default)
@@ -200,13 +213,13 @@ internal sealed class SharpSenseMcpTools
             {
                 activity.AddTag("memory.success", false);
 
-                return $"get_memory failed: {GetErrorMessage(result.Errors)}";
+                return TextResult($"get_memory failed: {GetErrorMessage(result.Errors)}", isError: true);
             }
 
             activity.AddTag("memory.success", true);
-            activity.AddTag("memory.stale", result.Value!.IsStale);
+            activity.AddTag("memory.stale", result.Value.IsStale);
 
-            return TokenObjectNotation.SerializeMemory(result.Value);
+            return TextResult(TokenObjectNotation.SerializeMemory(result.Value));
         }
         catch (Exception ex)
         {
@@ -216,7 +229,7 @@ internal sealed class SharpSenseMcpTools
     }
 
     [McpServerTool, Description("Batch-fetch the full content of multiple memories by their persistent Guids. Returns one rendered memory block per id, in a single round-trip. Use this after a multi-step trace surfaces a list of memory ids.")]
-    public static async Task<string> get_memories(
+    public static async Task<CallToolResult> get_memories(
         IQueryHandler<GetMemoriesQuery, Result<IReadOnlyDictionary<Guid, MemoryNode>>> handler,
         [Description("The persistent Guids of the memories to fetch.")] Guid[] memoryIds,
         CancellationToken ct = default)
@@ -232,13 +245,13 @@ internal sealed class SharpSenseMcpTools
             {
                 activity.AddTag("memory.success", false);
 
-                return $"get_memories failed: {GetErrorMessage(result.Errors)}";
+                return TextResult($"get_memories failed: {GetErrorMessage(result.Errors)}", isError: true);
             }
 
             activity.AddTag("memory.success", true);
-            activity.AddTag("memory.returned", result.Value!.Count);
+            activity.AddTag("memory.returned", result.Value.Count);
 
-            return TokenObjectNotation.SerializeMemories(result.Value);
+            return TextResult(TokenObjectNotation.SerializeMemories(result.Value));
         }
         catch (Exception ex)
         {
@@ -272,17 +285,7 @@ internal sealed class SharpSenseMcpTools
             {
                 activity.SetError();
 
-                return new CallToolResult
-                {
-                    IsError = true,
-                    Content =
-                    [
-                        new TextContentBlock
-                        {
-                            Text = $"context failed: {GetErrorMessage(result.Errors)}"
-                        }
-                    ]
-                };
+                return TextResult($"context failed: {GetErrorMessage(result.Errors)}", isError: true);
             }
 
             var nodeContext = result.Value;
@@ -296,17 +299,7 @@ internal sealed class SharpSenseMcpTools
             activity.AddTag("context.inherits.count", nodeContext.Inherits.Length);
             activity.AddTag("context.semantic.count", semanticContext.Length);
 
-            return new CallToolResult
-            {
-                IsError = false,
-                Content =
-                [
-                    new TextContentBlock
-                    {
-                        Text = TokenObjectNotation.SerializeContext360(nodeContext, semanticContext)
-                    }
-                ]
-            };
+            return TextResult(TokenObjectNotation.SerializeContext360(nodeContext, semanticContext));
         }
         catch (Exception ex)
         {
@@ -352,7 +345,7 @@ internal sealed class SharpSenseMcpTools
                             ct);
 
                         activity.AddTag("trace.edge.count", impactResult.Dependencies.Length);
-                        nodes = MapImpactedNodes(impactResult.ImpactedNodes);
+                        nodes = ImpactedNodeMapper.Map(impactResult.ImpactedNodes);
                         break;
                     }
                 case TraceDirection.Callee:
@@ -376,7 +369,11 @@ internal sealed class SharpSenseMcpTools
 
             return direction switch
             {
-                TraceDirection.Caller => TokenObjectNotation.SerializeCallerTrace(rootNode, nodes, impactResult?.Dependencies ?? [], memoriesByNodeId),
+                TraceDirection.Caller => TokenObjectNotation.SerializeCallerTrace(
+                    rootNode,
+                    nodes,
+                    impactResult?.Dependencies ?? [],
+                    memoriesByNodeId),
                 TraceDirection.Callee => TokenObjectNotation.SerializeCalleeTrace(rootNode, nodes, memoriesByNodeId),
                 _ => throw new ArgumentOutOfRangeException(nameof(direction), direction, null)
             };
@@ -425,18 +422,19 @@ internal sealed class SharpSenseMcpTools
             intents: null,
             ct);
 
-    private static CodeNodeResult[] MapImpactedNodes(IEnumerable<ImpactedCodeNode> impactedNodes)
-        => [.. impactedNodes.Select(static node => new CodeNodeResult(
-            node.Id,
-            node.CanonicalId,
-            node.ProjectId,
-            node.FullyQualifiedName,
-            node.DisplayName,
-            node.NodeType,
-            node.RelativeFilePath,
-            node.StartLine,
-            node.EndLine,
-            node.Summary))];
+
+    private static CallToolResult TextResult(string text, bool isError = false)
+        => new()
+        {
+            IsError = isError,
+            Content =
+            [
+                new TextContentBlock
+                {
+                    Text = text
+                }
+            ]
+        };
 
     private static string GetErrorMessage(IEnumerable<IError> errors)
         => string.Join("; ", errors.Select(static error => error.Message));

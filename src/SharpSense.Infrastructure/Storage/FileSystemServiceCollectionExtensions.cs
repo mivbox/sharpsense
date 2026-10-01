@@ -11,7 +11,8 @@ public static class FileSystemServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.TryAddSingleton<IFileSystem, FileSystem>();
-        services.TryAddSingleton<IFileSystemWatcherFactory>(serviceProvider =>
+        services
+            .TryAddSingleton<IFileSystemWatcherFactory>(serviceProvider =>
             serviceProvider.GetRequiredService<IFileSystem>().FileSystemWatcher);
 
         return services;

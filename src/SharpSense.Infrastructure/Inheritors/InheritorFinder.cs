@@ -19,7 +19,10 @@ internal sealed class InheritorFinder(IDbContextFactory<SharpSenseDbContext> dbC
 
         if (query.NodeId <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(query.NodeId), query.NodeId, "NodeId must be greater than zero.");
+            throw new ArgumentOutOfRangeException(
+                nameof(query.NodeId),
+                query.NodeId,
+                "NodeId must be greater than zero.");
         }
 
         await using var context = await dbContextFactory.CreateDbContextAsync(ct);

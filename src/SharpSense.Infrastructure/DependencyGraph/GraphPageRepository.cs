@@ -26,16 +26,23 @@ internal sealed partial class GraphPageRepository(SharpSenseDbContext context, I
             var nodes = new List<GraphPageNode>();
             GraphPageCursor? next = null;
             var rootSelected = await RootSelected(directories, ct);
-            var hasBoundary = !rootSelected || await context.GraphNodes.AsNoTracking()
+            var hasBoundary = !rootSelected || await context.GraphNodes
+                .AsNoTracking()
                 .AnyAsync(
-                node => node.Kind == Persistence.Records.GraphNodeKind.Http || node.Kind == Persistence.Records.GraphNodeKind.Package,
-                ct);
+                    node => node.Kind == Persistence.Records.GraphNodeKind.Http || node.Kind == Persistence.Records.GraphNodeKind.Package,
+                    ct);
 
             if (directories.Length > 0)
             {
                 if (cursor?.Phase is null or 0)
                 {
-                    var selected = await ReadNodes(directories, false, rootSelected, cursor?.NodeId ?? 0, request.PageSize + 1, ct);
+                    var selected = await ReadNodes(
+                        directories,
+                        false,
+                        rootSelected,
+                        cursor?.NodeId ?? 0,
+                        request.PageSize + 1,
+                        ct);
                     nodes.AddRange(selected.Take(request.PageSize));
                     if (selected.Count > request.PageSize)
                     {
@@ -166,8 +173,13 @@ internal sealed partial class GraphPageRepository(SharpSenseDbContext context, I
         }
     }
 
-    private async Task<List<GraphPageNode>> ReadNodes(int[] directories, bool boundary, bool rootSelected,
-        int afterId, int limit, CancellationToken ct)
+    private async Task<List<GraphPageNode>> ReadNodes(
+        int[] directories,
+        bool boundary,
+        bool rootSelected,
+        int afterId,
+        int limit,
+        CancellationToken ct)
     {
         var sql = NodeQuery(boundary, rootSelected, count: false);
         await using var command = Command(
@@ -230,11 +242,12 @@ internal sealed partial class GraphPageRepository(SharpSenseDbContext context, I
     }
 
     private async Task<bool> RootSelected(int[] directories, CancellationToken ct)
-        => await context.Directories.AsNoTracking()
+        => await context.Directories
+            .AsNoTracking()
             .AnyAsync(
-            directory => directory.Path == "" && EF.Parameter(directories)
-                .Contains(directory.Id),
-            ct);
+                directory => directory.Path == "" && EF.Parameter(directories)
+                    .Contains(directory.Id),
+                ct);
 
     private async Task<int> Count(string sql, int[] directories, CancellationToken ct)
     {
@@ -244,7 +257,8 @@ internal sealed partial class GraphPageRepository(SharpSenseDbContext context, I
     }
 
     private async Task<string> ReadRevision(CancellationToken ct)
-        => await context.IndexRunState.AsNoTracking()
+        => await context.IndexRunState
+            .AsNoTracking()
             .Select(state => state.GraphRevision)
             .SingleOrDefaultAsync(ct) ?? "initial";
 
@@ -278,14 +292,17 @@ internal sealed partial class GraphPageRepository(SharpSenseDbContext context, I
         ArgumentNullException.ThrowIfNull(request.DirectoryIds);
         if (request.PageSize is < 1 or > 5_000 || request.DirectoryIds.Any(id => id <= 0))
         {
-            throw new ArgumentException("Page size must be between 1 and 5000; directory IDs must be positive.", nameof(request));
+            throw new ArgumentException(
+                "Page size must be between 1 and 5000; directory IDs must be positive.",
+                nameof(request));
         }
         if (request.Revision is { Length: 0 or > 64 })
         {
             throw new ArgumentException("Graph revision is invalid.", nameof(request));
         }
 
-        return request.DirectoryIds.Distinct()
+        return request.DirectoryIds
+            .Distinct()
             .Order()
             .ToArray();
     }

@@ -21,7 +21,9 @@ internal sealed class GetNodeContextQueryHandler(IContextRepository contextRepos
         var context = await contextRepository.GetNodeContext(query.NodeId, normalizedMaxRelated, ct);
 
         return context is null
-            ? Result.Fail(new ServiceError(ServiceErrorCode.NotFound, $"No persisted node exists for id {query.NodeId}."))
+            ? Result.Fail(new ServiceError(
+                ServiceErrorCode.NotFound,
+                $"No persisted node exists for id {query.NodeId}."))
             : Result.Ok(context);
     }
 }

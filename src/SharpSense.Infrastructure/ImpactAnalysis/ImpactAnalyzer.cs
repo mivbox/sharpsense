@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.ImpactAnalysis.Abstractions;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
-using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Shared;
@@ -50,9 +49,7 @@ internal sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCo
 
             inboundEdgesQuery = inboundEdgesQuery.Where(edge => includedEdgeTypes.Contains(edge.EdgeType));
 
-            var inboundEdges = await inboundEdgesQuery
-                .ToArrayAsync(ct)
-                ;
+            var inboundEdges = await inboundEdgesQuery.ToArrayAsync(ct);
             var nextFrontierNodeIds = new List<int>(inboundEdges.Length);
 
             foreach (var inboundEdge in inboundEdges)
@@ -75,12 +72,11 @@ internal sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCo
             : await CodeNodeNavigationQueries.ProjectCodeNodes(
                 context,
                 context.CodeNodes
-                        .AsNoTracking()
+                    .AsNoTracking()
                     .Where(codeNode => impactedNodeIds.Contains(codeNode.Id))
                     .OrderBy(codeNode => codeNode.FullyQualifiedName)
                     .ThenBy(codeNode => codeNode.Id))
-                .ToArrayAsync(ct)
-                ;
+                .ToArrayAsync(ct);
         var edgeNodeIds = impactedEdges
             .SelectMany(static edge => new[]
             {
@@ -100,17 +96,15 @@ internal sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCo
             .ThenBy(edge => canonicalIdsByNodeId[edge.CalleeNodeId], StringComparer.Ordinal)
             .ThenBy(static edge => edge.EdgeType)
             .Select(
-                edge => new DependencyEdge
-                {
-                    CallerId = canonicalIdsByNodeId[edge.CallerNodeId],
-                    CalleeId = canonicalIdsByNodeId[edge.CalleeNodeId],
-                    EdgeType = edge.EdgeType
-                })
+                edge => new ImpactedDependencyEdge(
+                    canonicalIdsByNodeId[edge.CallerNodeId],
+                    canonicalIdsByNodeId[edge.CalleeNodeId],
+                    edge.EdgeType))
             .ToArray();
 
         return new ImpactAnalysisResult(
             rootNode.FullyQualifiedName,
             ImpactAnalysisMapper.ToImpactedCodeNodes(orderedImpactedNodes),
-            ImpactAnalysisMapper.ToImpactedDependencyEdges(orderedImpactedEdges));
+            orderedImpactedEdges);
     }
 }

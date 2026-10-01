@@ -18,24 +18,15 @@ internal sealed class RepositoryWorkspace : IRepositoryWorkspace
         Definition = definition;
     }
 
-    public string RootPath
-    {
-        get;
-    }
+    public string RootPath { get; }
 
-    public string DatabasePath
-    {
-        get;
-    }
+    public string DatabasePath { get; }
 
     public Guid? WorkspaceId => Definition?.Id;
 
     public string? WorkspaceName => Definition?.Name;
 
-    public WorkspaceDefinition? Definition
-    {
-        get;
-    }
+    public WorkspaceDefinition? Definition { get; }
 
     public string ToRepositoryRelativePath(string? filePath) =>
         !TryToRepositoryRelativePath(filePath, out var relativePath)
@@ -97,9 +88,7 @@ internal sealed class RepositoryWorkspace : IRepositoryWorkspace
                 ? filePath
                 : _fileSystem.Path.Combine(RootPath, filePath),
             _fileSystem);
-        var comparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
+        var comparison = FileSystemPaths.Comparison;
         var rootPathWithSeparator = RootPath.EndsWith(Path.DirectorySeparatorChar) ||
                                     RootPath.EndsWith(Path.AltDirectorySeparatorChar)
             ? RootPath
@@ -164,8 +153,8 @@ internal sealed class RepositoryWorkspace : IRepositoryWorkspace
         var resolvedPath = root;
         var segments = fullPath[root.Length..]
             .Split(
-            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
-            StringSplitOptions.RemoveEmptyEntries);
+                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                StringSplitOptions.RemoveEmptyEntries);
 
         foreach (var segment in segments)
         {
@@ -219,9 +208,7 @@ internal sealed class RepositoryWorkspace : IRepositoryWorkspace
     {
         var fullPath = Path.GetFullPath(path);
         var root = Path.GetPathRoot(fullPath);
-        var comparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
+        var comparison = FileSystemPaths.Comparison;
 
         return string.Equals(fullPath, root, comparison)
             ? fullPath

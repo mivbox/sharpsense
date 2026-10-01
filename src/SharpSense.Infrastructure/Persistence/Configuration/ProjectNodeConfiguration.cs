@@ -20,9 +20,7 @@ internal sealed class ProjectNodeConfiguration : IEntityTypeConfiguration<Projec
             .HasMaxLength(512);
 
         builder.Property(projectNode => projectNode.ProjectDocumentId)
-            .IsRequired()
-            ;
-
+            .IsRequired();
         builder.Property(projectNode => projectNode.ContentHash)
             .IsRequired()
             .HasMaxLength(128);

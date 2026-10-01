@@ -17,7 +17,11 @@ internal sealed class WorkspaceIndexLease : IDisposable
         var lockPath = fileSystem.Path.Combine(directoryPath, ".index.lock");
         try
         {
-            return new WorkspaceIndexLease(fileSystem.FileStream.New(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None));
+            return new WorkspaceIndexLease(fileSystem.FileStream.New(
+                lockPath,
+                FileMode.OpenOrCreate,
+                FileAccess.ReadWrite,
+                FileShare.None));
         }
         catch (IOException exception)
         {
@@ -31,7 +35,3 @@ internal sealed class WorkspaceIndexLease : IDisposable
 
     public void Dispose() => Interlocked.Exchange(ref _handle, null)?.Dispose();
 }
-
-public sealed class WorkspaceIndexBusyException(string message) : InvalidOperationException(message);
-
-public sealed class WorkspaceDefinitionChangedException(string message) : InvalidOperationException(message);

@@ -14,8 +14,14 @@ internal sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphS
 {
     private static readonly string[] _requiredTables =
     [
-        "Directories", "Documents", "GraphNodes", "CodeNodes", "ProjectNodes",
-        "MemoryNodes", "DependencyEdges", "DirectoryClosures"
+        "Directories",
+        "Documents",
+        "GraphNodes",
+        "CodeNodes",
+        "ProjectNodes",
+        "MemoryNodes",
+        "DependencyEdges",
+        "DirectoryClosures"
     ];
 
     private static readonly HashSet<string> _knownMigrations = LoadKnownMigrations();
@@ -71,7 +77,8 @@ internal sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphS
                 transaction,
                 "SELECT MigrationId FROM __EFMigrationsHistory;",
                 ct);
-            if (appliedMigrations.Count == 0 || appliedMigrations.Any(migration => !_knownMigrations.Contains(migration)))
+            if (appliedMigrations.Count == 0 || appliedMigrations
+                .Any(migration => !_knownMigrations.Contains(migration)))
             {
                 return Incompatible("The database contains migration history that this version does not recognize.");
             }
@@ -202,9 +209,12 @@ internal sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphS
         {
             await using var command = connection.CreateCommand();
             command.Transaction = transaction;
-            var parameters = values.Select((value, index) => $"$value{index}")
+            var parameters = values
+                .Select((value, index) => $"$value{index}")
                 .ToArray();
-            command.CommandText = $"SELECT substr({column}, 1, 100) FROM {table} WHERE {column} NOT IN ({string.Join(",", parameters)}) LIMIT 1;";
+            command.CommandText = $"SELECT substr({column}, 1, 100) FROM {table} WHERE {column} NOT IN ({string.Join(
+                ",",
+                parameters)}) LIMIT 1;";
             for (var index = 0; index < values.Length; index++)
             {
                 command.Parameters.AddWithValue(parameters[index], values[index]);
@@ -219,7 +229,10 @@ internal sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphS
         return null;
     }
 
-    private static async Task<Counts> ReadCounts(SqliteConnection connection, SqliteTransaction transaction, CancellationToken ct)
+    private static async Task<Counts> ReadCounts(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        CancellationToken ct)
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
@@ -370,5 +383,12 @@ internal sealed class GraphStatsReader(IRepositoryWorkspace workspace) : IGraphS
         return values;
     }
 
-    private sealed record Counts(long GraphNodes, long CodeNodes, long Edges, long Files, long Projects, long EmbeddedNodes, long Memories);
+    private sealed record Counts(
+        long GraphNodes,
+        long CodeNodes,
+        long Edges,
+        long Files,
+        long Projects,
+        long EmbeddedNodes,
+        long Memories);
 }

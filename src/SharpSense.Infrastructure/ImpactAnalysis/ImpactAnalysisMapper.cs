@@ -1,5 +1,4 @@
 using SharpSense.Application.ImpactAnalysis.Models;
-using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 
 namespace SharpSense.Infrastructure.ImpactAnalysis;
@@ -25,17 +24,4 @@ internal static class ImpactAnalysisMapper
 
     public static ImpactedCodeNode[] ToImpactedCodeNodes(IEnumerable<CodeNode> codeNodes)
         => [.. codeNodes.Select(ToImpactedCodeNode)];
-
-    public static ImpactedDependencyEdge ToImpactedDependencyEdge(DependencyEdge dependencyEdge)
-    {
-        ArgumentNullException.ThrowIfNull(dependencyEdge);
-
-        return new ImpactedDependencyEdge(
-            dependencyEdge.CallerId,
-            dependencyEdge.CalleeId,
-            dependencyEdge.EdgeType);
-    }
-
-    public static ImpactedDependencyEdge[] ToImpactedDependencyEdges(IEnumerable<DependencyEdge> dependencyEdges)
-        => [.. dependencyEdges.Select(ToImpactedDependencyEdge)];
 }

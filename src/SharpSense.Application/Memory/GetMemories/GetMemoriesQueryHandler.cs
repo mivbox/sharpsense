@@ -20,7 +20,8 @@ internal sealed class GetMemoriesQueryHandler(IMemoryRepository memoryRepository
             return Result.Fail("At least one memory id is required.");
         }
 
-        var distinctIds = query.MemoryIds.Distinct()
+        var distinctIds = query.MemoryIds
+            .Distinct()
             .ToArray();
         var memories = await memoryRepository.GetMemories(distinctIds, ct);
 

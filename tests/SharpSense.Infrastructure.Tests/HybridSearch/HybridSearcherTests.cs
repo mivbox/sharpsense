@@ -1,8 +1,10 @@
 using AwesomeAssertions;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.Shared.Abstractions;
+using SharpSense.Application.Shared.Errors;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.HybridSearch;
@@ -15,18 +17,66 @@ namespace SharpSense.Infrastructure.Tests.HybridSearch;
 
 public sealed class HybridSearcherTests
 {
-    [Fact]
-    public async Task WhenSearchHasSemanticCandidates_ThenRanksClosestMatchFirst()
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task WhenSearchQueryIsBlank_ThenRejectsItBeforeGeneratingEmbeddings(string expression)
     {
+        var ct = TestContext.Current.CancellationToken;
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true));
+        var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
+        var searcher = new HybridSearcher(
+            factory.CreateDbContextFactory(),
+            embeddings.Object,
+            new SqliteKeywordCandidateProvider());
+
+        var result = await searcher.Search(new HybridSearchQuery(expression), ct);
+
+        result.IsFailed.Should().BeTrue();
+        result.Errors.Should().ContainSingle()
+            .Which.Should().BeOfType<ServiceError>()
+            .Which.ErrorCode.Should().Be(ServiceErrorCode.InvalidArgument);
+        embeddings.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task WhenSearchIndexIsMissing_ThenPreservesDatabaseFailure()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
+        await using var context = await factory.GetContext(ct);
+        await context.Database.ExecuteSqlRawAsync("DROP TABLE CodeNodeSearch", ct);
+        var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
+        embeddings
+            .Setup(candidate => candidate.Generate("Message", ct))
+            .ReturnsAsync(new TextEmbedding("Message", [1f, 0f]));
+        var searcher = new HybridSearcher(
+            factory.CreateDbContextFactory(),
+            embeddings.Object,
+            new SqliteKeywordCandidateProvider());
+
+        var action = () => searcher.Search(new HybridSearchQuery("Message"), ct);
+
+        (await action.Should().ThrowExactlyAsync<SqliteException>())
+            .Which.Message.Should().Contain("no such table: CodeNodeSearch");
+    }
+
+    [Fact]
+    public async Task WhenSearchCombinesKeywordAndSemanticCandidates_ThenOrdersHitsByFusedScore()
+    {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
             options => new SharpSenseDbContext(options),
-            new InMemoryContextFactoryOptions(
-                UseMigrations: true,
-                LoadVectorExtension: true));
-        await using var context = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken);
-        await KnowledgeGraphFixture.Seed(context);
+            new InMemoryContextFactoryOptions(UseMigrations: true, LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext(ct);
+        await KnowledgeGraphFixture.Seed(context, ct);
         var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
-        embeddings.Setup(candidate => candidate.Generate("Message", TestContext.Current.CancellationToken))
+        embeddings
+            .Setup(candidate => candidate.Generate("Message", ct))
             .ReturnsAsync(new TextEmbedding("Message", [1f, 0f]));
         var searcher = new HybridSearcher(
             inMemoryFactory.CreateDbContextFactory(),
@@ -35,31 +85,31 @@ public sealed class HybridSearcherTests
 
         var result = await searcher.Search(
             new HybridSearchQuery("Message", Limit: 3),
-            TestContext.Current.CancellationToken);
+            ct);
 
-        result.SearchText.Should().Be("Message");
-        result.Hits.Should().NotBeEmpty();
-        result.Hits.Select(static hit => hit.Id).Should().BeEquivalentTo(new[]
-        {
-            7,
-            1,
-            6
-        });
-        embeddings.Verify(candidate => candidate.Generate("Message", TestContext.Current.CancellationToken), Times.Once);
+        result.Value.SearchText.Should().Be("Message");
+        result.Value.Hits.Should().NotBeEmpty();
+        result.Value.Hits
+            .Select(static hit => hit.Id)
+            .Should()
+            .Equal(7, 1, 6);
+        embeddings.Verify(
+            candidate => candidate.Generate("Message", ct),
+            Times.Once);
     }
 
     [Fact]
     public async Task WhenSearchUsesProjectAndNodeTypeFilters_ThenReturnsOnlyMatchingNodes()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
             options => new SharpSenseDbContext(options),
-            new InMemoryContextFactoryOptions(
-                UseMigrations: true,
-                LoadVectorExtension: true));
-        await using var context = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken);
-        await KnowledgeGraphFixture.Seed(context);
+            new InMemoryContextFactoryOptions(UseMigrations: true, LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext(ct);
+        await KnowledgeGraphFixture.Seed(context, ct);
         var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
-        embeddings.Setup(candidate => candidate.Generate("Message", TestContext.Current.CancellationToken))
+        embeddings
+            .Setup(candidate => candidate.Generate("Message", ct))
             .ReturnsAsync(new TextEmbedding("Message", [1f, 0f]));
         var searcher = new HybridSearcher(
             inMemoryFactory.CreateDbContextFactory(),
@@ -72,24 +122,26 @@ public sealed class HybridSearcherTests
                 Limit: 10,
                 ProjectId: KnowledgeGraphFixture.AppProjectId,
                 IncludedNodeTypes: [NodeType.Method]),
-            TestContext.Current.CancellationToken);
+            ct);
 
-        result.Hits.Should().NotBeEmpty();
-        result.Hits.Should().OnlyContain(static hit => hit.NodeType == NodeType.Method);
-        result.Hits.Should().OnlyContain(static hit => hit.ProjectId == KnowledgeGraphFixture.AppProjectId);
-        result.Hits.Should().NotContain(static hit => hit.Id == KnowledgeGraphFixture.MessageNodeId);
+        result.Value.Hits.Should().NotBeEmpty();
+        result.Value.Hits.Should().OnlyContain(static hit => hit.NodeType == NodeType.Method);
+        result.Value.Hits.Should().OnlyContain(static hit => hit.ProjectId == KnowledgeGraphFixture.AppProjectId);
+        result.Value.Hits.Should().NotContain(static hit => hit.Id == KnowledgeGraphFixture.MessageNodeId);
     }
 
     [Fact]
     public async Task WhenSearchIncludesMemoriesWithMatchingTags_ThenItReturnsMemoryMatchedNode()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
             options => new SharpSenseDbContext(options),
-            new InMemoryContextFactoryOptions(
-                UseMigrations: true,
-                LoadVectorExtension: true));
-        await using var context = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken);
-        await KnowledgeGraphFixture.Seed(context);
+            new InMemoryContextFactoryOptions(UseMigrations: true, LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext(ct);
+        await KnowledgeGraphFixture.Seed(context, ct);
+        await context.CodeNodes.ExecuteUpdateAsync(
+            setters => setters.SetProperty(node => node.VectorEmbedding, (float[]?)null),
+            ct);
         context.MemoryNodes.Add(
             new MemoryNodeRecord
             {
@@ -99,13 +151,23 @@ public sealed class HybridSearcherTests
                 Content = "Security review note",
                 ContentHash = "memory-hash-1",
                 TagsJson = "[\"security\"]",
-                VectorEmbedding = [1f, 0f],
                 CreatedAt = DateTimeOffset.Parse("2026-05-14T00:00:00+00:00")
             });
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        context.MemoryNodes.Add(new MemoryNodeRecord
+        {
+            Id = Guid.NewGuid(),
+            TargetCodeNodeId = KnowledgeGraphFixture.TargetNodeId,
+            TargetCodeHash = "hash-2",
+            Content = "Security review note with a different tag",
+            ContentHash = "memory-hash-2",
+            TagsJson = "[\"performance\"]",
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+        await context.SaveChangesAsync(ct);
 
         var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
-        embeddings.Setup(candidate => candidate.Generate("security", TestContext.Current.CancellationToken))
+        embeddings
+            .Setup(candidate => candidate.Generate("security", ct))
             .ReturnsAsync(new TextEmbedding("security", [1f, 0f]));
         var searcher = new HybridSearcher(
             inMemoryFactory.CreateDbContextFactory(),
@@ -118,10 +180,12 @@ public sealed class HybridSearcherTests
                 Limit: 5,
                 IncludeMemories: true,
                 TagFilters: ["security"]),
-            TestContext.Current.CancellationToken);
+            ct);
 
-        result.Hits.Should().NotBeEmpty();
-        result.Hits.Select(static hit => hit.Id).Should().Contain(KnowledgeGraphFixture.DirectCallerNodeId);
+        result.Value.Hits
+            .Select(static hit => hit.Id)
+            .Should()
+            .Equal(KnowledgeGraphFixture.DirectCallerNodeId);
         embeddings.VerifyAll();
     }
 
@@ -131,10 +195,16 @@ public sealed class HybridSearcherTests
     public async Task WhenMemoryMatchesWithoutVectors_ThenLexicalSearchFindsItsOwner(string searchText)
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
         await using var context = await factory.GetContext(ct);
-        await KnowledgeGraphFixture.Seed(context);
-        await context.CodeNodes.ExecuteUpdateAsync(setters => setters.SetProperty(node => node.VectorEmbedding, (float[]?)null), ct);
+        await KnowledgeGraphFixture.Seed(context, TestContext.Current.CancellationToken);
+        await context.CodeNodes.ExecuteUpdateAsync(
+            setters => setters.SetProperty(
+                node => node.VectorEmbedding,
+                (float[]?)null),
+            ct);
         context.MemoryNodes.Add(new MemoryNodeRecord
         {
             Id = Guid.NewGuid(),
@@ -147,15 +217,21 @@ public sealed class HybridSearcherTests
         });
         await context.SaveChangesAsync(ct);
         var embeddings = new Mock<IEmbeddingGenerator>();
-        embeddings.Setup(generator => generator.Generate(searchText, ct))
+        embeddings
+            .Setup(generator => generator.Generate(searchText, ct))
             .ReturnsAsync(new TextEmbedding(searchText, [1f, 0f]));
         var searcher = new HybridSearcher(
             factory.CreateDbContextFactory(),
             embeddings.Object,
             new SqliteKeywordCandidateProvider());
 
-        var result = await searcher.Search(new HybridSearchQuery(searchText, IncludeMemories: true, TagFilters: ["security"]), ct);
+        var result = await searcher.Search(
+            new HybridSearchQuery(
+                searchText,
+                IncludeMemories: true,
+                TagFilters: ["security"]),
+            ct);
 
-        result.Hits.Should().ContainSingle().Which.Id.Should().Be(KnowledgeGraphFixture.DirectCallerNodeId);
+        result.Value.Hits.Should().ContainSingle().Which.Id.Should().Be(KnowledgeGraphFixture.DirectCallerNodeId);
     }
 }

@@ -96,7 +96,7 @@ internal static class CodeNodeNavigationQueries
             var rootNodeById = await ProjectCodeNodes(
                 context,
                 context.CodeNodes
-                        .AsNoTracking()
+                    .AsNoTracking()
                     .Where(codeNode => codeNode.Id == parsedId))
                 .FirstOrDefaultAsync(ct);
 
@@ -109,7 +109,7 @@ internal static class CodeNodeNavigationQueries
         var rootNode = await ProjectCodeNodes(
             context,
             context.CodeNodes
-                    .AsNoTracking()
+                .AsNoTracking()
                 .OrderBy(static codeNode => codeNode.Id))
             .Where(codeNode => codeNode.CanonicalId == nodeIdentifier || codeNode.FullyQualifiedName == nodeIdentifier)
             .FirstOrDefaultAsync(ct);

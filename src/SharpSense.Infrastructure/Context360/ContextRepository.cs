@@ -22,7 +22,10 @@ internal sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> d
 
         if (maxRelated <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(maxRelated), maxRelated, "maxRelated must be greater than zero.");
+            throw new ArgumentOutOfRangeException(
+                nameof(maxRelated),
+                maxRelated,
+                "maxRelated must be greater than zero.");
         }
 
         await using var context = await dbContextFactory.CreateDbContextAsync(ct);
@@ -125,10 +128,8 @@ internal sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> d
         CancellationToken ct)
     {
         var relatedNodeIds = (selectCaller
-            ? edgeQuery
-                .Select(static edge => edge.CallerNodeId)
-            : edgeQuery
-                .Select(static edge => edge.CalleeNodeId)
+            ? edgeQuery.Select(static edge => edge.CallerNodeId)
+            : edgeQuery.Select(static edge => edge.CalleeNodeId)
             )
             .Distinct();
 
@@ -155,10 +156,8 @@ internal sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> d
         CancellationToken ct)
     {
         var relatedNodeIds = (selectCaller
-            ? edgeQuery
-                .Select(static edge => edge.CallerNodeId)
-            : edgeQuery
-                .Select(static edge => edge.CalleeNodeId)
+            ? edgeQuery.Select(static edge => edge.CallerNodeId)
+            : edgeQuery.Select(static edge => edge.CalleeNodeId)
             )
             .Distinct();
 

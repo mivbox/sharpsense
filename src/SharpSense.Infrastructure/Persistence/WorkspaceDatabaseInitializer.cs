@@ -14,7 +14,7 @@ internal sealed class WorkspaceDatabaseInitializer(
     IFileSystem fileSystem) : IWorkspaceDatabaseInitializer
 {
     private static readonly ConcurrentDictionary<string, InitializationState> _states = new(
-        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        FileSystemPaths.Comparer);
 
     public async Task Initialize(CancellationToken ct)
     {
@@ -24,7 +24,11 @@ internal sealed class WorkspaceDatabaseInitializer(
         {
             if (!state.Completed || !fileSystem.File.Exists(workspace.DatabasePath))
             {
-                await PersistenceServiceCollectionExtensions.EfCoreEnsureDatabase.Initialize(workspace, factory, fileSystem, ct);
+                await WorkspaceDatabaseMigrator.Initialize(
+                    workspace,
+                    factory,
+                    fileSystem,
+                    ct);
                 state.Completed = true;
             }
         }
@@ -36,14 +40,8 @@ internal sealed class WorkspaceDatabaseInitializer(
 
     private sealed class InitializationState
     {
-        public SemaphoreSlim Gate
-        {
-            get;
-        } = new(1, 1);
+        public SemaphoreSlim Gate { get; } = new(1, 1);
 
-        public bool Completed
-        {
-            get; set;
-        }
+        public bool Completed { get; set; }
     }
 }

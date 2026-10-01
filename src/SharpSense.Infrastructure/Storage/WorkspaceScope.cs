@@ -10,15 +10,9 @@ internal sealed class WorkspaceScope : IWorkspaceScope
     public WorkspaceSelection Selection => _selection
         ?? throw new InvalidOperationException("A workspace must be selected before resolving workspace services.");
 
-    public bool SkipEmbeddings
-    {
-        get; private set;
-    }
+    public bool SkipEmbeddings { get; private set; }
 
-    public bool DisableEmbeddingCache
-    {
-        get; private set;
-    }
+    public bool DisableEmbeddingCache { get; private set; }
 
     public void Bind(WorkspaceSelection selection, bool skipEmbeddings = false, bool disableEmbeddingCache = false)
     {

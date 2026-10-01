@@ -18,7 +18,8 @@ public static class TraceServiceCollectionExtensions
 
         services.TryAddTransient<IQueryHandler<TraceQuery, CodeNodeResult[]>, TraceQueryHandler>();
 
-        services.TryAddTransient<IQueryHandler<GetTraceGraphQuery, Result<TraceGraphResult>>, GetTraceGraphQueryHandler>();
+        services
+            .TryAddTransient<IQueryHandler<GetTraceGraphQuery, Result<TraceGraphResult>>, GetTraceGraphQueryHandler>();
 
         return services;
     }

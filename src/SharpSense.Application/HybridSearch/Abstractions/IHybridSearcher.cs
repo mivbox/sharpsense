@@ -1,3 +1,4 @@
+using FluentResults;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.Models;
 
@@ -12,6 +13,7 @@ public interface IHybridSearcher
     /// <summary>
     /// Searches the indexed repository using the supplied query and returns the ranked code-node hits.
     /// </summary>
-    Task<HybridSearchResult> Search(HybridSearchQuery query,
+    Task<Result<HybridSearchResult>> Search(
+        HybridSearchQuery query,
         CancellationToken ct);
 }

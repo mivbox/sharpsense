@@ -14,7 +14,8 @@ public static class DependencyGraphServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddTransient<IQueryHandler<GetGraphNodesPageQuery, GraphNodesPage>, GetGraphNodesPageQueryHandler>();
         services.TryAddTransient<IQueryHandler<GetGraphEdgesPageQuery, GraphEdgesPage>, GetGraphEdgesPageQueryHandler>();
-        services.TryAddTransient<IQueryHandler<GetGraphNodeConnectionsQuery, GraphNodeConnectionsPage>, GetGraphNodeConnectionsQueryHandler>();
+        services
+            .TryAddTransient<IQueryHandler<GetGraphNodeConnectionsQuery, GraphNodeConnectionsPage>, GetGraphNodeConnectionsQueryHandler>();
 
         return services;
     }

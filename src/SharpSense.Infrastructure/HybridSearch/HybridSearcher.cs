@@ -1,8 +1,10 @@
+using FluentResults;
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.HybridSearch.Abstractions;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.Shared.Abstractions;
+using SharpSense.Application.Shared.Errors;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
@@ -33,10 +35,15 @@ internal sealed class HybridSearcher(
     private const int MaximumCandidateLimit = 250;
     private const int RrfConstant = 60;
 
-    public async Task<HybridSearchResult> Search(HybridSearchQuery query, CancellationToken ct)
+    public async Task<Result<HybridSearchResult>> Search(HybridSearchQuery query, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(query);
-        ArgumentException.ThrowIfNullOrWhiteSpace(query.SearchText);
+        if (string.IsNullOrWhiteSpace(query.SearchText))
+        {
+            return Result.Fail<HybridSearchResult>(new ServiceError(
+                ServiceErrorCode.InvalidArgument,
+                "A search query is required."));
+        }
 
         if (query.Limit <= 0)
         {

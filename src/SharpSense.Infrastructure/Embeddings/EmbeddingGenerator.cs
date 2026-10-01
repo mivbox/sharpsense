@@ -67,7 +67,8 @@ internal sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstrac
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(texts);
 
-        var normalizedTexts = texts.Select(ValidateText)
+        var normalizedTexts = texts
+            .Select(ValidateText)
             .ToArray();
         if (normalizedTexts.Length == 0)
         {
@@ -115,9 +116,9 @@ internal sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstrac
             return;
         }
 
-        if (_embeddingGenerator.IsValueCreated && _embeddingGenerator.Value is IDisposable disposable)
+        if (_embeddingGenerator.IsValueCreated)
         {
-            disposable.Dispose();
+            _embeddingGenerator.Value.Dispose();
         }
 
         _disposed = true;
@@ -162,6 +163,7 @@ internal sealed class EmbeddingGenerator : SharpSense.Application.Shared.Abstrac
             });
 
         return service.AsEmbeddingGenerator<string, float>();
+#pragma warning restore CS0618
     }
 
     private static string ValidateText(string text)

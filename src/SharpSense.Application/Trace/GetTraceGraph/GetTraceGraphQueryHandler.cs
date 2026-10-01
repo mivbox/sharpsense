@@ -28,7 +28,9 @@ internal sealed class GetTraceGraphQueryHandler(ITraceNavigator navigator, IImpa
         var root = await navigator.GetRootNode(identifier, ct);
         if (root is null)
         {
-            return Result.Fail(new ServiceError(ServiceErrorCode.NotFound, $"No indexed code node exists for id {query.NodeId}."));
+            return Result.Fail(new ServiceError(
+                ServiceErrorCode.NotFound,
+                $"No indexed code node exists for id {query.NodeId}."));
         }
 
         if (query.Direction == TraceDirection.Caller)
