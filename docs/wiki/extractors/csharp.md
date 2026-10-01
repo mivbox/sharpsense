@@ -4,7 +4,7 @@ C# sources use Roslyn and MSBuild. Select explicit `.csproj`, `.sln`, or `.slnx`
 
 ## Analysis
 
-The workspace loader resolves project membership, references, parse options, and compilation context. Referenced projects may be loaded for semantic resolution while selected projects determine the emitted graph scope.
+The workspace loader resolves project membership, references, parse options, and compilation context. Referenced projects are loaded from source for semantic resolution even when their compiled DLLs exist. Building a project does not change the source identities or cross-project relationships in the selected graph.
 
 Node and edge extraction uses syntax and semantic symbols to identify declarations, calls, type relationships, and structural containment. XML `summary` and `remarks` contribute searchable documentation. Method-body hashes ignore trivia so formatting-only changes need not invalidate existing embeddings or memories.
 

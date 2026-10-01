@@ -9,7 +9,21 @@ Copilot CLI, and Copilot in VS Code. It also registers a local stdio MCP connect
 | `sharpsense-impact-analysis` | Inspect callers, contracts and source evidence before a change. |
 | `sharpsense-summarize-output` | Reduce large command output through `ctx_execute`. |
 
-Development skills under `.agents/skills/` are repository tooling, separate from the published SharpSense plugin. They cover C# feature work, behavior tests, EF queries and async workflows using the consuming repository's conventions, so they can move into a parent monorepo without SharpSense-specific paths or provider assumptions.
+Development skills under `.agents/skills/` are repository tooling, separate from the published SharpSense plugin.
+They follow the consuming repository's conventions and can move with their reference directories.
+
+| Development skill | Purpose |
+| --- | --- |
+| `csharp-clean-code` | Write and simplify production C# with clear responsibilities and consistent presentation. |
+| `csharp-behavior-tests` | Prove observable behavior with readable cases, meaningful assertions and proportional fixtures. |
+| `csharp-feature-work` | Keep application orchestration, ports and transport adapters in the established feature layout. |
+| `ef-query-work` | Preserve query shape, persistence semantics and transaction ownership. |
+| `async-workflows` | Preserve operation identity, cancellation, bounded work and disposal. |
+
+The clean-code and behavior-test skills allow implicit selection. Their descriptions identify when each applies;
+their `SKILL.md` files direct the agent to load only the relevant files in `references/`. Examples are
+self-contained and do not require the ServiceKit or MyCrmAiChat checkouts. A newly added skill becomes available
+when the client refreshes its skill catalog.
 
 ## Prerequisites
 

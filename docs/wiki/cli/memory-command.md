@@ -24,7 +24,7 @@ Replace placeholder IDs with values returned by search or memory commands. Quote
 | `--intent` | Convention, Invariant, Todo, Warning, or Decision; defaults to Convention. |
 | `--intent-filter` | Repeatable intent filters for list. |
 
-Memories are immutable. Delete and attach a replacement when content changes. A memory is marked stale when its saved target hash differs from the current node hash.
+Memories are immutable. Delete and attach a replacement when content changes. A memory is marked stale when its saved target hash differs from the current node hash. Markdown root memories track the whole document; section memories track their own heading and body. The first reindex after upgrading conservatively marks older Markdown memories stale because they were attached without a content hash. Tags may be omitted, but null elements in a supplied tag list are rejected.
 
 Persistence binds memories to `CodeNodes.Id`, not a globally unique symbol name. Reindexing preserves memories while the owning canonical node survives; removing that node cascades deletion of its memories. Changing workspace sources can therefore remove attached notes after the next index.
 

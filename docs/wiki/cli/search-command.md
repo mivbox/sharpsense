@@ -8,7 +8,9 @@ sharpsense search "request validation" --workspace product --toon
 sharpsense search "request validation" --workspace product --include-memories
 ```
 
-JSON is the default output. `--toon` groups compact results by directory and file. `--include-memories` lets attached memory content contribute to relevance.
+Empty queries return a readable validation error: exit code 1 in the CLI, HTTP 400 in the UI API, and `isError: true` in MCP.
+
+JSON is the default output. `--toon` groups compact results by directory and file, using `[UI]` for TSX components. `--include-memories` lets attached memory content contribute to relevance.
 
 Search input is plain text. The keyword side splits symbol/path separators, including `*` and `:`, ignores tokens
 shorter than two characters, deduplicates case-insensitively, and ORs quoted prefix terms. `Payment AND Other`

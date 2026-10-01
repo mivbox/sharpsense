@@ -1,0 +1,6 @@
+interface:
+  display_name: "C# Behavior Tests"
+  short_description: "Write meaningful, readable C# behavior tests"
+  default_prompt: "Use $csharp-behavior-tests to cover the observable behavior with focused assertions and simple fixtures."
+policy:
+  allow_implicit_invocation: true

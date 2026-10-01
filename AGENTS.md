@@ -39,6 +39,8 @@ Keep changes within the requested scope and follow the nearest maintained featur
   command/query contracts public where they cross assembly boundaries.
 - Handlers own application orchestration. CLI, MCP and HTTP adapters bind input, invoke the handler and format its
   result. Keep EF access and external-tool implementation details in Infrastructure.
+- Keep one minimal HTTP endpoint per file, with a named handler and route-builder extension. Compose related
+  endpoints in feature route-group extension files, and keep transport models in the feature's `Models/` directory.
 - Put feature interfaces in `{Feature}/Abstractions/` and shared feature models in `{Feature}/Models/`. Do not add an
   Application `Features/` root or an `Infrastructure/` folder for its interfaces.
 - Register handlers through `{Feature}ServiceCollectionExtensions.Add{Feature}()` and infrastructure through
