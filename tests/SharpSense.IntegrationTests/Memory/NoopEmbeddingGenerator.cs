@@ -13,6 +13,7 @@ internal sealed class NoopEmbeddingGenerator : IEmbeddingGenerator
         IProgress<EmbeddingGenerationProgress>? progress,
         CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<TextEmbedding>>(
-            texts.Select(text => new TextEmbedding(text, Array.Empty<float>()))
+            texts
+                .Select(text => new TextEmbedding(text, Array.Empty<float>()))
                 .ToArray());
 }

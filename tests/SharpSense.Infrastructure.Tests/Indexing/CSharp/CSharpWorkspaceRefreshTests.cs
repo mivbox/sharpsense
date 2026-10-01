@@ -39,7 +39,9 @@ public sealed class CSharpWorkspaceRefreshTests
             await Write("App/App.csproj", Project());
             await Write("Other/Other.csproj", Project());
             await Write("Workspace.slnx", Solution(includeOther: true));
-            await Write("App/Api.cs", "namespace Fixture; public static class Api { public static int Read(int value) => 1; }");
+            await Write(
+                "App/Api.cs",
+                "namespace Fixture; public static class Api { public static int Read(int value) => 1; }");
             await Write(
                 "App/Consumer.cs",
                 "namespace Fixture; public static class Consumer { public static int Call() => Api.Read(1); }");
@@ -63,56 +65,55 @@ public sealed class CSharpWorkspaceRefreshTests
             var engine = new RoslynTargetAnalysisEngine(new NodeExtractor(), new EdgeExtractor(), fileSystem);
             var resolver = new CSharpWorkspaceTargetResolver(workspace, fileSystem);
             var extractor = new CSharpLanguageExtractor(loader, engine, workspace, resolver);
-            await using var database = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+            await using var database = new InMemoryContextFactory<SharpSenseDbContext>(
+                options => new SharpSenseDbContext(options),
+                new(UseMigrations: true, LoadVectorExtension: true));
             var repository = new KnowledgeGraphRepository(database.CreateDbContextFactory());
+            using var coordinator = new WorkspaceExtractionCoordinator(
+                [extractor],
+                paths,
+                Mock.Of<IWorkspaceChangeFilter>(),
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance);
             var index = new IndexWorkspaceCommandHandler(
                 embeddings,
                 repository,
                 paths,
                 options,
-                new WorkspaceExtractionCoordinator(
-                    [extractor],
-                    paths,
-                    Mock.Of<IWorkspaceChangeFilter>(),
-                    Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
+                coordinator,
                 Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);
             var update = new UpdateWorkspaceFilesCommandHandler(
-                new IndexWorkspaceCommandHandler(
-                    embeddings,
-                    repository,
-                    paths,
-                    options,
-                    new WorkspaceExtractionCoordinator(
-                        [extractor],
-                        paths,
-                        Mock.Of<IWorkspaceChangeFilter>(),
-                        Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
-                    Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
-                    Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance),
+                index,
                 Mock.Of<IWorkspaceChangeFilter>(filter => filter.IsRelevant(It.IsAny<IReadOnlyList<WorkspaceFileChange>>()) == true));
 
             var initial = await index.Handle(new IndexWorkspaceCommand(), ct);
             initial.IsSuccess.Should().BeTrue(Errors(initial));
             var callerId = await ConsumerId();
 
-            await Write("App/Api.cs", "namespace Fixture; public static class Api { public static int Read(long value) => 2; }");
+            await Write(
+                "App/Api.cs",
+                "namespace Fixture; public static class Api { public static int Read(long value) => 2; }");
             var signatureUpdate = await update.Handle(
                 new UpdateWorkspaceFilesCommand(
-                [new(WorkspaceFileChangeAction.Modified, NewPath: Path.Combine(root, "App/Api.cs"))]),
+                    [new(WorkspaceFileChangeAction.Modified, NewPath: Path.Combine(root, "App/Api.cs"))]),
                 ct);
             signatureUpdate.IsSuccess.Should().BeTrue(Errors(signatureUpdate));
             (await ConsumerId()).Should().Be(callerId);
             var afterSignature = await repository.GetPersistedCodeNodes(ct);
-            afterSignature.Should().Contain(node => node.FullyQualifiedName.Contains("Read(long)", StringComparison.Ordinal));
-            afterSignature.Should().NotContain(node => node.FullyQualifiedName.Contains("Read(int)", StringComparison.Ordinal));
+            afterSignature.Should().Contain(node => node.FullyQualifiedName.Contains(
+                "Read(long)",
+                StringComparison.Ordinal));
+            afterSignature.Should().NotContain(node => node.FullyQualifiedName.Contains(
+                "Read(int)",
+                StringComparison.Ordinal));
             await AssertMatchesFreshIndex();
             await using (var context = await database.GetContext(ct))
             {
                 var targets = await (from edge in context.DependencyEdges
                                      join node in context.CodeNodes on edge.CalleeNodeId equals node.Id
                                      where edge.CallerNodeId == callerId && edge.EdgeType == EdgeType.MethodCall
-                                     select node.FullyQualifiedName).ToArrayAsync(ct);
+                                     select node.FullyQualifiedName)
+                    .ToArrayAsync(ct);
                 targets.Should().Contain(name => name.Contains("Read(long)", StringComparison.Ordinal));
             }
 
@@ -121,25 +122,28 @@ public sealed class CSharpWorkspaceRefreshTests
             File.Delete(Path.Combine(root, "App/PartA.cs"));
             var membershipUpdate = await update.Handle(
                 new UpdateWorkspaceFilesCommand(
-            [
-                new(WorkspaceFileChangeAction.Modified, NewPath: Path.Combine(root, "App/App.csproj")),
-                new(WorkspaceFileChangeAction.Deleted, OldPath: Path.Combine(root, "App/Deleted.cs")),
-                new(WorkspaceFileChangeAction.Deleted, OldPath: Path.Combine(root, "App/PartA.cs"))
-            ]),
+                    [
+                        new(WorkspaceFileChangeAction.Modified, NewPath: Path.Combine(root, "App/App.csproj")),
+                        new(WorkspaceFileChangeAction.Deleted, OldPath: Path.Combine(root, "App/Deleted.cs")),
+                        new(WorkspaceFileChangeAction.Deleted, OldPath: Path.Combine(root, "App/PartA.cs"))
+                    ]),
                 ct);
             membershipUpdate.IsSuccess.Should().BeTrue(Errors(membershipUpdate));
             var afterMembership = await repository.GetPersistedCodeNodes(ct);
-            afterMembership.Where(node => node.RelativeFilePath is "App/Excluded.cs" or "App/Deleted.cs" or "App/PartA.cs").Should().BeEmpty();
+            afterMembership
+                .Where(node => node.RelativeFilePath is "App/Excluded.cs" or "App/Deleted.cs" or "App/PartA.cs").Should().BeEmpty();
             afterMembership.Should().Contain(node => node.FullyQualifiedName == "Fixture.Shared" && node.RelativeFilePath == "App/PartB.cs");
             await AssertMatchesFreshIndex();
 
             await Write("Workspace.slnx", Solution(includeOther: false));
             var projectUpdate = await update.Handle(
                 new UpdateWorkspaceFilesCommand(
-                [new(WorkspaceFileChangeAction.Modified, NewPath: target)]),
+                    [new(WorkspaceFileChangeAction.Modified, NewPath: target)]),
                 ct);
             projectUpdate.IsSuccess.Should().BeTrue(Errors(projectUpdate));
-            (await repository.GetPersistedCodeNodes(ct)).Should().NotContain(node => node.FullyQualifiedName.Contains("RemovedProjectType", StringComparison.Ordinal));
+            (await repository.GetPersistedCodeNodes(ct)).Should().NotContain(node => node.FullyQualifiedName.Contains(
+                "RemovedProjectType",
+                StringComparison.Ordinal));
             await using (var context = await database.GetContext(ct))
             {
                 (await context.ProjectNodes.CountAsync(ct)).Should().Be(1);
@@ -151,7 +155,7 @@ public sealed class CSharpWorkspaceRefreshTests
             await Write("Workspace.slnx", "<not-valid-xml");
             var failedUpdate = await update.Handle(
                 new UpdateWorkspaceFilesCommand(
-                [new(WorkspaceFileChangeAction.Modified, NewPath: target)]),
+                    [new(WorkspaceFileChangeAction.Modified, NewPath: target)]),
                 ct);
             failedUpdate.IsFailed.Should().BeTrue();
             (await Snapshot(database, repository)).Should().Be(savedSnapshot);
@@ -160,7 +164,8 @@ public sealed class CSharpWorkspaceRefreshTests
             {
                 await using var context = await database.GetContext(ct);
 
-                return await context.CodeNodes.Where(node => node.FullyQualifiedName == "Fixture.Consumer.Call()")
+                return await context.CodeNodes
+                    .Where(node => node.FullyQualifiedName == "Fixture.Consumer.Call()")
                     .Select(node => node.Id)
                     .SingleAsync(ct);
             }
@@ -169,18 +174,21 @@ public sealed class CSharpWorkspaceRefreshTests
             {
                 using var freshLoader = new WorkspaceLoader(new MsBuildWorkspaceFactory(), fileSystem);
                 var freshExtractor = new CSharpLanguageExtractor(freshLoader, engine, workspace, resolver);
-                await using var freshDatabase = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+                await using var freshDatabase = new InMemoryContextFactory<SharpSenseDbContext>(
+                    options => new SharpSenseDbContext(options),
+                    new(UseMigrations: true, LoadVectorExtension: true));
                 var freshRepository = new KnowledgeGraphRepository(freshDatabase.CreateDbContextFactory());
+                using var freshCoordinator = new WorkspaceExtractionCoordinator(
+                    [freshExtractor],
+                    paths,
+                    Mock.Of<IWorkspaceChangeFilter>(),
+                    Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance);
                 var freshIndex = new IndexWorkspaceCommandHandler(
                     embeddings,
                     freshRepository,
                     paths,
                     options,
-                    new WorkspaceExtractionCoordinator(
-                        [freshExtractor],
-                        paths,
-                        Mock.Of<IWorkspaceChangeFilter>(),
-                        Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
+                    freshCoordinator,
                     Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);
                 var result = await freshIndex.Handle(new IndexWorkspaceCommand(), ct);
@@ -188,7 +196,9 @@ public sealed class CSharpWorkspaceRefreshTests
                 (await Snapshot(database, repository)).Should().Be(await Snapshot(freshDatabase, freshRepository));
             }
 
-            async Task<string> Snapshot(InMemoryContextFactory<SharpSenseDbContext> factory, KnowledgeGraphRepository graphRepository)
+            async Task<string> Snapshot(
+                InMemoryContextFactory<SharpSenseDbContext> factory,
+                KnowledgeGraphRepository graphRepository)
             {
                 var nodes = await graphRepository.GetPersistedCodeNodes(ct);
                 await using var context = await factory.GetContext(ct);
@@ -218,7 +228,8 @@ public sealed class CSharpWorkspaceRefreshTests
                 return JsonSerializer.Serialize(new
                 {
                     Nodes = nodes.OrderBy(node => node.CanonicalId, StringComparer.Ordinal),
-                    Edges = edges.OrderBy(edge => edge.Caller, StringComparer.Ordinal)
+                    Edges = edges
+                        .OrderBy(edge => edge.Caller, StringComparer.Ordinal)
                         .ThenBy(edge => edge.Callee, StringComparer.Ordinal)
                         .ThenBy(edge => edge.EdgeType),
                     Projects = projects.OrderBy(project => project.CanonicalId, StringComparer.Ordinal)

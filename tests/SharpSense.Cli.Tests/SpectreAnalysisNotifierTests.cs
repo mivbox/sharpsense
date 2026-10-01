@@ -18,9 +18,14 @@ public sealed class SpectreAnalysisNotifierTests
         console.Profile.Capabilities.Ansi = interactive;
         var presenter = new SpectreAnalysisNotifier(console, "workspace [literal]");
         var id = Guid.NewGuid();
-        await presenter.Run(async () =>
+        await presenter.Run(() =>
         {
-            presenter.Notify(new(id, 1, DateTimeOffset.UtcNow, AnalysisNotificationKind.Started, AnalysisOperationKind.Full));
+            presenter.Notify(new(
+                id,
+                1,
+                DateTimeOffset.UtcNow,
+                AnalysisNotificationKind.Started,
+                AnalysisOperationKind.Full));
             presenter.Notify(new(
                 id,
                 2,
@@ -32,7 +37,6 @@ public sealed class SpectreAnalysisNotifierTests
                 "Loading [literal] source",
                 0,
                 0));
-            await Task.Delay(180, TestContext.Current.CancellationToken);
             presenter.Notify(new(
                 id,
                 3,
@@ -41,6 +45,8 @@ public sealed class SpectreAnalysisNotifierTests
                 AnalysisOperationKind.Full,
                 Summary: new AnalysisSummary(1, 10, 20, 3, 1, 2, 4, 5, 0)));
             presenter.SetState("Indexed workspace.");
+
+            return Task.CompletedTask;
         });
         console.Output.Should().Contain("Saved 10 nodes, 20 edges, 3 documents");
         console.Output.Should().Contain("1 analyzed, 2 reused");
@@ -59,7 +65,12 @@ public sealed class SpectreAnalysisNotifierTests
         var id = Guid.NewGuid();
         await ((Func<Task>)(() => presenter.Run(async () =>
         {
-            presenter.Notify(new(id, 1, DateTimeOffset.UtcNow, AnalysisNotificationKind.Started, AnalysisOperationKind.Full));
+            presenter.Notify(new(
+                id,
+                1,
+                DateTimeOffset.UtcNow,
+                AnalysisNotificationKind.Started,
+                AnalysisOperationKind.Full));
             for (var sequence = 2; sequence <= 25; sequence++)
             {
                 presenter.Notify(new(

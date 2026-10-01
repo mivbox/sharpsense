@@ -25,7 +25,9 @@ public sealed class PersistenceRegressionTests
         string newSourcePath)
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
         var repository = new KnowledgeGraphRepository(factory.CreateDbContextFactory());
         var project = new IndexedProject("project:App.csproj", "App", "App.csproj", "project-hash");
         var widget = Node("Sample.Widget", "Widget.cs") with
@@ -47,7 +49,11 @@ public sealed class PersistenceRegressionTests
             ct);
 
         await using var context = await factory.GetContext(ct);
-        var originalIds = await context.CodeNodes.ToDictionaryAsync(node => node.FullyQualifiedName, node => node.Id, ct);
+        var originalIds = await context.CodeNodes
+            .ToDictionaryAsync(
+                node => node.FullyQualifiedName,
+                node => node.Id,
+                ct);
         var memory = Memory(originalIds[widget.FullyQualifiedName]);
         context.MemoryNodes.Add(memory);
         await context.SaveChangesAsync(ct);
@@ -82,12 +88,15 @@ public sealed class PersistenceRegressionTests
         retainedMemory.Id.Should().Be(memory.Id);
         retainedMemory.Content.Should().Be(memory.Content);
         retainedMemory.TargetCodeHash.Should().Be(memory.TargetCodeHash);
-        var currentProjectId = await context.ProjectNodes.Select(node => node.Id)
+        var currentProjectId = await context.ProjectNodes
+            .Select(node => node.Id)
             .SingleAsync(ct);
-        (await context.CodeNodes.Select(node => node.ProjectNodeId)
+        (await context.CodeNodes
+            .Select(node => node.ProjectNodeId)
             .ToArrayAsync(ct))
             .Should().OnlyContain(id => id == currentProjectId);
-        (await context.GraphNodes.Select(node => node.CanonicalId)
+        (await context.GraphNodes
+            .Select(node => node.CanonicalId)
             .ToArrayAsync(ct))
             .Should().BeEquivalentTo(renamedProject.Id, movedWidget.CanonicalId, movedCaller.CanonicalId);
         var edge = await context.DependencyEdges.SingleAsync(ct);
@@ -96,7 +105,8 @@ public sealed class PersistenceRegressionTests
         (await context.Database.SqlQuery<string>($"SELECT CanonicalId AS Value FROM CodeNodeSearch")
             .ToArrayAsync(ct))
             .Should().BeEquivalentTo(movedWidget.CanonicalId, movedCaller.CanonicalId);
-        (await context.Documents.Select(document => document.RelativePath)
+        (await context.Documents
+            .Select(document => document.RelativePath)
             .ToArrayAsync(ct))
             .Should().BeEquivalentTo(newProjectPath, newSourcePath, caller.RelativeFilePath);
 
@@ -108,7 +118,9 @@ public sealed class PersistenceRegressionTests
     public async Task WhenFullReindexChangesAndMovesNodes_ThenPreservesMemoriesAndPrunesRemovedGraph()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
         var repository = new KnowledgeGraphRepository(factory.CreateDbContextFactory());
         var project = new IndexedProject("project:app", "App", "app/App.csproj", "project-hash");
         var obsoleteProject = new IndexedProject("project:old", "Old", "old/Old.csproj", "old-hash");
@@ -123,7 +135,10 @@ public sealed class PersistenceRegressionTests
         await repository.ReplaceWorkspace(new([project, obsoleteProject], [survivor, removed], [], []), ct);
 
         await using var context = await factory.GetContext(ct);
-        var persisted = await context.CodeNodes.SingleAsync(node => node.FullyQualifiedName == survivor.FullyQualifiedName, ct);
+        var persisted = await context.CodeNodes
+            .SingleAsync(
+                node => node.FullyQualifiedName == survivor.FullyQualifiedName,
+                ct);
         var originalId = persisted.Id;
         var projectId = persisted.ProjectNodeId;
         context.MemoryNodes.Add(Memory(originalId));
@@ -137,11 +152,13 @@ public sealed class PersistenceRegressionTests
         };
         await repository.ReplaceWorkspace(
             new(
-                [project with
-                {
-                    Name = "Renamed App",
-                    ContentHash = "new-project-hash"
-                }],
+                [
+                    project with
+                    {
+                        Name = "Renamed App",
+                        ContentHash = "new-project-hash"
+                    }
+                ],
                 [changed, Node("added", "app/Added.cs")],
                 [],
                 []),
@@ -155,10 +172,12 @@ public sealed class PersistenceRegressionTests
         (await context.ProjectNodes.SingleAsync(ct)).Name.Should().Be("Renamed App");
         (await context.CodeNodes.CountAsync(ct)).Should().Be(2);
         (await context.GraphNodes.CountAsync(ct)).Should().Be(3);
-        (await context.Documents.Select(document => document.RelativePath)
+        (await context.Documents
+            .Select(document => document.RelativePath)
             .ToArrayAsync(ct))
             .Should().BeEquivalentTo("app/App.csproj", "app/Survivor.cs", "app/Added.cs");
-        (await context.Directories.Select(directory => directory.Path)
+        (await context.Directories
+            .Select(directory => directory.Path)
             .ToArrayAsync(ct))
             .Should().BeEquivalentTo("", "app");
         (await context.Database.SqlQuery<int>($"SELECT COUNT(*) AS Value FROM CodeNodeSearch")
@@ -175,7 +194,9 @@ public sealed class PersistenceRegressionTests
     public async Task WhenEditingAndDeletingPartialDeclarations_ThenPreservesSharedIdentityAndRemainingMembers()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
         var repository = new KnowledgeGraphRepository(factory.CreateDbContextFactory());
         using var workspace = new AdhocWorkspace();
         var projectId = ProjectId.CreateNewId();
@@ -189,33 +210,36 @@ public sealed class PersistenceRegressionTests
             LanguageNames.CSharp,
             filePath: "/repo/App.csproj"))
             .AddMetadataReference(projectId, MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
-            .AddDocument(a, "A.cs", SourceText.From("public partial class Shared { public void A() {} }"), filePath: "/repo/A.cs")
-            .AddDocument(b, "B.cs", SourceText.From("public partial class Shared { public void B() {} }"), filePath: "/repo/B.cs");
+            .AddDocument(
+                a,
+                "A.cs",
+                SourceText.From("public partial class Shared { public void A() {} }"),
+                filePath: "/repo/A.cs")
+            .AddDocument(
+                b,
+                "B.cs",
+                SourceText.From("public partial class Shared { public void B() {} }"),
+                filePath: "/repo/B.cs");
         var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
         {
             ["/repo/App.csproj"] = new("<Project Sdk=\"Microsoft.NET.Sdk\" />")
         });
         var repositoryWorkspace = new RepositoryWorkspace("/repo", "/repo/index.db", fileSystem);
         var engine = new RoslynTargetAnalysisEngine(new NodeExtractor(), new EdgeExtractor(), fileSystem);
-        var initial = await engine.Extract(
-            "/repo/App.csproj",
-            solution,
-            repositoryWorkspace,
-            ct: ct);
+        var initial = await engine.Extract("/repo/App.csproj", solution, repositoryWorkspace, ct: ct);
         await repository.ReplaceWorkspace(Map(initial), ct);
         await using var context = await factory.GetContext(ct);
-        var classId = await context.CodeNodes.Where(node => node.NodeType == NodeType.Class)
+        var classId = await context.CodeNodes
+            .Where(node => node.NodeType == NodeType.Class)
             .Select(node => node.Id)
             .SingleAsync(ct);
         context.MemoryNodes.Add(Memory(classId));
         await context.SaveChangesAsync(ct);
 
-        solution = solution.WithDocumentText(b, SourceText.From("public partial class Shared { public void B() {} public void C() {} }"));
-        var modified = await engine.Extract(
-            "/repo/App.csproj",
-            solution,
-            repositoryWorkspace,
-            ct: ct);
+        solution = solution.WithDocumentText(
+            b,
+            SourceText.From("public partial class Shared { public void B() {} public void C() {} }"));
+        var modified = await engine.Extract("/repo/App.csproj", solution, repositoryWorkspace, ct: ct);
         await repository.ReplaceWorkspace(Map(modified), ct);
         (await repository.GetPersistedCodeNodes(ct)).Should().Contain(node => node.FullyQualifiedName == "Shared.A()");
         (await repository.GetPersistedCodeNodes(ct)).Should().Contain(node => node.FullyQualifiedName == "Shared.C()");
@@ -261,20 +285,22 @@ public sealed class PersistenceRegressionTests
     private static ExtractedNodes Map(KnowledgeGraphExtractionPayload payload)
         => new(
             [],
-            payload.CodeNodes.Select(node => new IndexedCodeNode(
-                node.CanonicalId,
-                node.ProjectId,
-                node.FullyQualifiedName,
-                node.DisplayName,
-                node.NodeType,
-                node.RelativeFilePath,
-                node.StartLine,
-                node.EndLine,
-                node.Summary,
-                node.SearchText,
-                node.BodyHash))
+            payload.CodeNodes
+                .Select(node => new IndexedCodeNode(
+                    node.CanonicalId,
+                    node.ProjectId,
+                    node.FullyQualifiedName,
+                    node.DisplayName,
+                    node.NodeType,
+                    node.RelativeFilePath,
+                    node.StartLine,
+                    node.EndLine,
+                    node.Summary,
+                    node.SearchText,
+                    node.BodyHash))
                 .ToArray(),
-            payload.Edges.Select(edge => new IndexedDependency(edge.CallerId, edge.CalleeId, edge.EdgeType))
+            payload.Edges
+                .Select(edge => new IndexedDependency(edge.CallerId, edge.CalleeId, edge.EdgeType))
                 .ToArray(),
             []);
 }

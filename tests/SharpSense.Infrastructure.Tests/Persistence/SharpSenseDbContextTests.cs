@@ -12,10 +12,9 @@ public sealed class SharpSenseDbContextTests
     [Fact]
     public async Task WhenSaveChangesAsyncWithNormalizedRelativePaths_ThenPersistsEmbeddingsAndRelativePaths()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
-        await using var context = inMemoryFactory.GetContext(_ =>
-        {
-        });
+        await using var context = await inMemoryFactory.GetContext(ct);
 
         SeedProjectAndCodeDocuments(context, "src/SharpSense.Domain/SharpSense.Domain.csproj");
         context.CodeNodes.Add(
@@ -40,46 +39,44 @@ public sealed class SharpSenseDbContextTests
                 Kind = GraphNodeKind.Code
             });
 
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await context.SaveChangesAsync(ct);
         context.ChangeTracker.Clear();
 
-        var persistedProject = await context.ProjectNodes.SingleAsync(
-            project => project.Id == 100,
-            cancellationToken: TestContext.Current.CancellationToken);
-        var persistedProjectDocument = await context.Documents.SingleAsync(
-            document => document.Id == 10,
-            cancellationToken: TestContext.Current.CancellationToken);
-        var persistedNode = await context.CodeNodes.SingleAsync(
-            codeNode => codeNode.Id == 101,
-            cancellationToken: TestContext.Current.CancellationToken);
-        var persistedNodeDocument = await context.Documents.SingleAsync(
-            document => document.Id == 11,
-            cancellationToken: TestContext.Current.CancellationToken);
-        var vectorEmbeddingProperty = context.Model
-            .FindEntityType(typeof(CodeNodeRecord))!
-            .FindProperty(nameof(CodeNodeRecord.VectorEmbedding))!;
+        var persistedProject = await context.ProjectNodes
+            .SingleAsync(
+                project => project.Id == 100,
+                cancellationToken: ct);
+        var persistedProjectDocument = await context.Documents
+            .SingleAsync(
+                document => document.Id == 10,
+                cancellationToken: ct);
+        var persistedNode = await context.CodeNodes
+            .SingleAsync(
+                codeNode => codeNode.Id == 101,
+                cancellationToken: ct);
+        var persistedNodeDocument = await context.Documents
+            .SingleAsync(
+                document => document.Id == 11,
+                cancellationToken: ct);
+        var storedVectorType = await context.Database
+            .SqlQueryRaw<string>("SELECT typeof(VectorEmbedding) AS Value FROM CodeNodes WHERE Id = 101")
+            .SingleAsync(ct);
 
         persistedProjectDocument.RelativePath.Should().Be("src/SharpSense.Domain/SharpSense.Domain.csproj");
         persistedNodeDocument.RelativePath.Should().Be("src/SharpSense.Domain/KnowledgeGraph/Nodes/CodeNode.cs");
         persistedProject.Id.Should().Be(100);
         persistedNode.StartLine.Should().Be(7);
         persistedNode.EndLine.Should().Be(20);
-        persistedNode.VectorEmbedding.Should().Equal(new[]
-        {
-            1.25f,
-            -0.5f,
-            0.875f
-        });
-        vectorEmbeddingProperty.GetColumnType().Should().Be("BLOB");
+        persistedNode.VectorEmbedding.Should().Equal(new[] { 1.25f, -0.5f, 0.875f });
+        storedVectorType.Should().Be("blob");
     }
 
     [Fact]
     public async Task WhenSaveChangesAsyncWithAbsolutePathValues_ThenDoesNotNormalizeThemInsideDbContext()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
-        await using var context = inMemoryFactory.GetContext(_ =>
-        {
-        });
+        await using var context = await inMemoryFactory.GetContext(ct);
         var absolutePath = Path.Combine(
             Path.GetTempPath(),
             "sharp-sense-db-context",
@@ -114,12 +111,13 @@ public sealed class SharpSenseDbContextTests
                 ContentHash = "project-hash"
             });
 
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await context.SaveChangesAsync(ct);
         context.ChangeTracker.Clear();
 
-        var persistedProjectDocument = await context.Documents.SingleAsync(
-            document => document.Id == 10,
-            cancellationToken: TestContext.Current.CancellationToken);
+        var persistedProjectDocument = await context.Documents
+            .SingleAsync(
+                document => document.Id == 10,
+                cancellationToken: ct);
 
         persistedProjectDocument.RelativePath.Should().Be(absolutePath);
     }
@@ -127,10 +125,11 @@ public sealed class SharpSenseDbContextTests
     [Fact]
     public async Task WhenCreateDbContextAsyncWithSharedInMemoryFactory_ThenSharesPersistedStateAcrossContexts()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
         var factory = inMemoryFactory.CreateDbContextFactory();
 
-        await using (var writeContext = await factory.CreateDbContextAsync(TestContext.Current.CancellationToken))
+        await using (var writeContext = await factory.CreateDbContextAsync(ct))
         {
             SeedDirectories(writeContext);
             writeContext.Documents.Add(
@@ -159,17 +158,19 @@ public sealed class SharpSenseDbContextTests
                     ContentHash = "project-hash"
                 });
 
-            await writeContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+            await writeContext.SaveChangesAsync(ct);
         }
 
-        await using var readContext = await factory.CreateDbContextAsync(TestContext.Current.CancellationToken);
+        await using var readContext = await factory.CreateDbContextAsync(ct);
 
-        var persistedProject = await readContext.ProjectNodes.SingleAsync(
-            project => project.Id == 100,
-            cancellationToken: TestContext.Current.CancellationToken);
-        var persistedProjectDocument = await readContext.Documents.SingleAsync(
-            document => document.Id == 10,
-            cancellationToken: TestContext.Current.CancellationToken);
+        var persistedProject = await readContext.ProjectNodes
+            .SingleAsync(
+                project => project.Id == 100,
+                cancellationToken: ct);
+        var persistedProjectDocument = await readContext.Documents
+            .SingleAsync(
+                document => document.Id == 10,
+                cancellationToken: ct);
 
         persistedProject.Name.Should().Be("SharpSense.Domain");
         persistedProjectDocument.RelativePath.Should().Be("src/SharpSense.Domain/SharpSense.Domain.csproj");
@@ -178,10 +179,9 @@ public sealed class SharpSenseDbContextTests
     [Fact]
     public async Task WhenSaveChangesAsyncWithNullProjectNodeId_ThenPersistsDocumentNodes()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
-        await using var context = inMemoryFactory.GetContext(_ =>
-        {
-        });
+        await using var context = await inMemoryFactory.GetContext(ct);
 
         SeedDirectories(context);
         context.Documents.Add(
@@ -215,12 +215,13 @@ public sealed class SharpSenseDbContextTests
                 Summary = "Getting Started"
             });
 
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await context.SaveChangesAsync(ct);
         context.ChangeTracker.Clear();
 
-        var persistedNode = await context.CodeNodes.SingleAsync(
-            codeNode => codeNode.Id == 200,
-            cancellationToken: TestContext.Current.CancellationToken);
+        var persistedNode = await context.CodeNodes
+            .SingleAsync(
+                codeNode => codeNode.Id == 200,
+                cancellationToken: ct);
 
         persistedNode.ProjectNodeId.Should().BeNull();
         persistedNode.NodeType.Should().Be(NodeType.Document);

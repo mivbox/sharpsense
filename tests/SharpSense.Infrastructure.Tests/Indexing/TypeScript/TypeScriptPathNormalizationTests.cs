@@ -30,12 +30,18 @@ public sealed class TypeScriptPathNormalizationTests
             }
 
             var fileSystem = new FileSystem();
-            var workspace = new RepositoryWorkspace(directory.FullName, Path.Combine(directory.FullName, "index.db"), fileSystem);
+            var workspace = new RepositoryWorkspace(
+                directory.FullName,
+                Path.Combine(directory.FullName, "index.db"),
+                fileSystem);
             var resolver = new TsConfigResolver(workspace, fileSystem);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(TimeSpan.FromSeconds(5));
 
-            var result = resolver.ResolveImport("@fixture/shared", Path.Combine(workspace.RootPath, "app.ts"), timeout.Token);
+            var result = resolver.ResolveImport(
+                "@fixture/shared",
+                Path.Combine(workspace.RootPath, "app.ts"),
+                timeout.Token);
 
             result.Should().Be(Path.Combine(workspace.RootPath, "packages", "shared", "index.ts"));
         }
@@ -82,7 +88,10 @@ public sealed class TypeScriptPathNormalizationTests
             }
 
             var fileSystem = new FileSystem();
-            var workspace = new RepositoryWorkspace(aliasRoot, Path.Combine(temporaryDirectory.FullName, "index.db"), fileSystem);
+            var workspace = new RepositoryWorkspace(
+                aliasRoot,
+                Path.Combine(temporaryDirectory.FullName, "index.db"),
+                fileSystem);
             var resolver = new TsConfigResolver(workspace, fileSystem);
             var discoverer = new TypeScriptSourceDiscoverer(
                 workspace,

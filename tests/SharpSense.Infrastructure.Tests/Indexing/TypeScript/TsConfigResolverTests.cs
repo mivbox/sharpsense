@@ -13,17 +13,20 @@ public sealed class TsConfigResolverTests
     [Fact]
     public void WhenCancelledPackageTraversal_ThenDoesNotPublishPartialResolverCaches()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem(
             ("/repo/tsconfig.json", "{}"),
             ("/repo/app.ts", ""),
             ("/repo/packages/first/package.json", """{"name":"@fixture/first"}"""),
             ("/repo/packages/first/index.ts", "export const first = 1;"));
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var cancelOnce = true;
         var directory = new Mock<IDirectory>();
-        directory.Setup(value => value.Exists(It.IsAny<string>()))
+        directory
+            .Setup(value => value.Exists(It.IsAny<string>()))
             .Returns((string path) => fileSystem.Directory.Exists(path));
-        directory.Setup(value => value.EnumerateDirectories(It.IsAny<string>()))
+        directory
+            .Setup(value => value.EnumerateDirectories(It.IsAny<string>()))
             .Returns((string path) =>
             {
                 if (cancelOnce && path == "/repo/packages/first")
@@ -35,22 +38,28 @@ public sealed class TsConfigResolverTests
                 return fileSystem.Directory.EnumerateDirectories(path);
             });
         var wrapper = new Mock<IFileSystem>();
-        wrapper.SetupGet(value => value.Path)
+        wrapper
+            .SetupGet(value => value.Path)
             .Returns(fileSystem.Path);
-        wrapper.SetupGet(value => value.File)
+        wrapper
+            .SetupGet(value => value.File)
             .Returns(fileSystem.File);
-        wrapper.SetupGet(value => value.Directory)
+        wrapper
+            .SetupGet(value => value.Directory)
             .Returns(directory.Object);
-        wrapper.SetupGet(value => value.DirectoryInfo)
+        wrapper
+            .SetupGet(value => value.DirectoryInfo)
             .Returns(fileSystem.DirectoryInfo);
-        var resolver = new TsConfigResolver(new RepositoryWorkspace("/repo", "/test-storage/index.db", fileSystem), wrapper.Object);
+        var resolver = new TsConfigResolver(
+            new RepositoryWorkspace("/repo", "/test-storage/index.db", fileSystem),
+            wrapper.Object);
 
         ((Action)(() => resolver.ResolveImport("@fixture/first", "/repo/app.ts", cancellation.Token))).Should().Throw<OperationCanceledException>();
         resolver.ResolutionInputPaths.Should().BeEmpty();
         fileSystem.AddFile("/repo/packages/later/package.json", new MockFileData("""{"name":"@fixture/later"}"""));
         fileSystem.AddFile("/repo/packages/later/index.ts", new MockFileData("export const later = 2;"));
 
-        resolver.ResolveImport("@fixture/later", "/repo/app.ts", TestContext.Current.CancellationToken).Should().Be("/repo/packages/later/index.ts");
+        resolver.ResolveImport("@fixture/later", "/repo/app.ts", ct).Should().Be("/repo/packages/later/index.ts");
     }
 
     [Theory]
@@ -65,7 +74,8 @@ public sealed class TsConfigResolverTests
             ($"/repo/{directory}/package.json", """{"name":"@fixture/ignored"}"""),
             ($"/repo/{directory}/index.ts", "export const ignored = 1;"));
 
-        CreateResolver(fileSystem).ResolveImport("@fixture/ignored", "/repo/app.ts", TestContext.Current.CancellationToken).Should().BeNull();
+        CreateResolver(fileSystem)
+            .ResolveImport("@fixture/ignored", "/repo/app.ts", TestContext.Current.CancellationToken).Should().BeNull();
     }
 
     [Fact]
@@ -91,9 +101,11 @@ public sealed class TsConfigResolverTests
             ["/physical/repo/app.ts"] = new("export function app() {}")
         });
         var workspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);
-        workspace.SetupGet(candidate => candidate.RootPath)
+        workspace
+            .SetupGet(candidate => candidate.RootPath)
             .Returns("/physical/repo");
-        workspace.Setup(candidate => candidate.ToRepositoryRelativePath("/alias/repo/tsconfig.json"))
+        workspace
+            .Setup(candidate => candidate.ToRepositoryRelativePath("/alias/repo/tsconfig.json"))
             .Returns("tsconfig.json");
         var resolver = new TsConfigResolver(workspace.Object, fileSystem);
         DiscoveredFile[] files = [new("/physical/repo/app.ts", "app.ts")];
@@ -110,7 +122,8 @@ public sealed class TsConfigResolverTests
         fileSystem.Directory.SetCurrentDirectory("/repo/client");
         DiscoveredFile[] files = [new("/repo/client/app.ts", "client/app.ts")];
 
-        CreateResolver(fileSystem).FilterRootFiles("client/tsconfig.json", files).Should().Equal(files);
+        CreateResolver(fileSystem)
+            .FilterRootFiles("client/tsconfig.json", files).Should().Equal(files);
     }
 
     [Theory]
@@ -124,13 +137,16 @@ public sealed class TsConfigResolverTests
             ("/repo/client/app.ts", "export function app() {}"),
             ("/repo/shared/api.ts", "export function api() {}"));
 
-        CreateResolver(fileSystem).ResolveImport("@api", "/repo/client/app.ts", TestContext.Current.CancellationToken).Should().Be(expected);
+        CreateResolver(fileSystem)
+            .ResolveImport("@api", "/repo/client/app.ts", TestContext.Current.CancellationToken).Should().Be(expected);
     }
 
     [Theory]
     [InlineData("{}", "/repo/shared/api.ts")]
     [InlineData("{ \"paths\": {} }", null)]
-    public void WhenBaseConfigsAreLayered_ThenOnlyExplicitPathPropertiesOverrideEarlierOnes(string compilerOptions, string? expected)
+    public void WhenBaseConfigsAreLayered_ThenOnlyExplicitPathPropertiesOverrideEarlierOnes(
+        string compilerOptions,
+        string? expected)
     {
         var fileSystem = CreateRepositoryFileSystem(
             ("/repo/base.json", """{ "compilerOptions": { "paths": { "@api": ["shared/api.ts"] } } }"""),
@@ -139,12 +155,14 @@ public sealed class TsConfigResolverTests
             ("/repo/client/app.ts", "export function app() {}"),
             ("/repo/shared/api.ts", "export function api() {}"));
 
-        CreateResolver(fileSystem).ResolveImport("@api", "/repo/client/app.ts", TestContext.Current.CancellationToken).Should().Be(expected);
+        CreateResolver(fileSystem)
+            .ResolveImport("@api", "/repo/client/app.ts", TestContext.Current.CancellationToken).Should().Be(expected);
     }
 
     [Fact]
     public void WhenDerivedConfigSpecifiesPaths_ThenItReplacesInheritedAliases()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem(
             ("/repo/tsconfig.base.json",
                 """
@@ -176,8 +194,8 @@ public sealed class TsConfigResolverTests
         var resolver = CreateResolver(fileSystem);
         const string sourceFilePath = "/repo/apps/web/src/components/App.tsx";
 
-        var sharedPath = resolver.ResolveImport("@shared/api/client", sourceFilePath, TestContext.Current.CancellationToken);
-        var webPath = resolver.ResolveImport("@web/lib/util", sourceFilePath, TestContext.Current.CancellationToken);
+        var sharedPath = resolver.ResolveImport("@shared/api/client", sourceFilePath, ct);
+        var webPath = resolver.ResolveImport("@web/lib/util", sourceFilePath, ct);
 
         sharedPath.Should().BeNull();
         webPath.Should().Be("/repo/apps/web/src/lib/util.tsx");
@@ -186,6 +204,7 @@ public sealed class TsConfigResolverTests
     [Fact]
     public void WhenResolveImportUsesRelativeSpecifier_ThenItFallsBackToTsxAndIndexFiles()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem(
             ("/repo/apps/web/tsconfig.json",
                 """
@@ -201,8 +220,8 @@ public sealed class TsConfigResolverTests
         var resolver = CreateResolver(fileSystem);
         const string sourceFilePath = "/repo/apps/web/src/components/App.tsx";
 
-        var tsxPath = resolver.ResolveImport("../lib/http", sourceFilePath, TestContext.Current.CancellationToken);
-        var indexPath = resolver.ResolveImport("../routes", sourceFilePath, TestContext.Current.CancellationToken);
+        var tsxPath = resolver.ResolveImport("../lib/http", sourceFilePath, ct);
+        var indexPath = resolver.ResolveImport("../routes", sourceFilePath, ct);
 
         tsxPath.Should().Be("/repo/apps/web/src/lib/http.tsx");
         indexPath.Should().Be("/repo/apps/web/src/routes/index.ts");
@@ -315,7 +334,8 @@ public sealed class TsConfigResolverTests
             ("/repo/long/name/suffix.ts", ""),
             ("/repo/short/long/name.ts", ""));
 
-        CreateResolver(fileSystem).ResolveImport("@long/name/suffix", "/repo/app.ts", TestContext.Current.CancellationToken)
+        CreateResolver(fileSystem)
+            .ResolveImport("@long/name/suffix", "/repo/app.ts", TestContext.Current.CancellationToken)
             .Should().Be("/repo/long/name/suffix.ts");
     }
 
@@ -331,10 +351,11 @@ public sealed class TsConfigResolverTests
             ("/repo/app.ts", ""),
             ("/repo/wrong.ts", ""));
 
-        CreateResolver(fileSystem).ResolveImport(
-            preferred.Replace("*", "value", StringComparison.Ordinal),
-            "/repo/app.ts",
-            TestContext.Current.CancellationToken)
+        CreateResolver(fileSystem)
+            .ResolveImport(
+                preferred.Replace("*", "value", StringComparison.Ordinal),
+                "/repo/app.ts",
+                TestContext.Current.CancellationToken)
             .Should().BeNull();
     }
 
@@ -348,7 +369,8 @@ public sealed class TsConfigResolverTests
             ("/repo/src/dep.ts", ""),
             ("/repo/app/src/dep.ts", ""));
 
-        CreateResolver(fileSystem).ResolveImport("@/dep", "/repo/app/main.ts", TestContext.Current.CancellationToken)
+        CreateResolver(fileSystem)
+            .ResolveImport("@/dep", "/repo/app/main.ts", TestContext.Current.CancellationToken)
             .Should().Be("/repo/app/src/dep.ts");
     }
 
@@ -364,7 +386,8 @@ public sealed class TsConfigResolverTests
             ("/repo/api.d.ts", "export declare function load(): void;"),
             ("/repo/types/index.d.ts", "export interface Options {}"));
 
-        CreateResolver(fileSystem).ResolveImport(import, "/repo/app.ts", TestContext.Current.CancellationToken).Should().Be(expected);
+        CreateResolver(fileSystem)
+            .ResolveImport(import, "/repo/app.ts", TestContext.Current.CancellationToken).Should().Be(expected);
     }
 
     [Theory]
@@ -378,7 +401,8 @@ public sealed class TsConfigResolverTests
             ($"/repo/api{extension}", "export function load() {}"),
             ("/repo/api.d.ts", "export declare function load(): void;"));
 
-        CreateResolver(fileSystem).ResolveImport("./api", "/repo/app.ts", TestContext.Current.CancellationToken).Should().Be($"/repo/api{extension}");
+        CreateResolver(fileSystem)
+            .ResolveImport("./api", "/repo/app.ts", TestContext.Current.CancellationToken).Should().Be($"/repo/api{extension}");
     }
 
     private static TsConfigResolver CreateResolver(MockFileSystem fileSystem)

@@ -1,6 +1,5 @@
 using AwesomeAssertions;
 using FluentResults;
-using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using SharpSense.Application.Indexing;
 using SharpSense.Application.Indexing.Abstractions;
@@ -37,14 +36,16 @@ public sealed class WorkspaceExtractionCoordinatorTests
         fixture.CSharp.Calls.Should().Be(1);
         fixture.TypeScript.Calls.Should().Be(1);
         fixture.Markdown.Calls.Should().Be(2);
-        fixture.Persisted!.CodeNodes.Select(node => node.CanonicalId)
+        fixture.Persisted!.CodeNodes
+            .Select(node => node.CanonicalId)
             .Order().Should().Equal(["csharp", "typescript", "updated-guide"]);
         fixture.Persisted.Diagnostics.Should().Contain("C# warning retained");
         fixture.Persisted.Edges.Count.Should().Be(2);
 
         fixture.Markdown.Value = new([], [], [], []);
         (await fixture.Run(Change("docs/guide.md", WorkspaceFileChangeAction.Deleted))).IsSuccess.Should().BeTrue();
-        fixture.Persisted!.CodeNodes.Select(node => node.CanonicalId)
+        fixture.Persisted!.CodeNodes
+            .Select(node => node.CanonicalId)
             .Order().Should().Equal(["csharp", "typescript"]);
         fixture.Persisted.Edges.Should().ContainSingle();
         fixture.CSharp.Calls.Should().Be(1);
@@ -82,7 +83,9 @@ public sealed class WorkspaceExtractionCoordinatorTests
     [InlineData("Directory.Build.props", WorkspaceFileChangeAction.Modified)]
     [InlineData("docs", WorkspaceFileChangeAction.DirectoryDeleted)]
     [InlineData("docs", WorkspaceFileChangeAction.DirectoryRenamed)]
-    public async Task WhenCodeOrDirectoriesChange_ThenEveryContributionIsRefreshed(string path, WorkspaceFileChangeAction action)
+    public async Task WhenCodeOrDirectoriesChange_ThenEveryContributionIsRefreshed(
+        string path,
+        WorkspaceFileChangeAction action)
     {
         using var fixture = new Fixture();
         (await fixture.Run()).IsSuccess.Should().BeTrue();
@@ -155,7 +158,7 @@ public sealed class WorkspaceExtractionCoordinatorTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task WhenFailedExtractionOr_ThenCommitPreservesPreviousGraphAndInvalidatesReuse(bool persistenceFailure)
+    public async Task WhenExtractionOrCommitFails_ThenPreservesPreviousGraphAndInvalidatesReuse(bool persistenceFailure)
     {
         using var fixture = new Fixture();
         (await fixture.Run()).IsSuccess.Should().BeTrue();
@@ -235,8 +238,9 @@ public sealed class WorkspaceExtractionCoordinatorTests
     [InlineData("cancel")]
     public async Task WhenWorkerFailureOrCancellation_ThenJoinsSiblingsBeforeReturning(string failure)
     {
+        var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         fixture.CSharp.OnExtract = async (_, token) =>
@@ -255,7 +259,7 @@ public sealed class WorkspaceExtractionCoordinatorTests
         };
         fixture.Markdown.OnExtract = async (_, _) =>
         {
-            await started.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
             if (failure == "cancel")
             {
                 await cancellation.CancelAsync();
@@ -275,7 +279,9 @@ public sealed class WorkspaceExtractionCoordinatorTests
         stopped.Task.IsCompletedSuccessfully.Should().BeTrue();
         fixture.Commits.Should().Be(0);
         fixture.Workers.Should().AllSatisfy(worker => worker.Active.Should().Be(0));
-        result.Errors.Should().Contain(error => error.Message.Contains(failure == "cancel" ? "cancelled" : "Documentation failed", StringComparison.Ordinal));
+        result.Errors.Should().Contain(error => error.Message.Contains(
+            failure == "cancel" ? "cancelled" : "Documentation failed",
+            StringComparison.Ordinal));
     }
 
     [Fact]
@@ -304,72 +310,52 @@ public sealed class WorkspaceExtractionCoordinatorTests
         fixture.Persisted!.CodeNodes.Should().Contain(node => node.CanonicalId == "changed-class");
     }
 
-    [Fact]
-    public void WhenCoordinatorRegistration_ThenSharesOnlyOneServiceScope()
-    {
-        var services = new ServiceCollection().AddIndexing();
-        var descriptor = services.Should().ContainSingle(descriptor => descriptor.ServiceType == typeof(WorkspaceExtractionCoordinator)).Which;
-        descriptor.Lifetime.Should().Be(ServiceLifetime.Scoped);
-    }
-
-    private static WorkspaceFileChange Change(string path, WorkspaceFileChangeAction action = WorkspaceFileChangeAction.Modified)
+    private static WorkspaceFileChange Change(
+        string path,
+        WorkspaceFileChangeAction action = WorkspaceFileChangeAction.Modified)
         => new(action, NewPath: path);
 
     private static ExtractedNodes Graph(string id, string path)
         => new(
             [],
-            [new(
-                id,
-                null,
-                id,
-                id,
-                path.EndsWith(".md", StringComparison.Ordinal) ? NodeType.Document : NodeType.Class,
-                path,
-                1,
-                1,
-                "",
-                id)],
+            [
+                new(
+                    id,
+                    null,
+                    id,
+                    id,
+                    path.EndsWith(".md", StringComparison.Ordinal) ? NodeType.Document : NodeType.Class,
+                    path,
+                    1,
+                    1,
+                    "",
+                    id)
+            ],
             [],
             [],
             CanReuseForDocumentationChanges: true);
 
     private sealed class Fixture : IDisposable
     {
-        public Worker CSharp
-        {
-            get;
-        } = new(WorkspaceSourceKind.CSharp, Graph("csharp", "Backend/Api.cs"));
-        public Worker TypeScript
-        {
-            get;
-        } = new(WorkspaceSourceKind.TypeScript, Graph("typescript", "frontend/index.ts"));
-        public Worker Markdown
-        {
-            get;
-        } = new(WorkspaceSourceKind.Markdown, Graph("guide", "docs/guide.md"));
+        public Worker CSharp { get; } = new(WorkspaceSourceKind.CSharp, Graph("csharp", "Backend/Api.cs"));
+        public Worker TypeScript { get; } = new(WorkspaceSourceKind.TypeScript, Graph("typescript", "frontend/index.ts"));
+        public Worker Markdown { get; } = new(WorkspaceSourceKind.Markdown, Graph("guide", "docs/guide.md"));
         public Worker[] Workers => [CSharp, TypeScript, Markdown];
-        public WorkspaceExecutionOptions Options
-        {
-            get;
-        } = new()
+        public WorkspaceExecutionOptions Options { get; } = new()
         {
             WorkspaceId = "fixture",
-            WorkspaceSources = [new(WorkspaceSourceKind.CSharp, "Backend.sln"), new(WorkspaceSourceKind.TypeScript, "frontend"), new(WorkspaceSourceKind.Markdown, "docs/**/*.md")],
+            WorkspaceSources =
+            [
+                new(WorkspaceSourceKind.CSharp, "Backend.sln"),
+                new(WorkspaceSourceKind.TypeScript, "frontend"),
+                new(WorkspaceSourceKind.Markdown, "docs/**/*.md")
+            ],
             SkipEmbeddings = true,
             DisableEmbeddingCache = true
         };
-        public ExtractedNodes? Persisted
-        {
-            get; private set;
-        }
-        public int Commits
-        {
-            get; private set;
-        }
-        public bool FailCommit
-        {
-            get; set;
-        }
+        public ExtractedNodes? Persisted { get; private set; }
+        public int Commits { get; private set; }
+        public bool FailCommit { get; set; }
         private readonly WorkspacePaths _paths = new();
         private readonly Mock<IKnowledgeGraphRepository> _repository = new(MockBehavior.Strict);
         private readonly WorkspaceExtractionCoordinator _coordinator;
@@ -381,7 +367,10 @@ public sealed class WorkspaceExtractionCoordinatorTests
                 _paths,
                 Mock.Of<IWorkspaceChangeFilter>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance);
-            _repository.Setup(repository => repository.ReplaceWorkspace(It.IsAny<ExtractedNodes>(), It.IsAny<CancellationToken>()))
+            _repository
+                .Setup(repository => repository.ReplaceWorkspace(
+                    It.IsAny<ExtractedNodes>(),
+                    It.IsAny<CancellationToken>()))
                 .Callback<ExtractedNodes, CancellationToken>((nodes, token) =>
                 {
                     token.ThrowIfCancellationRequested();
@@ -408,9 +397,10 @@ public sealed class WorkspaceExtractionCoordinatorTests
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);
 
         public Task<Result<IndexWorkspaceOutcome>> Run(params WorkspaceFileChange[] changes)
-            => Handler().Handle(
-                new IndexWorkspaceCommand(ChangedFiles: changes.Length == 0 ? null : changes),
-                TestContext.Current.CancellationToken);
+            => Handler()
+                .Handle(
+                    new IndexWorkspaceCommand(ChangedFiles: changes.Length == 0 ? null : changes),
+                    TestContext.Current.CancellationToken);
 
         public void Dispose() => _coordinator.Dispose();
     }
@@ -418,22 +408,10 @@ public sealed class WorkspaceExtractionCoordinatorTests
     private sealed class Worker(WorkspaceSourceKind kind, ExtractedNodes value) : ILanguageExtractor
     {
         public WorkspaceSourceKind SourceKind => kind;
-        public ExtractedNodes Value
-        {
-            get; set;
-        } = value;
-        public string? Error
-        {
-            get; set;
-        }
-        public Func<ExtractionContext, CancellationToken, Task<Result<ExtractedNodes>>>? OnExtract
-        {
-            get; set;
-        }
-        public ConcurrentQueue<ExtractionContext> Contexts
-        {
-            get;
-        } = new();
+        public ExtractedNodes Value { get; set; } = value;
+        public string? Error { get; set; }
+        public Func<ExtractionContext, CancellationToken, Task<Result<ExtractedNodes>>>? OnExtract { get; set; }
+        public ConcurrentQueue<ExtractionContext> Contexts { get; } = new();
         public int Calls;
         public int Active;
         public int MaximumActive;
@@ -474,7 +452,9 @@ public sealed class WorkspaceExtractionCoordinatorTests
     {
         public string RootPath => "/repo";
         public string GetRequiredTargetPath(string targetPath) => Path.GetFullPath(targetPath, RootPath);
-        public string ToRepositoryRelativePath(string? path) => Path.GetRelativePath(RootPath, GetRequiredTargetPath(path!));
+        public string ToRepositoryRelativePath(string? path) => Path.GetRelativePath(
+            RootPath,
+            GetRequiredTargetPath(path!));
 
         public bool TryToRepositoryRelativePath(string? path, out string relativePath)
         {

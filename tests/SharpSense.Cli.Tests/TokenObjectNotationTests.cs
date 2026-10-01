@@ -13,6 +13,25 @@ namespace SharpSense.Cli.Tests;
 public sealed class TokenObjectNotationTests
 {
     [Fact]
+    public void WhenSearchContainsTsxComponent_ThenFormatsComponentAlongsideCodeNodes()
+    {
+        HybridSearchHit[] results =
+        [
+            new(1, "component", null, "TotalView", "TotalView", NodeType.Component, "ui/TotalView.tsx", 2, 4, ""),
+            new(2, "method", null, "total", "total", NodeType.Method, "ui/total.ts", 1, 1, "")
+        ];
+
+        var output = TokenObjectNotation.SerializeSemanticSearch(results);
+
+        output.Should().Be(
+            "ui/:" + Environment.NewLine +
+            "  TotalView.tsx:" + Environment.NewLine +
+            "    - [UI] `1` TotalView L2-4" + Environment.NewLine +
+            "  total.ts:" + Environment.NewLine +
+            "    - [M] `2` total L1");
+    }
+
+    [Fact]
     public void WhenSerializeContext360HasMixedBreadth_ThenItFormatsCompressedToonOutput()
     {
         var result = new Context360Result(
@@ -297,7 +316,7 @@ public sealed class TokenObjectNotationTests
     }
 
     [Fact]
-    public void WhenSerializingStaleMemory_ThenItIncludesDeleteHint()
+    public void WhenSerializingStaleMemory_ThenItIncludesVerificationHint()
     {
         var memory = new MemoryNode(
             Guid.NewGuid(),
@@ -380,10 +399,7 @@ public sealed class TokenObjectNotationTests
             false,
             "Returned 1 merged block(s) from 1 matched line(s) across 1201 captured line(s).",
             [
-                new CommandExecutionBlock(
-                    1201,
-                    1201,
-                    "1201| Build succeeded in 13.7s")
+                new CommandExecutionBlock(1201, 1201, "1201| Build succeeded in 13.7s")
             ]));
 
         output.Should().Be(

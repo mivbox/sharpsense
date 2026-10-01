@@ -23,7 +23,12 @@ public sealed class AnalyzeCommandWatchRoutingTests
     [InlineData(false, true, false, 0, 2, 1)]
     [InlineData(false, true, true, 1, 2, 1)]
     public async Task WhenWatchReceivesResults_ThenPropagatesFailuresAndRecoversOnlyWhenNeeded(
-        bool initialFailure, bool incrementalFailure, bool recoveryFailure, int expectedExit, int expectedIndexes, int expectedUpdates)
+        bool initialFailure,
+        bool incrementalFailure,
+        bool recoveryFailure,
+        int expectedExit,
+        int expectedIndexes,
+        int expectedUpdates)
     {
         using var console = new TestConsole();
         var previousConsole = AnsiConsole.Console;
@@ -37,17 +42,18 @@ public sealed class AnalyzeCommandWatchRoutingTests
             var app = Cli.Program.CreateCommandApp(
                 console,
                 services =>
-            {
-                services.AddWorkspaceFixture(root);
-                services.AddScoped<IWorkspaceDatabaseInitializer, NoDatabaseInitializer>();
-                services.RemoveAll<IHostedService>();
-                services.RemoveAll<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>();
-                services.RemoveAll<ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>>();
-                services.RemoveAll<IWorkspaceWatcher>();
-                services.AddSingleton<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>(index);
-                services.AddSingleton<ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>>(update);
-                services.AddSingleton<IWorkspaceWatcher>(watcher);
-            },
+                {
+                    services.AddWorkspaceFixture(root);
+                    services.AddScoped<IWorkspaceDatabaseInitializer, NoDatabaseInitializer>();
+                    services.RemoveAll<IHostedService>();
+                    services.RemoveAll<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>();
+                    services.RemoveAll<ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>>();
+                    services.RemoveAll<IWorkspaceWatcher>();
+                    services.AddSingleton<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>(index);
+                    services
+                        .AddSingleton<ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>>(update);
+                    services.AddSingleton<IWorkspaceWatcher>(watcher);
+                },
                 enableFileLogging: false);
             var exit = await app.RunAsync(
                 ["analyze", "--workspace", "fixture", "--watch", "--repo-root", root, "--no-embeddings"],
@@ -80,13 +86,16 @@ public sealed class AnalyzeCommandWatchRoutingTests
             var app = Cli.Program.CreateCommandApp(
                 console,
                 services =>
-            {
-                services.AddWorkspaceFixture(root);
-                services.AddScoped<IWorkspaceDatabaseInitializer, NoDatabaseInitializer>();
-                services.RemoveAll<IHostedService>();
-                services.RemoveAll<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>();
-                services.AddSingleton<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>(new IndexHandler(true, false));
-            },
+                {
+                    services.AddWorkspaceFixture(root);
+                    services.AddScoped<IWorkspaceDatabaseInitializer, NoDatabaseInitializer>();
+                    services.RemoveAll<IHostedService>();
+                    services.RemoveAll<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>();
+                    services
+                        .AddSingleton<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>(new IndexHandler(
+                            true,
+                            false));
+                },
                 enableFileLogging: false);
             var exit = await app.RunAsync(
                 ["analyze", "--workspace", "fixture", "--repo-root", root, "--no-embeddings"],
@@ -104,8 +113,9 @@ public sealed class AnalyzeCommandWatchRoutingTests
     [Fact]
     public async Task WhenHostShutdown_ThenCancelsWatchAndReleasesWorkspaceLease()
     {
+        var ct = TestContext.Current.CancellationToken;
         using var console = new TestConsole();
-        using var commandCancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        using var commandCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "sharpsense-watch-routing"));
         IWorkspaceCatalog? catalog = null;
         WorkspaceSelection? selection = null;
@@ -113,26 +123,35 @@ public sealed class AnalyzeCommandWatchRoutingTests
         var app = Cli.Program.CreateCommandApp(
             console,
             services =>
-        {
-            selection = services.AddWorkspaceFixture(root);
-            services.AddScoped<IWorkspaceDatabaseInitializer, NoDatabaseInitializer>();
-            services.RemoveAll<IHostedService>();
-            services.RemoveAll<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>();
-            services.RemoveAll<IWorkspaceWatcher>();
-            services.AddSingleton<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>(new IndexHandler(false, false));
-            services.AddSingleton<IWorkspaceWatcher>(provider =>
             {
-                catalog = provider.GetRequiredService<IWorkspaceCatalog>();
-                watcher = new StoppingWatcher(provider.GetRequiredService<IHostApplicationLifetime>(), catalog, selection);
+                selection = services.AddWorkspaceFixture(root);
+                services.AddScoped<IWorkspaceDatabaseInitializer, NoDatabaseInitializer>();
+                services.RemoveAll<IHostedService>();
+                services.RemoveAll<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>();
+                services.RemoveAll<IWorkspaceWatcher>();
+                services
+                    .AddSingleton<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>(new IndexHandler(
+                        false,
+                        false));
+                services
+                    .AddSingleton<IWorkspaceWatcher>(provider =>
+                    {
+                        catalog = provider.GetRequiredService<IWorkspaceCatalog>();
+                        watcher = new StoppingWatcher(
+                            provider.GetRequiredService<IHostApplicationLifetime>(),
+                            catalog,
+                            selection);
 
-                return watcher;
-            });
-        },
+                        return watcher;
+                    });
+            },
             enableFileLogging: false);
-        var run = app.RunAsync(["analyze", "--workspace", "fixture", "--watch", "--no-embeddings"], commandCancellation.Token);
+        var run = app.RunAsync(
+            ["analyze", "--workspace", "fixture", "--watch", "--no-embeddings"],
+            commandCancellation.Token);
         try
         {
-            var exit = await run.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            var exit = await run.WaitAsync(TimeSpan.FromSeconds(5), ct);
             exit.Should().Be(0);
             commandCancellation.IsCancellationRequested.Should().BeFalse();
             watcher.Should().NotBeNull();
@@ -144,19 +163,23 @@ public sealed class AnalyzeCommandWatchRoutingTests
         {
             // Also clean up a failed regression instead of leaving its simulated watcher running.
             await commandCancellation.CancelAsync();
-            await run.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            await run.WaitAsync(TimeSpan.FromSeconds(5), ct);
         }
     }
 
-    private sealed class StoppingWatcher(IHostApplicationLifetime lifetime, IWorkspaceCatalog catalog, WorkspaceSelection selection) : IWorkspaceWatcher
+    private sealed class StoppingWatcher(
+        IHostApplicationLifetime lifetime,
+        IWorkspaceCatalog catalog,
+        WorkspaceSelection selection) : IWorkspaceWatcher
     {
-        public bool CleanedUp
-        {
-            get; private set;
-        }
+        public bool CleanedUp { get; private set; }
 
-        public async Task Watch(string repositoryRoot, Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task> onBatchChanged,
-            CancellationToken ct, Func<CancellationToken, Task>? initialize = null, Action? onReady = null)
+        public async Task Watch(
+            string repositoryRoot,
+            Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task> onBatchChanged,
+            CancellationToken ct,
+            Func<CancellationToken, Task>? initialize = null,
+            Action? onReady = null)
         {
             try
             {
@@ -181,12 +204,11 @@ public sealed class AnalyzeCommandWatchRoutingTests
         public Task Initialize(CancellationToken ct) => Task.CompletedTask;
     }
 
-    private sealed class IndexHandler(bool initialFailure, bool recoveryFailure) : ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>
+    private sealed class IndexHandler(
+        bool initialFailure,
+        bool recoveryFailure) : ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>
     {
-        public int Calls
-        {
-            get; private set;
-        }
+        public int Calls { get; private set; }
         public Task<Result<IndexWorkspaceOutcome>> Handle(IndexWorkspaceCommand command, CancellationToken ct)
         {
             Calls++;
@@ -198,11 +220,10 @@ public sealed class AnalyzeCommandWatchRoutingTests
     }
     private sealed class UpdateHandler(bool failed) : ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>
     {
-        public int Calls
-        {
-            get; private set;
-        }
-        public Task<Result<UpdateWorkspaceFilesOutcome>> Handle(UpdateWorkspaceFilesCommand command, CancellationToken ct)
+        public int Calls { get; private set; }
+        public Task<Result<UpdateWorkspaceFilesOutcome>> Handle(
+            UpdateWorkspaceFilesCommand command,
+            CancellationToken ct)
         {
             Calls++;
 
@@ -213,12 +234,13 @@ public sealed class AnalyzeCommandWatchRoutingTests
     }
     private sealed class Watcher : IWorkspaceWatcher
     {
-        public int Calls
-        {
-            get; private set;
-        }
-        public async Task Watch(string repositoryRoot, Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task> onBatchChanged,
-            CancellationToken ct, Func<CancellationToken, Task>? initialize = null, Action? onReady = null)
+        public int Calls { get; private set; }
+        public async Task Watch(
+            string repositoryRoot,
+            Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task> onBatchChanged,
+            CancellationToken ct,
+            Func<CancellationToken, Task>? initialize = null,
+            Action? onReady = null)
         {
             Calls++;
             if (initialize is not null)
@@ -228,7 +250,11 @@ public sealed class AnalyzeCommandWatchRoutingTests
 
             onReady?.Invoke();
             await onBatchChanged(
-                [new WorkspaceFileChange(WorkspaceFileChangeAction.Modified, NewPath: Path.Combine(repositoryRoot, "Feature.cs"))],
+                [
+                    new WorkspaceFileChange(
+                        WorkspaceFileChangeAction.Modified,
+                        NewPath: Path.Combine(repositoryRoot, "Feature.cs"))
+                ],
                 ct);
         }
     }

@@ -30,40 +30,47 @@ public sealed class DependencyGraphRepositoryTests
         await SeedGraph(context);
         var service = Repository(context);
 
-        var result = (await service.GetNodesPage(new([AppDirectoryId]), TestContext.Current.CancellationToken)).Items.ToArray();
+        var result = (await service.GetNodesPage(
+            new([AppDirectoryId]),
+            TestContext.Current.CancellationToken)).Items
+            .ToArray();
 
-        result.Where(static node => node is
-        {
-            Id: AppProjectNodeId,
-            Label: "MyCompany.App",
-            Type: "project",
-            Scope: "selected",
-            IsClickable: true
-        }).Should().NotBeEmpty();
-        result.Where(static node => node is
-        {
-            Id: UserServiceNodeId,
-            Label: "MyCompany.App.UserService.LoadUser()",
-            Type: "method",
-            Scope: "selected",
-            IsClickable: true
-        }).Should().NotBeEmpty();
-        result.Where(static node => node is
-        {
-            Id: CoreProjectNodeId,
-            Label: "MyCompany.Core",
-            Type: "project",
-            Scope: "external",
-            IsClickable: false
-        }).Should().NotBeEmpty();
-        result.Where(static node => node is
-        {
-            Id: UserNodeId,
-            Label: "MyCompany.Core.User",
-            Type: "class",
-            Scope: "external",
-            IsClickable: false
-        }).Should().NotBeEmpty();
+        result
+            .Where(static node => node is
+            {
+                Id: AppProjectNodeId,
+                Label: "MyCompany.App",
+                Type: "project",
+                Scope: "selected",
+                IsClickable: true
+            }).Should().NotBeEmpty();
+        result
+            .Where(static node => node is
+            {
+                Id: UserServiceNodeId,
+                Label: "MyCompany.App.UserService.LoadUser()",
+                Type: "method",
+                Scope: "selected",
+                IsClickable: true
+            }).Should().NotBeEmpty();
+        result
+            .Where(static node => node is
+            {
+                Id: CoreProjectNodeId,
+                Label: "MyCompany.Core",
+                Type: "project",
+                Scope: "external",
+                IsClickable: false
+            }).Should().NotBeEmpty();
+        result
+            .Where(static node => node is
+            {
+                Id: UserNodeId,
+                Label: "MyCompany.Core.User",
+                Type: "class",
+                Scope: "external",
+                IsClickable: false
+            }).Should().NotBeEmpty();
     }
 
     [Fact]
@@ -75,29 +82,35 @@ public sealed class DependencyGraphRepositoryTests
         await SeedGraph(context);
         var service = Repository(context);
 
-        var result = (await service.GetEdgesPage(new([AppDirectoryId]), TestContext.Current.CancellationToken)).Items.ToArray();
+        var result = (await service.GetEdgesPage(
+            new([AppDirectoryId]),
+            TestContext.Current.CancellationToken)).Items
+            .ToArray();
 
-        result.Where(static edge => edge is
-        {
-            Source: UserServiceNodeId,
-            Target: AppHelperNodeId,
-            Type: "methodcall",
-            Scope: "internal"
-        }).Should().NotBeEmpty();
-        result.Where(static edge => edge is
-        {
-            Source: AppProjectNodeId,
-            Target: CoreProjectNodeId,
-            Type: "projectreference",
-            Scope: "boundary"
-        }).Should().NotBeEmpty();
-        result.Where(static edge => edge is
-        {
-            Source: UserServiceNodeId,
-            Target: UserNodeId,
-            Type: "methodcall",
-            Scope: "boundary"
-        }).Should().NotBeEmpty();
+        result
+            .Where(static edge => edge is
+            {
+                Source: UserServiceNodeId,
+                Target: AppHelperNodeId,
+                Type: "methodcall",
+                Scope: "internal"
+            }).Should().NotBeEmpty();
+        result
+            .Where(static edge => edge is
+            {
+                Source: AppProjectNodeId,
+                Target: CoreProjectNodeId,
+                Type: "projectreference",
+                Scope: "boundary"
+            }).Should().NotBeEmpty();
+        result
+            .Where(static edge => edge is
+            {
+                Source: UserServiceNodeId,
+                Target: UserNodeId,
+                Type: "methodcall",
+                Scope: "boundary"
+            }).Should().NotBeEmpty();
     }
 
     [Fact]
@@ -125,7 +138,10 @@ public sealed class DependencyGraphRepositoryTests
 
         var service = Repository(context);
 
-        var result = (await service.GetEdgesPage(new([AppDirectoryId]), TestContext.Current.CancellationToken)).Items.ToArray();
+        var result = (await service.GetEdgesPage(
+            new([AppDirectoryId]),
+            TestContext.Current.CancellationToken)).Items
+            .ToArray();
 
         result.Should().NotContain(static edge => edge.Target == 999);
         result.Length.Should().Be(3);
@@ -141,32 +157,41 @@ public sealed class DependencyGraphRepositoryTests
         await SeedBoundaryImplementsScenario(context);
         var service = Repository(context);
 
-        var nodes = (await service.GetNodesPage(new([AppDirectoryId]), TestContext.Current.CancellationToken)).Items.ToArray();
-        var edges = (await service.GetEdgesPage(new([AppDirectoryId]), TestContext.Current.CancellationToken)).Items.ToArray();
+        var nodes = (await service.GetNodesPage(
+            new([AppDirectoryId]),
+            TestContext.Current.CancellationToken)).Items
+            .ToArray();
+        var edges = (await service.GetEdgesPage(
+            new([AppDirectoryId]),
+            TestContext.Current.CancellationToken)).Items
+            .ToArray();
 
-        nodes.Where(static node => node is
-        {
-            Id: UserRepositoryInterfaceNodeId,
-            Label: "MyCompany.App.Abstractions.IUserRepository",
-            Type: "interface",
-            Scope: "selected",
-            IsClickable: true
-        }).Should().NotBeEmpty();
-        nodes.Where(static node => node is
-        {
-            Id: UserRepositoryImplementationNodeId,
-            Label: "MyCompany.Core.UserRepository",
-            Type: "class",
-            Scope: "external",
-            IsClickable: false
-        }).Should().NotBeEmpty();
-        edges.Where(static edge => edge is
-        {
-            Source: UserRepositoryImplementationNodeId,
-            Target: UserRepositoryInterfaceNodeId,
-            Type: "implements",
-            Scope: "boundary"
-        }).Should().NotBeEmpty();
+        nodes
+            .Where(static node => node is
+            {
+                Id: UserRepositoryInterfaceNodeId,
+                Label: "MyCompany.App.Abstractions.IUserRepository",
+                Type: "interface",
+                Scope: "selected",
+                IsClickable: true
+            }).Should().NotBeEmpty();
+        nodes
+            .Where(static node => node is
+            {
+                Id: UserRepositoryImplementationNodeId,
+                Label: "MyCompany.Core.UserRepository",
+                Type: "class",
+                Scope: "external",
+                IsClickable: false
+            }).Should().NotBeEmpty();
+        edges
+            .Where(static edge => edge is
+            {
+                Source: UserRepositoryImplementationNodeId,
+                Target: UserRepositoryInterfaceNodeId,
+                Type: "implements",
+                Scope: "boundary"
+            }).Should().NotBeEmpty();
     }
 
     private static async Task SeedGraph(SharpSenseDbContext db)
@@ -368,7 +393,7 @@ public sealed class DependencyGraphRepositoryTests
                 EdgeType = EdgeType.MethodCall
             });
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     private static async Task SeedBoundaryImplementsScenario(SharpSenseDbContext db)
@@ -434,7 +459,7 @@ public sealed class DependencyGraphRepositoryTests
                 EdgeType = EdgeType.Implements
             });
 
-        await db.SaveChangesAsync();
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     private static GraphPageRepository Repository(SharpSenseDbContext context)

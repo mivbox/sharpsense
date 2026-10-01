@@ -39,13 +39,14 @@ public sealed class TypeScriptExtractionPassesTests
             TestContext.Current.CancellationToken);
 
         result.Value.CodeNodes.Should().HaveCount(4);
-        result.Value.CodeNodes.Select(static node => node.CanonicalId)
+        result.Value.CodeNodes
+            .Select(static node => node.CanonicalId)
             .Should()
             .Equal(
-            "code:ts:src/Feature.tsx:App",
-            "code:ts:src/Feature.tsx:Greeter",
-            "code:ts:src/Feature.tsx:Toolbar",
-            "code:ts:src/Feature.tsx:run");
+                "code:ts:src/Feature.tsx:App",
+                "code:ts:src/Feature.tsx:Greeter",
+                "code:ts:src/Feature.tsx:Toolbar",
+                "code:ts:src/Feature.tsx:run");
         result.Value.CodeNodes.Should().Contain(node =>
             node.CanonicalId == "code:ts:src/Feature.tsx:run" &&
             node.DisplayName == "run()" &&
@@ -429,16 +430,14 @@ public sealed class TypeScriptExtractionPassesTests
                 new HttpEdgeExtractionPass(),
                 new CodeNodeExtractionPass()
             }
-            : [
+            :
+            [
                 new CodeNodeExtractionPass(),
                 new ImportDependencyPass(tsConfigResolver, repositoryWorkspace),
                 new HttpEdgeExtractionPass()
             ];
 
-        return new TypeScriptLanguageExtractor(
-            sourceDiscoverer,
-            fileSystem,
-            extractionPasses);
+        return new TypeScriptLanguageExtractor(sourceDiscoverer, fileSystem, extractionPasses);
     }
 
     private static MockFileSystem CreateRepositoryFileSystem(params (string Path, string Content)[] files)

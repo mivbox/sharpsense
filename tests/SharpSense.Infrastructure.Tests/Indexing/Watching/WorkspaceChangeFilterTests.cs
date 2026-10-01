@@ -23,7 +23,13 @@ public sealed class WorkspaceChangeFilterTests
         filter.IsRelevant([new(WorkspaceFileChangeAction.Deleted, OldPath: "/repo/schemas/input.md")]).Should().BeTrue();
         filter.IsRelevant([new(WorkspaceFileChangeAction.DirectoryDeleted, OldPath: "/repo/schemas")]).Should().BeTrue();
         filter.IsRelevant([Added("schemas/new.md")]).Should().BeTrue();
-        filter.IsRelevant([new(WorkspaceFileChangeAction.Renamed, OldPath: "/repo/other.md", NewPath: "/repo/schemas/new.md")]).Should().BeTrue();
+        filter.IsRelevant(
+            [
+                new(
+                    WorkspaceFileChangeAction.Renamed,
+                    OldPath: "/repo/other.md",
+                    NewPath: "/repo/schemas/new.md")
+            ]).Should().BeTrue();
         filter.IsRelevant([Modified("unselected/existing.md")]).Should().BeFalse();
     }
 
@@ -74,7 +80,14 @@ public sealed class WorkspaceChangeFilterTests
     {
         var source = new WorkspaceSource(WorkspaceSourceKind.TypeScript, "frontend/tsconfig.json");
         var filter = Create(source);
-        filter.TrackSource(source, new ExtractedNodes([], [Node("shared/format.ts")], [], [], ["/repo/shared/later.ts"]));
+        filter.TrackSource(
+            source,
+            new ExtractedNodes(
+                [],
+                [Node("shared/format.ts")],
+                [],
+                [],
+                ["/repo/shared/later.ts"]));
 
         filter.IsRelevant([Modified("frontend/view.tsx")]).Should().BeTrue();
         filter.IsRelevant([Modified("shared/format.ts")]).Should().BeTrue();
@@ -91,16 +104,25 @@ public sealed class WorkspaceChangeFilterTests
 
         filter.IsRelevant([Modified("docs/architecture/overview.md")]).Should().BeTrue();
         filter.IsRelevant([Modified("docs/product/overview.md")]).Should().BeFalse();
-        filter.IsRelevant([new WorkspaceFileChange(
-            WorkspaceFileChangeAction.Renamed,
-            OldPath: "/repo/docs/architecture/overview.md",
-            NewPath: "/repo/archive/overview.md")]).Should().BeTrue();
-        filter.IsRelevant([new WorkspaceFileChange(
-            WorkspaceFileChangeAction.DirectoryDeleted,
-            OldPath: "/repo/docs/architecture")]).Should().BeTrue();
-        filter.IsRelevant([new WorkspaceFileChange(
-            WorkspaceFileChangeAction.Modified,
-            NewPath: "/other/docs/architecture/overview.md")]).Should().BeFalse();
+        filter.IsRelevant(
+            [
+                new WorkspaceFileChange(
+                    WorkspaceFileChangeAction.Renamed,
+                    OldPath: "/repo/docs/architecture/overview.md",
+                    NewPath: "/repo/archive/overview.md")
+            ]).Should().BeTrue();
+        filter.IsRelevant(
+            [
+                new WorkspaceFileChange(
+                    WorkspaceFileChangeAction.DirectoryDeleted,
+                    OldPath: "/repo/docs/architecture")
+            ]).Should().BeTrue();
+        filter.IsRelevant(
+            [
+                new WorkspaceFileChange(
+                    WorkspaceFileChangeAction.Modified,
+                    NewPath: "/other/docs/architecture/overview.md")
+            ]).Should().BeFalse();
     }
 
     [Fact]
@@ -139,7 +161,9 @@ public sealed class WorkspaceChangeFilterTests
     {
         public string RootPath => "/repo";
         public string GetRequiredTargetPath(string targetPath) => Path.GetFullPath(targetPath, RootPath);
-        public string ToRepositoryRelativePath(string? filePath) => Path.GetRelativePath(RootPath, GetRequiredTargetPath(filePath!));
+        public string ToRepositoryRelativePath(string? filePath) => Path.GetRelativePath(
+            RootPath,
+            GetRequiredTargetPath(filePath!));
 
         public bool TryToRepositoryRelativePath(string? filePath, out string relativePath)
         {

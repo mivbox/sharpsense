@@ -5,7 +5,6 @@ using SharpSense.Application.GraphStats.Abstractions;
 using SharpSense.Application.GraphStats.Models;
 using SharpSense.Application.Indexing;
 using SharpSense.Application.Indexing.Abstractions;
-using SharpSense.Application.Indexing.IndexWorkspace;
 using SharpSense.Application.Indexing.IndexWorkspace.Models;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Indexing.UpdateWorkspaceFiles;
@@ -13,6 +12,7 @@ using SharpSense.Application.Indexing.UpdateWorkspaceFiles.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Shared.Options;
+using SharpSense.Application.Tests.Indexing.Support;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 
 namespace SharpSense.Application.Tests.Indexing;
@@ -24,7 +24,8 @@ public sealed class IndexingDiagnosticsTests
     [InlineData(true)]
     public async Task WhenIndexCommits_ThenRecordsSuccessAfterCommitWithEmbeddingCountsAndPhaseTimes(bool incremental)
     {
-        var fixture = new Fixture();
+        var ct = TestContext.Current.CancellationToken;
+        using var fixture = new Fixture();
         var cached = Node("Cached") with
         {
             VectorEmbedding = [1f, 2f]
@@ -33,35 +34,46 @@ public sealed class IndexingDiagnosticsTests
         fixture.Options.SkipEmbeddings = false;
         fixture.Extraction = new ExtractedNodes(
             [],
-            [cached with
-            {
-                VectorEmbedding = null
-            }, changed],
+            [
+                cached with
+                {
+                    VectorEmbedding = null
+                },
+                changed
+            ],
             [],
             []);
-        fixture.Repository.Setup(repository => repository.GetPersistedCodeNodes(It.IsAny<CancellationToken>()))
+        fixture.Repository
+            .Setup(repository => repository.GetPersistedCodeNodes(It.IsAny<CancellationToken>()))
             .ReturnsAsync([cached]);
-        fixture.Embeddings.Setup(generator => generator.GenerateBatch(
-            It.Is<IEnumerable<string>>(texts => texts.SequenceEqual(new[]
-            {
-                changed.SearchText
-            })),
-            null,
-            It.IsAny<CancellationToken>()))
+        fixture.Embeddings
+            .Setup(generator => generator.GenerateBatch(
+                It.Is<IEnumerable<string>>(texts => texts.SequenceEqual(new[] { changed.SearchText })),
+                null,
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync([new TextEmbedding(changed.SearchText, [3f, 4f])]);
         var enteredCommit = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseCommit = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Repository.Setup(repository => repository.ReplaceWorkspace(It.IsAny<ExtractedNodes>(), It.IsAny<CancellationToken>()))
+        fixture.Repository
+            .Setup(repository => repository.ReplaceWorkspace(
+                It.IsAny<ExtractedNodes>(),
+                It.IsAny<CancellationToken>()))
             .Returns(async () =>
             {
                 enteredCommit.SetResult(true);
-                await releaseCommit.Task;
+                await releaseCommit.Task.WaitAsync(ct);
             });
 
-        var indexing = fixture.Handle(incremental, TestContext.Current.CancellationToken);
-        await enteredCommit.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
-        fixture.Store.Runs.Should().BeEmpty();
-        releaseCommit.SetResult(true);
+        var indexing = fixture.Handle(incremental, ct);
+        try
+        {
+            await enteredCommit.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            fixture.Store.Runs.Should().BeEmpty();
+        }
+        finally
+        {
+            releaseCommit.TrySetResult(true);
+        }
         var result = await indexing;
 
         result.IsSuccess.Should().BeTrue();
@@ -72,14 +84,9 @@ public sealed class IndexingDiagnosticsTests
         run.ExtractedNodeCount.Should().Be(2L);
         run.ReusedEmbeddingCount.Should().Be(1L);
         run.GeneratedEmbeddingCount.Should().Be(1L);
-        (run.CompletedAt >= run.StartedAt).Should().BeTrue();
-        (run.DurationMs >= 0).Should().BeTrue();
-        foreach (var phase in new[]
-        {
-            "extraction",
-            "embeddings",
-            "persistence"
-        })
+        run.CompletedAt.Should().BeOnOrAfter(run.StartedAt);
+        run.DurationMs.Should().BeGreaterThanOrEqualTo(0);
+        foreach (var phase in new[] { "extraction", "embeddings", "persistence" })
         {
             run.Phases!.Should().Contain(timing => timing.Name == phase && timing.DurationMs >= 0);
         }
@@ -90,7 +97,7 @@ public sealed class IndexingDiagnosticsTests
     [InlineData(true)]
     public async Task WhenExtractorFails_ThenRecordsFailedFileWithoutReplacingGraph(bool incremental)
     {
-        var fixture = new Fixture
+        using var fixture = new Fixture
         {
             Extraction = Result.Fail<ExtractedNodes>(new Error("Invalid source syntax")
                 .WithMetadata("filePath", "src/broken.ts"))
@@ -117,8 +124,11 @@ public sealed class IndexingDiagnosticsTests
     [InlineData(true)]
     public async Task WhenGraphCommitFails_ThenRecordsFailureWithoutReportingSuccess(bool incremental)
     {
-        var fixture = new Fixture();
-        fixture.Repository.Setup(repository => repository.ReplaceWorkspace(It.IsAny<ExtractedNodes>(), It.IsAny<CancellationToken>()))
+        using var fixture = new Fixture();
+        fixture.Repository
+            .Setup(repository => repository.ReplaceWorkspace(
+                It.IsAny<ExtractedNodes>(),
+                It.IsAny<CancellationToken>()))
             .ThrowsAsync(new IOException("Database write failed"));
 
         var result = await fixture.Handle(incremental, TestContext.Current.CancellationToken);
@@ -134,9 +144,14 @@ public sealed class IndexingDiagnosticsTests
     public async Task WhenIncrementalIndexIsCancelled_ThenRecordsCancellationUsingIndependentToken()
     {
         using var cancellation = new CancellationTokenSource();
-        var fixture = new Fixture();
-        fixture.Extractor.Setup(extractor => extractor.Extract(It.IsAny<ExtractionContext>(), It.IsAny<CancellationToken>()))
-            .Returns<ExtractionContext, CancellationToken>((_, token) => Task.FromCanceled<Result<ExtractedNodes>>(token));
+        using var fixture = new Fixture();
+        fixture.Extractor
+            .Setup(extractor => extractor.Extract(
+                It.IsAny<ExtractionContext>(),
+                It.IsAny<CancellationToken>()))
+            .Returns<ExtractionContext, CancellationToken>((
+                _,
+                token) => Task.FromCanceled<Result<ExtractedNodes>>(token));
         await cancellation.CancelAsync();
 
         var result = await fixture.Handle(incremental: true, cancellation.Token);
@@ -156,7 +171,7 @@ public sealed class IndexingDiagnosticsTests
     [Fact]
     public async Task WhenDiagnosticsCannotBeSaved_ThenPreservesSuccessfulGraphResult()
     {
-        var fixture = new Fixture();
+        using var fixture = new Fixture();
         fixture.Store.FailRecording = true;
 
         var result = await fixture.Handle(incremental: false, TestContext.Current.CancellationToken);
@@ -173,10 +188,10 @@ public sealed class IndexingDiagnosticsTests
     [Fact]
     public async Task WhenIncrementalBatchIsEmpty_ThenDoesNotRecordAnIndexSuccess()
     {
-        var fixture = new Fixture();
+        using var fixture = new Fixture();
 
         var result = await fixture.CreateIncrementalHandler()
-            .Handle(new UpdateWorkspaceFilesCommand([]), CancellationToken.None);
+            .Handle(new UpdateWorkspaceFilesCommand([]), TestContext.Current.CancellationToken);
 
         result.IsSuccess.Should().BeTrue();
         fixture.Store.Runs.Should().BeEmpty();
@@ -206,57 +221,50 @@ public sealed class IndexingDiagnosticsTests
             name,
             "body:" + name);
 
-    private sealed class Fixture
+    private sealed class Fixture : IDisposable
     {
-        public Mock<ILanguageExtractor> Extractor
-        {
-            get;
-        } = new(MockBehavior.Strict);
-        public Mock<IKnowledgeGraphRepository> Repository
-        {
-            get;
-        } = new(MockBehavior.Strict);
-        public Mock<IEmbeddingGenerator> Embeddings
-        {
-            get;
-        } = new(MockBehavior.Strict);
-        public Mock<IIndexingWorkspacePaths> Paths
-        {
-            get;
-        } = new(MockBehavior.Strict);
-        public WorkspaceExecutionOptions Options
-        {
-            get;
-        } = new()
+        private readonly IndexingHandlers _handlers = new();
+
+        public void Dispose() => _handlers.Dispose();
+        public Mock<ILanguageExtractor> Extractor { get; } = new(MockBehavior.Strict);
+        public Mock<IKnowledgeGraphRepository> Repository { get; } = new(MockBehavior.Strict);
+        public Mock<IEmbeddingGenerator> Embeddings { get; } = new(MockBehavior.Strict);
+        public Mock<IIndexingWorkspacePaths> Paths { get; } = new(MockBehavior.Strict);
+        public WorkspaceExecutionOptions Options { get; } = new()
         {
             WorkspaceSources = [new(WorkspaceSourceKind.CSharp, "App.sln")],
             RepositoryRoot = "/repo",
             SkipEmbeddings = true
         };
-        public RecordingStore Store
-        {
-            get;
-        } = new();
-        public Result<ExtractedNodes> Extraction
-        {
-            get; set;
-        } = Result.Ok(new ExtractedNodes([], [], [], []));
+        public RecordingStore Store { get; } = new();
+        public Result<ExtractedNodes> Extraction { get; set; } = Result.Ok(new ExtractedNodes([], [], [], []));
 
         public Fixture()
         {
-            Extractor.SetupGet(extractor => extractor.SourceKind)
+            Extractor
+                .SetupGet(extractor => extractor.SourceKind)
                 .Returns(WorkspaceSourceKind.CSharp);
-            Extractor.Setup(extractor => extractor.Extract(It.IsAny<ExtractionContext>(), It.IsAny<CancellationToken>()))
+            Extractor
+                .Setup(extractor => extractor.Extract(
+                    It.IsAny<ExtractionContext>(),
+                    It.IsAny<CancellationToken>()))
                 .ReturnsAsync(() => Extraction);
-            Repository.Setup(repository => repository.ReplaceWorkspace(It.IsAny<ExtractedNodes>(), It.IsAny<CancellationToken>()))
+            Repository
+                .Setup(repository => repository.ReplaceWorkspace(
+                    It.IsAny<ExtractedNodes>(),
+                    It.IsAny<CancellationToken>()))
                 .Returns(Task.CompletedTask);
-            Paths.SetupGet(paths => paths.RootPath)
+            Paths
+                .SetupGet(paths => paths.RootPath)
                 .Returns("/repo");
-            Paths.Setup(paths => paths.GetRequiredTargetPath("App.sln"))
+            Paths
+                .Setup(paths => paths.GetRequiredTargetPath("App.sln"))
                 .Returns("/repo/App.sln");
-            Paths.Setup(paths => paths.ToRepositoryRelativePath(It.IsAny<string>()))
+            Paths
+                .Setup(paths => paths.ToRepositoryRelativePath(It.IsAny<string>()))
                 .Returns((string? path) => path!.Replace("/repo/", string.Empty, StringComparison.Ordinal));
-            Paths.Setup(paths => paths.TryToRepositoryRelativePath(It.IsAny<string>(), out It.Ref<string>.IsAny))
+            Paths
+                .Setup(paths => paths.TryToRepositoryRelativePath(It.IsAny<string>(), out It.Ref<string>.IsAny))
                 .Returns((string? path, out string relativePath) =>
                 {
                     relativePath = path!.Replace("/repo/", string.Empty, StringComparison.Ordinal);
@@ -266,20 +274,13 @@ public sealed class IndexingDiagnosticsTests
         }
 
         public UpdateWorkspaceFilesCommandHandler CreateIncrementalHandler()
-            => new UpdateWorkspaceFilesCommandHandler(
-                new IndexWorkspaceCommandHandler(
-                    Embeddings.Object,
-                    Repository.Object,
-                    Paths.Object,
-                    Microsoft.Extensions.Options.Options.Create(Options),
-                    new WorkspaceExtractionCoordinator(
-                        [Extractor.Object],
-                        Paths.Object,
-                        Mock.Of<IWorkspaceChangeFilter>(),
-                        Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
-                    Store,
-                    Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance),
-                Mock.Of<IWorkspaceChangeFilter>(filter => filter.IsRelevant(It.IsAny<IReadOnlyList<WorkspaceFileChange>>()) == true));
+            => _handlers.CreateIncremental(
+                [Extractor.Object],
+                Embeddings.Object,
+                Repository.Object,
+                Paths.Object,
+                Options,
+                Store);
 
         public async Task<ResultBase> Handle(bool incremental, CancellationToken ct = default)
         {
@@ -291,18 +292,13 @@ public sealed class IndexingDiagnosticsTests
                     ct);
             }
 
-            var handler = new IndexWorkspaceCommandHandler(
+            var handler = _handlers.Create(
+                [Extractor.Object],
                 Embeddings.Object,
                 Repository.Object,
                 Paths.Object,
-                Microsoft.Extensions.Options.Options.Create(Options),
-                new WorkspaceExtractionCoordinator(
-                    [Extractor.Object],
-                    Paths.Object,
-                    Mock.Of<IWorkspaceChangeFilter>(),
-                    Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance),
-                Store,
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);
+                Options,
+                Store);
 
             return await handler.Handle(new IndexWorkspaceCommand(), ct);
         }
@@ -310,22 +306,10 @@ public sealed class IndexingDiagnosticsTests
 
     private sealed class RecordingStore : IIndexRunStore
     {
-        public List<IndexRunSummary> Runs
-        {
-            get;
-        } = [];
-        public bool WasCancelledAtRecord
-        {
-            get; private set;
-        }
-        public bool RecordTokenWasCancellable
-        {
-            get; private set;
-        }
-        public bool FailRecording
-        {
-            get; set;
-        }
+        public List<IndexRunSummary> Runs { get; } = [];
+        public bool WasCancelledAtRecord { get; private set; }
+        public bool RecordTokenWasCancellable { get; private set; }
+        public bool FailRecording { get; set; }
 
         public Task Record(IndexRunSummary run, CancellationToken ct)
         {

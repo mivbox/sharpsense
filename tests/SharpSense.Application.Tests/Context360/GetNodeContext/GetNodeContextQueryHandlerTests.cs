@@ -30,14 +30,13 @@ public sealed class GetNodeContextQueryHandlerTests
             [new Context360RelatedNode(11, "PaymentProcessor")],
             []);
         var repository = new Mock<IContextRepository>(MockBehavior.Strict);
-        repository.Setup(candidate => candidate.GetNodeContext(42, 50, ct))
+        repository
+            .Setup(candidate => candidate.GetNodeContext(42, 50, ct))
             .ReturnsAsync(expected);
         var handler = new GetNodeContextQueryHandler(repository.Object);
 
         var result = await handler.Handle(
-            new GetNodeContextQuery(
-                42,
-                100),
+            new GetNodeContextQuery(42, 100),
             ct);
 
         result.IsSuccess.Should().BeTrue();
@@ -50,14 +49,13 @@ public sealed class GetNodeContextQueryHandlerTests
     {
         var ct = TestContext.Current.CancellationToken;
         var repository = new Mock<IContextRepository>(MockBehavior.Strict);
-        repository.Setup(candidate => candidate.GetNodeContext(42, 10, ct))
+        repository
+            .Setup(candidate => candidate.GetNodeContext(42, 10, ct))
             .ReturnsAsync((Context360Result?)null);
         var handler = new GetNodeContextQueryHandler(repository.Object);
 
         var result = await handler.Handle(
-            new GetNodeContextQuery(
-                42,
-                10),
+            new GetNodeContextQuery(42, 10),
             ct);
 
         result.IsFailed.Should().BeTrue();

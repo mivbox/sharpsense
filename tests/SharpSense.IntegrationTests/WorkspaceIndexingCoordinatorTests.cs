@@ -38,7 +38,9 @@ public sealed class WorkspaceIndexingCoordinatorTests
         (secondJob.JobId != firstJob.JobId).Should().BeTrue();
         counts[first.Definition.Id].Should().Be(1);
         counts[second.Definition.Id].Should().Be(1);
-        ((Action)(() => coordinator.UpdateWhileIdle(first.Definition.Id, () => "updated"))).Should().ThrowExactly<WorkspaceBusyException>();
+        ((Action)(() => coordinator.UpdateWhileIdle(
+            first.Definition.Id,
+            () => "updated"))).Should().ThrowExactly<WorkspaceBusyException>();
         var stopped = await coordinator.Stop(first.Definition.Id, TestContext.Current.CancellationToken);
         stopped!.State.Should().Be("stopped");
         stopped.CompletedAt.Should().NotBeNull();
@@ -58,17 +60,17 @@ public sealed class WorkspaceIndexingCoordinatorTests
         var cleanedUp = Completion();
         await using var coordinator = new WorkspaceIndexingCoordinator(
             async (_, _, _, ct) =>
-        {
-            started.SetResult();
-            try
             {
-                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
-            }
-            finally
-            {
-                cleanedUp.SetResult();
-            }
-        },
+                started.SetResult();
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                }
+                finally
+                {
+                    cleanedUp.SetResult();
+                }
+            },
             stopping.Token,
             NullLogger<WorkspaceIndexingCoordinator>.Instance);
         coordinator.Start(selection, new StartWorkspaceIndexingRequest(Watch: true));
@@ -79,7 +81,9 @@ public sealed class WorkspaceIndexingCoordinatorTests
 
         cleanedUp.Task.IsCompletedSuccessfully.Should().BeTrue();
         coordinator.GetStatus(selection.Definition.Id).State.Should().Be("stopped");
-        ((Action)(() => coordinator.Start(selection, new StartWorkspaceIndexingRequest()))).Should().ThrowExactly<InvalidOperationException>();
+        ((Action)(() => coordinator.Start(
+            selection,
+            new StartWorkspaceIndexingRequest()))).Should().ThrowExactly<InvalidOperationException>();
     }
 
     [Fact]
@@ -116,8 +120,10 @@ public sealed class WorkspaceIndexingCoordinatorTests
                 new string('m', 3000),
                 3,
                 10,
-                [.. Enumerable.Range(0, 30)
-                    .Select(index => $"{index}:" + new string('d', 3000))],
+                [
+                    .. Enumerable.Range(0, 30)
+                        .Select(index => $"{index}:" + new string('d', 3000))
+                ],
                 IndexCommitted: true));
             updated.SetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, ct);

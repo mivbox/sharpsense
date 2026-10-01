@@ -41,49 +41,54 @@ public sealed class WorkspaceIndexingHttpEventsTests
         Action<WorkspaceIndexingUpdate>? publish = null;
         await using var coordinator = new WorkspaceIndexingCoordinator(
             async (_, _, update, token) =>
-        {
-            publish = update;
-            snapshots.Notify(new(operationId, 1, observedAt, AnalysisNotificationKind.Started, AnalysisOperationKind.Full));
-            snapshots.Notify(new(
-                operationId,
-                2,
-                observedAt,
-                AnalysisNotificationKind.PhaseChanged,
-                AnalysisOperationKind.Full,
-                Phase: AnalysisPhase.Extraction));
-            snapshots.Notify(new(
-                operationId,
-                3,
-                observedAt,
-                AnalysisNotificationKind.SourceStarted,
-                AnalysisOperationKind.Full,
-                Phase: AnalysisPhase.Extraction,
-                Source: source));
-            snapshots.Notify(new(
-                operationId,
-                4,
-                observedAt,
-                AnalysisNotificationKind.SourceProgress,
-                AnalysisOperationKind.Full,
-                Phase: AnalysisPhase.Extraction,
-                Source: source,
-                Message: "Analyzing declarations",
-                CompletedItems: 3,
-                TotalItems: 10));
-            update(new WorkspaceIndexingUpdate("indexing", "Analyzing declarations", Analysis: snapshots.Snapshot));
-            started.SetResult();
-            await Task.Delay(Timeout.InfiniteTimeSpan, token);
-        },
+            {
+                publish = update;
+                snapshots.Notify(new(
+                    operationId,
+                    1,
+                    observedAt,
+                    AnalysisNotificationKind.Started,
+                    AnalysisOperationKind.Full));
+                snapshots.Notify(new(
+                    operationId,
+                    2,
+                    observedAt,
+                    AnalysisNotificationKind.PhaseChanged,
+                    AnalysisOperationKind.Full,
+                    Phase: AnalysisPhase.Extraction));
+                snapshots.Notify(new(
+                    operationId,
+                    3,
+                    observedAt,
+                    AnalysisNotificationKind.SourceStarted,
+                    AnalysisOperationKind.Full,
+                    Phase: AnalysisPhase.Extraction,
+                    Source: source));
+                snapshots.Notify(new(
+                    operationId,
+                    4,
+                    observedAt,
+                    AnalysisNotificationKind.SourceProgress,
+                    AnalysisOperationKind.Full,
+                    Phase: AnalysisPhase.Extraction,
+                    Source: source,
+                    Message: "Analyzing declarations",
+                    CompletedItems: 3,
+                    TotalItems: 10));
+                update(new WorkspaceIndexingUpdate("indexing", "Analyzing declarations", Analysis: snapshots.Snapshot));
+                started.SetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            },
             CancellationToken.None,
             NullLogger<WorkspaceIndexingCoordinator>.Instance);
         var baseUrl = $"http://127.0.0.1:{AvailablePort()}";
         var app = Cli.Program.CreateCommandApp(
             configureServices: services =>
-        {
-            services.AddSingleton<IFileSystem>(fileSystem);
-            services.AddSingleton<IWorkspaceCatalog>(catalog);
-            services.AddSingleton(coordinator);
-        },
+            {
+                services.AddSingleton<IFileSystem>(fileSystem);
+                services.AddSingleton<IWorkspaceCatalog>(catalog);
+                services.AddSingleton(coordinator);
+            },
             enableFileLogging: false);
         using var shutdown = new CancellationTokenSource();
         var runTask = app.RunAsync(["ui", "--url", baseUrl], shutdown.Token);
@@ -111,7 +116,10 @@ public sealed class WorkspaceIndexingHttpEventsTests
                 initial.Id.Should().Be($"{initial.Data.GetProperty("streamId")
                     .GetGuid()}:0");
 
-                using var start = await client.PostAsJsonAsync(path, new StartWorkspaceIndexingRequest(Watch: true), ct);
+                using var start = await client.PostAsJsonAsync(
+                    path,
+                    new StartWorkspaceIndexingRequest(Watch: true),
+                    ct);
                 start.StatusCode.Should().Be(HttpStatusCode.Accepted);
                 await started.Task.WaitAsync(ct);
                 var active = await ReadFrame(reader, ct);

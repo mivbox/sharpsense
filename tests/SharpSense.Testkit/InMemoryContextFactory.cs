@@ -15,7 +15,9 @@ public sealed class InMemoryContextFactory<TContext> : IDisposable, IAsyncDispos
     private readonly Func<DbContextOptions<TContext>, TContext> _createContext;
     private SqliteConnection? _dbConnection;
 
-    public InMemoryContextFactory(Func<DbContextOptions<TContext>, TContext> createContext, InMemoryContextFactoryOptions? options = null)
+    public InMemoryContextFactory(
+        Func<DbContextOptions<TContext>, TContext> createContext,
+        InMemoryContextFactoryOptions? options = null)
     {
         _createContext = createContext;
         _options = options ?? new InMemoryContextFactoryOptions();
@@ -57,9 +59,10 @@ public sealed class InMemoryContextFactory<TContext> : IDisposable, IAsyncDispos
 
         var dbContextFactory = CreateDbContextFactory(writeLine);
         services.AddSingleton(dbContextFactory);
-        services.AddScoped(static serviceProvider => serviceProvider
-            .GetRequiredService<IDbContextFactory<TContext>>()
-            .CreateDbContext());
+        services
+            .AddScoped(static serviceProvider => serviceProvider
+                .GetRequiredService<IDbContextFactory<TContext>>()
+                .CreateDbContext());
     }
 
     public SqliteConnection GetSqliteConnection() => _dbConnection ??= CreateInMemoryDatabase();

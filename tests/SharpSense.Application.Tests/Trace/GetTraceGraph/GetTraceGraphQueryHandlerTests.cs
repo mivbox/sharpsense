@@ -57,14 +57,24 @@ public sealed class GetTraceGraphQueryHandlerTests
         result.Value.Dependencies.Should().Equal(edge);
         result.Value.Truncated.Should().BeFalse();
         navigator.Verify(candidate => candidate.GetCallees(new TraceQuery("1"), ct), Times.Once);
-        navigator.Verify(candidate => candidate.GetCallees(new TraceQuery("2"), ct), maxDepth > 1 ? Times.Once() : Times.Never());
-        navigator.Verify(candidate => candidate.GetCallees(new TraceQuery("3"), ct), maxDepth > 2 ? Times.Once() : Times.Never());
+        navigator.Verify(
+            candidate => candidate.GetCallees(
+                new TraceQuery("2"),
+                ct),
+            maxDepth > 1 ? Times.Once() : Times.Never());
+        navigator.Verify(
+            candidate => candidate.GetCallees(
+                new TraceQuery("3"),
+                ct),
+            maxDepth > 2 ? Times.Once() : Times.Never());
     }
 
     [Theory]
     [InlineData(999, false)]
     [InlineData(1000, true)]
-    public async Task WhenCalleeCountReachesTheBudget_ThenItBoundsTheGraphAndReportsOnlyOmittedNodesAsTruncated(int calleeCount, bool truncated)
+    public async Task WhenCalleeCountReachesTheBudget_ThenItBoundsTheGraphAndReportsOnlyOmittedNodesAsTruncated(
+        int calleeCount,
+        bool truncated)
     {
         var ct = TestContext.Current.CancellationToken;
         var root = Node(1);
@@ -97,7 +107,17 @@ public sealed class GetTraceGraphQueryHandlerTests
     {
         var ct = TestContext.Current.CancellationToken;
         var root = Node(1);
-        var caller = new ImpactedCodeNode(2, "code:2", "project", "Sample.Caller", "Caller", NodeType.Method, "Caller.cs", 10, 20, "Caller summary");
+        var caller = new ImpactedCodeNode(
+            2,
+            "code:2",
+            "project",
+            "Sample.Caller",
+            "Caller",
+            NodeType.Method,
+            "Caller.cs",
+            10,
+            20,
+            "Caller summary");
         var dependency = new ImpactedDependencyEdge(caller.CanonicalId, root.CanonicalId, EdgeType.MethodCall);
         var navigator = new Mock<ITraceNavigator>(MockBehavior.Strict);
         navigator
@@ -114,7 +134,17 @@ public sealed class GetTraceGraphQueryHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Value.Root.Should().Be(root);
         result.Value.Direction.Should().Be(TraceDirection.Caller);
-        result.Value.Nodes.Should().Equal(new CodeNodeResult(2, "code:2", "project", "Sample.Caller", "Caller", NodeType.Method, "Caller.cs", 10, 20, "Caller summary"));
+        result.Value.Nodes.Should().Equal(new CodeNodeResult(
+            2,
+            "code:2",
+            "project",
+            "Sample.Caller",
+            "Caller",
+            NodeType.Method,
+            "Caller.cs",
+            10,
+            20,
+            "Caller summary"));
         result.Value.Dependencies.Should().Equal(dependency);
         result.Value.Truncated.Should().BeFalse();
     }
@@ -124,13 +154,18 @@ public sealed class GetTraceGraphQueryHandlerTests
     [InlineData(1, TraceDirection.Callee, 0)]
     [InlineData(1, TraceDirection.Caller, 11)]
     [InlineData(1, (TraceDirection)99, 3)]
-    public async Task WhenTheQueryIsInvalid_ThenItFailsBeforeReadingTheGraph(int nodeId, TraceDirection direction, int maxDepth)
+    public async Task WhenTheQueryIsInvalid_ThenItFailsBeforeReadingTheGraph(
+        int nodeId,
+        TraceDirection direction,
+        int maxDepth)
     {
         var navigator = new Mock<ITraceNavigator>(MockBehavior.Strict);
         var impactAnalyzer = new Mock<IImpactAnalyzer>(MockBehavior.Strict);
         var handler = new GetTraceGraphQueryHandler(navigator.Object, impactAnalyzer.Object);
 
-        var result = await handler.Handle(new GetTraceGraphQuery(nodeId, direction, maxDepth), TestContext.Current.CancellationToken);
+        var result = await handler.Handle(
+            new GetTraceGraphQuery(nodeId, direction, maxDepth),
+            TestContext.Current.CancellationToken);
 
         result.IsFailed.Should().BeTrue();
         var error = result.Errors
@@ -178,5 +213,15 @@ public sealed class GetTraceGraphQueryHandlerTests
         await act.Should().ThrowExactlyAsync<OperationCanceledException>();
     }
 
-    private static CodeNodeResult Node(int id) => new(id, $"code:{id}", "project", $"Sample.Node{id}", $"Node{id}", NodeType.Method, "Sample.cs", 1, 5, "Summary");
+    private static CodeNodeResult Node(int id) => new(
+        id,
+        $"code:{id}",
+        "project",
+        $"Sample.Node{id}",
+        $"Node{id}",
+        NodeType.Method,
+        "Sample.cs",
+        1,
+        5,
+        "Summary");
 }

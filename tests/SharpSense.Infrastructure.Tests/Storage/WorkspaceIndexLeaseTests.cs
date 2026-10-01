@@ -13,14 +13,21 @@ public sealed class WorkspaceIndexLeaseTests
         using var fixture = new Fixture();
         var first = fixture.Catalog;
         var second = new WorkspaceCatalog(new FileSystem(), fixture.Home);
-        var selection = first.Create("product", fixture.RepositoryRoot, [new(WorkspaceSourceKind.Markdown, "docs/**/*.md")]);
+        var selection = first.Create(
+            "product",
+            fixture.RepositoryRoot,
+            [new(WorkspaceSourceKind.Markdown, "docs/**/*.md")]);
         var original = File.ReadAllText(selection.ConfigurationPath);
         using var lease = first.AcquireIndexLease(selection);
 
         var busy = ((Action)(() => second.AcquireIndexLease(second.Resolve("product")))).Should().ThrowExactly<WorkspaceIndexBusyException>().Which;
         busy.Message.Should().Contain("Stop that session");
-        ((Action)(() => second.AddSources("product", [new(WorkspaceSourceKind.Markdown, "notes/**/*.md")]))).Should().ThrowExactly<WorkspaceIndexBusyException>();
-        ((Action)(() => second.RemoveSources("product", [new(WorkspaceSourceKind.Markdown, "docs/**/*.md")]))).Should().ThrowExactly<WorkspaceIndexBusyException>();
+        ((Action)(() => second.AddSources(
+            "product",
+            [new(WorkspaceSourceKind.Markdown, "notes/**/*.md")]))).Should().ThrowExactly<WorkspaceIndexBusyException>();
+        ((Action)(() => second.RemoveSources(
+            "product",
+            [new(WorkspaceSourceKind.Markdown, "docs/**/*.md")]))).Should().ThrowExactly<WorkspaceIndexBusyException>();
         ((Action)(() => second.Update("product", "renamed", []))).Should().ThrowExactly<WorkspaceIndexBusyException>();
 
         File.ReadAllText(selection.ConfigurationPath).Should().Be(original);
@@ -51,7 +58,10 @@ public sealed class WorkspaceIndexLeaseTests
     public void WhenStaleSelection_ThenCannotAcquireWriterLeaseAfterSourcesChange()
     {
         using var fixture = new Fixture();
-        var stale = fixture.Catalog.Create("product", fixture.RepositoryRoot, [new(WorkspaceSourceKind.Markdown, "docs/**/*.md")]);
+        var stale = fixture.Catalog.Create(
+            "product",
+            fixture.RepositoryRoot,
+            [new(WorkspaceSourceKind.Markdown, "docs/**/*.md")]);
         var current = fixture.Catalog.AddSources("product", [new(WorkspaceSourceKind.Markdown, "notes/**/*.md")]);
 
         var exception = ((Action)(() => fixture.Catalog.AcquireIndexLease(stale))).Should().ThrowExactly<WorkspaceDefinitionChangedException>().Which;
@@ -64,8 +74,14 @@ public sealed class WorkspaceIndexLeaseTests
     public void WhenWorkspacesDiffer_ThenTheyCanBeIndexedConcurrentlyAndMergedIndependently()
     {
         using var fixture = new Fixture();
-        var first = fixture.Catalog.Create("first", fixture.RepositoryRoot, [new(WorkspaceSourceKind.Markdown, "docs/**/*.md")]);
-        var second = fixture.Catalog.Create("second", fixture.RepositoryRoot, [new(WorkspaceSourceKind.Markdown, "notes/**/*.md")]);
+        var first = fixture.Catalog.Create(
+            "first",
+            fixture.RepositoryRoot,
+            [new(WorkspaceSourceKind.Markdown, "docs/**/*.md")]);
+        var second = fixture.Catalog.Create(
+            "second",
+            fixture.RepositoryRoot,
+            [new(WorkspaceSourceKind.Markdown, "notes/**/*.md")]);
         using var firstLease = fixture.Catalog.AcquireIndexLease(first);
         using var secondLease = fixture.Catalog.AcquireIndexLease(second);
 
@@ -99,25 +115,13 @@ public sealed class WorkspaceIndexLeaseTests
             Catalog = new WorkspaceCatalog(new FileSystem(), Home);
         }
 
-        public DirectoryInfo Directory
-        {
-            get;
-        }
+        public DirectoryInfo Directory { get; }
 
-        public string RepositoryRoot
-        {
-            get;
-        }
+        public string RepositoryRoot { get; }
 
-        public string Home
-        {
-            get;
-        }
+        public string Home { get; }
 
-        public WorkspaceCatalog Catalog
-        {
-            get;
-        }
+        public WorkspaceCatalog Catalog { get; }
 
         public void Dispose() => Directory.Delete(recursive: true);
     }

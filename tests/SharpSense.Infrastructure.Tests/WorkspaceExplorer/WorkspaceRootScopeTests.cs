@@ -19,7 +19,9 @@ public sealed class WorkspaceRootScopeTests
     public async Task WhenSelectingReturnedRootDirectory_ThenGraphIncludesRootFilesAndDescendants(bool includeNestedFiles)
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
         var index = new KnowledgeGraphRepository(factory.CreateDbContextFactory());
         var project = new IndexedProject("project:App.csproj", "App", "App.csproj", "project-hash");
         var rootNode = Node("App.Program", "Program.cs", project.Id);
@@ -36,7 +38,12 @@ public sealed class WorkspaceRootScopeTests
         await index.ReplaceWorkspace(new([project], nodes, [], []), ct);
         await using var context = await factory.GetContext(ct);
         var tree = new WorkspaceTreeRepository(context);
-        var graph = new GraphPageRepository(context, new RepositoryWorkspace("/repo", "/workspace-home/fixture/index.db", new FileSystem()));
+        var graph = new GraphPageRepository(
+            context,
+            new RepositoryWorkspace(
+                "/repo",
+                "/workspace-home/fixture/index.db",
+                new FileSystem()));
 
         var root = await tree.GetTree("/", ct);
 
@@ -46,9 +53,11 @@ public sealed class WorkspaceRootScopeTests
         root.Nodes.Should().Contain(node => node.Path == "App.csproj" && node.Kind == "project");
         root.Nodes.Count(node => node.Kind == "folder").Should().Be(includeNestedFiles ? 2 : 0);
         var rootGraph = (await graph.GetNodesPage(new([root.ParentDirectoryId!.Value]), ct)).Items;
-        rootGraph.Select(node => node.Label).Should().BeEquivalentTo(
-            nodes.Select(node => node.FullyQualifiedName)
-                .Append(project.Name));
+        rootGraph
+            .Select(node => node.Label).Should().BeEquivalentTo(
+                nodes
+                    .Select(node => node.FullyQualifiedName)
+                    .Append(project.Name));
         rootGraph.Should().OnlyContain(node => node.Scope == "selected");
         rootGraph.Single(node => node.Label == rootNode.FullyQualifiedName).CodeNodeId.Should().BeGreaterThan(0);
 

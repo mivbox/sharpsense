@@ -19,7 +19,8 @@ public sealed class TypeScriptRestorationTests
             ("a.ts", "/** Loads customer data. */\nexport function load() { return 1; }"),
             ("b.ts", "export function load() { return 2; }"));
         var before = Value(await extractor.Extract(new("/repo/tsconfig.json", null), _ct));
-        before.CodeNodes.Select(node => node.FullyQualifiedName).Should().BeEquivalentTo("ts:a.ts::load", "ts:b.ts::load");
+        before.CodeNodes
+            .Select(node => node.FullyQualifiedName).Should().BeEquivalentTo("ts:a.ts::load", "ts:b.ts::load");
         before.CodeNodes.Single(node => node.RelativeFilePath == "a.ts").Summary.Should().Be("Loads customer data.");
         before.CodeNodes.Should().OnlyContain(node => node.BodyHash != null && node.BodyHash.Length == 64);
         fs.File.WriteAllText("/repo/a.ts", "/** Loads customer data. */\nexport function load() { return 3; }");
@@ -42,8 +43,11 @@ public sealed class TypeScriptRestorationTests
             ("barrel.ts", "export { renamed as publicName, default } from './leaf.js';"),
             ("app.ts", "import callDefault, { publicName } from './barrel.js'; export function app() { return publicName() + callDefault(); }"));
         var result = Value(await extractor.Extract(new("/repo/tsconfig.json", null), _ct));
-        result.Edges.Where(edge => edge.CallerId == "code:ts:app.ts:app" && edge.EdgeType == EdgeType.Import)
-            .Select(edge => edge.CalleeId).Should().BeEquivalentTo("code:ts:leaf.ts:original", "code:ts:leaf.ts:default");
+        result.Edges
+            .Where(edge => edge.CallerId == "code:ts:app.ts:app" && edge.EdgeType == EdgeType.Import)
+            .Select(edge => edge.CalleeId).Should().BeEquivalentTo(
+                "code:ts:leaf.ts:original",
+                "code:ts:leaf.ts:default");
         result.CodeNodes.Should().Contain(node => node.CanonicalId == "code:ts:leaf.ts:default" && node.NodeType == NodeType.Method);
     }
 
@@ -62,7 +66,8 @@ public sealed class TypeScriptRestorationTests
 
         var result = Value(await extractor.Extract(new("/repo/tsconfig.json", null), _ct));
 
-        result.Edges.Where(edge => edge.EdgeType == EdgeType.Import).Should().HaveCount(2).And.OnlyContain(edge => edge.CalleeId == $"code:ts:leaf.ts:{declaration}");
+        result.Edges
+            .Where(edge => edge.EdgeType == EdgeType.Import).Should().HaveCount(2).And.OnlyContain(edge => edge.CalleeId == $"code:ts:leaf.ts:{declaration}");
     }
 
     [Fact]
@@ -99,7 +104,8 @@ public sealed class TypeScriptRestorationTests
             ("shared/api.ts", "export function shared() {}"),
             ("shared/ignored.ts", "export function other() {}"));
         var result = Value(await extractor.Extract(new("/repo/tsconfig.json", null), _ct));
-        result.CodeNodes.Select(node => node.RelativeFilePath).Should().BeEquivalentTo("src/keep.ts", "shared/api.ts");
+        result.CodeNodes
+            .Select(node => node.RelativeFilePath).Should().BeEquivalentTo("src/keep.ts", "shared/api.ts");
     }
 
     [Theory]
@@ -246,11 +252,7 @@ public sealed class TypeScriptRestorationTests
                 .Replace("'/load'", "'/new-load'")
                 .Replace("'/get'", "'/new-get'"));
         var after = Value(await extractor.Extract(new("/repo/tsconfig.json", null), _ct));
-        foreach (var name in new[]
-        {
-            "load",
-            "Client.get"
-        })
+        foreach (var name in new[] { "load", "Client.get" })
         {
             after.CodeNodes.Single(node => node.CanonicalId == $"code:ts:api.ts:{name}").BodyHash
                 .Should().NotBe(before.CodeNodes.Single(node => node.CanonicalId == $"code:ts:api.ts:{name}").BodyHash);
@@ -294,12 +296,15 @@ public sealed class TypeScriptRestorationTests
         var before = Value(await extractor.Extract(new("/repo/tsconfig.json", null), _ct));
         var memberId = $"code:ts:api.ts:Client.{member}";
         before.CodeNodes.Should().HaveCount(8);
-        before.CodeNodes.Select(node => node.FullyQualifiedName)
+        before.CodeNodes
+            .Select(node => node.FullyQualifiedName)
             .Distinct().Should().HaveCount(8);
-        before.Edges.Where(edge => edge.EdgeType == EdgeType.HttpRequest).Should().HaveCount(6).And.OnlyContain(edge => edge.CallerId != "code:ts:api.ts:Client");
+        before.Edges
+            .Where(edge => edge.EdgeType == EdgeType.HttpRequest).Should().HaveCount(6).And.OnlyContain(edge => edge.CallerId != "code:ts:api.ts:Client");
         before.Edges.Should().Contain(edge => edge.CallerId == memberId && edge.Metadata == $"/{url}" &&
             edge.EdgeType == EdgeType.HttpRequest);
-        before.Edges.Where(edge => edge.EdgeType == EdgeType.Import).Should().ContainSingle().Which.CalleeId.Should().Be("code:ts:api.ts:Client");
+        before.Edges
+            .Where(edge => edge.EdgeType == EdgeType.Import).Should().ContainSingle().Which.CalleeId.Should().Be("code:ts:api.ts:Client");
 
         fs.File.WriteAllText(
             "/repo/api.ts",
@@ -309,7 +314,8 @@ public sealed class TypeScriptRestorationTests
                 StringComparison.Ordinal));
         var after = Value(await extractor.Extract(new("/repo/tsconfig.json", null), _ct));
 
-        after.CodeNodes.Where(node => node.BodyHash != before.CodeNodes.Single(old => old.CanonicalId == node.CanonicalId).BodyHash)
+        after.CodeNodes
+            .Where(node => node.BodyHash != before.CodeNodes.Single(old => old.CanonicalId == node.CanonicalId).BodyHash)
             .Select(node => node.CanonicalId).Should().BeEquivalentTo("code:ts:api.ts:Client", memberId);
         after.Edges.Should().Contain(edge => edge.CallerId == memberId && edge.Metadata == "/changed" &&
             edge.EdgeType == EdgeType.HttpRequest);
@@ -333,7 +339,8 @@ public sealed class TypeScriptRestorationTests
 
         var result = Value(await extractor.Extract(new("/repo/tsconfig.json", null), _ct));
 
-        result.Edges.Where(edge => edge.EdgeType == EdgeType.Import).Should().ContainSingle().Which.CalleeId.Should().Be("code:ts:leaf.ts:foo");
+        result.Edges
+            .Where(edge => edge.EdgeType == EdgeType.Import).Should().ContainSingle().Which.CalleeId.Should().Be("code:ts:leaf.ts:foo");
     }
 
     [Theory]
@@ -341,7 +348,9 @@ public sealed class TypeScriptRestorationTests
     [InlineData("import { foo } from './barrel';", "export { foo } from './b'; export * from './a';")]
     [InlineData("import * as api from './barrel';", "export * from './a'; export { foo } from './b';")]
     [InlineData("import * as api from './barrel';", "export { foo } from './b'; export * from './a';")]
-    public async Task WhenExplicitReexportsOverlapStars_ThenExplicitExportsWinForNamedAndNamespaceImports(string import, string barrel)
+    public async Task WhenExplicitReexportsOverlapStars_ThenExplicitExportsWinForNamedAndNamespaceImports(
+        string import,
+        string barrel)
     {
         var (_, extractor) = Fixture(
             ("tsconfig.json", "{}"),
@@ -352,7 +361,8 @@ public sealed class TypeScriptRestorationTests
 
         var result = Value(await extractor.Extract(new("/repo/tsconfig.json", null), _ct));
 
-        result.Edges.Where(edge => edge.EdgeType == EdgeType.Import).Should().ContainSingle().Which.CalleeId.Should().Be("code:ts:b.ts:foo");
+        result.Edges
+            .Where(edge => edge.EdgeType == EdgeType.Import).Should().ContainSingle().Which.CalleeId.Should().Be("code:ts:b.ts:foo");
     }
 
     [Theory]
@@ -367,18 +377,20 @@ public sealed class TypeScriptRestorationTests
 
         var result = Value(await extractor.Extract(new("/repo/tsconfig.json", null), _ct));
 
-        result.CodeNodes.Select(node => node.CanonicalId).Should().BeEquivalentTo(
-            $"code:ts:{path}:load",
-            $"code:ts:{path}:Client",
-            $"code:ts:{path}:Client.run",
-            $"code:ts:{path}:version",
-            "code:ts:app.ts:app");
-        result.Edges.Where(edge => edge.EdgeType == EdgeType.Import)
+        result.CodeNodes
+            .Select(node => node.CanonicalId).Should().BeEquivalentTo(
+                $"code:ts:{path}:load",
+                $"code:ts:{path}:Client",
+                $"code:ts:{path}:Client.run",
+                $"code:ts:{path}:version",
+                "code:ts:app.ts:app");
+        result.Edges
+            .Where(edge => edge.EdgeType == EdgeType.Import)
             .Select(edge => edge.CalleeId)
             .Should().BeEquivalentTo(
-            $"code:ts:{path}:load",
-            $"code:ts:{path}:Client",
-            $"code:ts:{path}:version");
+                $"code:ts:{path}:load",
+                $"code:ts:{path}:Client",
+                $"code:ts:{path}:version");
     }
 
     private static CancellationToken _ct => TestContext.Current.CancellationToken;
@@ -404,7 +416,11 @@ public sealed class TypeScriptRestorationTests
         var fs = new MockFileSystem(data, "/repo");
         var workspace = new RepositoryWorkspace("/repo", "/test-storage/index.db", fs);
         var resolver = new TsConfigResolver(workspace, fs);
-        var discoverer = new TypeScriptSourceDiscoverer(workspace, new WorkspaceFileDiscoverer(workspace, fs), fs, resolver);
+        var discoverer = new TypeScriptSourceDiscoverer(
+            workspace,
+            new WorkspaceFileDiscoverer(workspace, fs),
+            fs,
+            resolver);
 
         return (fs, new(
             discoverer,

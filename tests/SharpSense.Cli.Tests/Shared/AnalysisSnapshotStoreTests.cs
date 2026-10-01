@@ -13,7 +13,12 @@ public sealed class AnalysisSnapshotStoreTests
         var store = new AnalysisSnapshotStore();
         var operation = Guid.NewGuid();
         var now = DateTimeOffset.UtcNow;
-        void Send(long sequence, AnalysisNotificationKind kind, AnalysisSource? source = null, AnalysisSummary? summary = null)
+        void Send(
+            long sequence,
+            AnalysisNotificationKind kind,
+            AnalysisSource? source = null,
+            AnalysisSummary? summary = null,
+            int completedItems = 1)
             => store.Notify(new(
                 operation,
                 sequence,
@@ -21,15 +26,27 @@ public sealed class AnalysisSnapshotStoreTests
                 kind,
                 AnalysisOperationKind.Full,
                 Source: source,
-                CompletedItems: 1,
+                CompletedItems: completedItems,
                 TotalItems: 4,
                 Summary: summary));
         Send(1, AnalysisNotificationKind.Started);
         Send(2, AnalysisNotificationKind.SourceStarted, new(WorkspaceSourceKind.CSharp, "App.csproj"));
         Send(3, AnalysisNotificationKind.SourceStarted, new(WorkspaceSourceKind.TypeScript, "web"));
-        Send(4, AnalysisNotificationKind.SourceProgress, new(WorkspaceSourceKind.CSharp, "App.csproj"));
+        Send(4, AnalysisNotificationKind.SourceProgress, new(WorkspaceSourceKind.CSharp, "App.csproj"), completedItems: 3);
         var loading = store.Snapshot!;
-        loading.Sources.Count.Should().Be(2);
+        loading.Sources.Should().SatisfyRespectively(
+            source =>
+            {
+                source.Path.Should().Be("App.csproj");
+                source.CompletedItems.Should().Be(3);
+                source.TotalItems.Should().Be(4);
+            },
+            source =>
+            {
+                source.Path.Should().Be("web");
+                source.CompletedItems.Should().Be(1);
+                source.TotalItems.Should().Be(4);
+            });
         loading.CompletedItems.Should().BeNull();
         var summary = new AnalysisSummary(2, 10, 20, 1, 2, 0, 10, 0, 0);
         Send(5, AnalysisNotificationKind.Committed, summary: summary);
@@ -50,14 +67,35 @@ public sealed class AnalysisSnapshotStoreTests
         var now = DateTimeOffset.UtcNow;
         store.Notify(new(first, 1, now, AnalysisNotificationKind.Started, AnalysisOperationKind.Full));
         var summary = new AnalysisSummary(1, 3, 2, 1, 1, 0, 0, 0, 0);
-        store.Notify(new(first, 2, now, AnalysisNotificationKind.Committed, AnalysisOperationKind.Full, Summary: summary));
-        store.Notify(new(second, 1, now.AddSeconds(1), AnalysisNotificationKind.Started, AnalysisOperationKind.Incremental));
+        store.Notify(new(
+            first,
+            2,
+            now,
+            AnalysisNotificationKind.Committed,
+            AnalysisOperationKind.Full,
+            Summary: summary));
+        store.Notify(new(
+            second,
+            1,
+            now.AddSeconds(1),
+            AnalysisNotificationKind.Started,
+            AnalysisOperationKind.Incremental));
         var current = store.Snapshot;
-        store.Notify(new(first, 99, now.AddSeconds(2), AnalysisNotificationKind.EmbeddingProgress, AnalysisOperationKind.Full));
+        store.Notify(new(
+            first,
+            99,
+            now.AddSeconds(2),
+            AnalysisNotificationKind.EmbeddingProgress,
+            AnalysisOperationKind.Full));
         store.Snapshot.Should().BeSameAs(current);
         current!.LastCommittedSummary.Should().Be(summary);
         current.Summary.Should().BeNull();
-        store.Notify(new(second, 2, now.AddSeconds(3), AnalysisNotificationKind.Ignored, AnalysisOperationKind.Incremental));
+        store.Notify(new(
+            second,
+            2,
+            now.AddSeconds(3),
+            AnalysisNotificationKind.Ignored,
+            AnalysisOperationKind.Incremental));
         store.Snapshot!.State.Should().Be("ignored");
         store.Snapshot.LastCommittedSummary.Should().Be(summary);
     }
@@ -92,7 +130,7 @@ public sealed class AnalysisSnapshotStoreTests
         store.Snapshot!.Diagnostics.Count.Should().Be(20);
         store.Snapshot.Diagnostics.Should().AllSatisfy(diagnostic => diagnostic.Length.Should().Be(2000));
         store.Snapshot.Sources.Should().ContainSingle();
-        var path = store.Snapshot.Sources[0].Path;
+        store.Snapshot.Sources[0].Path.Should().Be("99.csproj");
         store.Notify(new(
             id,
             ++sequence,
@@ -100,7 +138,7 @@ public sealed class AnalysisSnapshotStoreTests
             AnalysisNotificationKind.SourceProgress,
             AnalysisOperationKind.Full,
             Source: new(WorkspaceSourceKind.CSharp, "0.csproj")));
-        store.Snapshot!.Sources[0].Path.Should().Be(path);
+        store.Snapshot!.Sources[0].Path.Should().Be("99.csproj");
         store.Notify(new(id, ++sequence, now, AnalysisNotificationKind.Cancelled, AnalysisOperationKind.Full));
         store.Snapshot!.Sources[0].State.Should().Be("cancelled");
     }
@@ -130,12 +168,7 @@ public sealed class AnalysisSnapshotStoreTests
             AnalysisNotificationKind.EmbeddingProgress,
             AnalysisOperationKind.Full)).Should().BeNull();
         store.Snapshot.Should().BeSameAs(current);
-        store.Apply(new(
-            next,
-            1,
-            now,
-            AnalysisNotificationKind.Started,
-            AnalysisOperationKind.Incremental)).Should().BeNull();
+        store.Apply(new(next, 1, now, AnalysisNotificationKind.Started, AnalysisOperationKind.Incremental)).Should().BeNull();
     }
 
     [Fact]

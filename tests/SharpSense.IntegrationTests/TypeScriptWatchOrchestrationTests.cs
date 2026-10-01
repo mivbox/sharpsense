@@ -71,9 +71,13 @@ public sealed class TypeScriptWatchOrchestrationTests
                 if (!extendedConfig)
                 {
                     File.Delete(Path.Combine(root, "client/src/deleted.ts"));
-                    changes.Add(new(WorkspaceFileChangeAction.Deleted, OldPath: Path.Combine(root, "client/src/deleted.ts")));
+                    changes.Add(new(
+                        WorkspaceFileChangeAction.Deleted,
+                        OldPath: Path.Combine(root, "client/src/deleted.ts")));
                     // Watching TS targets must not try to load a tsconfig as a Roslyn workspace.
-                    changes.Add(new(WorkspaceFileChangeAction.Modified, NewPath: Path.Combine(root, "Backend/Feature.cs")));
+                    changes.Add(new(
+                        WorkspaceFileChangeAction.Modified,
+                        NewPath: Path.Combine(root, "Backend/Feature.cs")));
                 }
                 await onBatchChanged(changes, token);
                 updatedPaths = await ReadPaths();
@@ -82,18 +86,19 @@ public sealed class TypeScriptWatchOrchestrationTests
             var app = Cli.Program.CreateCommandApp(
                 console,
                 services =>
-            {
-                services.AddSingleton<IWorkspaceCatalog>(catalog);
-                services.RemoveAll<WorkspaceSelection>();
-                services.AddSingleton(selection with
                 {
-                    Workspace = workspace
-                });
-                services.RemoveAll<IRepositoryWorkspace>();
-                services.AddSingleton<IRepositoryWorkspace>(workspace);
-                services.RemoveAll<IWorkspaceWatcher>();
-                services.AddSingleton<IWorkspaceWatcher>(watcher);
-            },
+                    services.AddSingleton<IWorkspaceCatalog>(catalog);
+                    services.RemoveAll<WorkspaceSelection>();
+                    services
+                        .AddSingleton(selection with
+                        {
+                            Workspace = workspace
+                        });
+                    services.RemoveAll<IRepositoryWorkspace>();
+                    services.AddSingleton<IRepositoryWorkspace>(workspace);
+                    services.RemoveAll<IWorkspaceWatcher>();
+                    services.AddSingleton<IWorkspaceWatcher>(watcher);
+                },
                 enableFileLogging: false);
 
             var exit = await app.RunAsync(
@@ -133,7 +138,8 @@ public sealed class TypeScriptWatchOrchestrationTests
                               join caller in context.GraphNodes on edge.CallerNodeId equals caller.Id
                               join callee in context.GraphNodes on edge.CalleeNodeId equals callee.Id
                               where caller.CanonicalId == "code:ts:client/src/consumer.ts:consumer"
-                              select callee.CanonicalId).ToArrayAsync(ct);
+                              select callee.CanonicalId)
+                    .ToArrayAsync(ct);
             }
 
             async Task<string[]> ReadPaths()
@@ -142,7 +148,8 @@ public sealed class TypeScriptWatchOrchestrationTests
                     .UseSqlite($"Data Source={databasePath};Mode=ReadWrite;Cache=Shared").Options;
                 await using var context = new SharpSenseDbContext(options);
 
-                return await context.Documents.Select(document => document.RelativePath)
+                return await context.Documents
+                    .Select(document => document.RelativePath)
                     .ToArrayAsync(ct);
             }
         }
@@ -165,13 +172,13 @@ public sealed class TypeScriptWatchOrchestrationTests
         Func<Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task>, CancellationToken, Task> action)
         : IWorkspaceWatcher
     {
-        public int Calls
-        {
-            get; private set;
-        }
-        public async Task Watch(string repositoryRoot,
-            Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task> onBatchChanged, CancellationToken ct,
-            Func<CancellationToken, Task>? initialize = null, Action? onReady = null)
+        public int Calls { get; private set; }
+        public async Task Watch(
+            string repositoryRoot,
+            Func<IReadOnlyList<WorkspaceFileChange>, CancellationToken, Task> onBatchChanged,
+            CancellationToken ct,
+            Func<CancellationToken, Task>? initialize = null,
+            Action? onReady = null)
         {
             Calls++;
             if (initialize is not null)

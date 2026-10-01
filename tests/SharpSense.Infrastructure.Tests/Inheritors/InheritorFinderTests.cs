@@ -26,34 +26,38 @@ public sealed class InheritorFinderTests
     [Fact]
     public async Task WhenGetInheritorsUsesBaseClassNodeId_ThenReturnsDistinctOrderedDerivedClasses()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
-        await using var context = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken);
+        await using var context = await inMemoryFactory.GetContext(ct);
         await Seed(context);
         var finder = new InheritorFinder(inMemoryFactory.CreateDbContextFactory());
 
         var result = await finder.GetInheritors(
             new GetInheritorsQuery(BaseNodeId),
-            TestContext.Current.CancellationToken);
+            ct);
 
         result.Should().HaveCount(2);
-        result.Select(node => node.Id).Should().ContainInOrder(DerivedAlphaNodeId, DerivedBetaNodeId);
+        result
+            .Select(node => node.Id).Should().ContainInOrder(DerivedAlphaNodeId, DerivedBetaNodeId);
         result.Should().OnlyContain(node => node.NodeType == NodeType.Class);
-        result.Select(node => node.RelativeFilePath).Should().ContainInOrder(
-            "src/Fixture.App/DerivedAlpha.cs",
-            "src/Fixture.App/DerivedBeta.cs");
+        result
+            .Select(node => node.RelativeFilePath).Should().ContainInOrder(
+                "src/Fixture.App/DerivedAlpha.cs",
+                "src/Fixture.App/DerivedBeta.cs");
     }
 
     [Fact]
     public async Task WhenGetInheritorsUsesInterfaceNodeId_ThenReturnsImplementingClasses()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
-        await using var context = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken);
+        await using var context = await inMemoryFactory.GetContext(ct);
         await Seed(context);
         var finder = new InheritorFinder(inMemoryFactory.CreateDbContextFactory());
 
         var result = await finder.GetInheritors(
             new GetInheritorsQuery(InterfaceNodeId),
-            TestContext.Current.CancellationToken);
+            ct);
 
         result.Should().HaveCount(1);
         result[0].Id.Should().Be(InterfaceImplementerNodeId);
