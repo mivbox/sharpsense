@@ -1,15 +1,22 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 
 namespace SharpSense.Cli.Ui.Api;
 
-public sealed record ToolDescriptor(string Id, string Name, string Description, bool RequiresNode);
-
-internal static class ToolCatalog
+internal static class GetToolsEndpoint
 {
-    public static void Map(WebApplication app) => app.MapGet(
-        "/api/tools",
-        () => new ToolDescriptor[]
+    public static IEndpointRouteBuilder MapGetToolsEndpoint(this IEndpointRouteBuilder builder)
+    {
+        builder.MapGet("/api/tools", GetTools)
+            .WithName(nameof(GetTools))
+            .WithTags("Tools")
+            .Produces<ToolDescriptor[]>();
+
+        return builder;
+    }
+
+    private static ToolDescriptor[] GetTools() => new ToolDescriptor[]
     {
         new(
             "graph_stats",
@@ -21,8 +28,5 @@ internal static class ToolCatalog
         new("trace", "Trace dependencies", "Follow callers or callees across the indexed graph.", true),
         new("inheritors", "Find inheritors", "Find direct subclasses and interface implementations.", true),
         new("impact", "Impact analysis", "Explore upstream dependencies affected by a change.", true)
-    })
-        .WithName("GetTools")
-        .WithTags("Tools")
-        .Produces<ToolDescriptor[]>();
+    };
 }

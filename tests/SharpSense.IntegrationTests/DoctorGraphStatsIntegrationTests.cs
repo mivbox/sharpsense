@@ -31,7 +31,8 @@ public sealed class DoctorGraphStatsIntegrationTests
         using var console = new TestConsole();
         var app = Cli.Program.CreateCommandApp(
             console,
-            services => services.AddSingleton(fixture.Selection)
+            services => services
+                .AddSingleton(fixture.Selection)
                 .AddSingleton(fixture.Workspace),
             enableFileLogging: false);
 
@@ -59,19 +60,21 @@ public sealed class DoctorGraphStatsIntegrationTests
     [Fact]
     public async Task WhenDoctorJsonFindsLegacyEnum_ThenReturnsActionableFailureWithoutChangingDatabase()
     {
+        var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
         await fixture.CreateLegacyEnumDatabase();
-        var before = await File.ReadAllBytesAsync(fixture.Workspace.DatabasePath, TestContext.Current.CancellationToken);
+        var before = await File.ReadAllBytesAsync(fixture.Workspace.DatabasePath, ct);
         using var console = new TestConsole();
         var app = Cli.Program.CreateCommandApp(
             console,
-            services => services.AddSingleton(fixture.Selection)
+            services => services
+                .AddSingleton(fixture.Selection)
                 .AddSingleton(fixture.Workspace),
             enableFileLogging: false);
 
         var exitCode = await app.RunAsync(
             ["doctor", "--json", "--repo-root", fixture.Directory.FullName],
-            TestContext.Current.CancellationToken);
+            ct);
 
         exitCode.Should().Be(1);
         using var document = JsonDocument.Parse(console.Output);
@@ -87,7 +90,7 @@ public sealed class DoctorGraphStatsIntegrationTests
                 .GetString()!.Contains("DocumentHierarchy") &&
             diagnostic.GetProperty("suggestion")
                 .GetString()!.Contains("authored memories"));
-        (await File.ReadAllBytesAsync(fixture.Workspace.DatabasePath, TestContext.Current.CancellationToken)).Should().Equal(before);
+        (await File.ReadAllBytesAsync(fixture.Workspace.DatabasePath, ct)).Should().Equal(before);
     }
 
     [Fact]
@@ -124,13 +127,15 @@ public sealed class DoctorGraphStatsIntegrationTests
     [Fact]
     public async Task WhenGraphStatsHttp_ThenReturnsTypedCamelCaseSnapshotWithoutNodeInput()
     {
+        var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         fixture.AddGraphStats(builder.Services);
         await using var app = builder.Build();
-        GraphStatsEndpoint.Map(app);
-        await app.StartAsync(TestContext.Current.CancellationToken);
+        app.MapGroup("/api/tools")
+            .MapGetGraphStatsEndpoint();
+        await app.StartAsync(ct);
 
         try
         {
@@ -141,9 +146,9 @@ public sealed class DoctorGraphStatsIntegrationTests
                 BaseAddress = new Uri(address),
                 Timeout = TimeSpan.FromSeconds(5)
             };
-            using var response = await client.GetAsync("/api/tools/graph-stats", TestContext.Current.CancellationToken);
+            using var response = await client.GetAsync("/api/tools/graph-stats", ct);
             response.EnsureSuccessStatusCode();
-            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
             var graph = document.RootElement;
 
             graph.GetProperty("databaseState")
@@ -167,20 +172,11 @@ public sealed class DoctorGraphStatsIntegrationTests
 
     private sealed class Fixture : IDisposable
     {
-        public DirectoryInfo Directory
-        {
-            get;
-        } = System.IO.Directory.CreateTempSubdirectory("sharpsense-doctor-tests-");
+        public DirectoryInfo Directory { get; } = System.IO.Directory.CreateTempSubdirectory("sharpsense-doctor-tests-");
 
-        public IRepositoryWorkspace Workspace
-        {
-            get;
-        }
+        public IRepositoryWorkspace Workspace { get; }
 
-        public WorkspaceSelection Selection
-        {
-            get;
-        }
+        public WorkspaceSelection Selection { get; }
 
         public Fixture()
         {

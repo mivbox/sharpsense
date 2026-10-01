@@ -32,11 +32,20 @@ public sealed class WorkspaceIndexingSessionTests
         try
         {
             var catalog = new WorkspaceCatalog(new FileSystem(), Path.Combine(temporaryDirectory, "home"));
-            var first = catalog.Create("first", repositoryRoot, [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/first.md")]);
-            var second = catalog.Create("second", repositoryRoot, [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/second.md")]);
+            var first = catalog.Create(
+                "first",
+                repositoryRoot,
+                [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/first.md")]);
+            var second = catalog.Create(
+                "second",
+                repositoryRoot,
+                [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/second.md")]);
             var services = new ServiceCollection();
             services.AddLogging();
-            services.AddWorkspaceUiServices(new WorkspaceUiOptions(null, repositoryRoot, new Uri("http://localhost:50069")));
+            services.AddWorkspaceUi(new WorkspaceUiOptions(
+                null,
+                repositoryRoot,
+                new Uri("http://localhost:50069")));
             services.AddSingleton<IWorkspaceCatalog>(catalog);
             services.AddSingleton(Mock.Of<IHostApplicationLifetime>());
             services.AddIndexing();
@@ -70,7 +79,10 @@ public sealed class WorkspaceIndexingSessionTests
         }
     }
 
-    private static async Task<string[]> DocumentPaths(IServiceProvider provider, WorkspaceSelection selection, CancellationToken ct)
+    private static async Task<string[]> DocumentPaths(
+        IServiceProvider provider,
+        WorkspaceSelection selection,
+        CancellationToken ct)
     {
         await using var scope = provider.CreateAsyncScope();
         scope.ServiceProvider.GetRequiredService<IWorkspaceScope>()
@@ -78,7 +90,8 @@ public sealed class WorkspaceIndexingSessionTests
         var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<SharpSenseDbContext>>();
         await using var context = await factory.CreateDbContextAsync(ct);
 
-        return await context.Documents.Select(static document => document.RelativePath)
+        return await context.Documents
+            .Select(static document => document.RelativePath)
             .ToArrayAsync(ct);
     }
 
