@@ -159,7 +159,8 @@ csharp_space_between_parentheses = false
 csharp_space_between_square_brackets = false
 
 # Wrapping preferences
-csharp_preserve_single_line_blocks = false
+# Preserve compact auto-properties; method and control-flow bodies use Allman braces.
+csharp_preserve_single_line_blocks = true
 csharp_preserve_single_line_statements = false
 
 #### Naming styles ####

@@ -225,3 +225,6 @@ namespace merging, arbitrary framework wrappers, or package export conditions.
 Memories belong to persisted numeric node IDs within one workspace database. Surviving node updates preserve authored
 notes; rebuilding an empty database creates a new set of IDs and does not recreate those notes.
 
+## License
+
+SharpSense is available under the [MIT license](LICENSE).

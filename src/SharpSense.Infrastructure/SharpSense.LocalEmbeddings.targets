@@ -10,8 +10,7 @@
         <!--
             bge-micro-v2 comes from https://huggingface.co/TaylorAI/bge-micro-v2, which is forked to
             https://huggingface.co/SmartComponents/bge-micro-v2 purely to ensure it remains available.
-            The license for the model remains MIT, but it's not redistributed in this repo or the NuGet
-            package anyway, since it's downloaded at build time.
+            The MIT-licensed model is downloaded at build time and redistributed with the tool.
         -->
         <LocalEmbeddingsModelUrl Condition="'$(LocalEmbeddingsModelUrl)' == ''">https://huggingface.co/SmartComponents/bge-micro-v2/resolve/72908b7/onnx/model_quantized.onnx</LocalEmbeddingsModelUrl>
         <LocalEmbeddingsVocabUrl Condition="'$(LocalEmbeddingsVocabUrl)' == ''">https://huggingface.co/SmartComponents/bge-micro-v2/resolve/72908b7/vocab.txt</LocalEmbeddingsVocabUrl>

@@ -53,9 +53,8 @@ jobs:
       - name: Calculate Semantic Version
         id: versioning
         uses: paulhatch/semantic-version@v6.0.2
+        # Default patterns recognize scoped features and breaking ! markers.
         with:
-          major_pattern: "BREAKING CHANGE:"
-          minor_pattern: "feat:"
           version_format: "${major}.${minor}.${patch}"
           bump_each_commit: false
           search_commit_body: true
