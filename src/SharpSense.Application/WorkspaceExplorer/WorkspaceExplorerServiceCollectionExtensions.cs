@@ -12,7 +12,8 @@ public static class WorkspaceExplorerServiceCollectionExtensions
     public static IServiceCollection AddWorkspaceExplorer(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.TryAddTransient<IQueryHandler<GetWorkspaceTreeQuery, WorkspaceTreeResult>, GetWorkspaceTreeQueryHandler>();
+        services
+            .TryAddTransient<IQueryHandler<GetWorkspaceTreeQuery, WorkspaceTreeResult>, GetWorkspaceTreeQueryHandler>();
 
         return services;
     }

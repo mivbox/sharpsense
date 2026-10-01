@@ -58,7 +58,7 @@ internal sealed class SqlitePragmaInterceptor : DbConnectionInterceptor
         }
         catch (Exception e)
         {
-            // GTFO, this should never happen, but if we cannot load sqlite-vec extension we cannot run the application
+            // Vector queries require this extension; startup must fail if it cannot be loaded.
             throw new InvalidOperationException(
                 "Failed to load sqlite-vec extension into the SQLite connection.",
                 e);

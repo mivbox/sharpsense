@@ -24,9 +24,11 @@ public static class MemoryServiceCollectionExtensions
 
         services.TryAddTransient<ICommandHandler<AttachMemoryCommand, Result>, AttachMemoryCommandHandler>();
         services.TryAddTransient<ICommandHandler<DeleteMemoryCommand, Result>, DeleteMemoryCommandHandler>();
-        services.TryAddTransient<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>, GetNodeMemoriesQueryHandler>();
+        services
+            .TryAddTransient<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>, GetNodeMemoriesQueryHandler>();
         services.TryAddTransient<IQueryHandler<GetMemoryQuery, Result<MemoryNode>>, GetMemoryQueryHandler>();
-        services.TryAddTransient<IQueryHandler<GetMemoriesQuery, Result<IReadOnlyDictionary<Guid, MemoryNode>>>, GetMemoriesQueryHandler>();
+        services
+            .TryAddTransient<IQueryHandler<GetMemoriesQuery, Result<IReadOnlyDictionary<Guid, MemoryNode>>>, GetMemoriesQueryHandler>();
 
         return services;
     }

@@ -13,16 +13,17 @@ public sealed class ImpactAnalyzerTests
     [Fact]
     public async Task WhenAnalyzeWithoutTransitiveTraversal_ThenReturnsDirectInboundDependencies()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
-        await using var context = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken);
-        await KnowledgeGraphFixture.Seed(context);
+        await using var context = await inMemoryFactory.GetContext(ct);
+        await KnowledgeGraphFixture.Seed(context, ct);
         var analyzer = new ImpactAnalyzer(inMemoryFactory.CreateDbContextFactory());
 
         var result = await analyzer.Analyze(
             new ImpactAnalysisQuery(
                 KnowledgeGraphFixture.TargetNodeId.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 IncludeTransitive: false),
-            TestContext.Current.CancellationToken);
+            ct);
 
         result.TargetSymbol.Should().Be(KnowledgeGraphFixture.TargetFullyQualifiedName);
         result.ImpactedNodes.Should().SatisfyRespectively(
@@ -44,9 +45,10 @@ public sealed class ImpactAnalyzerTests
     [Fact]
     public async Task WhenAnalyzeWithMethodCallFilter_ThenReturnsOnlyTransitiveMethodCallers()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
-        await using var context = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken);
-        await KnowledgeGraphFixture.Seed(context);
+        await using var context = await inMemoryFactory.GetContext(ct);
+        await KnowledgeGraphFixture.Seed(context, ct);
         var analyzer = new ImpactAnalyzer(inMemoryFactory.CreateDbContextFactory());
 
         var result = await analyzer.Analyze(
@@ -55,12 +57,19 @@ public sealed class ImpactAnalyzerTests
                 MaxDepth: 2,
                 IncludeTransitive: true,
                 IncludedEdgeTypes: [EdgeType.MethodCall]),
-            TestContext.Current.CancellationToken);
+            ct);
 
         result.TargetSymbol.Should().Be(KnowledgeGraphFixture.TargetFullyQualifiedName);
         result.ImpactedNodes.Should().SatisfyRespectively(
             node => node.Id.Should().Be(KnowledgeGraphFixture.TransitiveCallerNodeId),
             node => node.Id.Should().Be(KnowledgeGraphFixture.DirectCallerNodeId));
-        result.Dependencies.Should().AllSatisfy(static edge => edge.EdgeType.Should().Be(EdgeType.MethodCall));
+        result.Dependencies
+            .Select(edge => (edge.CallerId, edge.CalleeId, edge.EdgeType))
+            .Should()
+            .BeEquivalentTo(new[]
+            {
+                (KnowledgeGraphFixture.DirectCallerCanonicalId, KnowledgeGraphFixture.TargetCanonicalId, EdgeType.MethodCall),
+                (KnowledgeGraphFixture.TransitiveCallerCanonicalId, KnowledgeGraphFixture.DirectCallerCanonicalId, EdgeType.MethodCall)
+            });
     }
 }

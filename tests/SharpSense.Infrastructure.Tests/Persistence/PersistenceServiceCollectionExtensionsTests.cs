@@ -52,13 +52,15 @@ public sealed class PersistenceServiceCollectionExtensionsTests
     private static async Task AssertDatabaseWasPreserved(string databasePath)
     {
         using var serviceProvider = CreateServiceProvider(databasePath);
-        var ensureDatabase = new PersistenceServiceCollectionExtensions.EfCoreEnsureDatabase(
+        var startup = new WorkspaceDatabaseStartup(
             serviceProvider,
             new FileSystem());
-        var start = () => ensureDatabase.StartAsync(TestContext.Current.CancellationToken);
+        var start = () => startup.StartAsync(TestContext.Current.CancellationToken);
         await start.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*has been preserved*");
-        (await ReadScalarInt(databasePath, "SELECT COUNT(*) FROM pragma_table_info('CodeNodes') WHERE name = 'RelativeFilePath';"))
+        (await ReadScalarInt(
+            databasePath,
+            "SELECT COUNT(*) FROM pragma_table_info('CodeNodes') WHERE name = 'RelativeFilePath';"))
             .Should().Be(1);
         (await ReadStrings(databasePath, "SELECT Content FROM MemoryNodes;"))
             .Should().Equal("Irreplaceable authored context");
@@ -67,14 +69,17 @@ public sealed class PersistenceServiceCollectionExtensionsTests
     [Fact]
     public async Task WhenStartingWithNewDatabase_ThenAppliesCurrentMigrations()
     {
+        var ct = TestContext.Current.CancellationToken;
         var tempDirectory = Directory.CreateTempSubdirectory("sharp-sense-persistence-");
         try
         {
             var databasePath = Path.Combine(tempDirectory.FullName, "sharpsense.db");
             using var serviceProvider = CreateServiceProvider(databasePath);
-            var ensureDatabase = new PersistenceServiceCollectionExtensions.EfCoreEnsureDatabase(serviceProvider, new FileSystem());
-            await ensureDatabase.StartAsync(TestContext.Current.CancellationToken);
-            await ensureDatabase.StartAsync(TestContext.Current.CancellationToken);
+            var startup = new WorkspaceDatabaseStartup(
+                serviceProvider,
+                new FileSystem());
+            await startup.StartAsync(ct);
+            await startup.StartAsync(ct);
             (await ReadStrings(databasePath, "SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId;"))
                 .Should().Equal(await GetExpectedMigrationIds(serviceProvider));
         }
@@ -87,7 +92,8 @@ public sealed class PersistenceServiceCollectionExtensionsTests
     private static ServiceProvider CreateServiceProvider(string databasePath)
     {
         var repositoryWorkspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);
-        repositoryWorkspace.SetupGet(candidate => candidate.DatabasePath)
+        repositoryWorkspace
+            .SetupGet(candidate => candidate.DatabasePath)
             .Returns(databasePath);
 
         var services = new ServiceCollection();

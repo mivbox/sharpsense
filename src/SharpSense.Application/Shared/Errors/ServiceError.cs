@@ -4,9 +4,7 @@ namespace SharpSense.Application.Shared.Errors;
 
 /// <summary>
 /// FluentResults <see cref="Error"/> subtype that carries a typed <see cref="ErrorCode"/> from the
-/// shared enum. Use this instead of the plain <see cref="Error"/> base whenever the failure mode
-/// has a canonical code so the CLI, MCP, and any future HTTP transport can map the failure to a
-/// uniform exit status without re-parsing free-form messages.
+/// shared enum. CLI, MCP and HTTP adapters use the code to map expected failures without parsing the message.
 /// </summary>
 public sealed class ServiceError : Error
 {
@@ -22,8 +20,5 @@ public sealed class ServiceError : Error
         ErrorCode = errorCode;
     }
 
-    public ServiceErrorCode ErrorCode
-    {
-        get;
-    }
+    public ServiceErrorCode ErrorCode { get; }
 }

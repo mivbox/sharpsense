@@ -9,22 +9,7 @@ internal static class IndexRunSerialization
     private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
     public static string Serialize(IndexRunSummary run)
-    {
-        var bounded = run with
-        {
-            Scope = Limit(run.Scope, 512),
-            Phases = (run.Phases ?? [])
-                .Take(16)
-                .Select(phase => phase with
-                {
-                    Name = Limit(phase.Name, 64)
-                })
-                .ToArray(),
-            Diagnostics = BoundDiagnostics(run.Diagnostics ?? [])
-        };
-
-        return JsonSerializer.Serialize(bounded, _jsonOptions);
-    }
+        => JsonSerializer.Serialize(Bound(run), _jsonOptions);
 
     public static IndexRunSummary? Deserialize(string? json)
     {
@@ -54,8 +39,22 @@ internal static class IndexRunSerialization
             throw new JsonException("Stored index history has invalid fields.");
         }
 
-        return JsonSerializer.Deserialize<IndexRunSummary>(Serialize(run), _jsonOptions);
+        return Bound(run);
     }
+
+    private static IndexRunSummary Bound(IndexRunSummary run)
+        => run with
+        {
+            Scope = Limit(run.Scope, 512),
+            Phases = (run.Phases ?? [])
+                .Take(16)
+                .Select(phase => phase with
+                {
+                    Name = Limit(phase.Name, 64)
+                })
+                .ToArray(),
+            Diagnostics = BoundDiagnostics(run.Diagnostics ?? [])
+        };
 
     private static string Limit(string value, int length)
         => value.Length <= length ? value : value[..(length - 1)] + "…";

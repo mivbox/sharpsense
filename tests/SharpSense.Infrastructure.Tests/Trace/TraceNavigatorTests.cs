@@ -13,14 +13,15 @@ public sealed class TraceNavigatorTests
     [Fact]
     public async Task WhenGetCalleesUsesCaseInsensitiveIdentifier_ThenReturnsDistinctOrderedCallees()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
-        await using var context = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken);
-        await KnowledgeGraphFixture.Seed(context);
+        await using var context = await inMemoryFactory.GetContext(ct);
+        await KnowledgeGraphFixture.Seed(context, ct);
         var navigator = new TraceNavigator(inMemoryFactory.CreateDbContextFactory());
 
         var result = await navigator.GetCallees(
             new TraceQuery(KnowledgeGraphFixture.TargetFullyQualifiedName.ToLowerInvariant()),
-            TestContext.Current.CancellationToken);
+            ct);
 
         result.Should().SatisfyRespectively(
             node => node.Id.Should().Be(KnowledgeGraphFixture.FormatterNodeId),
@@ -30,16 +31,15 @@ public sealed class TraceNavigatorTests
     [Fact]
     public async Task WhenGetCalleesIncludesStructuralEdges_ThenItReturnsChildNodes()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
-        await using var context = await inMemoryFactory.GetContext(TestContext.Current.CancellationToken);
-        await KnowledgeGraphFixture.Seed(context);
+        await using var context = await inMemoryFactory.GetContext(ct);
+        await KnowledgeGraphFixture.Seed(context, ct);
         var navigator = new TraceNavigator(inMemoryFactory.CreateDbContextFactory());
 
         var result = await navigator.GetCallees(
-            new TraceQuery(
-                KnowledgeGraphFixture.MessageProviderTypeFullyQualifiedName,
-                KnowledgeGraphEdgeTypes.All),
-            TestContext.Current.CancellationToken);
+            new TraceQuery(KnowledgeGraphFixture.MessageProviderTypeFullyQualifiedName, KnowledgeGraphEdgeTypes.All),
+            ct);
 
         result.Should().SatisfyRespectively(
             node => node.Id.Should().Be(KnowledgeGraphFixture.CachedMessageNodeId),

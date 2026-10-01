@@ -4,23 +4,11 @@ namespace SharpSense.Infrastructure.Persistence.Records;
 
 internal sealed class DependencyEdgeRecord
 {
-    public int CallerNodeId
-    {
-        get; set;
-    }
+    public int CallerNodeId { get; set; }
 
-    public int CalleeNodeId
-    {
-        get; set;
-    }
+    public int CalleeNodeId { get; set; }
 
-    public EdgeType EdgeType
-    {
-        get; set;
-    } = EdgeType.ProjectReference;
+    public EdgeType EdgeType { get; set; } = EdgeType.ProjectReference;
 
-    public string? Metadata
-    {
-        get; set;
-    }
+    public string? Metadata { get; set; }
 }

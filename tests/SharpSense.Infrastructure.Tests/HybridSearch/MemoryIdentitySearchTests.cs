@@ -21,9 +21,11 @@ public sealed class MemoryIdentitySearchTests
     public async Task WhenMemoryOwnerNameChanges_ThenSearchUsesStableIdAndCurrentName(string searchText, bool vector)
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
         await using var db = await factory.GetContext(ct);
-        await KnowledgeGraphFixture.Seed(db);
+        await KnowledgeGraphFixture.Seed(db, TestContext.Current.CancellationToken);
         foreach (var node in await db.CodeNodes.ToArrayAsync(ct))
         {
             node.VectorEmbedding = null;
@@ -45,18 +47,26 @@ public sealed class MemoryIdentitySearchTests
         // Leave FTS untouched: only memory-name matching should find this new display name.
         await db.SaveChangesAsync(ct);
         var embeddings = new Mock<IEmbeddingGenerator>();
-        embeddings.Setup(generator => generator.Generate(searchText, ct))
+        embeddings
+            .Setup(generator => generator.Generate(searchText, ct))
             .ReturnsAsync(new TextEmbedding(searchText, [1f, 0f]));
         var searcher = new HybridSearcher(
             factory.CreateDbContextFactory(),
             embeddings.Object,
             new SqliteKeywordCandidateProvider());
 
-        var result = await searcher.Search(new HybridSearchQuery(searchText, IncludeMemories: true, TagFilters: ["identity"]), ct);
+        var result = await searcher.Search(
+            new HybridSearchQuery(
+                searchText,
+                IncludeMemories: true,
+                TagFilters: ["identity"]),
+            ct);
 
-        var hit = result.Hits.Should().ContainSingle().Subject;
+        var hit = result.Value.Hits.Should().ContainSingle().Subject;
         hit.Id.Should().Be(KnowledgeGraphFixture.DirectCallerNodeId);
         hit.FullyQualifiedName.Should().Be(owner.FullyQualifiedName);
-        (await searcher.Search(new HybridSearchQuery(searchText, IncludeMemories: false), ct)).Hits.Should().BeEmpty();
+        (await searcher.Search(
+            new HybridSearchQuery(searchText, IncludeMemories: false),
+            ct)).Value.Hits.Should().BeEmpty();
     }
 }

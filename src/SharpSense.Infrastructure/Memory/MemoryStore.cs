@@ -49,10 +49,10 @@ internal sealed class MemoryStore(
         }
 
         var normalizedContent = content.Trim();
-        var normalizedTags = NormalizeTags(tags);
+        var normalizedTags = MemoryTags.Normalize(tags);
         var contentHash = ComputeHash(normalizedContent);
         var vectorEmbedding = await context.MemoryNodes
-                .AsNoTracking()
+            .AsNoTracking()
             .Where(memoryNode => memoryNode.ContentHash == contentHash)
             .Select(memoryNode => memoryNode.VectorEmbedding)
             .FirstOrDefaultAsync(ct)
@@ -67,7 +67,8 @@ internal sealed class MemoryStore(
                 Content = normalizedContent,
                 ContentHash = contentHash,
                 TagsJson = JsonSerializer.Serialize(normalizedTags),
-                Intent = NormalizeIntent(intent).ToString(),
+                Intent = NormalizeIntent(intent)
+                    .ToString(),
                 VectorEmbedding = vectorEmbedding,
                 CreatedAt = DateTimeOffset.UtcNow
             });
@@ -85,8 +86,7 @@ internal sealed class MemoryStore(
         }
 
         await using var context = await dbContextFactory.CreateDbContextAsync(ct);
-        var memory = await context.MemoryNodes
-            .FirstOrDefaultAsync(record => record.Id == memoryId, ct);
+        var memory = await context.MemoryNodes.FirstOrDefaultAsync(record => record.Id == memoryId, ct);
         if (memory is null)
         {
             return Result.Fail($"No persisted memory exists for id {memoryId}.");
@@ -138,7 +138,8 @@ internal sealed class MemoryStore(
             .Where(memoryNode => normalizedNodeIds.Contains(memoryNode.TargetCodeNodeId));
         if (normalizedIntents.Length > 0)
         {
-            var intentNames = normalizedIntents.Select(static i => i.ToString())
+            var intentNames = normalizedIntents
+                .Select(static i => i.ToString())
                 .ToArray();
             memoriesQuery = memoriesQuery.Where(memoryNode => intentNames.Contains(memoryNode.Intent));
         }
@@ -148,15 +149,17 @@ internal sealed class MemoryStore(
             .OrderBy(memoryNode => memoryNode.CreatedAt)
             .GroupBy(static memoryNode => memoryNode.TargetCodeNodeId)
             .ToDictionary(
-            static group => group.Key,
-            group => group.ToArray());
+                static group => group.Key,
+                group => group.ToArray());
 
-        return codeNodes.ToDictionary(
-            static codeNode => codeNode.Id,
-            codeNode => memoriesByNodeId.TryGetValue(codeNode.Id, out var records)
-                ? records.Select(record => Map(record, codeNode.FullyQualifiedName, codeNode.BodyHash ?? string.Empty))
-                    .ToArray()
-                : []);
+        return codeNodes
+            .ToDictionary(
+                static codeNode => codeNode.Id,
+                codeNode => memoriesByNodeId.TryGetValue(codeNode.Id, out var records)
+                    ? records
+                        .Select(record => Map(record, codeNode.FullyQualifiedName, codeNode.BodyHash ?? string.Empty))
+                        .ToArray()
+                    : []);
     }
 
     public async Task<MemoryNode?> GetMemory(Guid memoryId, CancellationToken ct)
@@ -185,7 +188,10 @@ internal sealed class MemoryStore(
             })
             .FirstOrDefaultAsync(ct);
 
-        return targetNode is null ? null : Map(record, targetNode.FullyQualifiedName, targetNode.BodyHash ?? string.Empty);
+        return targetNode is null ? null : Map(
+            record,
+            targetNode.FullyQualifiedName,
+            targetNode.BodyHash ?? string.Empty);
     }
 
     public async Task<IReadOnlyDictionary<Guid, MemoryNode?>> GetMemories(
@@ -198,7 +204,8 @@ internal sealed class MemoryStore(
             .Where(static id => id != Guid.Empty)
             .Distinct()
             .ToArray();
-        var result = memoryIds.Distinct()
+        var result = memoryIds
+            .Distinct()
             .ToDictionary(static id => id, static _ => (MemoryNode?)null);
         if (normalizedIds.Length == 0)
         {
@@ -215,7 +222,8 @@ internal sealed class MemoryStore(
             return result;
         }
 
-        var nodeIds = records.Select(static record => record.TargetCodeNodeId)
+        var nodeIds = records
+            .Select(static record => record.TargetCodeNodeId)
             .Distinct()
             .ToArray();
         var nodesById = await context.CodeNodes
@@ -253,17 +261,6 @@ internal sealed class MemoryStore(
             .ToArray();
     }
 
-    internal static string[] NormalizeTags(string[]? tags)
-        => tags is null
-            ? []
-            : [..
-                tags
-                    .Select(static tag => tag.Trim()
-                        .ToLowerInvariant())
-                    .Where(static tag => !string.IsNullOrWhiteSpace(tag))
-                    .Distinct(StringComparer.Ordinal)
-                    .OrderBy(static tag => tag, StringComparer.Ordinal)];
-
     private static MemoryNode Map(MemoryNodeRecord record, string fullyQualifiedName, string currentCodeHash)
         => new(
             record.Id,
@@ -276,10 +273,10 @@ internal sealed class MemoryStore(
             record.CreatedAt,
             !string.Equals(currentCodeHash, record.TargetCodeHash, StringComparison.Ordinal));
 
-    internal static MemoryIntent NormalizeIntent(MemoryIntent intent)
+    private static MemoryIntent NormalizeIntent(MemoryIntent intent)
         => Enum.IsDefined(typeof(MemoryIntent), intent) ? intent : MemoryIntent.Convention;
 
-    internal static MemoryIntent ParseIntent(string? raw)
+    private static MemoryIntent ParseIntent(string? raw)
         => Enum.TryParse<MemoryIntent>(raw, ignoreCase: true, out var parsed) ? parsed : MemoryIntent.Convention;
 
     private static string[] DeserializeTags(string tagsJson)

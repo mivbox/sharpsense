@@ -2,15 +2,9 @@ namespace SharpSense.Infrastructure.Storage;
 
 public interface IRepositoryWorkspace
 {
-    string RootPath
-    {
-        get;
-    }
+    string RootPath { get; }
 
-    string DatabasePath
-    {
-        get;
-    }
+    string DatabasePath { get; }
 
     Guid? WorkspaceId => null;
 

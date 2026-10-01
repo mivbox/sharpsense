@@ -1,3 +1,4 @@
+using FluentResults;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -23,22 +24,13 @@ internal sealed class SearchCommand : AbstractAsyncCommand<SearchCommand.Setting
     public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "<query>")]
-        public string Query
-        {
-            get; init;
-        } = string.Empty;
+        public string Query { get; init; } = string.Empty;
 
         [CommandOption("--toon")]
-        public bool UseToonFormat
-        {
-            get; init;
-        }
+        public bool UseToonFormat { get; init; }
 
         [CommandOption("--include-memories")]
-        public bool IncludeMemories
-        {
-            get; init;
-        }
+        public bool IncludeMemories { get; init; }
 
         public override ValidationResult Validate()
             => string.IsNullOrWhiteSpace(Query)
@@ -63,16 +55,23 @@ internal sealed class SearchCommand : AbstractAsyncCommand<SearchCommand.Setting
         CancellationToken ct)
     {
         await using var scope = host.Services.CreateAsyncScope();
-        var handler = scope.ServiceProvider.GetRequiredService<IQueryHandler<HybridSearchQuery, HybridSearchResult>>();
+        var handler = scope.ServiceProvider.GetRequiredService<IQueryHandler<HybridSearchQuery, Result<HybridSearchResult>>>();
 
         var result = await handler.Handle(
             new HybridSearchQuery(
                 settings.Query,
                 IncludeMemories: settings.IncludeMemories),
             ct);
+        if (result.IsFailed)
+        {
+            CommandOutput.WriteError(context, string.Join("; ", result.Errors.Select(static error => error.Message)));
+
+            return 1;
+        }
+
         var output = settings.UseToonFormat
-            ? TokenObjectNotation.SerializeSemanticSearch(result.Hits)
-            : JsonSerializer.Serialize(HybridSearchHitMapper.Map(result.Hits), TokenObjectNotation.JsonOptions);
+            ? TokenObjectNotation.SerializeSemanticSearch(result.Value.Hits)
+            : JsonSerializer.Serialize(HybridSearchHitMapper.Map(result.Value.Hits), CliJsonOptions.Default);
 
         CommandOutput.Write(context, output);
 

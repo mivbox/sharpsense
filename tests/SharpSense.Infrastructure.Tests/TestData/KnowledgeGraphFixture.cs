@@ -49,7 +49,7 @@ internal static class KnowledgeGraphFixture
     public const string MessageProviderTypeDisplayName = "MessageProvider";
     public const string CachedMessageDisplayName = "MessageProvider.GetCachedMessage()";
 
-    public static async Task Seed(SharpSenseDbContext context)
+    public static async Task Seed(SharpSenseDbContext context, CancellationToken ct)
     {
         context.Directories.AddRange(
             new DirectoryRecord
@@ -453,9 +453,9 @@ internal static class KnowledgeGraphFixture
                 EdgeType = EdgeType.Instantiates
             });
 
-        await context.SaveChangesAsync();
+        await context.SaveChangesAsync(ct);
 
-        if (await FtsTableExists(context))
+        if (await FtsTableExists(context, ct))
         {
             await context.Database.ExecuteSqlRawAsync(
                 """
@@ -469,21 +469,22 @@ internal static class KnowledgeGraphFixture
                 FROM CodeNodes
                 INNER JOIN GraphNodes ON GraphNodes.Id = CodeNodes.Id
                 INNER JOIN Documents ON Documents.Id = CodeNodes.DocumentId;
-                """);
+                """,
+                ct);
         }
     }
 
-    private static async Task<bool> FtsTableExists(SharpSenseDbContext context)
+    private static async Task<bool> FtsTableExists(SharpSenseDbContext context, CancellationToken ct)
     {
         var connection = context.Database.GetDbConnection();
         if (connection.State != System.Data.ConnectionState.Open)
         {
-            await connection.OpenAsync();
+            await connection.OpenAsync(ct);
         }
 
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='CodeNodeSearch');";
-        var result = await command.ExecuteScalarAsync();
+        var result = await command.ExecuteScalarAsync(ct);
 
         return Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture) == 1;
     }

@@ -72,7 +72,9 @@ internal sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbCo
             .ToArrayAsync(ct);
     }
 
-    public async Task<ImpactedDependencyEdge[]> GetDependencies(IReadOnlyCollection<CodeNodeResult> nodes, CancellationToken ct)
+    public async Task<ImpactedDependencyEdge[]> GetDependencies(
+        IReadOnlyCollection<CodeNodeResult> nodes,
+        CancellationToken ct)
     {
         await using var db = await dbContextFactory.CreateDbContextAsync(ct);
         var byId = nodes.ToDictionary(node => node.Id);
@@ -81,8 +83,10 @@ internal sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbCo
         var edges = await db.DependencyEdges
             .AsNoTracking()
             .Where(edge =>
-                EF.Parameter(ids).Contains(edge.CallerNodeId) &&
-                EF.Parameter(ids).Contains(edge.CalleeNodeId) &&
+                EF.Parameter(ids)
+                    .Contains(edge.CallerNodeId) &&
+                EF.Parameter(ids)
+                    .Contains(edge.CalleeNodeId) &&
                 edgeTypes.Contains(edge.EdgeType))
             .Select(edge => new
             {
@@ -92,10 +96,11 @@ internal sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbCo
             })
             .ToArrayAsync(ct);
 
-        return edges.Select(edge => new ImpactedDependencyEdge(
-            byId[edge.CallerNodeId].CanonicalId,
-            byId[edge.CalleeNodeId].CanonicalId,
-            edge.EdgeType))
+        return edges
+            .Select(edge => new ImpactedDependencyEdge(
+                byId[edge.CallerNodeId].CanonicalId,
+                byId[edge.CalleeNodeId].CanonicalId,
+                edge.EdgeType))
             .ToArray();
     }
 }

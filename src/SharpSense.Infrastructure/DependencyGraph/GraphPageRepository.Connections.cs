@@ -14,12 +14,16 @@ internal sealed partial class GraphPageRepository
         )
         """;
 
-    public async Task<GraphNodeConnectionsPage> GetNodeConnections(GraphNodeConnectionsRequest request, CancellationToken ct)
+    public async Task<GraphNodeConnectionsPage> GetNodeConnections(
+        GraphNodeConnectionsRequest request,
+        CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.NodeId <= 0 || request.PageSize is < 1 or > 500)
         {
-            throw new ArgumentException("Node ID must be positive; connections page size must be between 1 and 500.", nameof(request));
+            throw new ArgumentException(
+                "Node ID must be positive; connections page size must be between 1 and 500.",
+                nameof(request));
         }
         if (request.Revision is { Length: 0 or > 64 })
         {
@@ -91,7 +95,11 @@ internal sealed partial class GraphPageRepository
         return await reader.ReadAsync(ct) ? GraphProjection.ReadNode(reader) : null;
     }
 
-    private async Task<List<GraphConnectionNode>> ReadConnectedPeers(int nodeId, int afterId, int limit, CancellationToken ct)
+    private async Task<List<GraphConnectionNode>> ReadConnectedPeers(
+        int nodeId,
+        int afterId,
+        int limit,
+        CancellationToken ct)
     {
         // Caller/callee indexes restrict discovery to this node's adjacency. UNION makes
         // incoming, outgoing and self relationships share one peer entry across pages.
@@ -116,7 +124,9 @@ internal sealed partial class GraphPageRepository
     }
 
     private async Task<Dictionary<int, List<GraphNodeRelationship>>> ReadRelationships(
-        int nodeId, IReadOnlyList<GraphConnectionNode> peers, CancellationToken ct)
+        int nodeId,
+        IReadOnlyList<GraphConnectionNode> peers,
+        CancellationToken ct)
     {
         var relationships = peers.ToDictionary(peer => peer.Id, _ => new List<GraphNodeRelationship>());
         if (peers.Count == 0)

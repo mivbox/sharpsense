@@ -1,13 +1,11 @@
 using AwesomeAssertions;
 using FluentResults;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using Moq;
-using SharpSense.Application.CommandExecution.Abstractions;
-using SharpSense.Application.CommandExecution.ExecuteProcess;
+using SharpSense.Application.CommandExecution.ExecuteProcess.Models;
 using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Context360.GetNodeContext.Models;
 using SharpSense.Application.Context360.Models;
@@ -18,11 +16,13 @@ using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.Inheritors.GetInheritors.Models;
 using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Memory.AttachMemory.Models;
+using SharpSense.Application.Memory.DeleteMemory.Models;
+using SharpSense.Application.Memory.GetMemories.Models;
+using SharpSense.Application.Memory.GetMemory.Models;
 using SharpSense.Application.Memory.GetNodeMemories.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Errors;
 using SharpSense.Application.Shared.Models;
-using SharpSense.Application.Shared.Options;
 using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Mcp;
@@ -39,52 +39,35 @@ public sealed class SharpSenseMcpToolsTests
     [Fact]
     public async Task WhenCtxExecuteSucceeds_ThenItFormatsReducedExecutionOutput()
     {
-        var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
-        var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
-        var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
+        var ct = TestContext.Current.CancellationToken;
+        var handler = new Mock<ICommandHandler<ExecuteProcessCommand, Result<CommandExecutionResult>>>(MockBehavior.Strict);
+        handler
+            .Setup(candidate => candidate.Handle(
+                new ExecuteProcessCommand("dotnet build SharpSense.sln", "Build succeeded"),
+                ct))
+            .ReturnsAsync(Result.Ok(new CommandExecutionResult(
+                "dotnet build SharpSense.sln",
+                "/repo",
+                "Build succeeded",
+                0,
+                1,
+                1,
+                false,
+                "Returned 1 merged block(s) from 1 matched line(s) across 1 captured line(s).",
+                [new CommandExecutionBlock(1, 1, "1| Build succeeded in 13.7s")])));
 
-        executeLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
-            .ReturnsAsync(executeLogIndex.Object);
-        executeLogIndex.Setup(candidate => candidate.AppendLine("Build succeeded in 13.7s", CancellationToken.None))
-            .ReturnsAsync(Result.Ok(1));
-        executeLogIndex.Setup(candidate => candidate.FindMatches("Build succeeded", CancellationToken.None))
-            .ReturnsAsync(Result.Ok<int[]>([1]));
-        executeLogIndex.Setup(candidate => candidate.ReadRange(new ExecutionLineRange(1, 1), CancellationToken.None))
-            .ReturnsAsync(Result.Ok<ExecutionLogLine[]>(
-            [
-                new ExecutionLogLine(1, "Build succeeded in 13.7s")
-            ]));
-        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
-            .Returns(ValueTask.CompletedTask);
-        processRunner.Setup(candidate => candidate.Execute(
-            It.Is<CommandProcessRequest>(request =>
-                    request.Command == "dotnet build SharpSense.sln" &&
-                    request.WorkingDirectory == "/repo"),
-            It.IsAny<Func<string, CancellationToken, Task>>(),
-            CancellationToken.None))
-            .Returns(async (
-                CommandProcessRequest _,
-                Func<string, CancellationToken, Task> onOutput,
-                CancellationToken innerCt) =>
+        var result = await InvokeTool(
+            SharpSenseMcpTools.ctx_execute,
+            services => services.AddSingleton(handler.Object),
+            new
             {
-                await onOutput("Build succeeded in 13.7s", innerCt);
+                command = "dotnet build SharpSense.sln",
+                query = "Build succeeded"
+            },
+            ct);
 
-                return Result.Ok(new CommandProcessResult(0, 1));
-            });
-
-        var result = await SharpSenseMcpTools.ctx_execute(
-            new ExecuteProcessCommandHandler(
-                processRunner.Object,
-                executeLogIndexFactory.Object,
-                Options.Create(new WorkspaceExecutionOptions
-                {
-                    RepositoryRoot = "/repo"
-                })),
-            "dotnet build SharpSense.sln",
-            "Build succeeded",
-            CancellationToken.None);
-
-        result.Should().Be(
+        result.IsError.Should().NotBe(true);
+        result.Content.OfType<TextContentBlock>().Should().ContainSingle().Which.Text.Should().Be(
             "command: dotnet build SharpSense.sln" + Environment.NewLine +
             "status: success" + Environment.NewLine +
             "exit_code: 0" + Environment.NewLine +
@@ -105,35 +88,24 @@ public sealed class SharpSenseMcpToolsTests
     [Fact]
     public async Task WhenCtxExecuteFails_ThenItFormatsExecutionErrorOutput()
     {
-        var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
-        var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
-        var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
+        var ct = TestContext.Current.CancellationToken;
+        var handler = new Mock<ICommandHandler<ExecuteProcessCommand, Result<CommandExecutionResult>>>(MockBehavior.Strict);
+        handler
+            .Setup(candidate => candidate.Handle(new ExecuteProcessCommand("missing-command", "Error"), ct))
+            .ReturnsAsync(Result.Fail<CommandExecutionResult>("Failed to start command 'missing-command'."));
 
-        executeLogIndexFactory.Setup(candidate => candidate.Create(CancellationToken.None))
-            .ReturnsAsync(executeLogIndex.Object);
-        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
-            .Returns(ValueTask.CompletedTask);
-        processRunner.Setup(candidate => candidate.Execute(
-            It.Is<CommandProcessRequest>(request =>
-                    request.Command == "missing-command" &&
-                    request.WorkingDirectory == "/repo"),
-            It.IsAny<Func<string, CancellationToken, Task>>(),
-            CancellationToken.None))
-            .ReturnsAsync(Result.Fail<CommandProcessResult>("Failed to start command 'missing-command'."));
+        var result = await InvokeTool(
+            SharpSenseMcpTools.ctx_execute,
+            services => services.AddSingleton(handler.Object),
+            new
+            {
+                command = "missing-command",
+                query = "Error"
+            },
+            ct);
 
-        var result = await SharpSenseMcpTools.ctx_execute(
-            new ExecuteProcessCommandHandler(
-                processRunner.Object,
-                executeLogIndexFactory.Object,
-                Options.Create(new WorkspaceExecutionOptions
-                {
-                    RepositoryRoot = "/repo"
-                })),
-            "missing-command",
-            "Error",
-            CancellationToken.None);
-
-        result.Should().Be(
+        result.IsError.Should().BeTrue();
+        result.Content.OfType<TextContentBlock>().Should().ContainSingle().Which.Text.Should().Be(
             "command: missing-command" + Environment.NewLine +
             "status: error" + Environment.NewLine +
             "error_message: Failed to start command 'missing-command'.");
@@ -142,11 +114,13 @@ public sealed class SharpSenseMcpToolsTests
     [Fact]
     public async Task WhenContextHasMatches_ThenItFormatsCompressedToonOutput()
     {
+        var ct = TestContext.Current.CancellationToken;
         var handler = new Mock<IQueryHandler<GetNodeContextQuery, Result<Context360Result>>>(MockBehavior.Strict);
         var memoryHandler = new Mock<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>>(MockBehavior.Strict);
-        handler.Setup(candidate => candidate.Handle(
-            It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
-            TestContext.Current.CancellationToken))
+        handler
+            .Setup(candidate => candidate.Handle(
+                It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
+                ct))
             .ReturnsAsync(
                 Result.Ok(new Context360Result(
                     new Context360Node(
@@ -173,12 +147,7 @@ public sealed class SharpSenseMcpToolsTests
                     ],
                     [])));
 
-        var result = await InvokeContextTool(
-            handler.Object,
-            memoryHandler.Object,
-            42,
-            EdgeCategory.Structural,
-            TestContext.Current.CancellationToken);
+        var result = await InvokeContextTool(handler.Object, memoryHandler.Object, 42, EdgeCategory.Structural, ct);
 
         result.IsError.Should().NotBe(true);
         result.Content.Should().ContainSingle();
@@ -204,7 +173,7 @@ public sealed class SharpSenseMcpToolsTests
         handler.Verify(
             candidate => candidate.Handle(
                 It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
-                TestContext.Current.CancellationToken),
+                ct),
             Times.Once);
     }
 
@@ -235,14 +204,17 @@ public sealed class SharpSenseMcpToolsTests
     [Fact]
     public async Task WhenAttachMemorySucceeds_ThenItReturnsConciseSuccessMessage()
     {
-        var tags = new[]
-        {
-            "security"
-        };
+        var ct = TestContext.Current.CancellationToken;
+        var tags = new[] { "security" };
         var handler = new Mock<ICommandHandler<AttachMemoryCommand, Result>>(MockBehavior.Strict);
-        handler.Setup(candidate => candidate.Handle(
-            new AttachMemoryCommand(42, "Security review", tags, MemoryIntent.Convention),
-            CancellationToken.None))
+        handler
+            .Setup(candidate => candidate.Handle(
+                new AttachMemoryCommand(
+                    42,
+                    "Security review",
+                    tags,
+                    Domain.KnowledgeGraph.Enums.MemoryIntent.Convention),
+                ct))
             .ReturnsAsync(Result.Ok());
 
         var result = await SharpSenseMcpTools.attach_memory(
@@ -250,20 +222,25 @@ public sealed class SharpSenseMcpToolsTests
             42,
             "Security review",
             tags,
-            MemoryIntent.Convention,
-            CancellationToken.None);
+            Domain.KnowledgeGraph.Enums.MemoryIntent.Convention,
+            ct);
 
-        result.Should().Be("attached memory to node 42 (intent=Convention)");
+        result.IsError.Should().NotBe(true);
+        result.Content.OfType<TextContentBlock>().Should().ContainSingle().Which.Text.Should().Be("attached memory to node 42 (intent=Convention)");
         handler.VerifyAll();
     }
 
     [Fact]
     public async Task WhenSemanticSearchHasMatches_ThenItFormatsHierarchicalToonOutput()
     {
-        var searchHandler = new Mock<IQueryHandler<HybridSearchQuery, HybridSearchResult>>(MockBehavior.Strict);
-        searchHandler.Setup(candidate => candidate.Handle(new HybridSearchQuery("graph node", 3), CancellationToken.None))
+        var ct = TestContext.Current.CancellationToken;
+        var searchHandler = new Mock<IQueryHandler<HybridSearchQuery, Result<HybridSearchResult>>>(MockBehavior.Strict);
+        searchHandler
+            .Setup(candidate => candidate.Handle(
+                new HybridSearchQuery("graph node", 3),
+                ct))
             .ReturnsAsync(
-                new HybridSearchResult(
+                Result.Ok(new HybridSearchResult(
                     "graph node",
                     [
                         new HybridSearchHit(
@@ -299,15 +276,12 @@ public sealed class SharpSenseMcpToolsTests
                             5,
                             5,
                             "Project identifier.")
-                    ]));
+                    ])));
 
-        var result = await SharpSenseMcpTools.semantic_search(
-            searchHandler.Object,
-            "graph node",
-            3,
-            CancellationToken.None);
+        var result = await SharpSenseMcpTools.semantic_search(searchHandler.Object, "graph node", 3, ct);
 
-        result.Should().Be(
+        result.IsError.Should().NotBe(true);
+        result.Content.OfType<TextContentBlock>().Should().ContainSingle().Which.Text.Should().Be(
             "src/SharpSense.Infrastructure/DependencyGraph/:" + Environment.NewLine +
             "  DependencyGraphMapper.cs:" + Environment.NewLine +
             "    - [M] `553` ToExternalGraphNode L20-21" + Environment.NewLine +
@@ -316,49 +290,60 @@ public sealed class SharpSenseMcpToolsTests
             "src/SharpSense.Domain/KnowledgeGraph/Nodes/:" + Environment.NewLine +
             "  ProjectNode.cs:" + Environment.NewLine +
             "    - [P] `373` Id L5");
-        searchHandler.Verify(candidate => candidate.Handle(new HybridSearchQuery("graph node", 3), CancellationToken.None), Times.Once);
+        searchHandler.Verify(
+            candidate => candidate.Handle(
+                new HybridSearchQuery("graph node", 3),
+                ct),
+            Times.Once);
     }
 
     [Fact]
     public async Task WhenGetInheritorsHasMatches_ThenItFormatsDerivedClassesAsToonOutput()
     {
         var inheritorsHandler = new Mock<IQueryHandler<GetInheritorsQuery, CodeNodeResult[]>>(MockBehavior.Strict);
-        inheritorsHandler.Setup(candidate => candidate.Handle(new GetInheritorsQuery(42), CancellationToken.None))
+        inheritorsHandler
+            .Setup(candidate => candidate.Handle(
+                new GetInheritorsQuery(42),
+                TestContext.Current.CancellationToken))
             .ReturnsAsync(
-            [
-                new CodeNodeResult(
-                    7,
-                    "node-derived-alpha",
-                    "project-app",
-                    "Fixture.App.DerivedAlpha",
-                    "DerivedAlpha",
-                    NodeType.Class,
-                    "src/Fixture.App/DerivedAlpha.cs",
-                    3,
-                    16,
-                    "Derived alpha."),
-                new CodeNodeResult(
-                    8,
-                    "node-derived-beta",
-                    "project-app",
-                    "Fixture.App.DerivedBeta",
-                    "DerivedBeta",
-                    NodeType.Class,
-                    "src/Fixture.App/DerivedBeta.cs",
-                    3,
-                    17,
-                    "Derived beta.")
-            ]);
+                [
+                    new CodeNodeResult(
+                        7,
+                        "node-derived-alpha",
+                        "project-app",
+                        "Fixture.App.DerivedAlpha",
+                        "DerivedAlpha",
+                        NodeType.Class,
+                        "src/Fixture.App/DerivedAlpha.cs",
+                        3,
+                        16,
+                        "Derived alpha."),
+                    new CodeNodeResult(
+                        8,
+                        "node-derived-beta",
+                        "project-app",
+                        "Fixture.App.DerivedBeta",
+                        "DerivedBeta",
+                        NodeType.Class,
+                        "src/Fixture.App/DerivedBeta.cs",
+                        3,
+                        17,
+                        "Derived beta.")
+                ]);
 
         var result = await SharpSenseMcpTools.get_inheritors(
             inheritorsHandler.Object,
             42,
-            ct: CancellationToken.None);
+            ct: TestContext.Current.CancellationToken);
 
         result.Should().Be(
             "[C] `7` DerivedAlpha @ src/Fixture.App/DerivedAlpha.cs:3-16" + Environment.NewLine +
             "[C] `8` DerivedBeta @ src/Fixture.App/DerivedBeta.cs:3-17");
-        inheritorsHandler.Verify(candidate => candidate.Handle(new GetInheritorsQuery(42), CancellationToken.None), Times.Once);
+        inheritorsHandler.Verify(
+            candidate => candidate.Handle(
+                new GetInheritorsQuery(42),
+                TestContext.Current.CancellationToken),
+            Times.Once);
     }
 
     [Fact]
@@ -368,7 +353,8 @@ public sealed class SharpSenseMcpToolsTests
         var traceHandler = new Mock<IQueryHandler<TraceQuery, CodeNodeResult[]>>(MockBehavior.Strict);
         var memoryReader = new Mock<IMemoryRepository>(MockBehavior.Strict);
         var traceNavigator = new Mock<ITraceNavigator>(MockBehavior.Strict);
-        traceNavigator.Setup(candidate => candidate.GetRootNode("node-root", CancellationToken.None))
+        traceNavigator
+            .Setup(candidate => candidate.GetRootNode("node-root", TestContext.Current.CancellationToken))
             .ReturnsAsync(
                 new CodeNodeResult(
                     42,
@@ -381,21 +367,24 @@ public sealed class SharpSenseMcpToolsTests
                     20,
                     28,
                     "Renders a message."));
-        traceHandler.Setup(candidate => candidate.Handle(new TraceQuery("node-root"), CancellationToken.None))
+        traceHandler
+            .Setup(candidate => candidate.Handle(
+                new TraceQuery("node-root"),
+                TestContext.Current.CancellationToken))
             .ReturnsAsync(
-            [
-                new CodeNodeResult(
-                    1,
-                    "node-callee",
-                    "project-app",
-                    "Fixture.App.MessageProvider.GetMessage()",
-                    "MessageProvider.GetMessage()",
-                    NodeType.Method,
-                    "src/Fixture.App/MessageProvider.cs",
-                    7,
-                    11,
-                    "Gets a message.")
-            ]);
+                [
+                    new CodeNodeResult(
+                        1,
+                        "node-callee",
+                        "project-app",
+                        "Fixture.App.MessageProvider.GetMessage()",
+                        "MessageProvider.GetMessage()",
+                        NodeType.Method,
+                        "src/Fixture.App/MessageProvider.cs",
+                        7,
+                        11,
+                        "Gets a message.")
+                ]);
 
         var result = await SharpSenseMcpTools.trace_node(
             impactHandler.Object,
@@ -403,33 +392,186 @@ public sealed class SharpSenseMcpToolsTests
             memoryReader.Object,
             traceNavigator.Object,
             "node-root",
-            ct: CancellationToken.None);
+            ct: TestContext.Current.CancellationToken);
 
         result.Should().Be(
             "- [M] `42` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28" + Environment.NewLine +
             "  -> [M] `1` MessageProvider.GetMessage @ src/Fixture.App/MessageProvider.cs:L7-11");
-        traceNavigator.Verify(candidate => candidate.GetRootNode("node-root", CancellationToken.None), Times.Once);
-        traceHandler.Verify(candidate => candidate.Handle(new TraceQuery("node-root"), CancellationToken.None), Times.Once);
+        traceNavigator.Verify(
+            candidate => candidate.GetRootNode("node-root", TestContext.Current.CancellationToken),
+            Times.Once);
+        traceHandler.Verify(
+            candidate => candidate.Handle(
+                new TraceQuery("node-root"),
+                TestContext.Current.CancellationToken),
+            Times.Once);
         impactHandler.VerifyNoOtherCalls();
     }
 
-    private static async Task<CallToolResult> InvokeContextTool(
+    [Fact]
+    public async Task WhenAttachMemoryFails_ThenProtocolMarksToolResultAsError()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var error = new ServiceError(ServiceErrorCode.InvalidArgument, "Invalid request.");
+        var handler = new Mock<ICommandHandler<AttachMemoryCommand, Result>>(MockBehavior.Strict);
+        handler
+            .Setup(candidate => candidate.Handle(
+                It.Is<AttachMemoryCommand>(command =>
+                    command.NodeId == 42 &&
+                    command.Content == "note" &&
+                    command.Intent == MemoryIntent.Convention),
+                ct))
+            .ReturnsAsync(Result.Fail(error));
+
+        var response = await InvokeTool(
+            SharpSenseMcpTools.attach_memory,
+            services => services.AddSingleton(handler.Object),
+            new
+            {
+                nodeId = 42,
+                content = "note"
+            },
+            ct);
+
+        response.IsError.Should().BeTrue();
+        response.Content.OfType<TextContentBlock>().Should().ContainSingle()
+            .Which.Text.Should().Be("attach_memory failed: Invalid request.");
+    }
+
+    [Fact]
+    public async Task WhenDeleteMemoryFails_ThenProtocolMarksToolResultAsError()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var memoryId = Guid.NewGuid();
+        var error = new ServiceError(ServiceErrorCode.InvalidArgument, "Invalid request.");
+        var handler = new Mock<ICommandHandler<DeleteMemoryCommand, Result>>(MockBehavior.Strict);
+        handler
+            .Setup(candidate => candidate.Handle(It.Is<DeleteMemoryCommand>(command => command.MemoryId == memoryId), ct))
+            .ReturnsAsync(Result.Fail(error));
+
+        var response = await InvokeTool(
+            SharpSenseMcpTools.delete_memory,
+            services => services.AddSingleton(handler.Object),
+            new
+            {
+                memoryId
+            },
+            ct);
+
+        response.IsError.Should().BeTrue();
+        response.Content.OfType<TextContentBlock>().Should().ContainSingle()
+            .Which.Text.Should().Be("delete_memory failed: Invalid request.");
+    }
+
+    [Fact]
+    public async Task WhenGetMemoryFails_ThenProtocolMarksToolResultAsError()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var memoryId = Guid.NewGuid();
+        var error = new ServiceError(ServiceErrorCode.InvalidArgument, "Invalid request.");
+        var handler = new Mock<IQueryHandler<GetMemoryQuery, Result<MemoryNode>>>(MockBehavior.Strict);
+        handler
+            .Setup(candidate => candidate.Handle(It.Is<GetMemoryQuery>(query => query.MemoryId == memoryId), ct))
+            .ReturnsAsync(Result.Fail<MemoryNode>(error));
+
+        var response = await InvokeTool(
+            SharpSenseMcpTools.get_memory,
+            services => services.AddSingleton(handler.Object),
+            new
+            {
+                memoryId
+            },
+            ct);
+
+        response.IsError.Should().BeTrue();
+        response.Content.OfType<TextContentBlock>().Should().ContainSingle()
+            .Which.Text.Should().Be("get_memory failed: Invalid request.");
+    }
+
+    [Fact]
+    public async Task WhenGetMemoriesFails_ThenProtocolMarksToolResultAsError()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var memoryId = Guid.NewGuid();
+        var error = new ServiceError(ServiceErrorCode.InvalidArgument, "Invalid request.");
+        var handler = new Mock<IQueryHandler<GetMemoriesQuery, Result<IReadOnlyDictionary<Guid, MemoryNode>>>>(MockBehavior.Strict);
+        handler
+            .Setup(candidate => candidate.Handle(It.Is<GetMemoriesQuery>(query => query.MemoryIds.SequenceEqual(new[] { memoryId })), ct))
+            .ReturnsAsync(Result.Fail<IReadOnlyDictionary<Guid, MemoryNode>>(error));
+
+        var response = await InvokeTool(
+            SharpSenseMcpTools.get_memories,
+            services => services.AddSingleton(handler.Object),
+            new
+            {
+                memoryIds = new[] { memoryId }
+            },
+            ct);
+
+        response.IsError.Should().BeTrue();
+        response.Content.OfType<TextContentBlock>().Should().ContainSingle()
+            .Which.Text.Should().Be("get_memories failed: Invalid request.");
+    }
+
+    [Fact]
+    public async Task WhenSemanticSearchFails_ThenProtocolMarksToolResultAsError()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var error = new ServiceError(ServiceErrorCode.InvalidArgument, "Invalid request.");
+        var handler = new Mock<IQueryHandler<HybridSearchQuery, Result<HybridSearchResult>>>(MockBehavior.Strict);
+        handler
+            .Setup(candidate => candidate.Handle(It.Is<HybridSearchQuery>(query => query.SearchText == ""), ct))
+            .ReturnsAsync(Result.Fail<HybridSearchResult>(error));
+
+        var response = await InvokeTool(
+            SharpSenseMcpTools.semantic_search,
+            services => services.AddSingleton(handler.Object),
+            new
+            {
+                query = ""
+            },
+            ct);
+
+        response.IsError.Should().BeTrue();
+        response.Content.OfType<TextContentBlock>().Should().ContainSingle()
+            .Which.Text.Should().Be("semantic_search failed: Invalid request.");
+    }
+
+    private static Task<CallToolResult> InvokeContextTool(
         IQueryHandler<GetNodeContextQuery, Result<Context360Result>> handler,
         IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>> memoryHandler,
         int nodeId,
         EdgeCategory edgeCategories,
         CancellationToken ct)
+        => InvokeTool(
+            SharpSenseMcpTools.context,
+            services =>
+            {
+                services.AddSingleton(handler);
+                services.AddSingleton(memoryHandler);
+            },
+            new
+            {
+                nodeId,
+                edgeCategories
+            },
+            ct);
+
+    private static async Task<CallToolResult> InvokeTool(
+        Delegate method,
+        Action<IServiceCollection> configure,
+        object arguments,
+        CancellationToken ct)
     {
         var services = new ServiceCollection();
-        services.AddSingleton(handler);
-        services.AddSingleton(memoryHandler);
+        configure(services);
         await using var provider = services.BuildServiceProvider();
         await using var transport = new StreamServerTransport(Stream.Null, Stream.Null);
         await using var server = McpServer.Create(transport, new McpServerOptions(), null, provider);
         var serializerOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
         serializerOptions.Converters.Add(new JsonStringEnumConverter<EdgeCategory>());
         var tool = McpServerTool.Create(
-            SharpSenseMcpTools.context,
+            method,
             new McpServerToolCreateOptions
             {
                 Services = provider,
@@ -437,12 +579,10 @@ public sealed class SharpSenseMcpToolsTests
             });
         var parameters = new CallToolRequestParams
         {
-            Name = "context",
-            Arguments = new Dictionary<string, JsonElement>
-            {
-                ["nodeId"] = JsonSerializer.SerializeToElement(nodeId),
-                ["edgeCategories"] = JsonSerializer.SerializeToElement(edgeCategories, serializerOptions)
-            }
+            Name = tool.ProtocolTool.Name,
+            Arguments = JsonSerializer.SerializeToElement(arguments, serializerOptions)
+                .EnumerateObject()
+                .ToDictionary(property => property.Name, property => property.Value)
         };
         var request = new RequestContext<CallToolRequestParams>(
             server,

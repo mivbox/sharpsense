@@ -10,8 +10,7 @@ public static class MemoryInfrastructureServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.TryAddScoped<MemoryStore>();
-        services.TryAddScoped<IMemoryRepository>(serviceProvider => serviceProvider.GetRequiredService<MemoryStore>());
+        services.TryAddScoped<IMemoryRepository, MemoryStore>();
 
         return services;
     }

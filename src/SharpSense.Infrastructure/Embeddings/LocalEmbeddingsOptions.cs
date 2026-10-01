@@ -9,42 +9,24 @@ public sealed class LocalEmbeddingsOptions : IValidatableObject
     public const int DefaultBatchSize = 32;
 
     [Required]
-    public string ModelPath
-    {
-        get; set;
-    } = string.Empty;
+    public string ModelPath { get; set; } = string.Empty;
 
     [Required]
-    public string VocabPath
-    {
-        get; set;
-    } = string.Empty;
+    public string VocabPath { get; set; } = string.Empty;
 
     [Required]
     [Range(1, int.MaxValue)]
-    public int Dimensions
-    {
-        get; set;
-    }
+    public int Dimensions { get; set; }
 
     [Required]
     [Range(1, int.MaxValue)]
-    public int MaximumTokens
-    {
-        get; set;
-    }
+    public int MaximumTokens { get; set; }
 
     [Required]
     [Range(1, int.MaxValue)]
-    public int BatchSize
-    {
-        get; set;
-    } = DefaultBatchSize;
+    public int BatchSize { get; set; } = DefaultBatchSize;
 
-    public bool CaseSensitive
-    {
-        get; set;
-    }
+    public bool CaseSensitive { get; set; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {

@@ -1,3 +1,4 @@
+using FluentResults;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SharpSense.Application.HybridSearch.HybridSearch;
@@ -12,7 +13,8 @@ public static class HybridSearchServiceCollectionExtensions
     public static IServiceCollection AddHybridSearch(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.TryAddTransient<IQueryHandler<HybridSearchQuery, HybridSearchResult>, HybridSearchQueryHandler>();
+        services
+            .TryAddTransient<IQueryHandler<HybridSearchQuery, Result<HybridSearchResult>>, HybridSearchQueryHandler>();
 
         return services;
     }

@@ -1,3 +1,4 @@
+using SharpSense.Infrastructure.Memory;
 using System.Data.Common;
 
 namespace SharpSense.Infrastructure.HybridSearch;
@@ -11,13 +12,13 @@ internal static class MemorySearchSql
 {
     /// <summary>
     /// Returns the SQL clause that restricts rows to <c>MemoryNodes</c> whose <c>TagsJson</c> array contains
-    /// every supplied tag. Returns an empty string when no tag filter is supplied.
+    /// any supplied tag. Returns an empty string when no tag filter is supplied.
     /// </summary>
     internal static string BuildTagFilterClause(string[]? tagFilters, string tagsJsonColumn)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tagsJsonColumn);
 
-        var normalizedTagFilters = NormalizeTagFilters(tagFilters);
+        var normalizedTagFilters = MemoryTags.Normalize(tagFilters);
         if (normalizedTagFilters.Length == 0)
         {
             return string.Empty;
@@ -47,7 +48,7 @@ internal static class MemorySearchSql
     {
         ArgumentNullException.ThrowIfNull(command);
 
-        var normalizedTagFilters = NormalizeTagFilters(tagFilters);
+        var normalizedTagFilters = MemoryTags.Normalize(tagFilters);
         for (var index = 0; index < normalizedTagFilters.Length; index++)
         {
             var parameter = command.CreateParameter();
@@ -58,15 +59,4 @@ internal static class MemorySearchSql
 
         return normalizedTagFilters.Length;
     }
-
-    internal static string[] NormalizeTagFilters(string[]? tagFilters)
-        => tagFilters is null
-            ? []
-            : [..
-                tagFilters
-                    .Select(static tag => tag.Trim()
-                        .ToLowerInvariant())
-                    .Where(static tag => !string.IsNullOrWhiteSpace(tag))
-                    .Distinct(StringComparer.Ordinal)
-                    .OrderBy(static tag => tag, StringComparer.Ordinal)];
 }

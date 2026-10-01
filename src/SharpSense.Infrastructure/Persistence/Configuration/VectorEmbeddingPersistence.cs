@@ -5,17 +5,11 @@ namespace SharpSense.Infrastructure.Persistence.Configuration;
 
 internal static class VectorEmbeddingPersistence
 {
-    internal static ValueConverter<float[]?, byte[]?> Converter
-    {
-        get;
-    } = new(
+    internal static ValueConverter<float[]?, byte[]?> Converter { get; } = new(
         vectorEmbedding => ConvertToBytes(vectorEmbedding),
         bytes => ConvertToVectorEmbedding(bytes));
 
-    internal static ValueComparer<float[]?> Comparer
-    {
-        get;
-    } = new(
+    internal static ValueComparer<float[]?> Comparer { get; } = new(
         (left, right) =>
             left == null && right == null ||
             left != null && right != null && left.SequenceEqual(right),

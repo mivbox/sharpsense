@@ -21,8 +21,9 @@ public static class RepositoryWorkspaceServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddWorkspaceCatalog();
-        services.TryAddSingleton(provider => provider.GetRequiredService<IWorkspaceCatalog>()
-            .Resolve(workspaceNameOrId));
+        services
+            .TryAddSingleton(provider => provider.GetRequiredService<IWorkspaceCatalog>()
+                .Resolve(workspaceNameOrId));
         services.TryAddSingleton(provider => provider.GetRequiredService<WorkspaceSelection>().Workspace);
 
         return services;
