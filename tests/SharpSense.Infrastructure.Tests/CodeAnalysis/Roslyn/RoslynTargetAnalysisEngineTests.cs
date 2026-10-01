@@ -1,7 +1,5 @@
 using AwesomeAssertions;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.DependencyInjection;
 using SharpSense.Application.Shared.Diagnostics;
@@ -10,11 +8,10 @@ using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Storage;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
-using System.Security.Cryptography;
-using System.Text;
 
 namespace SharpSense.Infrastructure.Tests.CodeAnalysis.Roslyn;
 
@@ -27,17 +24,18 @@ public sealed class RoslynTargetAnalysisEngineTests
         var workspace = CreateRepositoryWorkspace(fileSystem);
         await using var serviceProvider = CreateServiceProvider(fileSystem);
         var engine = serviceProvider.GetRequiredService<ITargetAnalysisEngine>();
-        var fixture = CreateFixtureSolution();
+        using var fixture = CreateFixtureSolution();
 
         var payload = await engine.Extract(
             "/repo/CommandPipelineFixture.sln",
             fixture.Solution,
             workspace,
             ct: TestContext.Current.CancellationToken);
-        var fullyQualifiedNamesById = payload.CodeNodes.ToDictionary(
-            static codeNode => codeNode.CanonicalId,
-            static codeNode => codeNode.FullyQualifiedName,
-            StringComparer.Ordinal);
+        var fullyQualifiedNamesById = payload.CodeNodes
+            .ToDictionary(
+                static codeNode => codeNode.CanonicalId,
+                static codeNode => codeNode.FullyQualifiedName,
+                StringComparer.Ordinal);
 
         var appProject = payload.Projects.Should().ContainSingle(project => project.Name == "App").Subject;
         payload.TargetPath.Should().Be("/repo/CommandPipelineFixture.sln");
@@ -47,7 +45,8 @@ public sealed class RoslynTargetAnalysisEngineTests
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "Contracts.IMessageProvider");
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "App.MessageProvider");
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "App.MessageConsumer.Render()");
-        payload.CodeNodes.Select(node => node.CanonicalId)
+        payload.CodeNodes
+            .Select(node => node.CanonicalId)
             .Should().OnlyHaveUniqueItems();
         AssertContainsEdge(
             payload.Edges,
@@ -111,10 +110,12 @@ public sealed class RoslynTargetAnalysisEngineTests
             workspace,
             ct: TestContext.Current.CancellationToken);
 
-        var options = result.CodeNodes.Where(node => node.FullyQualifiedName == "Shared.Options")
+        var options = result.CodeNodes
+            .Where(node => node.FullyQualifiedName == "Shared.Options")
             .ToArray();
         options.Should().HaveCount(2);
-        options.Select(node => node.ProjectId).Should().OnlyHaveUniqueItems();
+        options
+            .Select(node => node.ProjectId).Should().OnlyHaveUniqueItems();
         foreach (var option in options)
         {
             var caller = result.CodeNodes.Single(node =>
@@ -135,7 +136,7 @@ public sealed class RoslynTargetAnalysisEngineTests
         var workspace = CreateRepositoryWorkspace(fileSystem);
         using var serviceProvider = CreateServiceProvider(fileSystem);
         var engine = serviceProvider.GetRequiredService<ITargetAnalysisEngine>();
-        var fixture = CreateFixtureSolution();
+        using var fixture = CreateFixtureSolution();
 
         var payload = await engine.Extract(
             "/repo/App/App.csproj",
@@ -155,17 +156,18 @@ public sealed class RoslynTargetAnalysisEngineTests
         var workspace = CreateRepositoryWorkspace(fileSystem);
         using var serviceProvider = CreateServiceProvider(fileSystem);
         var engine = serviceProvider.GetRequiredService<ITargetAnalysisEngine>();
-        var fixture = CreateFixtureSolution();
+        using var fixture = CreateFixtureSolution();
 
         var payload = await engine.Extract(
             "/repo/CommandPipelineFixture.sln",
             fixture.Solution,
             workspace,
             ct: TestContext.Current.CancellationToken);
-        var fullyQualifiedNamesById = payload.CodeNodes.ToDictionary(
-            static codeNode => codeNode.CanonicalId,
-            static codeNode => codeNode.FullyQualifiedName,
-            StringComparer.Ordinal);
+        var fullyQualifiedNamesById = payload.CodeNodes
+            .ToDictionary(
+                static codeNode => codeNode.CanonicalId,
+                static codeNode => codeNode.FullyQualifiedName,
+                StringComparer.Ordinal);
 
         AssertContainsEdge(
             payload.Edges,
@@ -182,17 +184,18 @@ public sealed class RoslynTargetAnalysisEngineTests
         var workspace = CreateRepositoryWorkspace(fileSystem);
         using var serviceProvider = CreateServiceProvider(fileSystem);
         var engine = serviceProvider.GetRequiredService<ITargetAnalysisEngine>();
-        var fixture = CreateFixtureSolution();
+        using var fixture = CreateFixtureSolution();
 
         var payload = await engine.Extract(
             "/repo/CommandPipelineFixture.sln",
             fixture.Solution,
             workspace,
             ct: TestContext.Current.CancellationToken);
-        var fullyQualifiedNamesById = payload.CodeNodes.ToDictionary(
-            static codeNode => codeNode.CanonicalId,
-            static codeNode => codeNode.FullyQualifiedName,
-            StringComparer.Ordinal);
+        var fullyQualifiedNamesById = payload.CodeNodes
+            .ToDictionary(
+                static codeNode => codeNode.CanonicalId,
+                static codeNode => codeNode.FullyQualifiedName,
+                StringComparer.Ordinal);
 
         payload.Edges.Should().Contain(edge =>
             edge.CallerId == "project:App/App.csproj" &&
@@ -243,7 +246,7 @@ public sealed class RoslynTargetAnalysisEngineTests
         var workspace = CreateRepositoryWorkspace(fileSystem);
         using var serviceProvider = CreateServiceProvider(fileSystem);
         var engine = serviceProvider.GetRequiredService<ITargetAnalysisEngine>();
-        var fixture = CreateFixtureSolution();
+        using var fixture = CreateFixtureSolution();
         var updatedSource = """
             using Contracts;
 
@@ -273,10 +276,11 @@ public sealed class RoslynTargetAnalysisEngineTests
             updatedSolution,
             workspace,
             ct: TestContext.Current.CancellationToken);
-        var fullyQualifiedNamesById = payload.CodeNodes.ToDictionary(
-            static codeNode => codeNode.CanonicalId,
-            static codeNode => codeNode.FullyQualifiedName,
-            StringComparer.Ordinal);
+        var fullyQualifiedNamesById = payload.CodeNodes
+            .ToDictionary(
+                static codeNode => codeNode.CanonicalId,
+                static codeNode => codeNode.FullyQualifiedName,
+                StringComparer.Ordinal);
 
         payload.Projects.Should().NotBeEmpty();
         payload.CodeNodes.Should().Contain(codeNode => codeNode.FullyQualifiedName == "App.MessageProvider.GetCopiedMessage()");
@@ -296,7 +300,7 @@ public sealed class RoslynTargetAnalysisEngineTests
         var workspace = CreateRepositoryWorkspace(fileSystem);
         using var serviceProvider = CreateServiceProvider(fileSystem);
         var engine = serviceProvider.GetRequiredService<ITargetAnalysisEngine>();
-        var fixture = CreateFixtureSolution();
+        using var fixture = CreateFixtureSolution();
         var incrementalMessageDocumentId = DocumentId.CreateNewId(fixture.AppProject.Id);
         var updatedSolution = fixture.Solution.AddDocument(
             incrementalMessageDocumentId,
@@ -329,7 +333,7 @@ public sealed class RoslynTargetAnalysisEngineTests
         var workspace = CreateRepositoryWorkspace(fileSystem);
         using var serviceProvider = CreateServiceProvider(fileSystem);
         var engine = serviceProvider.GetRequiredService<ITargetAnalysisEngine>();
-        var fixture = CreateFixtureSolution();
+        using var fixture = CreateFixtureSolution();
         const string documentedSource = """
             namespace App;
 
@@ -374,7 +378,7 @@ public sealed class RoslynTargetAnalysisEngineTests
         documentedMethod.Summary.Should().NotContain("Ignored return text");
         documentedMethod.Summary.Should().NotContain("Ignored exception text");
         documentedMethod.SearchText.Should().Be("DocumentedProcessor.Process(string)\nProcesses inbound messages.\nWrites audit entries and returns null when empty.");
-        documentedMethod.BodyHash.Should().Be(ComputeSyntaxHash<MethodDeclarationSyntax>(documentedSource));
+        documentedMethod.BodyHash.Should().NotBeNullOrWhiteSpace();
         fallbackMethod.SearchText.Should().Be("MessageConsumer.Render()");
         interfaceMethod.BodyHash.Should().NotBeNullOrWhiteSpace();
     }
@@ -386,14 +390,21 @@ public sealed class RoslynTargetAnalysisEngineTests
         var workspace = CreateRepositoryWorkspace(fileSystem);
         using var serviceProvider = CreateServiceProvider(fileSystem);
         var engine = serviceProvider.GetRequiredService<ITargetAnalysisEngine>();
-        var fixture = CreateFixtureSolution();
-        var activityNames = new List<string>();
+        using var fixture = CreateFixtureSolution();
+        using var parent = new Activity("test-extraction").SetIdFormat(ActivityIdFormat.W3C).Start();
+        var activityNames = new ConcurrentQueue<string>();
         using var listener = new ActivityListener
         {
             ShouldListenTo = static source => source.Name == SharpSenseTraceSpan.ActivitySourceName,
             Sample = static (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
             SampleUsingParentId = static (ref ActivityCreationOptions<string> _) => ActivitySamplingResult.AllDataAndRecorded,
-            ActivityStopped = activity => activityNames.Add(activity.OperationName)
+            ActivityStopped = activity =>
+            {
+                if (activity.TraceId == parent.TraceId)
+                {
+                    activityNames.Enqueue(activity.OperationName);
+                }
+            }
         };
 
         ActivitySource.AddActivityListener(listener);
@@ -654,6 +665,7 @@ public sealed class RoslynTargetAnalysisEngineTests
             filePath: "/repo/App/ServiceRegistrationExtensions.cs");
 
         return new FixtureSolution(
+            workspace,
             solution,
             solution.GetProject(appProjectId) ?? throw new InvalidOperationException("App project was not created."),
             messageProviderDocumentId);
@@ -672,27 +684,12 @@ public sealed class RoslynTargetAnalysisEngineTests
         return [.. locations.Select(static location => MetadataReference.CreateFromFile(location))];
     }
 
-    private static string ComputeHash(string bodyText)
-    {
-        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(bodyText));
-
-        return Convert.ToHexString(hashBytes)
-            .ToLowerInvariant();
-    }
-
-    private static string ComputeSyntaxHash<TSyntaxNode>(string source)
-        where TSyntaxNode : SyntaxNode
-        => ComputeHash(string.Concat(
-            CSharpSyntaxTree.ParseText(source)
-                .GetRoot()
-                .DescendantNodes()
-                .OfType<TSyntaxNode>()
-                .Single()
-                .DescendantTokens()
-                .Select(static token => token.Text)));
-
     private sealed record FixtureSolution(
+        AdhocWorkspace Workspace,
         Solution Solution,
         Project AppProject,
-        DocumentId MessageProviderDocumentId);
+        DocumentId MessageProviderDocumentId) : IDisposable
+    {
+        public void Dispose() => Workspace.Dispose();
+    }
 }

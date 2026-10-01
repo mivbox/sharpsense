@@ -6,12 +6,11 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Moq;
 using SharpSense.Application.CommandExecution.Abstractions;
+using SharpSense.Application.CommandExecution.ExecuteProcess.Models;
 using SharpSense.Application.CommandExecution.Models;
-using SharpSense.Application.Memory;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
-using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Testkit;
@@ -30,6 +29,68 @@ public sealed class CliCommandTests
     private const string RepositoryRoot = "/repo";
 
     [Fact]
+    public async Task WhenExecutingCommandIsCancelled_ThenReturnsCancellationExitCode()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var handler = new Mock<ICommandHandler<ExecuteProcessCommand, Result<CommandExecutionResult>>>(MockBehavior.Strict);
+        handler
+            .Setup(candidate => candidate.Handle(It.IsAny<ExecuteProcessCommand>(), It.IsAny<CancellationToken>()))
+            .Returns((ExecuteProcessCommand _, CancellationToken ct) =>
+            {
+                cancellation.Cancel();
+
+                return Task.FromCanceled<Result<CommandExecutionResult>>(ct);
+            });
+        var app = CreateCommandApp(
+            console,
+            database,
+            configureServices: services => services.AddSingleton(handler.Object));
+
+        var exitCode = await app.RunAsync(
+            ["execute", "long-running-command", "--repo-root", RepositoryRoot],
+            cancellation.Token);
+
+        exitCode.Should().Be(130);
+        console.Output.Should().BeEmpty();
+        handler.Verify(
+            candidate => candidate.Handle(
+                It.IsAny<ExecuteProcessCommand>(),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Theory]
+    [InlineData("*")]
+    [InlineData("MessageProvider(*")]
+    public async Task WhenSearchContainsPunctuation_ThenReturnsJsonResults(string expression)
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+
+        var exitCode = await app.RunAsync(
+            ["search", expression, "--repo-root", RepositoryRoot],
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(0);
+        using var results = JsonDocument.Parse(console.Output);
+        results.RootElement.ValueKind.Should().Be(JsonValueKind.Array);
+        if (expression == "*")
+        {
+            results.RootElement.GetArrayLength().Should().Be(0);
+        }
+        else
+        {
+            results.RootElement.EnumerateArray()
+                .Select(hit => hit.GetProperty("id").GetInt32())
+                .Should()
+                .Contain(CliCommandTestDatabase.CalleeNodeId);
+        }
+    }
+
+    [Fact]
     public async Task WhenTraceCallerDirectionRuns_ThenOutputsUpstreamNodesAsJson()
     {
         await using var database = await CliCommandTestDatabase.Create();
@@ -37,7 +98,14 @@ public sealed class CliCommandTests
         var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["trace", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "caller", "--repo-root", RepositoryRoot],
+            [
+                "trace",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--direction",
+                "caller",
+                "--repo-root",
+                RepositoryRoot
+            ],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -70,7 +138,15 @@ public sealed class CliCommandTests
         var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["trace", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "callee", "--toon", "--repo-root", RepositoryRoot],
+            [
+                "trace",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--direction",
+                "callee",
+                "--toon",
+                "--repo-root",
+                RepositoryRoot
+            ],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -104,7 +180,15 @@ public sealed class CliCommandTests
         var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["trace", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "caller", "--toon", "--repo-root", RepositoryRoot],
+            [
+                "trace",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--direction",
+                "caller",
+                "--toon",
+                "--repo-root",
+                RepositoryRoot
+            ],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -190,7 +274,14 @@ public sealed class CliCommandTests
         var memoryOptions = includeMemories ? new[] { "--include-memories" } : [];
 
         var exitCode = await app.RunAsync(
-            ["context", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot, .. memoryOptions],
+            [
+                "context",
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--repo-root",
+                RepositoryRoot,
+                .. memoryOptions
+            ],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -232,7 +323,14 @@ public sealed class CliCommandTests
         var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["context", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot, "--toon"],
+            [
+                "context",
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--repo-root",
+                RepositoryRoot,
+                "--toon"
+            ],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -264,7 +362,14 @@ public sealed class CliCommandTests
         var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["context", "--node-id", CliCommandTestDatabase.InterfaceNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot, "--toon"],
+            [
+                "context",
+                "--node-id",
+                CliCommandTestDatabase.InterfaceNodeId.ToString(CultureInfo.InvariantCulture),
+                "--repo-root",
+                RepositoryRoot,
+                "--toon"
+            ],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -296,7 +401,14 @@ public sealed class CliCommandTests
         var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["context", "--node-id", CliCommandTestDatabase.DerivedClassNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot, "--toon"],
+            [
+                "context",
+                "--node-id",
+                CliCommandTestDatabase.DerivedClassNodeId.ToString(CultureInfo.InvariantCulture),
+                "--repo-root",
+                RepositoryRoot,
+                "--toon"
+            ],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -328,7 +440,15 @@ public sealed class CliCommandTests
         var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["trace", CliCommandTestDatabase.DocumentRootNodeId.ToString(CultureInfo.InvariantCulture), "--direction", "callee", "--toon", "--repo-root", RepositoryRoot],
+            [
+                "trace",
+                CliCommandTestDatabase.DocumentRootNodeId.ToString(CultureInfo.InvariantCulture),
+                "--direction",
+                "callee",
+                "--toon",
+                "--repo-root",
+                RepositoryRoot
+            ],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -360,10 +480,7 @@ public sealed class CliCommandTests
 
         exitCode.Should().NotBe(0);
         console.Output.Should().Contain("skills");
-        fileSystem.AllFiles.Should().BeEquivalentTo(new[]
-        {
-            "/repo/.git/HEAD"
-        });
+        fileSystem.AllFiles.Should().BeEquivalentTo(new[] { "/repo/.git/HEAD" });
         fileSystem.Directory.Exists("/repo/.agents").Should().BeFalse();
         fileSystem.Directory.Exists("/exported-skills").Should().BeFalse();
     }
@@ -392,7 +509,13 @@ public sealed class CliCommandTests
         var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["inheritors", CliCommandTestDatabase.BaseClassNodeId.ToString(CultureInfo.InvariantCulture), "--toon", "--repo-root", RepositoryRoot],
+            [
+                "inheritors",
+                CliCommandTestDatabase.BaseClassNodeId.ToString(CultureInfo.InvariantCulture),
+                "--toon",
+                "--repo-root",
+                RepositoryRoot
+            ],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -407,7 +530,13 @@ public sealed class CliCommandTests
         var app = CreateCommandApp(console, database);
 
         var exitCode = await app.RunAsync(
-            ["inheritors", CliCommandTestDatabase.InterfaceNodeId.ToString(CultureInfo.InvariantCulture), "--toon", "--repo-root", RepositoryRoot],
+            [
+                "inheritors",
+                CliCommandTestDatabase.InterfaceNodeId.ToString(CultureInfo.InvariantCulture),
+                "--toon",
+                "--repo-root",
+                RepositoryRoot
+            ],
             TestContext.Current.CancellationToken);
 
         exitCode.Should().Be(0);
@@ -428,26 +557,38 @@ public sealed class CliCommandTests
         var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
         var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
 
-        executeLogIndexFactory.Setup(candidate => candidate.Create(It.Is<CancellationToken>(token => token.CanBeCanceled)))
+        executeLogIndexFactory
+            .Setup(candidate => candidate.Create(It.Is<CancellationToken>(token => token.CanBeCanceled)))
             .Callback<CancellationToken>(token => executionToken = token)
             .ReturnsAsync(executeLogIndex.Object);
-        executeLogIndex.Setup(candidate => candidate.AppendLine("Build succeeded in 13.7s", It.Is<CancellationToken>(token => token == executionToken)))
+        executeLogIndex
+            .Setup(candidate => candidate.AppendLine(
+                "Build succeeded in 13.7s",
+                It.Is<CancellationToken>(token => token == executionToken)))
             .ReturnsAsync(Result.Ok(1));
-        executeLogIndex.Setup(candidate => candidate.FindMatches("Build succeeded", It.Is<CancellationToken>(token => token == executionToken)))
+        executeLogIndex
+            .Setup(candidate => candidate.FindMatches(
+                "Build succeeded",
+                It.Is<CancellationToken>(token => token == executionToken)))
             .ReturnsAsync(Result.Ok<int[]>([1]));
-        executeLogIndex.Setup(candidate => candidate.ReadRange(new ExecutionLineRange(1, 1), It.Is<CancellationToken>(token => token == executionToken)))
+        executeLogIndex
+            .Setup(candidate => candidate.ReadRange(
+                new ExecutionLineRange(1, 1),
+                It.Is<CancellationToken>(token => token == executionToken)))
             .ReturnsAsync(Result.Ok<ExecutionLogLine[]>(
-            [
-                new ExecutionLogLine(1, "Build succeeded in 13.7s")
-            ]));
-        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
+                [
+                    new ExecutionLogLine(1, "Build succeeded in 13.7s")
+                ]));
+        executeLogIndex
+            .Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
-        processRunner.Setup(candidate => candidate.Execute(
-            It.Is<CommandProcessRequest>(request =>
+        processRunner
+            .Setup(candidate => candidate.Execute(
+                It.Is<CommandProcessRequest>(request =>
                     request.Command == "dotnet build SharpSense.sln" &&
                     request.WorkingDirectory == RepositoryRoot),
-            It.IsAny<Func<string, CancellationToken, Task>>(),
-            It.Is<CancellationToken>(token => token == executionToken)))
+                It.IsAny<Func<string, CancellationToken, Task>>(),
+                It.Is<CancellationToken>(token => token == executionToken)))
             .Returns(async (
                 CommandProcessRequest _,
                 Func<string, CancellationToken, Task> onOutput,
@@ -502,17 +643,20 @@ public sealed class CliCommandTests
         var executeLogIndexFactory = new Mock<IExecuteLogIndexFactory>(MockBehavior.Strict);
         var executeLogIndex = new Mock<IExecuteLogIndex>(MockBehavior.Strict);
 
-        executeLogIndexFactory.Setup(candidate => candidate.Create(It.Is<CancellationToken>(token => token.CanBeCanceled)))
+        executeLogIndexFactory
+            .Setup(candidate => candidate.Create(It.Is<CancellationToken>(token => token.CanBeCanceled)))
             .Callback<CancellationToken>(token => executionToken = token)
             .ReturnsAsync(executeLogIndex.Object);
-        executeLogIndex.Setup(candidate => candidate.DisposeAsync())
+        executeLogIndex
+            .Setup(candidate => candidate.DisposeAsync())
             .Returns(ValueTask.CompletedTask);
-        processRunner.Setup(candidate => candidate.Execute(
-            It.Is<CommandProcessRequest>(request =>
+        processRunner
+            .Setup(candidate => candidate.Execute(
+                It.Is<CommandProcessRequest>(request =>
                     request.Command == "missing-command" &&
                     request.WorkingDirectory == RepositoryRoot),
-            It.IsAny<Func<string, CancellationToken, Task>>(),
-            It.Is<CancellationToken>(token => token == executionToken)))
+                It.IsAny<Func<string, CancellationToken, Task>>(),
+                It.Is<CancellationToken>(token => token == executionToken)))
             .ReturnsAsync(Result.Fail<CommandProcessResult>("Failed to start command 'missing-command'."));
         var app = CreateCommandApp(
             console,
@@ -544,7 +688,8 @@ public sealed class CliCommandTests
         TestConsole? console,
         CliCommandTestDatabase database,
         MockFileSystem? fileSystem = null,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        bool useRealEmbeddings = false)
     {
         fileSystem ??= new MockFileSystem(
             new Dictionary<string, MockFileData>
@@ -558,7 +703,7 @@ public sealed class CliCommandTests
             services =>
             {
                 services.AddWorkspaceFixture(RepositoryRoot, fileSystem);
-                database.ConfigureServices(services);
+                database.ConfigureServices(services, useRealEmbeddings);
                 configureServices?.Invoke(services);
             },
             enableFileLogging: false);
@@ -573,7 +718,18 @@ public sealed class CliCommandTests
         var ct = TestContext.Current.CancellationToken;
 
         var exitCode = await app.RunAsync(
-            ["memory", "add", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--content", "Always greet politely", "--tag", "convention", "--repo-root", RepositoryRoot],
+            [
+                "memory",
+                "add",
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--content",
+                "Always greet politely",
+                "--tag",
+                "convention",
+                "--repo-root",
+                RepositoryRoot
+            ],
             ct);
 
         var actualOutput = console.Output;
@@ -583,8 +739,13 @@ public sealed class CliCommandTests
         actualOutput.Should().Contain("content: \"Always greet politely\"");
 
         await using var verification = await database.GetDbContext();
-        var memoryCount = await verification.MemoryNodes.CountAsync(ct);
-        memoryCount.Should().Be(1, "the memory must be persisted by the CLI command");
+        var persistedMemory = await verification.MemoryNodes.SingleAsync(ct);
+
+        actualOutput.Should().Contain($"memory_id: {persistedMemory.Id}");
+        persistedMemory.TargetCodeNodeId.Should().Be(CliCommandTestDatabase.SeedNodeId);
+        persistedMemory.Content.Should().Be("Always greet politely");
+        persistedMemory.Intent.Should().Be(nameof(MemoryIntent.Convention));
+        JsonSerializer.Deserialize<string[]>(persistedMemory.TagsJson).Should().Equal("convention");
     }
 
     [Fact]
@@ -596,7 +757,16 @@ public sealed class CliCommandTests
         var ct = TestContext.Current.CancellationToken;
 
         var addExit = await seedApp.RunAsync(
-            ["memory", "add", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--content", "Always greet politely", "--repo-root", RepositoryRoot],
+            [
+                "memory",
+                "add",
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--content",
+                "Always greet politely",
+                "--repo-root",
+                RepositoryRoot
+            ],
             ct);
         addExit.Should().Be(0);
 
@@ -604,7 +774,14 @@ public sealed class CliCommandTests
         var listApp = CreateCommandApp(listConsole, database);
 
         var exitCode = await listApp.RunAsync(
-            ["memory", "list", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--repo-root", RepositoryRoot],
+            [
+                "memory",
+                "list",
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--repo-root",
+                RepositoryRoot
+            ],
             ct);
 
         exitCode.Should().Be(0);
@@ -621,7 +798,16 @@ public sealed class CliCommandTests
         var ct = TestContext.Current.CancellationToken;
 
         var addExit = await seedApp.RunAsync(
-            ["memory", "add", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--content", "Always greet politely", "--repo-root", RepositoryRoot],
+            [
+                "memory",
+                "add",
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--content",
+                "Always greet politely",
+                "--repo-root",
+                RepositoryRoot
+            ],
             ct);
         addExit.Should().Be(0);
         var memoryId = await GetSingleMemoryId(database, ct);
@@ -655,6 +841,7 @@ public sealed class CliCommandTests
 
         exitCode.Should().Be(1);
         console.Output.Should().Contain("remove failed:");
+        console.Output.Should().Contain($"No persisted memory exists for id {unknownId}.");
     }
 
     [Fact]
@@ -666,7 +853,18 @@ public sealed class CliCommandTests
         var ct = TestContext.Current.CancellationToken;
 
         var addExit = await seedApp.RunAsync(
-            ["memory", "add", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--content", "Always greet politely", "--tag", "convention", "--repo-root", RepositoryRoot],
+            [
+                "memory",
+                "add",
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--content",
+                "Always greet politely",
+                "--tag",
+                "convention",
+                "--repo-root",
+                RepositoryRoot
+            ],
             ct);
         addExit.Should().Be(0);
         var memoryId = await GetSingleMemoryId(database, ct);
@@ -696,7 +894,18 @@ public sealed class CliCommandTests
         var ct = TestContext.Current.CancellationToken;
 
         var addExitCode = await seedApp.RunAsync(
-            ["memory", "add", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--content", "Always greet politely", "--tag", "convention", "--repo-root", RepositoryRoot],
+            [
+                "memory",
+                "add",
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--content",
+                "Always greet politely",
+                "--tag",
+                "convention",
+                "--repo-root",
+                RepositoryRoot
+            ],
             ct);
         addExitCode.Should().Be(0);
         var memoryId = await GetSingleMemoryId(database, ct);
@@ -706,7 +915,15 @@ public sealed class CliCommandTests
         var outputOptions = useToon ? new[] { "--toon" } : [];
 
         var exitCode = await contextApp.RunAsync(
-            ["context", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture), "--include-memories", "--repo-root", RepositoryRoot, .. outputOptions],
+            [
+                "context",
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--include-memories",
+                "--repo-root",
+                RepositoryRoot,
+                .. outputOptions
+            ],
             ct);
 
         exitCode.Should().Be(0);
@@ -736,11 +953,101 @@ public sealed class CliCommandTests
         }
     }
 
+    [Fact]
+    public async Task WhenMemoryCommandsUseProductionRegistrations_ThenCompleteMemoryLifecycle()
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        var ct = TestContext.Current.CancellationToken;
+
+        async Task<string> Run(params string[] arguments)
+        {
+            using var console = new TestConsole();
+            var app = CreateCommandApp(console, database, useRealEmbeddings: true);
+            var exitCode = await app.RunAsync([.. arguments, "--repo-root", RepositoryRoot], ct);
+
+            exitCode.Should().Be(0, console.Output);
+
+            return console.Output;
+        }
+
+        var nodeId = CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture);
+        await Run("memory", "add", "--node-id", nodeId, "--content", "Production composition keeps memories available.");
+        var memoryId = await GetSingleMemoryId(database, ct);
+
+        (await Run("memory", "list", "--node-id", nodeId)).Should().Contain(memoryId.ToString());
+        (await Run(
+            "memory",
+            "get",
+            "--memory-id",
+            memoryId.ToString())).Should().Contain("Production composition keeps memories available.");
+        (await Run("context", "--node-id", nodeId, "--include-memories")).Should().Contain(memoryId.ToString());
+        (await Run("trace", nodeId, "--include-memories", "--toon")).Should().Contain(memoryId.ToString());
+        await Run("memory", "remove", "--memory-id", memoryId.ToString());
+
+        await using var context = await database.GetDbContext();
+        (await context.MemoryNodes.CountAsync(ct)).Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("caller", false)]
+    [InlineData("callee", false)]
+    [InlineData("caller", true)]
+    [InlineData("callee", true)]
+    public async Task WhenTraceIncludesMemories_ThenReturnsMetadataInEitherFormat(string direction, bool useToon)
+    {
+        await using var database = await CliCommandTestDatabase.Create();
+        using var seedConsole = new TestConsole();
+        var seedApp = CreateCommandApp(seedConsole, database);
+        var ct = TestContext.Current.CancellationToken;
+        var nodeId = CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture);
+        var addExitCode = await seedApp.RunAsync(
+            ["memory", "add", "--node-id", nodeId, "--content", "Private note content", "--tag", "review", "--repo-root", RepositoryRoot],
+            ct);
+        addExitCode.Should().Be(0, seedConsole.Output);
+        var memoryId = await GetSingleMemoryId(database, ct);
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+        string[] format = useToon ? ["--toon"] : [];
+
+        var exitCode = await app.RunAsync(
+            ["trace", nodeId, "--direction", direction, "--include-memories", "--repo-root", RepositoryRoot, .. format],
+            ct);
+
+        exitCode.Should().Be(0, console.Output);
+        console.Output.Should().Contain(memoryId.ToString());
+        console.Output.Should().NotContain("Private note content");
+        if (!useToon)
+        {
+            using var json = JsonDocument.Parse(console.Output);
+            json.RootElement.GetProperty("rootNode")
+                .GetProperty("id")
+                .GetInt32().Should().Be(CliCommandTestDatabase.SeedNodeId);
+            json.RootElement.GetProperty("nodes")
+                .EnumerateArray()
+                .Select(node => node.GetProperty("id").GetInt32())
+                .Should()
+                .Equal(direction == "caller" ? CliCommandTestDatabase.CallerNodeId : CliCommandTestDatabase.CalleeNodeId);
+            var memory = json.RootElement.GetProperty("memoriesByNodeId")
+                .GetProperty(nodeId)
+                .EnumerateArray().Should().ContainSingle().Which;
+            memory.GetProperty("id")
+                .GetGuid().Should().Be(memoryId);
+            memory.GetProperty("intent")
+                .GetString().Should().Be("Convention");
+            memory.GetProperty("isStale")
+                .GetBoolean().Should().BeFalse();
+            memory.GetProperty("tags")
+                .EnumerateArray()
+                .Select(tag => tag.GetString()).Should().Equal("review");
+        }
+    }
+
     private static async Task<Guid> GetSingleMemoryId(CliCommandTestDatabase database, CancellationToken ct)
     {
         await using var context = await database.GetDbContext();
 
-        return await context.MemoryNodes.Select(static memory => memory.Id)
+        return await context.MemoryNodes
+            .Select(static memory => memory.Id)
             .SingleAsync(ct);
     }
 
@@ -754,7 +1061,8 @@ public sealed class CliCommandTests
             IProgress<EmbeddingGenerationProgress>? progress,
             CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<TextEmbedding>>(
-                texts.Select(text => new TextEmbedding(text, Array.Empty<float>()))
+                texts
+                    .Select(text => new TextEmbedding(text, Array.Empty<float>()))
                     .ToArray());
     }
 
@@ -788,22 +1096,21 @@ public sealed class CliCommandTests
         {
             var contextFactory = new InMemoryContextFactory<SharpSenseDbContext>(
                 options => new SharpSenseDbContext(options),
-                new InMemoryContextFactoryOptions(
-                    UseMigrations: true,
-                    LoadVectorExtension: true));
+                new InMemoryContextFactoryOptions(UseMigrations: true, LoadVectorExtension: true));
             var database = new CliCommandTestDatabase(contextFactory);
             await database.Initialize();
 
             return database;
         }
 
-        public void ConfigureServices(IServiceCollection services)
+        public void ConfigureServices(IServiceCollection services, bool useRealEmbeddings = false)
         {
             services.RemoveAll<IHostedService>();
             contextFactory.ConfigureServices(services);
-            services.AddMemory();
-            services.AddMemoryInfrastructure();
-            services.TryAddSingleton<IEmbeddingGenerator, NoopEmbeddingGenerator>();
+            if (!useRealEmbeddings)
+            {
+                services.AddSingleton<IEmbeddingGenerator, NoopEmbeddingGenerator>();
+            }
         }
 
         public async Task<SharpSenseDbContext> GetDbContext()
@@ -816,8 +1123,7 @@ public sealed class CliCommandTests
 
         private async Task Initialize()
         {
-            await using var dbContext = await contextFactory.GetContext(
-                ct: TestContext.Current.CancellationToken);
+            await using var dbContext = await contextFactory.GetContext(ct: TestContext.Current.CancellationToken);
 
             dbContext.Directories.AddRange(
                 new DirectoryRecord

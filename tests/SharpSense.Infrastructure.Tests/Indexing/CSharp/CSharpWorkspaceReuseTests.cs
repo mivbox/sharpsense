@@ -40,8 +40,7 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
             CreateGenerator(Path.Combine(root, "FixtureGenerator.dll"));
             await File.WriteAllTextAsync(
                 Path.Combine(root, "App.csproj"),
-                Project(
-                "<Analyzer Include=\"FixtureGenerator.dll\" /><AdditionalFiles Include=\"inputs/*.md\" />"),
+                Project("<Analyzer Include=\"FixtureGenerator.dll\" /><AdditionalFiles Include=\"inputs/*.md\" />"),
                 ct);
             await File.WriteAllTextAsync(Path.Combine(root, "Api.cs"), Source("int", 0), ct);
             var guide = Path.Combine(root, "docs/guide.md");
@@ -79,7 +78,8 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
             });
             ExtractedNodes? persisted = null;
             var repository = new Mock<IKnowledgeGraphRepository>(MockBehavior.Strict);
-            repository.Setup(candidate => candidate.ReplaceWorkspace(It.IsAny<ExtractedNodes>(), ct))
+            repository
+                .Setup(candidate => candidate.ReplaceWorkspace(It.IsAny<ExtractedNodes>(), ct))
                 .Callback<ExtractedNodes, CancellationToken>((value, _) => persisted = value)
                 .Returns(Task.CompletedTask);
 
@@ -95,7 +95,9 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
             var docsMilliseconds = watch.Elapsed.TotalMilliseconds;
             factory.CreateCount.Should().Be(1);
             persisted!.CodeNodes.Should().Contain(node => node.FullyQualifiedName == "Generated.AdditionalVersion0");
-            persisted.CodeNodes.Should().Contain(node => node.Summary.Contains("Updated documentation.", StringComparison.Ordinal));
+            persisted.CodeNodes.Should().Contain(node => node.Summary.Contains(
+                "Updated documentation.",
+                StringComparison.Ordinal));
 
             // Declared Markdown generator inputs refresh even though they aren't selected docs.
             await File.WriteAllTextAsync(schema, "1", ct);
@@ -107,7 +109,9 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
             File.Delete(schema);
             await Index(new(WorkspaceFileChangeAction.Deleted, OldPath: schema));
             factory.CreateCount.Should().Be(3);
-            persisted!.CodeNodes.Should().NotContain(node => node.FullyQualifiedName.StartsWith("Generated.AdditionalVersion", StringComparison.Ordinal));
+            persisted!.CodeNodes.Should().NotContain(node => node.FullyQualifiedName.StartsWith(
+                "Generated.AdditionalVersion",
+                StringComparison.Ordinal));
 
             // New membership of an empty AdditionalFiles glob cannot be inferred from cached paths.
             await File.WriteAllTextAsync(schema, "2", ct);
@@ -129,7 +133,9 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
                     coordinator,
                     Mock.Of<SharpSense.Application.GraphStats.Abstractions.IIndexRunStore>(),
                     Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);
-                var result = await handler.Handle(new IndexWorkspaceCommand(ChangedFiles: change is null ? null : [change]), ct);
+                var result = await handler.Handle(
+                    new IndexWorkspaceCommand(ChangedFiles: change is null ? null : [change]),
+                    ct);
                 result.IsSuccess.Should().BeTrue(string.Join("; ", result.Errors.Select(error => error.Message)));
             }
         }
@@ -157,8 +163,7 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
             var inputPath = Path.Combine(root, "schema.txt");
             await File.WriteAllTextAsync(
                 target,
-                Project(
-                "<Analyzer Include=\"FixtureGenerator.dll\" /><AdditionalFiles Include=\"schema.txt\" />"),
+                Project("<Analyzer Include=\"FixtureGenerator.dll\" /><AdditionalFiles Include=\"schema.txt\" />"),
                 ct);
             await File.WriteAllTextAsync(sourcePath, Source("int", 0), ct);
             await File.WriteAllTextAsync(inputPath, "0", ct);
@@ -216,7 +221,9 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
                 "Workspace.slnx",
                 "<Solution><Project Path=\"Library/Library.csproj\" /><Project Path=\"App/App.csproj\" /></Solution>");
             await Write("Library/Api.cs", Source("int", 0));
-            await Write("Library/Part.cs", "namespace Fixture; public static partial class Api { public static int Other() => 3; }");
+            await Write(
+                "Library/Part.cs",
+                "namespace Fixture; public static partial class Api { public static int Other() => 3; }");
             for (var index = 0; index < 80; index++)
             {
                 await Write(
@@ -258,8 +265,12 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
                 updated.IsSuccess.Should().BeTrue(string.Join("; ", updated.Errors));
                 fresh.IsSuccess.Should().BeTrue(string.Join("; ", fresh.Errors));
                 Snapshot(updated.Value).Should().Be(Snapshot(fresh.Value));
-                updated.Value.CodeNodes.Should().Contain(node => node.FullyQualifiedName.Contains("Read(long)", StringComparison.Ordinal));
-                updated.Value.CodeNodes.Should().NotContain(node => node.FullyQualifiedName.Contains("Read(int)", StringComparison.Ordinal));
+                updated.Value.CodeNodes.Should().Contain(node => node.FullyQualifiedName.Contains(
+                    "Read(long)",
+                    StringComparison.Ordinal));
+                updated.Value.CodeNodes.Should().NotContain(node => node.FullyQualifiedName.Contains(
+                    "Read(int)",
+                    StringComparison.Ordinal));
                 updated.Value.CodeNodes.Should().Contain(node => node.RelativeFilePath == "Library/Part.cs");
                 var method = updated.Value.CodeNodes.Should().ContainSingle(node => node.FullyQualifiedName == "Fixture.Api.Read(long)").Which;
                 updated.Value.Edges.Count(edge =>
@@ -350,10 +361,7 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
 
     private sealed class CountingWorkspaceFactory : IMsBuildWorkspaceFactory
     {
-        public int CreateCount
-        {
-            get; private set;
-        }
+        public int CreateCount { get; private set; }
 
         public MSBuildWorkspace Create()
         {

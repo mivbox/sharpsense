@@ -52,7 +52,8 @@ public sealed class WorkspaceFileDiscovererTests
             TestContext.Current.CancellationToken);
 
         files.Should().HaveCount(2);
-        files.Select(static file => file.RelativeFilePath)
+        files
+            .Select(static file => file.RelativeFilePath)
             .Should()
             .Equal("src/Sample/docs/Guide.md", "src/Sample/docs/Reference.md");
     }

@@ -30,7 +30,8 @@ public sealed class RepositoryWorkspaceRegistrationTests
 
         using var provider = services.BuildServiceProvider();
 
-        provider.GetRequiredService<WorkspaceSelection>().Definition.Sources.Select(source => source.Path).Should().Equal(["README.md", "docs/**/*.md"]);
+        provider.GetRequiredService<WorkspaceSelection>().Definition.Sources
+            .Select(source => source.Path).Should().Equal(["README.md", "docs/**/*.md"]);
         provider.GetRequiredService<IRepositoryWorkspace>().Should().BeSameAs(selection.Workspace);
     }
 
@@ -53,7 +54,8 @@ public sealed class RepositoryWorkspaceRegistrationTests
         using var provider = services.BuildServiceProvider();
 
         provider.GetRequiredService<IRepositoryWorkspace>().WorkspaceId.Should().Be(expected.Definition.Id);
-        provider.GetRequiredService<WorkspaceSelection>().Definition.Sources.Select(source => source.Path).Should().BeEmpty();
+        provider.GetRequiredService<WorkspaceSelection>().Definition.Sources
+            .Select(source => source.Path).Should().BeEmpty();
     }
 
     [Fact]
@@ -74,7 +76,8 @@ public sealed class RepositoryWorkspaceRegistrationTests
 
         catalog.AddSources("product", [new(WorkspaceSourceKind.Markdown, "notes/**/*.md")]);
 
-        snapshot.Definition.Sources.Select(source => source.Path).Should().Equal(["docs/**/*.md"]);
+        snapshot.Definition.Sources
+            .Select(source => source.Path).Should().Equal(["docs/**/*.md"]);
         catalog.Resolve("product").Definition.Sources.Length.Should().Be(2);
     }
 }

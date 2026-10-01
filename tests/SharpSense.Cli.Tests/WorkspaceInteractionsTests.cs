@@ -16,7 +16,10 @@ public sealed class WorkspaceInteractionsTests
     [InlineData(false, false, 0)]
     [InlineData(true, false, 1)]
     [InlineData(true, true, 0)]
-    public async Task WhenBareWorkspaceAndRoot_ThenShowHelpWithoutStartingServices(bool workspace, bool explicitHelp, int expectedExit)
+    public async Task WhenBareWorkspaceAndRoot_ThenShowHelpWithoutStartingServices(
+        bool workspace,
+        bool explicitHelp,
+        int expectedExit)
     {
         using var console = new TestConsole();
         var app = Program.CreateCommandApp(
@@ -40,14 +43,15 @@ public sealed class WorkspaceInteractionsTests
     [Fact]
     public async Task WhenAnalysis_ThenUsesDefaultWhileExplicitSelectionOverridesIt()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fixture = new Fixture();
         var first = fixture.Catalog.Create("first", "/repo", []);
         var second = fixture.Catalog.Create("second", "/repo", []);
         fixture.Catalog.Use("second");
 
         var setup = new WorkspaceSetup(fixture.Catalog, fixture.Interactions.Object);
-        (await setup.SelectForAnalysis(null, "/elsewhere", TestContext.Current.CancellationToken))!.Definition.Id.Should().Be(second.Definition.Id);
-        (await setup.SelectForAnalysis("first", "/elsewhere", TestContext.Current.CancellationToken))!.Definition.Id.Should().Be(first.Definition.Id);
+        (await setup.SelectForAnalysis(null, "/elsewhere", ct))!.Definition.Id.Should().Be(second.Definition.Id);
+        (await setup.SelectForAnalysis("first", "/elsewhere", ct))!.Definition.Id.Should().Be(first.Definition.Id);
         fixture.Interactions.Verify(
             x => x.SelectWorkspace(It.IsAny<IReadOnlyList<WorkspaceSelection>>(), It.IsAny<CancellationToken>()),
             Times.Never);
@@ -98,7 +102,12 @@ public sealed class WorkspaceInteractionsTests
         var result = await fixture.Run([.. command, "--repo-root", "/repo"]);
         result.Exit.Should().Be(0);
         fixture.Catalog.List().Count.Should().Be(save ? 1 : 0);
-        fixture.Interactions.Verify(x => x.ShowConfiguration("guided", "/repo/docs", It.IsAny<IReadOnlyList<WorkspaceSource>>()), Times.Once);
+        fixture.Interactions.Verify(
+            x => x.ShowConfiguration(
+                "guided",
+                "/repo/docs",
+                It.IsAny<IReadOnlyList<WorkspaceSource>>()),
+            Times.Once);
         if (save)
         {
             fixture.Catalog.List()[0].Definition.Sources.Should().ContainSingle().Which.Path.Should().Be("*.md");
@@ -129,8 +138,16 @@ public sealed class WorkspaceInteractionsTests
         string[] command = alias ? ["configure"] : ["workspace", "create"];
         string[] outputOptions = json ? ["--json"] : [];
 
-        var result = await fixture.Run([.. command, "explicit", "--repo-root", "/repo",
-            "--csharp", "Api.csproj", .. outputOptions]);
+        var result = await fixture.Run(
+            [
+                .. command,
+                "explicit",
+                "--repo-root",
+                "/repo",
+                "--csharp",
+                "Api.csproj",
+                .. outputOptions
+            ]);
 
         result.Exit.Should().Be(0);
         fixture.Catalog.List().Should().ContainSingle();
@@ -143,7 +160,8 @@ public sealed class WorkspaceInteractionsTests
     public async Task WhenRedirectedCreation_ThenRejectsIncompleteInputsWithoutWritingAWorkspace(bool alias)
     {
         var fixture = new Fixture();
-        fixture.Interactions.SetupGet(x => x.IsInteractive)
+        fixture.Interactions
+            .SetupGet(x => x.IsInteractive)
             .Returns(false);
         string[] command = alias ? ["configure"] : ["workspace", "create"];
 
@@ -158,15 +176,19 @@ public sealed class WorkspaceInteractionsTests
     [Fact]
     public async Task WhenAmbiguousAnalysisPromptsBeforeBindingAndExplicitUnknown_ThenNeverPrompts()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fixture = new Fixture();
         fixture.Catalog.Create("one", "/repo", [new(WorkspaceSourceKind.Markdown, "docs/*.md")]);
         var second = fixture.Catalog.Create("two", "/repo", [new(WorkspaceSourceKind.Markdown, "docs/*.md")]);
-        fixture.Interactions.Setup(x => x.SelectWorkspace(It.IsAny<IReadOnlyList<WorkspaceSelection>>(), It.IsAny<CancellationToken>()))
+        fixture.Interactions
+            .Setup(x => x.SelectWorkspace(
+                It.IsAny<IReadOnlyList<WorkspaceSelection>>(),
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync(second);
         var setup = new WorkspaceSetup(fixture.Catalog, fixture.Interactions.Object);
-        var selected = await setup.SelectForAnalysis(null, "/repo", TestContext.Current.CancellationToken);
+        var selected = await setup.SelectForAnalysis(null, "/repo", ct);
         selected!.Definition.Id.Should().Be(second.Definition.Id);
-        await ((Func<Task>)(() => setup.SelectForAnalysis("missing", "/repo", TestContext.Current.CancellationToken))).Should().ThrowExactlyAsync<InvalidOperationException>();
+        await ((Func<Task>)(() => setup.SelectForAnalysis("missing", "/repo", ct))).Should().ThrowExactlyAsync<InvalidOperationException>();
         fixture.Interactions.Verify(
             x => x.SelectWorkspace(It.IsAny<IReadOnlyList<WorkspaceSelection>>(), It.IsAny<CancellationToken>()),
             Times.Once);
@@ -177,7 +199,10 @@ public sealed class WorkspaceInteractionsTests
     {
         var fixture = new Fixture();
         fixture.SetupCreation(true);
-        fixture.Interactions.Setup(x => x.SelectWorkspace(It.IsAny<IReadOnlyList<WorkspaceSelection>>(), It.IsAny<CancellationToken>()))
+        fixture.Interactions
+            .Setup(x => x.SelectWorkspace(
+                It.IsAny<IReadOnlyList<WorkspaceSelection>>(),
+                It.IsAny<CancellationToken>()))
             .ReturnsAsync((WorkspaceSelection?)null);
         var selected = await new WorkspaceSetup(fixture.Catalog, fixture.Interactions.Object)
             .SelectForAnalysis(null, "/repo", TestContext.Current.CancellationToken);
@@ -214,7 +239,9 @@ public sealed class WorkspaceInteractionsTests
         fixture.FileSystem.AddFile("/repo/node_modules/pkg/tsconfig.json", new MockFileData("{}"));
         fixture.FileSystem.AddFile("/repo/obj/Hidden.csproj", new MockFileData(""));
         fixture.FileSystem.AddFile("/repo/frontend/tsconfig.json", new MockFileData("{}"));
-        var discovered = new WorkspaceSourceDiscovery(fixture.FileSystem).Discover("/repo", TestContext.Current.CancellationToken);
+        var discovered = new WorkspaceSourceDiscovery(fixture.FileSystem).Discover(
+            "/repo",
+            TestContext.Current.CancellationToken);
         discovered.WorkspaceRoot.Should().Be("/repo");
         discovered.Sources.Count.Should().Be(3);
         discovered.Sources.Should().Contain(new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/*.md"));
@@ -223,10 +250,7 @@ public sealed class WorkspaceInteractionsTests
 
     private sealed class Fixture
     {
-        public MockFileSystem FileSystem
-        {
-            get;
-        } = new(
+        public MockFileSystem FileSystem { get; } = new(
             new Dictionary<string, MockFileData>
             {
                 ["/repo/.git/HEAD"] = new("ref: refs/heads/main"),
@@ -234,35 +258,38 @@ public sealed class WorkspaceInteractionsTests
                 ["/repo/docs/guide.md"] = new("# Guide")
             },
             "/repo");
-        public WorkspaceCatalog Catalog
-        {
-            get;
-        }
-        public Mock<IWorkspaceInteractions> Interactions
-        {
-            get;
-        } = new(MockBehavior.Strict);
+        public WorkspaceCatalog Catalog { get; }
+        public Mock<IWorkspaceInteractions> Interactions { get; } = new(MockBehavior.Strict);
 
         public Fixture()
         {
             Catalog = new WorkspaceCatalog(FileSystem, "/home/.sharpsense");
-            Interactions.SetupGet(x => x.IsInteractive)
+            Interactions
+                .SetupGet(x => x.IsInteractive)
                 .Returns(true);
         }
 
         public void SetupCreation(bool save)
         {
-            Interactions.Setup(x => x.ReadName(null, It.IsAny<CancellationToken>()))
+            Interactions
+                .Setup(x => x.ReadName(null, It.IsAny<CancellationToken>()))
                 .ReturnsAsync("guided");
-            Interactions.Setup(x => x.ReadWorkspaceRoot("/repo", It.IsAny<CancellationToken>()))
+            Interactions
+                .Setup(x => x.ReadWorkspaceRoot("/repo", It.IsAny<CancellationToken>()))
                 .ReturnsAsync("/repo/docs");
-            Interactions.Setup(x => x.SelectSources("/repo/docs", It.IsAny<CancellationToken>()))
+            Interactions
+                .Setup(x => x.SelectSources("/repo/docs", It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new[]
                 {
                     new WorkspaceSource(WorkspaceSourceKind.Markdown, "/repo/docs/*.md")
                 });
-            Interactions.Setup(x => x.ShowConfiguration("guided", "/repo/docs", It.IsAny<IReadOnlyList<WorkspaceSource>>()));
-            Interactions.Setup(x => x.Confirm("Save this workspace?", It.IsAny<CancellationToken>()))
+            Interactions
+                .Setup(x => x.ShowConfiguration(
+                    "guided",
+                    "/repo/docs",
+                    It.IsAny<IReadOnlyList<WorkspaceSource>>()));
+            Interactions
+                .Setup(x => x.Confirm("Save this workspace?", It.IsAny<CancellationToken>()))
                 .ReturnsAsync(save);
         }
 
@@ -272,11 +299,11 @@ public sealed class WorkspaceInteractionsTests
             var app = Program.CreateCommandApp(
                 console,
                 services =>
-            {
-                services.AddSingleton<IFileSystem>(FileSystem);
-                services.AddSingleton<IWorkspaceCatalog>(Catalog);
-                services.AddSingleton(Interactions.Object);
-            },
+                {
+                    services.AddSingleton<IFileSystem>(FileSystem);
+                    services.AddSingleton<IWorkspaceCatalog>(Catalog);
+                    services.AddSingleton(Interactions.Object);
+                },
                 enableFileLogging: false);
             var exit = await app.RunAsync(args, TestContext.Current.CancellationToken);
 

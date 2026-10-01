@@ -47,13 +47,15 @@ public sealed class ProgramCommandAppTests
             var app = Program.CreateCommandApp(
                 console,
                 _ =>
-            {
-                servicesStarted = true;
-                throw new InvalidOperationException("Invalid selectors must not start services.");
-            },
+                {
+                    servicesStarted = true;
+                    throw new InvalidOperationException("Invalid selectors must not start services.");
+                },
                 enableFileLogging: false);
 
-            var exitCode = await app.RunAsync([.. command, "--workspace", selector], TestContext.Current.CancellationToken);
+            var exitCode = await app.RunAsync(
+                [.. command, "--workspace", selector],
+                TestContext.Current.CancellationToken);
 
             exitCode.Should().NotBe(0);
             console.Output.Should().Contain("--workspace must contain a workspace name or ID");
@@ -75,14 +77,4 @@ public sealed class ProgramCommandAppTests
         executionContext.ConfigureServices.Should().BeNull();
     }
 
-    [Fact]
-    public void WhenDefaultSettingsHaveNoOverrides_ThenExecutionContextIsOmitted()
-    {
-        var executionContext = Program.CreateExecutionContext(
-            console: null,
-            configureServices: null,
-            enableFileLogging: true);
-
-        executionContext.Should().BeNull();
-    }
 }

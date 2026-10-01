@@ -22,27 +22,33 @@ public sealed class WorkspaceWatcherTests
             $"/repo/{name}",
             new MockFileData("# Before"));
         var (watcher, fileWatcher, _) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         IReadOnlyList<WorkspaceFileChange>? observed = null;
         var ready = false;
         var watching = watcher.Watch(
             "/repo",
             (changes, _) =>
-        {
-            observed = changes;
-            cancellation.Cancel();
+            {
+                observed = changes;
+                cancellation.Cancel();
 
-            return Task.CompletedTask;
-        },
+                return Task.CompletedTask;
+            },
             cancellation.Token,
             onReady: () => ready = true);
+        await using var cleanup = new WatchCleanup(watching, cancellation);
 
         ready.Should().BeTrue();
         fileSystem.File.WriteAllText(
             $"/repo/{name}",
             "# After");
-        fileWatcher.Raise(value => value.Changed += null, new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo", name));
-        fileWatcher.Raise(value => value.Created += null, new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", name));
+        fileWatcher.Raise(
+            value => value.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo", name));
+        fileWatcher.Raise(
+            value => value.Created += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", name));
         await watching;
 
         observed.Should().NotBeNull();
@@ -55,28 +61,34 @@ public sealed class WorkspaceWatcherTests
     {
         var fileSystem = CreateRepositoryFileSystem();
         var (watcher, fileWatcher, _) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var firstBatch = new TaskCompletionSource<WorkspaceFileChange>(TaskCreationOptions.RunContinuationsAsynchronously);
         WorkspaceFileChange? second = null;
         var watching = watcher.Watch(
             "/repo",
             (changes, _) =>
-        {
-            var change = changes.Should().ContainSingle().Which;
-            if (!firstBatch.TrySetResult(change))
             {
-                second = change;
-                cancellation.Cancel();
-            }
+                var change = changes.Should().ContainSingle().Which;
+                if (!firstBatch.TrySetResult(change))
+                {
+                    second = change;
+                    cancellation.Cancel();
+                }
 
-            return Task.CompletedTask;
-        },
+                return Task.CompletedTask;
+            },
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watching, cancellation);
 
         fileSystem.AddFile("/repo/new.md", new MockFileData("# New generator input"));
-        fileWatcher.Raise(value => value.Changed += null, new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo", "new.md"));
+        fileWatcher.Raise(
+            value => value.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo", "new.md"));
         (await firstBatch.Task.WaitAsync(cancellation.Token)).ActionType.Should().Be(WorkspaceFileChangeAction.Added);
-        fileWatcher.Raise(value => value.Created += null, new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", "new.md"));
+        fileWatcher.Raise(
+            value => value.Created += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", "new.md"));
         await watching;
 
         second.Should().NotBeNull();
@@ -88,22 +100,28 @@ public sealed class WorkspaceWatcherTests
     {
         var fileSystem = CreateRepositoryFileSystem();
         var (watcher, fileWatcher, directoryWatcher) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         WorkspaceFileChange? observed = null;
         var watching = watcher.Watch(
             "/repo",
             (changes, _) =>
-        {
-            observed = changes.Should().ContainSingle().Which;
-            cancellation.Cancel();
+            {
+                observed = changes.Should().ContainSingle().Which;
+                cancellation.Cancel();
 
-            return Task.CompletedTask;
-        },
+                return Task.CompletedTask;
+            },
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watching, cancellation);
 
         fileSystem.AddFile("/repo/docs/new.md", new MockFileData("# New"));
-        directoryWatcher.Raise(value => value.Created += null, new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", "docs"));
-        fileWatcher.Raise(value => value.Created += null, new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo/docs", "new.md"));
+        directoryWatcher.Raise(
+            value => value.Created += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", "docs"));
+        fileWatcher.Raise(
+            value => value.Created += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo/docs", "new.md"));
         await watching;
 
         observed.Should().NotBeNull();
@@ -122,45 +140,52 @@ public sealed class WorkspaceWatcherTests
         }
 
         var (watcher, fileWatcher, _) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var ready = false;
         var actions = new List<WorkspaceFileChangeAction>();
         await watcher.Watch(
             "/repo",
             (changes, _) =>
-        {
-            actions.Add(changes.Should().ContainSingle().Which.ActionType);
-            if (!ready)
             {
-                actions[^1].Should().Be(WorkspaceFileChangeAction.Added);
-                if (actions.Count == 1)
+                actions.Add(changes.Should().ContainSingle().Which.ActionType);
+                if (!ready)
                 {
-                    fileWatcher.Raise(value => value.Created += null, new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", "input.md"));
+                    actions[^1].Should().Be(WorkspaceFileChangeAction.Added);
+                    if (actions.Count == 1)
+                    {
+                        fileWatcher.Raise(
+                            value => value.Created += null,
+                            new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", "input.md"));
+                    }
                 }
-            }
-            else
-            {
-                cancellation.Cancel();
-            }
+                else
+                {
+                    cancellation.Cancel();
+                }
 
-            return Task.CompletedTask;
-        },
+                return Task.CompletedTask;
+            },
             cancellation.Token,
             initialize: _ =>
-        {
-            // C# may already have evaluated its empty AdditionalFiles glob while
-            // another language worker has yet to read this new Markdown input.
-            fileSystem.AddFile("/repo/input.md", new MockFileData("# New input"));
-            fileWatcher.Raise(value => value.Created += null, new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", "input.md"));
+            {
+                // C# may already have evaluated its empty AdditionalFiles glob while
+                // another language worker has yet to read this new Markdown input.
+                fileSystem.AddFile("/repo/input.md", new MockFileData("# New input"));
+                fileWatcher.Raise(
+                    value => value.Created += null,
+                    new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", "input.md"));
 
-            return Task.CompletedTask;
-        },
+                return Task.CompletedTask;
+            },
             onReady: () =>
-        {
-            actions.Count.Should().Be(2);
-            ready = true;
-            fileWatcher.Raise(value => value.Created += null, new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", "input.md"));
-        });
+            {
+                actions.Count.Should().Be(2);
+                ready = true;
+                fileWatcher.Raise(
+                    value => value.Created += null,
+                    new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", "input.md"));
+            });
 
         actions.Should().Equal([WorkspaceFileChangeAction.Added, WorkspaceFileChangeAction.Added, WorkspaceFileChangeAction.Modified]);
     }
@@ -173,23 +198,26 @@ public sealed class WorkspaceWatcherTests
         var (watcher, fileWatcher, _) = CreateWorkspaceWatcher(fileSystem);
         fileWatcher.SetupSet(value => value.EnableRaisingEvents = true)
             .Callback(() => fileSystem.File.Delete("/repo/guide.md"));
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         WorkspaceFileChange? observed = null;
         await watcher.Watch(
             "/repo",
             (changes, _) =>
-        {
-            observed = changes.Should().ContainSingle().Which;
-            cancellation.Cancel();
+            {
+                observed = changes.Should().ContainSingle().Which;
+                cancellation.Cancel();
 
-            return Task.CompletedTask;
-        },
+                return Task.CompletedTask;
+            },
             cancellation.Token,
             onReady: () =>
-        {
-            fileSystem.AddFile("/repo/guide.md", new MockFileData("# Recreated"));
-            fileWatcher.Raise(value => value.Created += null, new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", "guide.md"));
-        });
+            {
+                fileSystem.AddFile("/repo/guide.md", new MockFileData("# Recreated"));
+                fileWatcher.Raise(
+                    value => value.Created += null,
+                    new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", "guide.md"));
+            });
 
         observed.Should().NotBeNull();
         observed.ActionType.Should().Be(WorkspaceFileChangeAction.Added);
@@ -200,35 +228,43 @@ public sealed class WorkspaceWatcherTests
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
-    public async Task WhenDeletedOrRenamedMarkdownMembership_ThenIsForgottenBeforeRecreation(bool directory, bool rename)
+    public async Task WhenDeletedOrRenamedMarkdownMembership_ThenIsForgottenBeforeRecreation(
+        bool directory,
+        bool rename)
     {
         var fileSystem = CreateRepositoryFileSystem();
         fileSystem.AddFile("/repo/docs/guide.md", new MockFileData("# Original"));
         var (watcher, fileWatcher, directoryWatcher) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         IReadOnlyList<WorkspaceFileChange>? observed = null;
         var watching = watcher.Watch(
             "/repo",
             (changes, _) =>
-        {
-            observed = changes;
-            cancellation.Cancel();
+            {
+                observed = changes;
+                cancellation.Cancel();
 
-            return Task.CompletedTask;
-        },
+                return Task.CompletedTask;
+            },
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watching, cancellation);
 
         if (directory)
         {
             if (rename)
             {
                 fileSystem.Directory.Move("/repo/docs", "/repo/moved");
-                directoryWatcher.Raise(value => value.Renamed += null, new RenamedEventArgs(WatcherChangeTypes.Renamed, "/repo", "moved", "docs"));
+                directoryWatcher.Raise(
+                    value => value.Renamed += null,
+                    new RenamedEventArgs(WatcherChangeTypes.Renamed, "/repo", "moved", "docs"));
             }
             else
             {
                 fileSystem.Directory.Delete("/repo/docs", recursive: true);
-                directoryWatcher.Raise(value => value.Deleted += null, new FileSystemEventArgs(WatcherChangeTypes.Deleted, "/repo", "docs"));
+                directoryWatcher.Raise(
+                    value => value.Deleted += null,
+                    new FileSystemEventArgs(WatcherChangeTypes.Deleted, "/repo", "docs"));
             }
         }
         else if (rename)
@@ -263,7 +299,8 @@ public sealed class WorkspaceWatcherTests
         const string path = "/repo/Feature.cs";
         fileSystem.AddFile(path, new MockFileData("initial"));
         var (watcher, fileWatcher, directoryWatcher) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var scanned = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finishScan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var indexed = "previous index";
@@ -273,37 +310,38 @@ public sealed class WorkspaceWatcherTests
         var watching = watcher.Watch(
             "/repo",
             (changes, _) =>
-        {
-            ready.Should().BeFalse();
-            changes.Should().ContainSingle().Which.NewPath.Should().Be(path);
-            indexed = fileSystem.File.ReadAllText(path);
-            if (++updates == 1)
             {
-                fileSystem.File.WriteAllText(path, "during reconciliation");
-                fileWatcher.Raise(
-                    value => value.Changed += null,
-                    new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo", "Feature.cs"));
-            }
+                ready.Should().BeFalse();
+                changes.Should().ContainSingle().Which.NewPath.Should().Be(path);
+                indexed = fileSystem.File.ReadAllText(path);
+                if (++updates == 1)
+                {
+                    fileSystem.File.WriteAllText(path, "during reconciliation");
+                    fileWatcher.Raise(
+                        value => value.Changed += null,
+                        new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo", "Feature.cs"));
+                }
 
-            return Task.CompletedTask;
-        },
+                return Task.CompletedTask;
+            },
             cancellation.Token,
             initialize: async token =>
-        {
-            fileWatcher.Object.EnableRaisingEvents.Should().BeTrue();
-            directoryWatcher.Object.EnableRaisingEvents.Should().BeTrue();
-            var scannedContent = fileSystem.File.ReadAllText(path);
-            scanned.SetResult();
-            await finishScan.Task.WaitAsync(token);
-            indexed = scannedContent;
-        },
+            {
+                fileWatcher.Object.EnableRaisingEvents.Should().BeTrue();
+                directoryWatcher.Object.EnableRaisingEvents.Should().BeTrue();
+                var scannedContent = fileSystem.File.ReadAllText(path);
+                scanned.SetResult();
+                await finishScan.Task.WaitAsync(token);
+                indexed = scannedContent;
+            },
             onReady: () =>
-        {
-            indexed.Should().Be("during reconciliation");
-            updates.Should().Be(2);
-            ready = true;
-            cancellation.Cancel();
-        });
+            {
+                indexed.Should().Be("during reconciliation");
+                updates.Should().Be(2);
+                ready = true;
+                cancellation.Cancel();
+            });
+        await using var cleanup = new WatchCleanup(watching, cancellation);
 
         await scanned.Task.WaitAsync(cancellation.Token);
         fileSystem.File.WriteAllText(path, "during initial scan");
@@ -325,32 +363,34 @@ public sealed class WorkspaceWatcherTests
     {
         var fileSystem = CreateRepositoryFileSystem();
         var (watcher, fileWatcher, directoryWatcher) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var ready = false;
         var updates = 0;
         var watching = watcher.Watch(
             "/repo",
             (_, _) =>
-        {
-            updates++;
+            {
+                updates++;
 
-            return Task.CompletedTask;
-        },
+                return Task.CompletedTask;
+            },
             cancellation.Token,
             initialize: token =>
-        {
-            fileWatcher.Object.EnableRaisingEvents.Should().BeTrue();
-            fileWatcher.Raise(
-                value => value.Changed += null,
-                new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo", "Feature.cs"));
-            if (cancel)
             {
-                cancellation.Cancel();
-                token.ThrowIfCancellationRequested();
-            }
-            throw new InvalidOperationException("Initial extraction failed before persistence.");
-        },
+                fileWatcher.Object.EnableRaisingEvents.Should().BeTrue();
+                fileWatcher.Raise(
+                    value => value.Changed += null,
+                    new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo", "Feature.cs"));
+                if (cancel)
+                {
+                    cancellation.Cancel();
+                    token.ThrowIfCancellationRequested();
+                }
+                throw new InvalidOperationException("Initial extraction failed before persistence.");
+            },
             onReady: () => ready = true);
+        await using var cleanup = new WatchCleanup(watching, cancellation);
 
         if (cancel)
         {
@@ -370,10 +410,12 @@ public sealed class WorkspaceWatcherTests
     [Fact]
     public async Task WhenWatchStarts_ThenConfiguresFileAndDirectoryWatchers()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem();
         fileSystem.AddFile("/repo/src/Feature.cs", new MockFileData("public sealed class Feature { }"));
         var (workspaceWatcher, fileWatcher, directoryWatcher) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var watchTask = workspaceWatcher.Watch(
@@ -386,6 +428,7 @@ public sealed class WorkspaceWatcherTests
                 return Task.CompletedTask;
             },
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watchTask, cancellation);
 
         fileWatcher.Object.IncludeSubdirectories.Should().BeTrue();
         fileWatcher.Object.InternalBufferSize.Should().Be(64 * 1024);
@@ -423,7 +466,7 @@ public sealed class WorkspaceWatcherTests
 
         await observedBatch.Task.WaitAsync(
             TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken);
+            ct);
         await watchTask;
     }
 
@@ -445,22 +488,25 @@ public sealed class WorkspaceWatcherTests
     [InlineData("packages/client/package.json")]
     public async Task WhenSourceOrBuildConfigurationChanges_ThenEmitsRelevantBatch(string relativePath)
     {
+        var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem();
         var path = "/repo/" + relativePath;
         fileSystem.AddFile(path, new MockFileData(""));
         var (workspaceWatcher, fileWatcher, _) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
         var watchTask = workspaceWatcher.Watch(
             "/repo",
             (changes, _) =>
-        {
-            observedBatch.TrySetResult(changes);
-            cancellation.Cancel();
+            {
+                observedBatch.TrySetResult(changes);
+                cancellation.Cancel();
 
-            return Task.CompletedTask;
-        },
+                return Task.CompletedTask;
+            },
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watchTask, cancellation);
 
         fileWatcher.Raise(
             candidate => candidate.Changed += null,
@@ -478,7 +524,7 @@ public sealed class WorkspaceWatcherTests
             candidate => candidate.Changed += null,
             new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/dist", "base.json"));
 
-        var batch = await observedBatch.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        var batch = await observedBatch.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
         await watchTask;
         batch.Should().ContainSingle().Which.NewPath.Should().Be(path);
     }
@@ -486,11 +532,13 @@ public sealed class WorkspaceWatcherTests
     [Fact]
     public async Task WhenRelevantFilesChangeBeforeDebounceWindow_ThenEmitsSingleBatch()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem();
         fileSystem.AddFile("/repo/src/Feature.cs", new MockFileData("public sealed class Feature { }"));
         fileSystem.AddFile("/repo/docs/Guide.md", new MockFileData("# Guide"));
         var (workspaceWatcher, fileWatcher, _) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
         var callbackCount = 0;
 
@@ -505,6 +553,7 @@ public sealed class WorkspaceWatcherTests
                 return Task.CompletedTask;
             },
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watchTask, cancellation);
 
         fileWatcher.Raise(
             candidate => candidate.Created += null,
@@ -515,7 +564,7 @@ public sealed class WorkspaceWatcherTests
 
         var observedChanges = await observedBatch.Task.WaitAsync(
             TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken);
+            ct);
         await watchTask;
 
         callbackCount.Should().Be(1);
@@ -529,11 +578,13 @@ public sealed class WorkspaceWatcherTests
     [Fact]
     public async Task WhenGitPathsChange_ThenSkipsFastPathEvents()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem();
         fileSystem.AddFile("/repo/.git/config", new MockFileData("[core]"));
         fileSystem.AddFile("/repo/src/Feature.cs", new MockFileData("public sealed class Feature { }"));
         var (workspaceWatcher, fileWatcher, _) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var watchTask = workspaceWatcher.Watch(
@@ -546,6 +597,7 @@ public sealed class WorkspaceWatcherTests
                 return Task.CompletedTask;
             },
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watchTask, cancellation);
 
         fileWatcher.Raise(
             candidate => candidate.Changed += null,
@@ -556,7 +608,7 @@ public sealed class WorkspaceWatcherTests
 
         var changes = await observedBatch.Task.WaitAsync(
             TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken);
+            ct);
         await watchTask;
 
         changes.Should().ContainSingle();
@@ -567,11 +619,13 @@ public sealed class WorkspaceWatcherTests
     [Fact]
     public async Task WhenRelevantFileIsRenamed_ThenReportsRenamePaths()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem();
         fileSystem.AddFile("/repo/src/OldFeature.cs", new MockFileData("public sealed class Feature { }"));
         fileSystem.AddFile("/repo/src/NewFeature.cs", new MockFileData("public sealed class Feature { }"));
         var (workspaceWatcher, fileWatcher, _) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var watchTask = workspaceWatcher.Watch(
@@ -584,6 +638,7 @@ public sealed class WorkspaceWatcherTests
                 return Task.CompletedTask;
             },
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watchTask, cancellation);
 
         fileWatcher.Raise(
             candidate => candidate.Renamed += null,
@@ -591,7 +646,7 @@ public sealed class WorkspaceWatcherTests
 
         var changes = await observedBatch.Task.WaitAsync(
             TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken);
+            ct);
         await watchTask;
 
         changes.Should().ContainSingle();
@@ -603,11 +658,13 @@ public sealed class WorkspaceWatcherTests
     [Fact]
     public async Task WhenRelevantFileIsRenamedIntoIgnoredDirectory_ThenReportsDelete()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem();
         fileSystem.AddFile("/repo/src/Feature.cs", new MockFileData("public sealed class Feature { }"));
         fileSystem.AddFile("/repo/bin/Feature.cs", new MockFileData("public sealed class Feature { }"));
         var (workspaceWatcher, fileWatcher, _) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var watchTask = workspaceWatcher.Watch(
@@ -620,6 +677,7 @@ public sealed class WorkspaceWatcherTests
                 return Task.CompletedTask;
             },
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watchTask, cancellation);
 
         fileWatcher.Raise(
             candidate => candidate.Renamed += null,
@@ -627,7 +685,7 @@ public sealed class WorkspaceWatcherTests
 
         var changes = await observedBatch.Task.WaitAsync(
             TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken);
+            ct);
         await watchTask;
 
         changes.Should().ContainSingle();
@@ -639,11 +697,13 @@ public sealed class WorkspaceWatcherTests
     [Fact]
     public async Task WhenIgnoredFileIsRenamedIntoRelevantDirectory_ThenReportsAdd()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem();
         fileSystem.AddFile("/repo/bin/Feature.cs", new MockFileData("public sealed class Feature { }"));
         fileSystem.AddFile("/repo/src/Feature.cs", new MockFileData("public sealed class Feature { }"));
         var (workspaceWatcher, fileWatcher, _) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var watchTask = workspaceWatcher.Watch(
@@ -656,6 +716,7 @@ public sealed class WorkspaceWatcherTests
                 return Task.CompletedTask;
             },
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watchTask, cancellation);
 
         fileWatcher.Raise(
             candidate => candidate.Renamed += null,
@@ -663,7 +724,7 @@ public sealed class WorkspaceWatcherTests
 
         var changes = await observedBatch.Task.WaitAsync(
             TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken);
+            ct);
         await watchTask;
 
         changes.Should().ContainSingle();
@@ -675,11 +736,13 @@ public sealed class WorkspaceWatcherTests
     [Fact]
     public async Task WhenRelevantDirectoryIsRenamed_ThenReportsDirectoryRenamePaths()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem();
         fileSystem.AddFile("/repo/src/OldFeature/Feature.cs", new MockFileData("public sealed class Feature { }"));
         fileSystem.AddFile("/repo/src/NewFeature/Feature.cs", new MockFileData("public sealed class Feature { }"));
         var (workspaceWatcher, _, directoryWatcher) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var watchTask = workspaceWatcher.Watch(
@@ -692,6 +755,7 @@ public sealed class WorkspaceWatcherTests
                 return Task.CompletedTask;
             },
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watchTask, cancellation);
 
         directoryWatcher.Raise(
             candidate => candidate.Renamed += null,
@@ -699,7 +763,7 @@ public sealed class WorkspaceWatcherTests
 
         var changes = await observedBatch.Task.WaitAsync(
             TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken);
+            ct);
         await watchTask;
 
         changes.Should().ContainSingle();
@@ -711,10 +775,12 @@ public sealed class WorkspaceWatcherTests
     [Fact]
     public async Task WhenRelevantDirectoryIsDeleted_ThenEmitsDirectoryDeleted()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem();
         fileSystem.AddFile("/repo/src/FeatureFolder/Feature.cs", new MockFileData("public sealed class Feature { }"));
         var (workspaceWatcher, _, directoryWatcher) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var watchTask = workspaceWatcher.Watch(
@@ -727,6 +793,7 @@ public sealed class WorkspaceWatcherTests
                 return Task.CompletedTask;
             },
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watchTask, cancellation);
 
         directoryWatcher.Raise(
             candidate => candidate.Deleted += null,
@@ -734,7 +801,7 @@ public sealed class WorkspaceWatcherTests
 
         var changes = await observedBatch.Task.WaitAsync(
             TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken);
+            ct);
         await watchTask;
 
         changes.Should().ContainSingle();
@@ -745,11 +812,15 @@ public sealed class WorkspaceWatcherTests
     [Fact]
     public async Task WhenIgnoredDirectoryIsDeletedWithMixedCase_ThenSkipsIgnoredPaths()
     {
+        var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem();
-        fileSystem.AddFile("/repo/src/NODE_MODULES/Generated.cs", new MockFileData("public sealed class Generated { }"));
+        fileSystem.AddFile(
+            "/repo/src/NODE_MODULES/Generated.cs",
+            new MockFileData("public sealed class Generated { }"));
         fileSystem.AddFile("/repo/src/Feature.cs", new MockFileData("public sealed class Feature { }"));
         var (workspaceWatcher, fileWatcher, directoryWatcher) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var observedBatch = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var watchTask = workspaceWatcher.Watch(
@@ -762,6 +833,7 @@ public sealed class WorkspaceWatcherTests
                 return Task.CompletedTask;
             },
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watchTask, cancellation);
 
         directoryWatcher.Raise(
             candidate => candidate.Deleted += null,
@@ -773,7 +845,7 @@ public sealed class WorkspaceWatcherTests
 
         var changes = await observedBatch.Task.WaitAsync(
             TimeSpan.FromSeconds(5),
-            TestContext.Current.CancellationToken);
+            ct);
         await watchTask;
 
         changes.Should().ContainSingle();
@@ -786,13 +858,15 @@ public sealed class WorkspaceWatcherTests
     {
         var fileSystem = CreateRepositoryFileSystem();
         var (workspaceWatcher, fileWatcher, _) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var expectedException = new IOException("The watcher buffer overflowed.");
 
         var watchTask = workspaceWatcher.Watch(
             "/repo",
             static (_, _) => Task.CompletedTask,
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watchTask, cancellation);
 
         fileWatcher.Raise(candidate => candidate.Error += null, new ErrorEventArgs(expectedException));
 
@@ -808,13 +882,15 @@ public sealed class WorkspaceWatcherTests
     {
         var fileSystem = CreateRepositoryFileSystem();
         var (workspaceWatcher, _, directoryWatcher) = CreateWorkspaceWatcher(fileSystem);
-        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
         var expectedException = new IOException("The directory watcher buffer overflowed.");
 
         var watchTask = workspaceWatcher.Watch(
             "/repo",
             static (_, _) => Task.CompletedTask,
             cancellation.Token);
+        await using var cleanup = new WatchCleanup(watchTask, cancellation);
 
         directoryWatcher.Raise(candidate => candidate.Error += null, new ErrorEventArgs(expectedException));
 
@@ -823,6 +899,18 @@ public sealed class WorkspaceWatcherTests
         var exception = await act.Should().ThrowAsync<InvalidOperationException>();
         exception.WithMessage("Workspace watcher encountered a fatal file system watcher error.");
         exception.Which.InnerException.Should().BeSameAs(expectedException);
+    }
+
+    private sealed class WatchCleanup(Task watching, CancellationTokenSource cancellation) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            await cancellation.CancelAsync();
+            if (!watching.IsCompleted)
+            {
+                await watching.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+            }
+        }
     }
 
     private static MockFileSystem CreateRepositoryFileSystem()
@@ -839,7 +927,8 @@ public sealed class WorkspaceWatcherTests
         var directoryWatcher = CreateWatcherMock();
 
         var watcherFactory = new Mock<IFileSystemWatcherFactory>(MockBehavior.Strict);
-        watcherFactory.SetupSequence(candidate => candidate.New("/repo"))
+        watcherFactory
+            .SetupSequence(candidate => candidate.New("/repo"))
             .Returns(fileWatcher.Object)
             .Returns(directoryWatcher.Object);
 
@@ -853,7 +942,8 @@ public sealed class WorkspaceWatcherTests
         watcher.SetupProperty(candidate => candidate.IncludeSubdirectories);
         watcher.SetupProperty(candidate => candidate.InternalBufferSize);
         watcher.SetupProperty(candidate => candidate.NotifyFilter);
-        watcher.SetupGet(candidate => candidate.Filters)
+        watcher
+            .SetupGet(candidate => candidate.Filters)
             .Returns([]);
         watcher.Setup(candidate => candidate.Dispose());
 

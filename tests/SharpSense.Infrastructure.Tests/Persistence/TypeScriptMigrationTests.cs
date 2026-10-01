@@ -13,7 +13,9 @@ public sealed class TypeScriptMigrationTests
     public async Task WhenUpgradingPopulatedMemorySchema_ThenPreservesAuthoredMemoryAndAddsNullableEdgeMetadata()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(LoadVectorExtension: true));
         await using var db = new SharpSenseDbContext(new DbContextOptionsBuilder<SharpSenseDbContext>()
             .UseSqlite(factory.GetSqliteConnection()).Options);
         await db.GetService<IMigrator>()

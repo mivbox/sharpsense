@@ -39,13 +39,13 @@ public sealed class UiCommandIntegrationTests
         var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
         var app = Cli.Program.CreateCommandApp(
             configureServices: services =>
-        {
-            services.AddSingleton<IFileSystem>(fileSystem);
-            services.AddSingleton<IWorkspaceCatalog>(catalog);
-            database.ConfigureServices(services);
-        },
+            {
+                services.AddSingleton<IFileSystem>(fileSystem);
+                services.AddSingleton<IWorkspaceCatalog>(catalog);
+                database.ConfigureServices(services);
+            },
             enableFileLogging: false);
-        using var shutdown = new CancellationTokenSource();
+        using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var runTask = app.RunAsync(["ui", "--url", baseUrl], shutdown.Token);
         try
         {
@@ -78,7 +78,10 @@ public sealed class UiCommandIntegrationTests
                 $"/api/graph/nodes/page?directoryIds=1&pageSize=5&cursor={Uri.EscapeDataString(cursor!)}",
                 ct));
             next.RootElement.GetProperty("items")
-                .GetArrayLength().Should().Be(3);
+                .EnumerateArray()
+                .Select(node => node.GetProperty("id").GetInt32())
+                .Should()
+                .Equal(101, 200, 201);
             next.RootElement.GetProperty("nextCursor").ValueKind.Should().Be(JsonValueKind.Null);
 
             using var edges = JsonDocument.Parse(await client.GetStringAsync(
@@ -87,20 +90,22 @@ public sealed class UiCommandIntegrationTests
             edges.RootElement.GetProperty("totalCount")
                 .GetInt32().Should().Be(2);
             edges.RootElement.GetProperty("items")
+                .EnumerateArray()
+                .Select(edge => (
+                    edge.GetProperty("source").GetInt32(),
+                    edge.GetProperty("target").GetInt32(),
+                    edge.GetProperty("type").GetString()))
+                .Should()
+                .BeEquivalentTo(new[] { (100, 101, "projectreference"), (200, 201, "methodcall") });
+            edges.RootElement.GetProperty("items")
                 .EnumerateArray().Should().AllSatisfy(edge =>
-            {
-                edge.GetProperty("source").ValueKind.Should().Be(JsonValueKind.Number);
-                edge.GetProperty("target").ValueKind.Should().Be(JsonValueKind.Number);
-                edge.TryGetProperty("id", out _).Should().BeFalse();
-            });
+                {
+                    edge.GetProperty("source").ValueKind.Should().Be(JsonValueKind.Number);
+                    edge.GetProperty("target").ValueKind.Should().Be(JsonValueKind.Number);
+                    edge.TryGetProperty("id", out _).Should().BeFalse();
+                });
 
-            foreach (var query in new[]
-            {
-                "pageSize=0",
-                "pageSize=5001",
-                "cursor=invalid!",
-                "directoryIds=-1"
-            })
+            foreach (var query in new[] { "pageSize=0", "pageSize=5001", "cursor=invalid!", "directoryIds=-1" })
             {
                 using var invalid = await client.GetAsync(
                     $"/api/graph/nodes/page?{query}",
@@ -158,283 +163,335 @@ public sealed class UiCommandIntegrationTests
         finally
         {
             shutdown.Cancel();
-            await runTask;
+            await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
         }
     }
 
     [Fact]
-    public async Task WhenUiCommandRuns_ThenTreeAndScopedGraphEndpointsReturnAnalyzedData()
+    public async Task WhenWorkspaceTreeIsScoped_ThenGraphIncludesSelectedAndBoundaryNodes()
     {
-        await using var database = await UiCommandTestDatabase.Create();
-        var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
-        var fileSystem = new MockFileSystem(
-            new Dictionary<string, MockFileData>
-            {
-                ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
-            },
-            RepositoryRoot);
-        var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
-        var selection = catalog.Create("fixture", RepositoryRoot, []);
-        var app = Cli.Program.CreateCommandApp(
-            configureServices: services =>
-            {
-                services.AddSingleton<IFileSystem>(fileSystem);
-                services.AddSingleton<IWorkspaceCatalog>(catalog);
-                database.ConfigureServices(services);
-            },
-            enableFileLogging: false);
-        using var shutdown = new CancellationTokenSource();
-        var runTask = app.RunAsync(
-            ["ui", "--url", baseUrl, "--repo-root", RepositoryRoot],
-            shutdown.Token);
+        var ct = TestContext.Current.CancellationToken;
+        await using var host = await UiHost.Start();
+        var httpClient = host.Client;
+        var baseUrl = host.BaseUrl;
 
-        try
-        {
-            await WaitForServer(
-                runTask,
-                $"{baseUrl}/");
+        using var graphNodesResponse = await httpClient.GetAsync(
+            $"{baseUrl}/api/graph/nodes/page",
+            ct);
+        using var graphEdgesResponse = await httpClient.GetAsync(
+            $"{baseUrl}/api/graph/edges/page",
+            ct);
+        using var rootTreeResponse = await httpClient.GetAsync(
+            $"{baseUrl}/api/tree?path={RootTreePath}",
+            ct);
+        using var srcTreeResponse = await httpClient.GetAsync(
+            $"{baseUrl}/api/tree?path=src",
+            ct);
+        using var rootResponse = await httpClient.GetAsync(
+            $"{baseUrl}/",
+            ct);
+        graphNodesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        graphEdgesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        rootTreeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        srcTreeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        rootResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
-            using var httpClient = new HttpClient
-            {
-                Timeout = TimeSpan.FromSeconds(5)
-            };
-            httpClient.DefaultRequestHeaders.Add("X-SharpSense-Workspace", selection.Definition.Id.ToString());
-
-            using var graphNodesResponse = await httpClient.GetAsync(
-                $"{baseUrl}/api/graph/nodes/page",
-                TestContext.Current.CancellationToken);
-            using var graphEdgesResponse = await httpClient.GetAsync(
-                $"{baseUrl}/api/graph/edges/page",
-                TestContext.Current.CancellationToken);
-            using var rootTreeResponse = await httpClient.GetAsync(
-                $"{baseUrl}/api/tree?path={RootTreePath}",
-                TestContext.Current.CancellationToken);
-            using var srcTreeResponse = await httpClient.GetAsync(
-                $"{baseUrl}/api/tree?path=src",
-                TestContext.Current.CancellationToken);
-            using var rootResponse = await httpClient.GetAsync(
-                $"{baseUrl}/",
-                TestContext.Current.CancellationToken);
-            graphNodesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-            graphEdgesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-            rootTreeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-            srcTreeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-            rootResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-
-            await using var graphNodesStream = await graphNodesResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
-            await using var graphEdgesStream = await graphEdgesResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
-            await using var rootTreeStream = await rootTreeResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
-            await using var srcTreeStream = await srcTreeResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
-            using var graphNodesDocument = await JsonDocument.ParseAsync(graphNodesStream, cancellationToken: TestContext.Current.CancellationToken);
-            using var graphEdgesDocument = await JsonDocument.ParseAsync(graphEdgesStream, cancellationToken: TestContext.Current.CancellationToken);
-            using var rootTreeDocument = await JsonDocument.ParseAsync(rootTreeStream, cancellationToken: TestContext.Current.CancellationToken);
-            using var srcTreeDocument = await JsonDocument.ParseAsync(srcTreeStream, cancellationToken: TestContext.Current.CancellationToken);
-            var nodes = graphNodesDocument.RootElement.GetProperty("items");
-            var edges = graphEdgesDocument.RootElement.GetProperty("items");
-            var rootTreeNodes = rootTreeDocument.RootElement.GetProperty("nodes");
-            var srcTreeNodes = srcTreeDocument.RootElement.GetProperty("nodes");
-            var appDirectoryId = srcTreeNodes.EnumerateArray()
-                .First(
-                    node =>
-                        node.GetProperty("path")
-                            .GetString() == AppFolderPath &&
-                    node.GetProperty("kind")
-                        .GetString() == "folder")
-                .GetProperty("id")
-                .GetInt32();
-            using var scopedGraphNodesResponse = await httpClient.GetAsync(
-                $"{baseUrl}/api/graph/nodes/page?directoryIds={appDirectoryId}",
-                TestContext.Current.CancellationToken);
-            using var scopedGraphEdgesResponse = await httpClient.GetAsync(
-                $"{baseUrl}/api/graph/edges/page?directoryIds={appDirectoryId}",
-                TestContext.Current.CancellationToken);
-            scopedGraphNodesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-            scopedGraphEdgesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-            await using var scopedGraphNodesStream = await scopedGraphNodesResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
-            await using var scopedGraphEdgesStream = await scopedGraphEdgesResponse.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
-            using var scopedGraphNodesDocument = await JsonDocument.ParseAsync(scopedGraphNodesStream, cancellationToken: TestContext.Current.CancellationToken);
-            using var scopedGraphEdgesDocument = await JsonDocument.ParseAsync(scopedGraphEdgesStream, cancellationToken: TestContext.Current.CancellationToken);
-            var scopedNodes = scopedGraphNodesDocument.RootElement.GetProperty("items");
-            var scopedEdges = scopedGraphEdgesDocument.RootElement.GetProperty("items");
-
-            nodes.EnumerateArray().Should().BeEmpty();
-            edges.EnumerateArray().Should().BeEmpty();
-            rootTreeNodes.EnumerateArray().Should().Contain(node =>
-                    node.GetProperty("path")
-                        .GetString() == "src" &&
-                    node.GetProperty("kind")
-                        .GetString() == "folder");
-            srcTreeNodes.EnumerateArray().Should().Contain(node =>
+        await using var graphNodesStream = await graphNodesResponse.Content.ReadAsStreamAsync(ct);
+        await using var graphEdgesStream = await graphEdgesResponse.Content.ReadAsStreamAsync(ct);
+        await using var rootTreeStream = await rootTreeResponse.Content.ReadAsStreamAsync(ct);
+        await using var srcTreeStream = await srcTreeResponse.Content.ReadAsStreamAsync(ct);
+        using var graphNodesDocument = await JsonDocument.ParseAsync(graphNodesStream, cancellationToken: ct);
+        using var graphEdgesDocument = await JsonDocument.ParseAsync(graphEdgesStream, cancellationToken: ct);
+        using var rootTreeDocument = await JsonDocument.ParseAsync(rootTreeStream, cancellationToken: ct);
+        using var srcTreeDocument = await JsonDocument.ParseAsync(srcTreeStream, cancellationToken: ct);
+        var nodes = graphNodesDocument.RootElement.GetProperty("items");
+        var edges = graphEdgesDocument.RootElement.GetProperty("items");
+        var rootTreeNodes = rootTreeDocument.RootElement.GetProperty("nodes");
+        var srcTreeNodes = srcTreeDocument.RootElement.GetProperty("nodes");
+        var appDirectoryId = srcTreeNodes.EnumerateArray()
+            .First(
+                node =>
                     node.GetProperty("path")
                         .GetString() == AppFolderPath &&
-                    node.GetProperty("kind")
-                        .GetString() == "folder");
-            srcTreeNodes.EnumerateArray().Should().Contain(node =>
-                    node.GetProperty("path")
-                        .GetString() == CoreFolderPath &&
-                    node.GetProperty("kind")
-                        .GetString() == "folder");
+                node.GetProperty("kind")
+                    .GetString() == "folder")
+            .GetProperty("id")
+            .GetInt32();
+        using var scopedGraphNodesResponse = await httpClient.GetAsync(
+            $"{baseUrl}/api/graph/nodes/page?directoryIds={appDirectoryId}",
+            ct);
+        using var scopedGraphEdgesResponse = await httpClient.GetAsync(
+            $"{baseUrl}/api/graph/edges/page?directoryIds={appDirectoryId}",
+            ct);
+        scopedGraphNodesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        scopedGraphEdgesResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        await using var scopedGraphNodesStream = await scopedGraphNodesResponse.Content.ReadAsStreamAsync(ct);
+        await using var scopedGraphEdgesStream = await scopedGraphEdgesResponse.Content.ReadAsStreamAsync(ct);
+        using var scopedGraphNodesDocument = await JsonDocument.ParseAsync(
+            scopedGraphNodesStream,
+            cancellationToken: ct);
+        using var scopedGraphEdgesDocument = await JsonDocument.ParseAsync(
+            scopedGraphEdgesStream,
+            cancellationToken: ct);
+        var scopedNodes = scopedGraphNodesDocument.RootElement.GetProperty("items");
+        var scopedEdges = scopedGraphEdgesDocument.RootElement.GetProperty("items");
 
-            scopedNodes.EnumerateArray().Should().Contain(node =>
-                    node.GetProperty("id")
-                        .GetInt32() == 100 &&
-                    node.GetProperty("scope")
-                        .GetString() == "selected");
-            scopedNodes.EnumerateArray().Should().Contain(node =>
-                    node.GetProperty("id")
-                        .GetInt32() == 200 &&
-                    node.GetProperty("label")
-                        .GetString() == "Fixture.App.HttpEndpoint.Handle()" &&
-                    node.GetProperty("codeNodeId")
-                        .GetInt32() == 200 &&
-                    node.GetProperty("type")
-                        .GetString() == "method" &&
-                    node.GetProperty("scope")
-                        .GetString() == "selected");
-            scopedNodes.EnumerateArray().Should().Contain(node =>
-                    node.GetProperty("id")
-                        .GetInt32() == 101 &&
-                    node.GetProperty("scope")
-                        .GetString() == "external");
-            scopedNodes.EnumerateArray().Should().Contain(node =>
-                    node.GetProperty("id")
-                        .GetInt32() == 201 &&
-                    node.GetProperty("label")
-                        .GetString() == "Fixture.Core.MessageProvider.GetMessage()" &&
-                    node.GetProperty("type")
-                        .GetString() == "method" &&
-                    node.GetProperty("scope")
-                        .GetString() == "external");
-            scopedEdges.EnumerateArray().Should().Contain(edge =>
-                    edge.GetProperty("source")
-                        .GetInt32() == 100 &&
-                    edge.GetProperty("target")
-                        .GetInt32() == 101 &&
-                    edge.GetProperty("type")
-                        .GetString() == "projectreference" &&
-                    edge.GetProperty("scope")
-                        .GetString() == "boundary");
-            scopedEdges.EnumerateArray().Should().Contain(edge =>
-                    edge.GetProperty("source")
-                        .GetInt32() == 200 &&
-                    edge.GetProperty("target")
-                        .GetInt32() == 201 &&
-                    edge.GetProperty("type")
-                        .GetString() == "methodcall" &&
-                    edge.GetProperty("scope")
-                        .GetString() == "boundary");
+        nodes.EnumerateArray().Should().BeEmpty();
+        edges.EnumerateArray().Should().BeEmpty();
+        rootTreeNodes.EnumerateArray().Should().Contain(node =>
+                node.GetProperty("path")
+                    .GetString() == "src" &&
+                node.GetProperty("kind")
+                    .GetString() == "folder");
+        srcTreeNodes.EnumerateArray().Should().Contain(node =>
+                node.GetProperty("path")
+                    .GetString() == AppFolderPath &&
+                node.GetProperty("kind")
+                    .GetString() == "folder");
+        srcTreeNodes.EnumerateArray().Should().Contain(node =>
+                node.GetProperty("path")
+                    .GetString() == CoreFolderPath &&
+                node.GetProperty("kind")
+                    .GetString() == "folder");
 
-            foreach (var retired in new[]
-            {
-                "/api/graph/view",
-                "/api/graph/nodes",
-                "/api/graph/edges"
-            })
-            {
-                using var retiredResponse = await httpClient.GetAsync(baseUrl + retired, TestContext.Current.CancellationToken);
-                retiredResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
-                (retiredResponse.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
-            }
+        scopedNodes.EnumerateArray().Should().Contain(node =>
+                node.GetProperty("id")
+                    .GetInt32() == 100 &&
+                node.GetProperty("scope")
+                    .GetString() == "selected");
+        scopedNodes.EnumerateArray().Should().Contain(node =>
+                node.GetProperty("id")
+                    .GetInt32() == 200 &&
+                node.GetProperty("label")
+                    .GetString() == "Fixture.App.HttpEndpoint.Handle()" &&
+                node.GetProperty("codeNodeId")
+                    .GetInt32() == 200 &&
+                node.GetProperty("type")
+                    .GetString() == "method" &&
+                node.GetProperty("scope")
+                    .GetString() == "selected");
+        scopedNodes.EnumerateArray().Should().Contain(node =>
+                node.GetProperty("id")
+                    .GetInt32() == 101 &&
+                node.GetProperty("scope")
+                    .GetString() == "external");
+        scopedNodes.EnumerateArray().Should().Contain(node =>
+                node.GetProperty("id")
+                    .GetInt32() == 201 &&
+                node.GetProperty("label")
+                    .GetString() == "Fixture.Core.MessageProvider.GetMessage()" &&
+                node.GetProperty("type")
+                    .GetString() == "method" &&
+                node.GetProperty("scope")
+                    .GetString() == "external");
+        scopedEdges.EnumerateArray().Should().Contain(edge =>
+                edge.GetProperty("source")
+                    .GetInt32() == 100 &&
+                edge.GetProperty("target")
+                    .GetInt32() == 101 &&
+                edge.GetProperty("type")
+                    .GetString() == "projectreference" &&
+                edge.GetProperty("scope")
+                    .GetString() == "boundary");
+        scopedEdges.EnumerateArray().Should().Contain(edge =>
+                edge.GetProperty("source")
+                    .GetInt32() == 200 &&
+                edge.GetProperty("target")
+                    .GetInt32() == 201 &&
+                edge.GetProperty("type")
+                    .GetString() == "methodcall" &&
+                edge.GetProperty("scope")
+                    .GetString() == "boundary");
+    }
 
-            using var overview = await httpClient.GetAsync(
-                $"{baseUrl}/api/overview",
-                TestContext.Current.CancellationToken);
-            overview.StatusCode.Should().Be(HttpStatusCode.OK);
-            using var overviewJson = JsonDocument.Parse(await overview.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-            overviewJson.RootElement.GetProperty("indexed")
-                .GetBoolean().Should().BeTrue();
-            overviewJson.RootElement.GetProperty("nodeCount")
-                .GetInt32().Should().Be(2);
+    [Fact]
+    public async Task WhenWorkspaceIsIndexed_ThenOverviewReportsItsCodeNodeCount()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var host = await UiHost.Start();
+        var httpClient = host.Client;
+        var baseUrl = host.BaseUrl;
 
-            using var openApi = await httpClient.GetAsync(
-                $"{baseUrl}/openapi/v1.json",
-                TestContext.Current.CancellationToken);
-            openApi.StatusCode.Should().Be(HttpStatusCode.OK);
-            using var schema = JsonDocument.Parse(await openApi.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-            schema.RootElement.GetProperty("paths")
-                .TryGetProperty("/api/tools/search", out _).Should().BeTrue();
-            foreach (var retired in new[]
-            {
-                "/api/graph/view",
-                "/api/graph/nodes",
-                "/api/graph/edges"
-            })
-            {
-                schema.RootElement.GetProperty("paths")
-                    .TryGetProperty(retired, out _).Should().BeFalse();
-            }
-            var connectionsHeader = schema.RootElement.GetProperty("paths")
-                .GetProperty("/api/graph/nodes/{nodeId}/connections")
-                .GetProperty("get")
-                .GetProperty("parameters")
-                .EnumerateArray()
-                .Single(parameter => parameter.GetProperty("name")
-                    .GetString() == "X-SharpSense-Workspace");
-            connectionsHeader.GetProperty("required")
-                .GetBoolean().Should().BeTrue();
-            connectionsHeader.GetProperty("schema")
-                .GetProperty("format")
-                .GetString().Should().Be("uuid");
-            schema.RootElement.ToString().Should().Contain("codeNodeId");
-            schema.RootElement.GetProperty("components")
-                .GetProperty("schemas")
-                .GetProperty("WorkspaceOverview")
-                .GetProperty("properties")
-                .GetProperty("nodeCount")
-                .GetProperty("type")
-                .GetString().Should().Be("integer");
+        using var overview = await httpClient.GetAsync(
+            $"{baseUrl}/api/overview",
+            ct);
+        overview.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var overviewJson = JsonDocument.Parse(await overview.Content.ReadAsStringAsync(ct));
+        overviewJson.RootElement.GetProperty("indexed")
+            .GetBoolean().Should().BeTrue();
+        overviewJson.RootElement.GetProperty("nodeCount")
+            .GetInt32().Should().Be(2);
+    }
 
-            foreach (var tool in new[]
-            {
-                "context",
-                "trace",
-                "inheritors",
-                "impact"
-            })
-            {
-                using var toolResponse = await httpClient.PostAsJsonAsync(
-                    $"{baseUrl}/api/tools/{tool}",
-                    new
-                    {
-                        nodeId = 200
-                    },
-                    TestContext.Current.CancellationToken);
-                toolResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-                using var missing = await httpClient.PostAsJsonAsync(
-                    $"{baseUrl}/api/tools/{tool}",
-                    new
-                    {
-                        nodeId = 999999
-                    },
-                    TestContext.Current.CancellationToken);
-                missing.StatusCode.Should().Be(HttpStatusCode.NotFound);
-                (missing.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
-            }
-            using var invalidSearch = await httpClient.PostAsJsonAsync(
-                $"{baseUrl}/api/tools/search",
-                new
-                {
-                    query = "",
-                    limit = 10
-                },
-                TestContext.Current.CancellationToken);
-            invalidSearch.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-            using var unknownApi = await httpClient.GetAsync(
-                $"{baseUrl}/api/missing",
-                TestContext.Current.CancellationToken);
-            unknownApi.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    [Fact]
+    public async Task WhenOpenApiIsRequested_ThenDocumentsSupportedRoutesAndWorkspaceHeaders()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var host = await UiHost.Start();
+        var httpClient = host.Client;
+        var baseUrl = host.BaseUrl;
 
-            shutdown.Cancel();
-            (await runTask).Should().Be(0);
-        }
-        finally
+        using var openApi = await httpClient.GetAsync(
+            $"{baseUrl}/openapi/v1.json",
+            ct);
+        openApi.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var schema = JsonDocument.Parse(await openApi.Content.ReadAsStringAsync(ct));
+        schema.RootElement.GetProperty("paths")
+            .TryGetProperty("/api/tools/search", out _).Should().BeTrue();
+        foreach (var retired in new[] { "/api/graph/view", "/api/graph/nodes", "/api/graph/edges" })
         {
-            shutdown.Cancel();
+            schema.RootElement.GetProperty("paths")
+                .TryGetProperty(retired, out _).Should().BeFalse();
+        }
+        var connectionsHeader = schema.RootElement.GetProperty("paths")
+            .GetProperty("/api/graph/nodes/{nodeId}/connections")
+            .GetProperty("get")
+            .GetProperty("parameters")
+            .EnumerateArray()
+            .Single(parameter => parameter.GetProperty("name")
+                .GetString() == "X-SharpSense-Workspace");
+        connectionsHeader.GetProperty("required")
+            .GetBoolean().Should().BeTrue();
+        connectionsHeader.GetProperty("schema")
+            .GetProperty("format")
+            .GetString().Should().Be("uuid");
+        schema.RootElement.ToString().Should().Contain("codeNodeId");
+        schema.RootElement.GetProperty("components")
+            .GetProperty("schemas")
+            .GetProperty("WorkspaceOverview")
+            .GetProperty("properties")
+            .GetProperty("nodeCount")
+            .GetProperty("type")
+            .GetString().Should().Be("integer");
+    }
 
-            if (!runTask.IsCompleted)
+    [Theory]
+    [InlineData("/api/graph/view")]
+    [InlineData("/api/graph/nodes")]
+    [InlineData("/api/graph/edges")]
+    [InlineData("/api/missing")]
+    public async Task WhenApiRouteDoesNotExist_ThenReturnsProblemDetails(string route)
+    {
+        await using var host = await UiHost.Start();
+
+        using var response = await host.Client.GetAsync(route, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+    }
+
+    [Theory]
+    [InlineData("context", 200, "callees", 201)]
+    [InlineData("trace", 200, "nodes", 201)]
+    [InlineData("impact", 201, "impactedNodes", 200)]
+    public async Task WhenGraphToolRuns_ThenReturnsTheRelatedSymbol(
+        string tool,
+        int nodeId,
+        string resultProperty,
+        int expectedNodeId)
+    {
+        await using var host = await UiHost.Start();
+        var ct = TestContext.Current.CancellationToken;
+
+        using var response = await host.Client.PostAsJsonAsync($"/api/tools/{tool}", new
+        {
+            nodeId
+        }, ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        result.RootElement.GetProperty(resultProperty)
+            .EnumerateArray()
+            .Select(node => node.GetProperty("id").GetInt32())
+            .Should()
+            .Equal(expectedNodeId);
+    }
+
+    [Fact]
+    public async Task WhenMethodHasNoInheritors_ThenReturnsAnEmptyArray()
+    {
+        await using var host = await UiHost.Start();
+        var ct = TestContext.Current.CancellationToken;
+
+        using var response = await host.Client.PostAsJsonAsync("/api/tools/inheritors", new
+        {
+            nodeId = 200
+        }, ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        result.RootElement.EnumerateArray().Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("context")]
+    [InlineData("trace")]
+    [InlineData("inheritors")]
+    [InlineData("impact")]
+    public async Task WhenGraphToolTargetsAnUnknownNode_ThenReturnsNotFound(string tool)
+    {
+        await using var host = await UiHost.Start();
+
+        using var response = await host.Client.PostAsJsonAsync(
+            $"/api/tools/{tool}",
+            new
             {
-                await runTask;
-            }
+                nodeId = 999999
+            },
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+    }
+
+    [Fact]
+    public async Task WhenSearchIsBlank_ThenReturnsBadRequest()
+    {
+        await using var host = await UiHost.Start();
+
+        using var response = await host.Client.PostAsJsonAsync(
+            "/api/tools/search",
+            new
+            {
+                query = "",
+                limit = 10
+            },
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+    }
+
+    [Theory]
+    [InlineData("*", false)]
+    [InlineData("MessageProvider(*", true)]
+    [InlineData("UnknownColumn:MessageProvider*", true)]
+    public async Task WhenSearchContainsPunctuation_ThenSearchesItsPlainTextTerms(string expression, bool hasMatch)
+    {
+        await using var host = await UiHost.Start();
+        var ct = TestContext.Current.CancellationToken;
+
+        using var response = await host.Client.PostAsJsonAsync(
+            "/api/tools/search",
+            new
+            {
+                query = expression,
+                limit = 10
+            },
+            ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        result.RootElement.GetProperty("searchText").GetString().Should().Be(expression);
+        var ids = result.RootElement.GetProperty("hits").EnumerateArray()
+            .Select(hit => hit.GetProperty("id").GetInt32()).ToArray();
+        if (hasMatch)
+        {
+            ids.Should().Contain(201);
+        }
+        else
+        {
+            ids.Should().BeEmpty();
         }
     }
 
@@ -454,13 +511,13 @@ public sealed class UiCommandIntegrationTests
         var selection = catalog.Create("fixture", RepositoryRoot, []);
         var app = Cli.Program.CreateCommandApp(
             configureServices: services =>
-        {
-            services.AddSingleton<IFileSystem>(fileSystem);
-            services.AddSingleton<IWorkspaceCatalog>(catalog);
-            database.ConfigureServices(services);
-        },
+            {
+                services.AddSingleton<IFileSystem>(fileSystem);
+                services.AddSingleton<IWorkspaceCatalog>(catalog);
+                database.ConfigureServices(services);
+            },
             enableFileLogging: false);
-        using var shutdown = new CancellationTokenSource();
+        using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var runTask = app.RunAsync(["ui", "--url", baseUrl, "--repo-root", RepositoryRoot], shutdown.Token);
         try
         {
@@ -530,7 +587,10 @@ public sealed class UiCommandIntegrationTests
                 new { nodeId = 200, direction = "callee", maxDepth = 11 }
             })
             {
-                using var invalidResponse = await client.PostAsJsonAsync($"{baseUrl}/api/tools/trace", invalidTrace, ct);
+                using var invalidResponse = await client.PostAsJsonAsync(
+                    $"{baseUrl}/api/tools/trace",
+                    invalidTrace,
+                    ct);
                 invalidResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
                 (invalidResponse.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
             }
@@ -569,12 +629,14 @@ public sealed class UiCommandIntegrationTests
                 .EnumerateArray().Should().ContainSingle().Which;
             projectParent.GetProperty("id")
                 .GetInt32().Should().Be(100);
-            (!projectParent.TryGetProperty("codeNodeId", out var codeNodeId) || codeNodeId.ValueKind == JsonValueKind.Null).Should().BeTrue();
+            (!projectParent.TryGetProperty(
+                "codeNodeId",
+                out var codeNodeId) || codeNodeId.ValueKind == JsonValueKind.Null).Should().BeTrue();
         }
         finally
         {
             shutdown.Cancel();
-            await runTask;
+            await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
         }
     }
 
@@ -601,16 +663,17 @@ public sealed class UiCommandIntegrationTests
         var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
         var app = Cli.Program.CreateCommandApp(
             configureServices: services =>
-        {
-            services.AddSingleton<IFileSystem>(fileSystem);
-            services.AddSingleton<IWorkspaceCatalog>(catalog);
-            services.RemoveAll<IDbContextFactory<SharpSenseDbContext>>();
-            services.AddScoped(provider => provider.GetRequiredService<IRepositoryWorkspace>().WorkspaceId == firstId
-                ? firstDatabase.GetFactory()
-                : secondDatabase.GetFactory());
-        },
+            {
+                services.AddSingleton<IFileSystem>(fileSystem);
+                services.AddSingleton<IWorkspaceCatalog>(catalog);
+                services.RemoveAll<IDbContextFactory<SharpSenseDbContext>>();
+                services
+                    .AddScoped(provider => provider.GetRequiredService<IRepositoryWorkspace>().WorkspaceId == firstId
+                    ? firstDatabase.GetFactory()
+                    : secondDatabase.GetFactory());
+            },
             enableFileLogging: false);
-        using var shutdown = new CancellationTokenSource();
+        using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var runTask = app.RunAsync(["ui", "--url", baseUrl], shutdown.Token);
         try
         {
@@ -641,12 +704,7 @@ public sealed class UiCommandIntegrationTests
                 .Select(static source => source.GetProperty("path")
                     .GetString())
                 .OrderBy(static path => path)
-                .ToArray().Should().Equal(new[]
-                {
-                    "backend/Orders.csproj",
-                    "docs/*.md",
-                    "frontend/tsconfig.json"
-                });
+                .ToArray().Should().Equal(new[] { "backend/Orders.csproj", "docs/*.md", "frontend/tsconfig.json" });
             fileSystem.Directory.Exists(catalog.HomeDirectory).Should().BeFalse();
 
             firstId = await CreateWorkspace("first");
@@ -686,8 +744,12 @@ public sealed class UiCommandIntegrationTests
             secondOverview.RootElement.GetProperty("nodeCount")
                 .GetInt32().Should().Be(3);
 
-            using var firstConnections = JsonDocument.Parse(await firstClient.GetStringAsync("/api/graph/nodes/200/connections?includeTotal=true", ct));
-            using var secondConnections = JsonDocument.Parse(await secondClient.GetStringAsync("/api/graph/nodes/200/connections?includeTotal=true", ct));
+            using var firstConnections = JsonDocument.Parse(await firstClient.GetStringAsync(
+                "/api/graph/nodes/200/connections?includeTotal=true",
+                ct));
+            using var secondConnections = JsonDocument.Parse(await secondClient.GetStringAsync(
+                "/api/graph/nodes/200/connections?includeTotal=true",
+                ct));
             firstConnections.RootElement.GetProperty("totalCount")
                 .GetInt32().Should().Be(1);
             secondConnections.RootElement.GetProperty("totalCount")
@@ -698,10 +760,7 @@ public sealed class UiCommandIntegrationTests
                 new
                 {
                     content = "Belongs only to first workspace",
-                    tags = new[]
-                    {
-                        "scope"
-                    },
+                    tags = new[] { "scope" },
                     intent = "Invariant"
                 },
                 ct);
@@ -778,7 +837,7 @@ public sealed class UiCommandIntegrationTests
         finally
         {
             shutdown.Cancel();
-            await runTask;
+            await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
         }
     }
 
@@ -796,12 +855,12 @@ public sealed class UiCommandIntegrationTests
         var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
         var app = Cli.Program.CreateCommandApp(
             configureServices: services =>
-        {
-            services.AddSingleton<IFileSystem>(fileSystem);
-            services.AddSingleton<IWorkspaceCatalog>(catalog);
-        },
+            {
+                services.AddSingleton<IFileSystem>(fileSystem);
+                services.AddSingleton<IWorkspaceCatalog>(catalog);
+            },
             enableFileLogging: false);
-        using var shutdown = new CancellationTokenSource();
+        using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var runTask = app.RunAsync(["ui", "--url", baseUrl], shutdown.Token);
         try
         {
@@ -839,7 +898,7 @@ public sealed class UiCommandIntegrationTests
         finally
         {
             shutdown.Cancel();
-            await runTask;
+            await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
         }
     }
 
@@ -891,6 +950,7 @@ public sealed class UiCommandIntegrationTests
     [Fact]
     public async Task WhenMemoryEndpointsAreCalled_ThenTheyAttachListFetchAndDelete()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var database = await UiCommandTestDatabase.Create();
         var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
         var fileSystem = new MockFileSystem(
@@ -909,7 +969,7 @@ public sealed class UiCommandIntegrationTests
                 database.ConfigureServices(services);
             },
             enableFileLogging: false);
-        using var shutdown = new CancellationTokenSource();
+        using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var runTask = app.RunAsync(
             ["ui", "--url", baseUrl, "--repo-root", RepositoryRoot],
             shutdown.Token);
@@ -929,20 +989,34 @@ public sealed class UiCommandIntegrationTests
             const int nodeId = 200;
             var content = "Always greet politely: invariant the team expects.";
 
+            using (var invalidTags = await httpClient.PostAsJsonAsync(
+                $"{baseUrl}/api/memory/node/{nodeId}",
+                new
+                {
+                    content,
+                    tags = new string?[] { null }
+                },
+                ct))
+            {
+                invalidTags.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+                invalidTags.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+            }
+
+
             using (var addResponse = await httpClient.PostAsync(
                 $"{baseUrl}/api/memory/node/{nodeId}",
                 new StringContent(
                     $"{{\"content\":\"{content}\",\"tags\":[\"convention\"],\"intent\":\"Invariant\"}}",
                     System.Text.Encoding.UTF8,
                     "application/json"),
-                TestContext.Current.CancellationToken))
+                ct))
             {
                 addResponse.StatusCode.Should().Be(HttpStatusCode.OK);
             }
 
             var listJson = await httpClient.GetStringAsync(
                 $"{baseUrl}/api/memory/node/{nodeId}",
-                TestContext.Current.CancellationToken);
+                ct);
             using var listDocument = JsonDocument.Parse(listJson);
             var memories = listDocument.RootElement.EnumerateArray()
                 .ToArray();
@@ -954,45 +1028,45 @@ public sealed class UiCommandIntegrationTests
 
             var singleJson = await httpClient.GetStringAsync(
                 $"{baseUrl}/api/memory/{memoryId}",
-                TestContext.Current.CancellationToken);
+                ct);
             using var singleDocument = JsonDocument.Parse(singleJson);
             singleDocument.RootElement.GetProperty("content")
                 .GetString().Should().Be(content);
 
             var batchJson = await httpClient.GetStringAsync(
                 $"{baseUrl}/api/memory?ids={memoryId}",
-                TestContext.Current.CancellationToken);
+                ct);
             using var batchDocument = JsonDocument.Parse(batchJson);
             batchDocument.RootElement.GetArrayLength().Should().Be(1);
 
             using var invalidIntent = await httpClient.GetAsync(
                 $"{baseUrl}/api/memory/node/{nodeId}?intents=Unknown",
-                TestContext.Current.CancellationToken);
+                ct);
             invalidIntent.StatusCode.Should().Be(HttpStatusCode.BadRequest);
             (invalidIntent.Content.Headers.ContentType?.MediaType).Should().Be("application/problem+json");
 
             var filteredJson = await httpClient.GetStringAsync(
                 $"{baseUrl}/api/memory/node/{nodeId}?intents=Invariant",
-                TestContext.Current.CancellationToken);
+                ct);
             using var filteredDocument = JsonDocument.Parse(filteredJson);
             filteredDocument.RootElement.GetArrayLength().Should().Be(1);
 
             var noneJson = await httpClient.GetStringAsync(
                 $"{baseUrl}/api/memory/node/{nodeId}?intents=Warning",
-                TestContext.Current.CancellationToken);
+                ct);
             using var noneDocument = JsonDocument.Parse(noneJson);
             noneDocument.RootElement.GetArrayLength().Should().Be(0);
 
             using (var deleteResponse = await httpClient.DeleteAsync(
                 $"{baseUrl}/api/memory/{memoryId}",
-                TestContext.Current.CancellationToken))
+                ct))
             {
                 deleteResponse.StatusCode.Should().Be(HttpStatusCode.OK);
             }
 
             var afterJson = await httpClient.GetStringAsync(
                 $"{baseUrl}/api/memory/node/{nodeId}",
-                TestContext.Current.CancellationToken);
+                ct);
             using var afterDocument = JsonDocument.Parse(afterJson);
             afterDocument.RootElement.GetArrayLength().Should().Be(0);
         }
@@ -1001,11 +1075,79 @@ public sealed class UiCommandIntegrationTests
             shutdown.Cancel();
             try
             {
-                await runTask;
+                await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
             }
             catch (OperationCanceledException)
             {
                 // expected
+            }
+        }
+    }
+
+    private sealed class UiHost(
+        UiCommandTestDatabase database,
+        string baseUrl,
+        HttpClient client,
+        CancellationTokenSource shutdown,
+        Task<int> runTask) : IAsyncDisposable
+    {
+        public string BaseUrl { get; } = baseUrl;
+        public HttpClient Client { get; } = client;
+
+        public static async Task<UiHost> Start()
+        {
+            var database = await UiCommandTestDatabase.Create();
+            var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
+            var fileSystem = new MockFileSystem(
+                new Dictionary<string, MockFileData>
+                {
+                    ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+                },
+                RepositoryRoot);
+            var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
+            var selection = catalog.Create("fixture", RepositoryRoot, []);
+            var app = Cli.Program.CreateCommandApp(
+                configureServices: services =>
+                {
+                    services.AddSingleton<IFileSystem>(fileSystem);
+                    services.AddSingleton<IWorkspaceCatalog>(catalog);
+                    database.ConfigureServices(services);
+                },
+                enableFileLogging: false);
+            var shutdown = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            var runTask = app.RunAsync(["ui", "--url", baseUrl, "--repo-root", RepositoryRoot], shutdown.Token);
+            var client = new HttpClient
+            {
+                BaseAddress = new Uri(baseUrl),
+                Timeout = TimeSpan.FromSeconds(5)
+            };
+            client.DefaultRequestHeaders.Add("X-SharpSense-Workspace", selection.Definition.Id.ToString());
+            var host = new UiHost(database, baseUrl, client, shutdown, runTask);
+            try
+            {
+                await WaitForServer(runTask, baseUrl + "/");
+
+                return host;
+            }
+            catch
+            {
+                await host.DisposeAsync();
+                throw;
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await shutdown.CancelAsync();
+                await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+            }
+            finally
+            {
+                Client.Dispose();
+                shutdown.Dispose();
+                await database.DisposeAsync();
             }
         }
     }
@@ -1019,7 +1161,9 @@ public sealed class UiCommandIntegrationTests
 
         public static async Task<UiCommandTestDatabase> Create()
         {
-            var contextFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new InMemoryContextFactoryOptions(UseMigrations: true));
+            var contextFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+                options => new SharpSenseDbContext(options),
+                new InMemoryContextFactoryOptions(UseMigrations: true, LoadVectorExtension: true));
             var database = new UiCommandTestDatabase(contextFactory);
             await database.Initialize();
 
@@ -1082,8 +1226,7 @@ public sealed class UiCommandIntegrationTests
 
         private async Task Initialize()
         {
-            await using var dbContext = await contextFactory.GetContext(
-                ct: TestContext.Current.CancellationToken);
+            await using var dbContext = await contextFactory.GetContext(ct: TestContext.Current.CancellationToken);
 
             dbContext.Directories.AddRange(
                 new DirectoryRecord
@@ -1285,6 +1428,16 @@ public sealed class UiCommandIntegrationTests
             });
 
             await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+            await dbContext.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO CodeNodeSearch (Id, CanonicalId, DisplayName, FullyQualifiedName, SearchText, RelativeFilePath)
+                SELECT CodeNodes.Id, GraphNodes.CanonicalId, CodeNodes.DisplayName,
+                       CodeNodes.FullyQualifiedName, CodeNodes.SearchText, Documents.RelativePath
+                FROM CodeNodes
+                JOIN GraphNodes ON GraphNodes.Id = CodeNodes.Id
+                JOIN Documents ON Documents.Id = CodeNodes.DocumentId;
+                """,
+                TestContext.Current.CancellationToken);
         }
     }
 }

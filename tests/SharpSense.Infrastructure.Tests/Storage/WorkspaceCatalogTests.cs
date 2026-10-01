@@ -18,10 +18,10 @@ public sealed class WorkspaceCatalogTests
             "product",
             "/repo",
             [
-            new(WorkspaceSourceKind.CSharp, "backend/Orders.csproj"),
-            new(WorkspaceSourceKind.TypeScript, "frontend/tsconfig.json"),
-            new(WorkspaceSourceKind.Markdown, "docs/**/*.md")
-        ]);
+                new(WorkspaceSourceKind.CSharp, "backend/Orders.csproj"),
+                new(WorkspaceSourceKind.TypeScript, "frontend/tsconfig.json"),
+                new(WorkspaceSourceKind.Markdown, "docs/**/*.md")
+            ]);
         var loaded = catalog.Resolve("product");
 
         loaded.Definition.Id.Should().NotBe(Guid.Empty);
@@ -114,7 +114,9 @@ public sealed class WorkspaceCatalogTests
         catalog.Create("first", "/repo", []);
         catalog.Create("second", "/other", []);
 
-        var exception = ((Action)(() => catalog.Merge("combined", ["first", "second"]))).Should().ThrowExactly<InvalidOperationException>().Which;
+        var exception = ((Action)(() => catalog.Merge(
+            "combined",
+            ["first", "second"]))).Should().ThrowExactly<InvalidOperationException>().Which;
 
         exception.Message.Should().Contain("same workspace root");
         catalog.List().Count.Should().Be(2);
@@ -129,9 +131,9 @@ public sealed class WorkspaceCatalogTests
         var updated = catalog.AddSources(
             "product",
             [
-            new(WorkspaceSourceKind.CSharp, "./backend/Orders.csproj"),
-            new(WorkspaceSourceKind.CSharp, "/repo/backend/Orders.csproj")
-        ]);
+                new(WorkspaceSourceKind.CSharp, "./backend/Orders.csproj"),
+                new(WorkspaceSourceKind.CSharp, "/repo/backend/Orders.csproj")
+            ]);
         var removed = catalog.RemoveSources("product", [new(WorkspaceSourceKind.CSharp, "backend/Orders.csproj")]);
 
         updated.Definition.Id.Should().Be(created.Definition.Id);
@@ -175,7 +177,10 @@ public sealed class WorkspaceCatalogTests
     {
         var (fileSystem, catalog) = CreateCatalog();
 
-        ((Action)(() => catalog.Create("product", "/repo", [new(WorkspaceSourceKind.CSharp, path)]))).Should().ThrowExactly<ArgumentException>();
+        ((Action)(() => catalog.Create(
+            "product",
+            "/repo",
+            [new(WorkspaceSourceKind.CSharp, path)]))).Should().ThrowExactly<ArgumentException>();
 
         fileSystem.Directory.Exists(catalog.HomeDirectory).Should().BeFalse();
     }
@@ -212,9 +217,9 @@ public sealed class WorkspaceCatalogTests
             created.ConfigurationPath,
             fileSystem.File.ReadAllText(created.ConfigurationPath)
                 .Replace(
-                created.Definition.Id.ToString(),
-                Guid.NewGuid()
-                    .ToString()));
+                    created.Definition.Id.ToString(),
+                    Guid.NewGuid()
+                        .ToString()));
 
         catalog.List().Should().BeEmpty();
         var exception = ((Action)(() => catalog.ResolveById(created.Definition.Id))).Should().ThrowExactly<InvalidOperationException>().Which;
@@ -267,23 +272,30 @@ public sealed class WorkspaceCatalogTests
         var healthy = catalog.Create("healthy", "/repo", []);
         var broken = catalog.Create("unreadable", "/repo", []);
         var streams = new Mock<IFileStreamFactory>();
-        streams.Setup(value => value.New(It.IsAny<string>(), FileMode.Open, FileAccess.Read, It.IsAny<FileShare>()))
+        streams
+            .Setup(value => value.New(It.IsAny<string>(), FileMode.Open, FileAccess.Read, It.IsAny<FileShare>()))
             .Returns((string path, FileMode mode, FileAccess access, FileShare share) =>
                 path == broken.ConfigurationPath
                 ? throw new UnauthorizedAccessException("Access denied.")
                 : fileSystem.FileStream.New(path, mode, access, share));
         var wrapper = new Mock<IFileSystem>();
-        wrapper.SetupGet(value => value.Path)
+        wrapper
+            .SetupGet(value => value.Path)
             .Returns(fileSystem.Path);
-        wrapper.SetupGet(value => value.File)
+        wrapper
+            .SetupGet(value => value.File)
             .Returns(fileSystem.File);
-        wrapper.SetupGet(value => value.Directory)
+        wrapper
+            .SetupGet(value => value.Directory)
             .Returns(fileSystem.Directory);
-        wrapper.SetupGet(value => value.DirectoryInfo)
+        wrapper
+            .SetupGet(value => value.DirectoryInfo)
             .Returns(fileSystem.DirectoryInfo);
-        wrapper.SetupGet(value => value.FileInfo)
+        wrapper
+            .SetupGet(value => value.FileInfo)
             .Returns(fileSystem.FileInfo);
-        wrapper.SetupGet(value => value.FileStream)
+        wrapper
+            .SetupGet(value => value.FileStream)
             .Returns(streams.Object);
         var isolated = new WorkspaceCatalog(wrapper.Object, catalog.HomeDirectory);
 
@@ -304,13 +316,14 @@ public sealed class WorkspaceCatalogTests
             "frontend",
             "/repo/frontend",
             [
-            new(WorkspaceSourceKind.TypeScript, "tsconfig.json"),
-            new(WorkspaceSourceKind.Markdown, "docs/**/*.md"),
-            new(WorkspaceSourceKind.Markdown, "/repo/frontend/docs/readme.md")
-        ]);
+                new(WorkspaceSourceKind.TypeScript, "tsconfig.json"),
+                new(WorkspaceSourceKind.Markdown, "docs/**/*.md"),
+                new(WorkspaceSourceKind.Markdown, "/repo/frontend/docs/readme.md")
+            ]);
 
         created.Definition.WorkspaceRoot.Should().Be("/repo/frontend");
-        created.Definition.Sources.Select(source => source.Path).Should().Equal(["tsconfig.json", "docs/**/*.md", "docs/readme.md"]);
+        created.Definition.Sources
+            .Select(source => source.Path).Should().Equal(["tsconfig.json", "docs/**/*.md", "docs/readme.md"]);
         var updated = catalog.Update(
             created.Definition.Id.ToString(),
             "renamed",
@@ -568,12 +581,17 @@ public sealed class WorkspaceCatalogTests
         fileSystem.AddDirectory("/repo/backend/.git");
         fileSystem.AddDirectory("/repo/frontend/.git");
 
-        var created = catalog.Create("product", "/repo", [
-            new(WorkspaceSourceKind.CSharp, "backend/Orders.csproj"),
-            new(WorkspaceSourceKind.TypeScript, "frontend/tsconfig.json")]);
+        var created = catalog.Create(
+            "product",
+            "/repo",
+            [
+                new(WorkspaceSourceKind.CSharp, "backend/Orders.csproj"),
+                new(WorkspaceSourceKind.TypeScript, "frontend/tsconfig.json")
+            ]);
 
         created.Definition.WorkspaceRoot.Should().Be("/repo");
-        created.Definition.Sources.Select(source => source.Path).Should().Equal("backend/Orders.csproj", "frontend/tsconfig.json");
+        created.Definition.Sources
+            .Select(source => source.Path).Should().Equal("backend/Orders.csproj", "frontend/tsconfig.json");
         catalog.ResolveFromDirectory("/repo/backend").Definition.Id.Should().Be(created.Definition.Id);
     }
 
@@ -582,7 +600,8 @@ public sealed class WorkspaceCatalogTests
     {
         var (fileSystem, catalog) = CreateCatalog();
         var created = catalog.Create("product", "/repo", [new(WorkspaceSourceKind.CSharp, "backend/Orders.csproj")]);
-        var legacyYaml = fileSystem.File.ReadAllText(created.ConfigurationPath).Replace("workspaceRoot:", "repositoryRoot:");
+        var legacyYaml = fileSystem.File.ReadAllText(created.ConfigurationPath)
+            .Replace("workspaceRoot:", "repositoryRoot:");
         fileSystem.File.WriteAllText(created.ConfigurationPath, legacyYaml);
         fileSystem.File.WriteAllText(created.Workspace.DatabasePath, "existing graph and memories");
 

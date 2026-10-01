@@ -16,11 +16,12 @@ public sealed class WorkspaceTreeRepositoryTests
         await SeedTree(context);
         var repository = new WorkspaceTreeRepository(context);
 
-        var result = await repository.GetTree("/", CancellationToken.None);
+        var result = await repository.GetTree("/", TestContext.Current.CancellationToken);
 
         result.ParentPath.Should().Be("/");
         result.ParentDirectoryId.Should().Be(1);
-        result.Nodes.Select(static node => node.Path)
+        result.Nodes
+            .Select(static node => node.Path)
             .Should()
             .Equal("docs", "root", "SharpSense.App.csproj", "README.md");
     }
@@ -33,7 +34,7 @@ public sealed class WorkspaceTreeRepositoryTests
         await SeedTree(context);
         var repository = new WorkspaceTreeRepository(context);
 
-        var result = await repository.GetTree("docs", CancellationToken.None);
+        var result = await repository.GetTree("docs", TestContext.Current.CancellationToken);
 
         result.ParentPath.Should().Be("docs");
         result.ParentDirectoryId.Should().Be(2);
@@ -50,10 +51,11 @@ public sealed class WorkspaceTreeRepositoryTests
         await SeedTree(context);
         var repository = new WorkspaceTreeRepository(context);
 
-        var result = await repository.GetTree("root", CancellationToken.None);
+        var result = await repository.GetTree("root", TestContext.Current.CancellationToken);
 
         result.ParentPath.Should().Be("root");
-        result.Nodes.Select(static node => node.Path)
+        result.Nodes
+            .Select(static node => node.Path)
             .Should()
             .Equal("root/child.txt");
     }

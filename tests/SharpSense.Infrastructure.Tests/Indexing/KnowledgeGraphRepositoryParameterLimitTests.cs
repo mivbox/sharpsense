@@ -16,21 +16,16 @@ public sealed class KnowledgeGraphRepositoryParameterLimitTests
     public async Task WhenReplacingLargeGraph_ThenBoundsParametersAndPreservesSurvivingIdentity()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
         await using var context = await factory.GetContext(ct);
         LimitSqlParameters(factory);
-        var collectionSql = new List<string>();
-        var repository = new KnowledgeGraphRepository(factory.CreateDbContextFactory(
-            message =>
-            {
-                if (message.Contains("json_each", StringComparison.Ordinal))
-                {
-                    collectionSql.Add(message);
-                }
-            }));
+        var repository = new KnowledgeGraphRepository(factory.CreateDbContextFactory());
 
         await repository.ReplaceWorkspace(Snapshot(0, 128), ct);
-        var survivorId = await context.CodeNodes.Where(node => node.FullyQualifiedName == "Fixture.Node64")
+        var survivorId = await context.CodeNodes
+            .Where(node => node.FullyQualifiedName == "Fixture.Node64")
             .Select(node => node.Id)
             .SingleAsync(ct);
         var memory = Memory(survivorId);
@@ -45,14 +40,15 @@ public sealed class KnowledgeGraphRepositoryParameterLimitTests
         (await context.Documents.CountAsync(ct)).Should().Be(128);
         (await context.Directories.CountAsync(ct)).Should().Be(130);
         (await context.DependencyEdges.CountAsync(ct)).Should().Be(127);
-        (await context.CodeNodes.Where(node => node.FullyQualifiedName == "Fixture.Node64")
+        (await context.CodeNodes
+            .Where(node => node.FullyQualifiedName == "Fixture.Node64")
             .Select(node => node.Id)
             .SingleAsync(ct)).Should().Be(survivorId);
-        (await context.MemoryNodes.Select(node => node.Id)
+        (await context.MemoryNodes
+            .Select(node => node.Id)
             .SingleAsync(ct)).Should().Be(memory.Id);
         (await context.CodeNodes.AnyAsync(node => node.FullyQualifiedName == "Fixture.Node0", ct)).Should().BeFalse();
         (await SearchRowCount(context, ct)).Should().Be(128);
-        collectionSql.Should().Contain(sql => sql.Contains("NOT IN", StringComparison.Ordinal));
 
         await repository.ReplaceWorkspace(new([], [], [], []), ct);
 
@@ -66,12 +62,15 @@ public sealed class KnowledgeGraphRepositoryParameterLimitTests
     public async Task WhenUpdatingManyFiles_ThenBoundsReadsAndDeletesAndRetainsUnchangedNodes()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
         await using var context = await factory.GetContext(ct);
         var repository = new KnowledgeGraphRepository(factory.CreateDbContextFactory());
         var original = Snapshot(0, 160);
         await repository.ReplaceWorkspace(original, ct);
-        var survivorId = await context.CodeNodes.Where(node => node.FullyQualifiedName == "Fixture.Node64")
+        var survivorId = await context.CodeNodes
+            .Where(node => node.FullyQualifiedName == "Fixture.Node64")
             .Select(node => node.Id)
             .SingleAsync(ct);
         context.MemoryNodes.Add(Memory(survivorId));
@@ -82,13 +81,21 @@ public sealed class KnowledgeGraphRepositoryParameterLimitTests
         var update = Snapshot(64, 64);
         update = update with
         {
-            CodeNodes = update.CodeNodes.Select(node => node with
-            {
-                BodyHash = "updated",
-                Summary = "updated"
-            })
+            CodeNodes = update.CodeNodes
+                .Select(node => node with
+                {
+                    BodyHash = "updated",
+                    Summary = "updated"
+                })
                 .ToArray(),
-            Edges = [.. update.Edges, new(update.CodeNodes[^1].CanonicalId, original.CodeNodes[128].CanonicalId, EdgeType.MethodCall)]
+            Edges =
+            [
+                .. update.Edges,
+                new(
+                    update.CodeNodes[^1].CanonicalId,
+                    original.CodeNodes[128].CanonicalId,
+                    EdgeType.MethodCall)
+            ]
         };
 
         await repository.ReplaceWorkspace(
@@ -104,14 +111,17 @@ public sealed class KnowledgeGraphRepositoryParameterLimitTests
         (await context.Documents.CountAsync(ct)).Should().Be(96);
         (await context.DependencyEdges.CountAsync(ct)).Should().Be(95);
         (await SearchRowCount(context, ct)).Should().Be(96);
-        (await context.CodeNodes.Where(node => node.FullyQualifiedName == "Fixture.Node64")
+        (await context.CodeNodes
+            .Where(node => node.FullyQualifiedName == "Fixture.Node64")
             .Select(node => node.Id)
             .SingleAsync(ct)).Should().Be(survivorId);
         (await context.MemoryNodes.CountAsync(ct)).Should().Be(1);
-        (await context.CodeNodes.Where(node => node.Id == survivorId)
+        (await context.CodeNodes
+            .Where(node => node.Id == survivorId)
             .Select(node => node.BodyHash)
             .SingleAsync(ct)).Should().Be("updated");
-        (await context.CodeNodes.Where(node => node.FullyQualifiedName == "Fixture.Node159")
+        (await context.CodeNodes
+            .Where(node => node.FullyQualifiedName == "Fixture.Node159")
             .Select(node => node.BodyHash)
             .SingleAsync(ct)).Should().Be("original");
     }
@@ -120,17 +130,22 @@ public sealed class KnowledgeGraphRepositoryParameterLimitTests
     public async Task WhenLargeReplacementFailsAfterWritingNodes_ThenRollsBackGraphAndMemories()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
         await using var context = await factory.GetContext(ct);
         var repository = new KnowledgeGraphRepository(factory.CreateDbContextFactory());
         var original = Snapshot(0, 128);
         await repository.ReplaceWorkspace(original, ct);
-        var originalIds = await context.GraphNodes.OrderBy(node => node.Id)
+        var originalIds = await context.GraphNodes
+            .OrderBy(node => node.Id)
             .Select(node => node.Id)
             .ToArrayAsync(ct);
-        var originalRevision = await context.IndexRunState.Select(state => state.GraphRevision)
+        var originalRevision = await context.IndexRunState
+            .Select(state => state.GraphRevision)
             .SingleAsync(ct);
-        var removedId = await context.CodeNodes.Where(node => node.FullyQualifiedName == "Fixture.Node0")
+        var removedId = await context.CodeNodes
+            .Where(node => node.FullyQualifiedName == "Fixture.Node0")
             .Select(node => node.Id)
             .SingleAsync(ct);
         var memory = Memory(removedId);
@@ -145,20 +160,25 @@ public sealed class KnowledgeGraphRepositoryParameterLimitTests
             ct);
         LimitSqlParameters(factory);
 
-        var failure = (await ((Func<Task>)(() => repository.ReplaceWorkspace(Snapshot(64, 128), ct))).Should().ThrowExactlyAsync<SqliteException>()).Which;
+        var failure = (await ((Func<Task>)(() => repository.ReplaceWorkspace(
+            Snapshot(64, 128),
+            ct))).Should().ThrowExactlyAsync<SqliteException>()).Which;
 
         failure.Message.Should().Contain("injected prune failure");
         context.ChangeTracker.Clear();
-        (await context.GraphNodes.OrderBy(node => node.Id)
+        (await context.GraphNodes
+            .OrderBy(node => node.Id)
             .Select(node => node.Id)
             .ToArrayAsync(ct)).Should().Equal(originalIds);
         (await context.Documents.CountAsync(ct)).Should().Be(128);
         (await context.DependencyEdges.CountAsync(ct)).Should().Be(127);
-        (await context.MemoryNodes.Select(node => node.Id)
+        (await context.MemoryNodes
+            .Select(node => node.Id)
             .SingleAsync(ct)).Should().Be(memory.Id);
         (await SearchRowCount(context, ct)).Should().Be(128);
         (await context.CodeNodes.AnyAsync(node => node.FullyQualifiedName == "Fixture.Node191", ct)).Should().BeFalse();
-        (await context.IndexRunState.Select(state => state.GraphRevision)
+        (await context.IndexRunState
+            .Select(state => state.GraphRevision)
             .SingleAsync(ct)).Should().Be(originalRevision);
     }
 

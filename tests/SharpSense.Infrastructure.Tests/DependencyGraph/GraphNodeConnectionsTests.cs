@@ -18,7 +18,9 @@ public sealed class GraphNodeConnectionsTests
     public async Task WhenConnectionsArePaged_ThenAllDirectionsAndTypesAreGroupedAcrossPeers()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
         await new KnowledgeGraphRepository(factory.CreateDbContextFactory()).ReplaceWorkspace(Snapshot(610), ct);
         await using var context = await factory.GetContext(ct);
         var ids = await context.GraphNodes.ToDictionaryAsync(node => node.CanonicalId, node => node.Id, ct);
@@ -50,11 +52,14 @@ public sealed class GraphNodeConnectionsTests
 
         first.TotalCount.Should().Be(614);
         items.Count.Should().Be(first.TotalCount);
-        items.Select(item => item.Node.Id)
+        items
+            .Select(item => item.Node.Id)
             .Distinct()
             .Count().Should().Be(items.Count);
-        items.Select(item => item.Node.Id).Should().Equal(items.Select(item => item.Node.Id)
-            .Order());
+        items
+            .Select(item => item.Node.Id).Should().Equal(items
+                .Select(item => item.Node.Id)
+                .Order());
         first.Node.Label.Should().Be("Fixture.Root");
         first.Node.CodeNodeId.Should().Be(first.Node.Id);
         var peer = items.Should().ContainSingle(item => item.Node.Id == ids["code:peer0"]).Which;
@@ -64,7 +69,8 @@ public sealed class GraphNodeConnectionsTests
         peer.Relationships.Should().Contain(edge => edge.Type == "fieldaccess" && edge.Direction == "incoming");
         items.Single(item => item.Node.Id == first.Node.Id).Relationships.Should().ContainSingle().Which.Direction.Should().Be("self");
         items.Should().Contain(item => item.Node.Type == "project" && item.Node.ProjectId == item.Node.Id);
-        items.Where(item => item.Node.Label == "GET /api/items" && item.Node.Type == "http" && item.Node.CodeNodeId is null).Should().NotBeEmpty();
+        items
+            .Where(item => item.Node.Label == "GET /api/items" && item.Node.Type == "http" && item.Node.CodeNodeId is null).Should().NotBeEmpty();
         items.Should().Contain(item => item.Node.Label == "react/useEffect" && item.Node.Type == "package");
     }
 
@@ -72,17 +78,24 @@ public sealed class GraphNodeConnectionsTests
     [InlineData("project:app", "project", "App")]
     [InlineData("http:GET:%2Fapi%2Fitems", "http", "GET /api/items")]
     [InlineData("package:react:useEffect", "package", "react/useEffect")]
-    public async Task WhenInspectingAnyGraphNode_ThenDirectorySelectionIsOptional(string canonicalId, string type, string label)
+    public async Task WhenInspectingAnyGraphNode_ThenDirectorySelectionIsOptional(
+        string canonicalId,
+        string type,
+        string label)
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
         await new KnowledgeGraphRepository(factory.CreateDbContextFactory()).ReplaceWorkspace(Snapshot(2), ct);
         await using var context = await factory.GetContext(ct);
-        var id = await context.GraphNodes.Where(node => node.CanonicalId == canonicalId)
+        var id = await context.GraphNodes
+            .Where(node => node.CanonicalId == canonicalId)
             .Select(node => node.Id)
             .SingleAsync(ct);
 
-        var page = await Repository(context).GetNodeConnections(new(id, IncludeTotal: true), ct);
+        var page = await Repository(context)
+            .GetNodeConnections(new(id, IncludeTotal: true), ct);
 
         page.Node.Id.Should().Be(id);
         page.Node.Type.Should().Be(type);
@@ -95,7 +108,9 @@ public sealed class GraphNodeConnectionsTests
     public async Task WhenInspectingConnections_ThenNodesWorkspaceCursorKindAndRevisionAreValidated()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true, LoadVectorExtension: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
         var writer = new KnowledgeGraphRepository(factory.CreateDbContextFactory());
         await writer.ReplaceWorkspace(Snapshot(2), ct);
         await using var context = await factory.GetContext(ct);
@@ -108,8 +123,12 @@ public sealed class GraphNodeConnectionsTests
             Cursor = page.NextCursor
         };
 
-        await ((Func<Task>)(() => repository.GetNodeConnections(new(999_999), ct))).Should().ThrowExactlyAsync<KeyNotFoundException>();
-        await ((Func<Task>)(() => repository.GetNodeConnections(new(0), ct))).Should().ThrowExactlyAsync<ArgumentException>();
+        await ((Func<Task>)(() => repository.GetNodeConnections(
+            new(999_999),
+            ct))).Should().ThrowExactlyAsync<KeyNotFoundException>();
+        await ((Func<Task>)(() => repository.GetNodeConnections(
+            new(0),
+            ct))).Should().ThrowExactlyAsync<ArgumentException>();
         await ((Func<Task>)(() => repository.GetNodeConnections(
             request with
             {
@@ -122,8 +141,10 @@ public sealed class GraphNodeConnectionsTests
                 NodeId = ids["code:peer0"]
             },
             ct))).Should().ThrowExactlyAsync<ArgumentException>();
-        await ((Func<Task>)(() => Repository(context, "other").GetNodeConnections(next, ct))).Should().ThrowExactlyAsync<ArgumentException>();
-        var directoryId = await context.Directories.Where(directory => directory.Path == "")
+        await ((Func<Task>)(() => Repository(context, "other")
+            .GetNodeConnections(next, ct))).Should().ThrowExactlyAsync<ArgumentException>();
+        var directoryId = await context.Directories
+            .Where(directory => directory.Path == "")
             .Select(directory => directory.Id)
             .SingleAsync(ct);
         var graphPage = await repository.GetNodesPage(new([directoryId], PageSize: 1), ct);
@@ -160,16 +181,18 @@ public sealed class GraphNodeConnectionsTests
                 $"peer{index}",
                 $"Fixture.Peer{index}"))
             .ToArray();
-        var edges = nodes.Select(node => new IndexedDependency("code:root", node.CanonicalId, EdgeType.MethodCall, "call"))
+        var edges = nodes
+            .Select(node => new IndexedDependency("code:root", node.CanonicalId, EdgeType.MethodCall, "call"))
             .ToList();
-        edges.AddRange([
-            new("code:root", "code:peer0", EdgeType.Instantiates),
-            new("code:peer0", "code:root", EdgeType.FieldAccess),
-            new("code:root", "code:root", EdgeType.MethodCall),
-            new("project:app", "code:root", EdgeType.ParentOf),
-            new("code:root", "http:GET:%2Fapi%2Fitems", EdgeType.HttpRequest, "/api/items"),
-            new("code:root", "package:react:useEffect", EdgeType.Import)
-        ]);
+        edges.AddRange(
+            [
+                new("code:root", "code:peer0", EdgeType.Instantiates),
+                new("code:peer0", "code:root", EdgeType.FieldAccess),
+                new("code:root", "code:root", EdgeType.MethodCall),
+                new("project:app", "code:root", EdgeType.ParentOf),
+                new("code:root", "http:GET:%2Fapi%2Fitems", EdgeType.HttpRequest, "/api/items"),
+                new("code:root", "package:react:useEffect", EdgeType.Import)
+            ]);
 
         return new(
             [new("project:app", "App", "App.csproj", "project")],

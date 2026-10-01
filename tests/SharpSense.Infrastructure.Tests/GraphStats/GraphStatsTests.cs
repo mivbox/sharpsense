@@ -42,8 +42,11 @@ public sealed class GraphStatsTests
     [InlineData(".tsx", "TSX")]
     [InlineData(".mdown", "Markdown")]
     [InlineData(".mkd", "Markdown")]
-    public async Task WhenCurrentDatabase_ThenReturnsCountsLanguageCoverageAndDurableHistory(string extension, string language)
+    public async Task WhenCurrentDatabase_ThenReturnsCountsLanguageCoverageAndDurableHistory(
+        string extension,
+        string language)
     {
+        var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
         await fixture.Initialize();
         await fixture.Seed();
@@ -51,10 +54,10 @@ public sealed class GraphStatsTests
         {
             await context.Database.ExecuteSqlInterpolatedAsync(
                 $"UPDATE Documents SET Extension = {extension} WHERE Id = 2;",
-                TestContext.Current.CancellationToken);
+                ct);
         }
         var success = Run("succeeded", 1);
-        await fixture.Store.Record(success, TestContext.Current.CancellationToken);
+        await fixture.Store.Record(success, ct);
 
         var result = await fixture.Read();
 
@@ -87,30 +90,39 @@ public sealed class GraphStatsTests
     [Fact]
     public async Task WhenFailedAndCancelledAttempts_ThenPreserveLastSuccessAndAuthoredMemory()
     {
+        var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
         await fixture.Initialize();
         await fixture.Seed();
         var success = Run("succeeded", 1);
-        await fixture.Store.Record(success, TestContext.Current.CancellationToken);
+        await fixture.Store.Record(success, ct);
         await fixture.Store.Record(
             Run("failed", 2) with
             {
-                Diagnostics = [new("parse_failed", "error", "Invalid source syntax.", "Widget.tsx", "Fix source syntax and retry.")]
+                Diagnostics =
+                [
+                    new(
+                        "parse_failed",
+                        "error",
+                        "Invalid source syntax.",
+                        "Widget.tsx",
+                        "Fix source syntax and retry.")
+                ]
             },
-            TestContext.Current.CancellationToken);
+            ct);
         var failed = await fixture.Read();
         failed.LastAttempt!.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.FilePath == "Widget.tsx");
         failed.LastSuccessfulIndex!.CompletedAt.Should().Be(success.CompletedAt);
 
-        await fixture.Store.Record(Run("cancelled", 3), TestContext.Current.CancellationToken);
-        await fixture.Store.Record(Run("failed", 2), TestContext.Current.CancellationToken);
+        await fixture.Store.Record(Run("cancelled", 3), ct);
+        await fixture.Store.Record(Run("failed", 2), ct);
         var cancelled = await fixture.Read();
 
         cancelled.LastAttempt!.Outcome.Should().Be("cancelled");
         cancelled.LastSuccessfulIndex!.CompletedAt.Should().Be(success.CompletedAt);
         await using var db = fixture.CreateDbContext();
-        (await db.MemoryNodes.SingleAsync(TestContext.Current.CancellationToken)).Content.Should().Be("Authored invariant");
-        (await db.IndexRunState.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+        (await db.MemoryNodes.SingleAsync(ct)).Content.Should().Be("Authored invariant");
+        (await db.IndexRunState.CountAsync(ct)).Should().Be(1);
     }
 
     [Fact]
@@ -127,7 +139,8 @@ public sealed class GraphStatsTests
         await fixture.Store.Record(Run("succeeded", 4), ct);
 
         await using var context = fixture.CreateDbContext();
-        (await context.IndexRunState.Select(state => state.GraphRevision)
+        (await context.IndexRunState
+            .Select(state => state.GraphRevision)
             .SingleAsync(ct))
             .Should().Be("graph-commit-revision");
     }
@@ -135,6 +148,7 @@ public sealed class GraphStatsTests
     [Fact]
     public async Task WhenHistoryLimits_ThenBoundDiagnosticCountMessagesAndPhaseCount()
     {
+        var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
         await fixture.Initialize();
         await fixture.Store.Record(
@@ -142,13 +156,18 @@ public sealed class GraphStatsTests
             {
                 Scope = new string('x', 5000),
                 Diagnostics = Enumerable.Range(0, 100)
-                    .Select(index => new IndexDiagnostic("parse_failed", "error", new string('語', 5000), new string('p', 2000), new string('s', 2000)))
+                    .Select(index => new IndexDiagnostic(
+                        "parse_failed",
+                        "error",
+                        new string('語', 5000),
+                        new string('p', 2000),
+                        new string('s', 2000)))
                     .ToArray(),
                 Phases = Enumerable.Range(0, 50)
                     .Select(index => new IndexPhaseTiming(new string('n', 500), index))
                     .ToArray()
             },
-            TestContext.Current.CancellationToken);
+            ct);
 
         var result = await fixture.Read();
 
@@ -159,7 +178,7 @@ public sealed class GraphStatsTests
         result.LastAttempt.Phases.Should().HaveCount(16);
         result.LastAttempt.Scope.Should().HaveLength(512);
         await using var db = fixture.CreateDbContext();
-        (await db.IndexRunState.SingleAsync(TestContext.Current.CancellationToken)).LastAttemptJson!
+        (await db.IndexRunState.SingleAsync(ct)).LastAttemptJson!
             .Length.Should().BeLessThan(IndexRunSerialization.MaximumJsonLength);
     }
 
@@ -194,24 +213,26 @@ public sealed class GraphStatsTests
     [Fact]
     public async Task WhenLegacyEnumIsDiagnosedBeforeMaterialization_ThenPreservesDatabase()
     {
+        var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
         await fixture.Initialize();
         await fixture.Seed();
         await fixture.Execute("UPDATE DependencyEdges SET EdgeType = 'DocumentHierarchy';");
-        var before = await File.ReadAllBytesAsync(fixture.Workspace.DatabasePath, TestContext.Current.CancellationToken);
+        var before = await File.ReadAllBytesAsync(fixture.Workspace.DatabasePath, ct);
 
         var result = await fixture.Read();
 
         result.DatabaseState.Should().Be("incompatible");
         result.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Message.Contains("DocumentHierarchy") && diagnostic.Suggestion!.Contains("authored memories"));
-        (await File.ReadAllBytesAsync(fixture.Workspace.DatabasePath, TestContext.Current.CancellationToken)).Should().Equal(before);
+        (await File.ReadAllBytesAsync(fixture.Workspace.DatabasePath, ct)).Should().Equal(before);
         await using var db = fixture.CreateDbContext();
-        (await db.MemoryNodes.SingleAsync(TestContext.Current.CancellationToken)).Content.Should().Be("Authored invariant");
+        (await db.MemoryNodes.SingleAsync(ct)).Content.Should().Be("Authored invariant");
     }
 
     [Fact]
     public async Task WhenMigrationIsUnknown_ThenDiagnosesWithoutApplyingOrResettingSchema()
     {
+        var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
         await fixture.Initialize();
         await fixture.Seed();
@@ -221,13 +242,14 @@ public sealed class GraphStatsTests
 
         result.DatabaseState.Should().Be("incompatible");
         await using var db = fixture.CreateDbContext();
-        (await db.MemoryNodes.SingleAsync(TestContext.Current.CancellationToken)).Content.Should().Be("Authored invariant");
-        (await db.Database.GetAppliedMigrationsAsync(TestContext.Current.CancellationToken)).Should().Contain("20990101000000_Unknown");
+        (await db.MemoryNodes.SingleAsync(ct)).Content.Should().Be("Authored invariant");
+        (await db.Database.GetAppliedMigrationsAsync(ct)).Should().Contain("20990101000000_Unknown");
     }
 
     [Fact]
     public async Task WhenPreviousSchema_ThenReturnsCountsAndUpgradeGuidanceWithoutMigrating()
     {
+        var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
         await fixture.Initialize("20260923000200_MemoryStableNodeIdentity");
         await fixture.Seed();
@@ -240,10 +262,10 @@ public sealed class GraphStatsTests
         result.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == "schema_upgrade_required");
         result.Diagnostics.Should().Contain(diagnostic => diagnostic.Code == "index_history_unavailable");
         await using var db = fixture.CreateDbContext();
-        (await db.Database.GetAppliedMigrationsAsync(TestContext.Current.CancellationToken)).Should().NotContain("20260924000000_IndexRunState");
+        (await db.Database.GetAppliedMigrationsAsync(ct)).Should().NotContain("20260924000000_IndexRunState");
 
-        await db.Database.MigrateAsync(TestContext.Current.CancellationToken);
-        (await db.MemoryNodes.SingleAsync(TestContext.Current.CancellationToken)).Content.Should().Be("Authored invariant");
+        await db.Database.MigrateAsync(ct);
+        (await db.MemoryNodes.SingleAsync(ct)).Content.Should().Be("Authored invariant");
         (await fixture.Read()).DatabaseState.Should().Be("ready");
     }
 
@@ -252,15 +274,16 @@ public sealed class GraphStatsTests
     [InlineData("{\"startedAt\":\"2026-09-24T00:00:00Z\",\"completedAt\":\"2026-09-24T00:00:01Z\",\"durationMs\":1000,\"outcome\":\"failed\",\"kind\":\"full\",\"scope\":\"SharpSense.sln\",\"diagnostics\":[null]}")]
     public async Task WhenInvalidHistory_ThenReturnsGraphCountsAndWarning(string json)
     {
+        var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
         await fixture.Initialize();
         await fixture.Seed();
-        await fixture.Store.Record(Run("succeeded", 1), TestContext.Current.CancellationToken);
+        await fixture.Store.Record(Run("succeeded", 1), ct);
         await using (var db = fixture.CreateDbContext())
         {
             await db.Database.ExecuteSqlInterpolatedAsync(
                 $"UPDATE IndexRunState SET LastAttemptJson = {json};",
-                TestContext.Current.CancellationToken);
+                ct);
         }
 
         var result = await fixture.Read();
@@ -274,13 +297,14 @@ public sealed class GraphStatsTests
     [Fact]
     public async Task WhenInvalidDatabase_ThenReturnsReadableDiagnosticWithoutReplacingFile()
     {
+        var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
-        await File.WriteAllTextAsync(fixture.Workspace.DatabasePath, "Not a SQLite database", TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(fixture.Workspace.DatabasePath, "Not a SQLite database", ct);
 
         var result = await fixture.Read();
 
         result.DatabaseState.Should().Be("unreadable");
-        (await File.ReadAllTextAsync(fixture.Workspace.DatabasePath, TestContext.Current.CancellationToken)).Should().Be("Not a SQLite database");
+        (await File.ReadAllTextAsync(fixture.Workspace.DatabasePath, ct)).Should().Be("Not a SQLite database");
     }
 
     private static IndexRunSummary Run(string outcome, int minute)
@@ -303,24 +327,20 @@ public sealed class GraphStatsTests
 
     private sealed class Fixture : IDbContextFactory<SharpSenseDbContext>, IDisposable
     {
-        public DirectoryInfo Directory
-        {
-            get;
-        } = System.IO.Directory.CreateTempSubdirectory("sharpsense-graph-stats-");
+        public DirectoryInfo Directory { get; } = System.IO.Directory.CreateTempSubdirectory("sharpsense-graph-stats-");
 
-        public IRepositoryWorkspace Workspace
-        {
-            get;
-        }
+        public IRepositoryWorkspace Workspace { get; }
 
         public IndexRunStore Store => new(this);
 
         public Fixture()
         {
             var workspace = new Mock<IRepositoryWorkspace>();
-            workspace.SetupGet(value => value.RootPath)
+            workspace
+                .SetupGet(value => value.RootPath)
                 .Returns(Directory.FullName);
-            workspace.SetupGet(value => value.DatabasePath)
+            workspace
+                .SetupGet(value => value.DatabasePath)
                 .Returns(Path.Combine(Directory.FullName, "graph.db"));
             Workspace = workspace.Object;
         }

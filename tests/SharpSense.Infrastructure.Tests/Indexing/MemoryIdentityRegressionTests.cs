@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.EntityFrameworkCore;
 using Moq;
+using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
@@ -10,6 +11,7 @@ using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.CodeAnalysis;
 using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 using SharpSense.Infrastructure.Indexing;
+using SharpSense.Infrastructure.Indexing.Markdown;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
@@ -20,11 +22,70 @@ namespace SharpSense.Infrastructure.Tests.Indexing;
 
 public sealed class MemoryIdentityRegressionTests
 {
+    [Theory]
+    [InlineData("document-root", true)]
+    [InlineData("guide", true)]
+    [InlineData("unchanged", false)]
+    public async Task WhenMarkdownContentChanges_ThenOnlyAffectedMemoriesBecomeStale(string slug, bool expectedStale)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true));
+        var dbFactory = factory.CreateDbContextFactory();
+        var repository = new KnowledgeGraphRepository(dbFactory);
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            ["/repo/Guide.md"] = new("# Guide\nOriginal content.\n\n# Unchanged\nStable content.")
+        });
+        var workspace = new RepositoryWorkspace("/repo", "/repo/index.db", fileSystem);
+        var files = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
+        files
+            .Setup(candidate => candidate.GetAllowedFiles("/repo", It.IsAny<IReadOnlyList<string>>(), ct))
+            .ReturnsAsync([new DiscoveredFile("/repo/Guide.md", "Guide.md")]);
+        var extractor = new MarkdownDocumentExtractor(
+            new DocumentDiscoverer(workspace, files.Object, new MarkdownIndexer(), fileSystem));
+        var extraction = new ExtractionContext("/repo", null, IncludePatterns: ["*.md"]);
+        var initial = await extractor.Extract(extraction, ct);
+        await repository.ReplaceWorkspace(initial.Value, ct);
+
+        await using var db = await factory.GetContext(ct);
+        var nodeId = await db.GraphNodes
+            .Where(node => node.CanonicalId == $"code:doc:Guide.md#{slug}")
+            .Select(node => node.Id)
+            .SingleAsync(ct);
+        var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
+        embeddings
+            .Setup(generator => generator.Generate("Review note", ct))
+            .ReturnsAsync(new TextEmbedding("Review note", [1f, 0f]));
+        var store = new MemoryStore(dbFactory, embeddings.Object);
+        (await store.AttachMemory(nodeId, "Review note", [], MemoryIntent.Invariant, ct)).IsSuccess.Should().BeTrue();
+        var memory = (await store.GetNodeMemories([nodeId], null, ct))[nodeId].Single();
+
+        await repository.ReplaceWorkspace((await extractor.Extract(extraction, ct)).Value, ct);
+        (await store.GetMemory(memory.Id, ct))!.IsStale.Should().BeFalse();
+
+        await fileSystem.File.WriteAllTextAsync(
+            "/repo/Guide.md",
+            "# Guide\nChanged content.\n\n# Unchanged\nStable content.",
+            ct);
+        await repository.ReplaceWorkspace((await extractor.Extract(extraction, ct)).Value, ct);
+
+        var current = await store.GetMemory(memory.Id, ct);
+        current.Should().NotBeNull();
+        (await store.GetNodeMemories([nodeId], null, ct))[nodeId].Should().ContainSingle()
+            .Which.Id.Should().Be(memory.Id);
+        current!.Content.Should().Be(memory.Content);
+        current.IsStale.Should().Be(expectedStale);
+    }
+
     [Fact]
     public async Task WhenGenericParameterIsRenamed_ThenReindexRetainsNumericIdentityAndMemoriesWithCurrentNames()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options), new(UseMigrations: true));
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true));
         var dbFactory = factory.CreateDbContextFactory();
         var repository = new KnowledgeGraphRepository(dbFactory);
         using var workspace = new AdhocWorkspace();
@@ -39,10 +100,10 @@ public sealed class MemoryIdentityRegressionTests
             filePath: "/repo/App.csproj"))
             .AddMetadataReference(projectId, MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
             .AddDocument(
-            documentId,
-            "Widget.cs",
-            SourceText.From("public class Widget<T> { public T Echo(T value) => value; }"),
-            filePath: "/repo/Widget.cs");
+                documentId,
+                "Widget.cs",
+                SourceText.From("public class Widget<T> { public T Echo(T value) => value; }"),
+                filePath: "/repo/Widget.cs");
         var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
         {
             ["/repo/App.csproj"] = new("<Project Sdk=\"Microsoft.NET.Sdk\" />")
@@ -53,22 +114,24 @@ public sealed class MemoryIdentityRegressionTests
         await repository.ReplaceWorkspace(Map(initial), ct);
 
         await using var db = await factory.GetContext(ct);
-        var originalIds = await db.CodeNodes.Join(
-            db.GraphNodes,
-            node => node.Id,
-            graph => graph.Id,
-            (node, graph) => new
-            {
-                graph.CanonicalId,
-                node.Id
-            })
+        var originalIds = await db.CodeNodes
+            .Join(
+                db.GraphNodes,
+                node => node.Id,
+                graph => graph.Id,
+                (node, graph) => new
+                {
+                    graph.CanonicalId,
+                    node.Id
+                })
             .ToDictionaryAsync(node => node.CanonicalId, node => node.Id, ct);
         var originalNames = await db.CodeNodes.ToDictionaryAsync(node => node.Id, node => node.FullyQualifiedName, ct);
         originalNames.Values.Should().Contain("Widget<T>");
         originalNames.Count.Should().Be(2);
 
         var embeddings = new Mock<IEmbeddingGenerator>();
-        embeddings.Setup(generator => generator.Generate(It.IsAny<string>(), ct))
+        embeddings
+            .Setup(generator => generator.Generate(It.IsAny<string>(), ct))
             .ReturnsAsync((string content, CancellationToken _) => new TextEmbedding(content, [1f, 0f]));
         var store = new MemoryStore(dbFactory, embeddings.Object);
         foreach (var nodeId in originalIds.Values)
@@ -81,37 +144,42 @@ public sealed class MemoryIdentityRegressionTests
                 ct))
                 .IsSuccess.Should().BeTrue();
         }
-        var originalMemories = await db.MemoryNodes.AsNoTracking()
+        var originalMemories = await db.MemoryNodes
+            .AsNoTracking()
             .ToArrayAsync(ct);
 
         solution = solution.WithDocumentText(
             documentId,
             SourceText.From("public class Widget<U> { public U Echo(U value) => value; }"));
         var changed = await engine.Extract("/repo/App.csproj", solution, repositoryWorkspace, ct: ct);
-        changed.CodeNodes.Select(node => node.CanonicalId).Should().BeEquivalentTo(initial.CodeNodes.Select(node => node.CanonicalId));
+        changed.CodeNodes
+            .Select(node => node.CanonicalId).Should().BeEquivalentTo(initial.CodeNodes.Select(node => node.CanonicalId));
         await repository.ReplaceWorkspace(Map(changed), ct);
 
         db.ChangeTracker.Clear();
-        var currentIds = await db.CodeNodes.Join(
-            db.GraphNodes,
-            node => node.Id,
-            graph => graph.Id,
-            (node, graph) => new
-            {
-                graph.CanonicalId,
-                node.Id
-            })
+        var currentIds = await db.CodeNodes
+            .Join(
+                db.GraphNodes,
+                node => node.Id,
+                graph => graph.Id,
+                (node, graph) => new
+                {
+                    graph.CanonicalId,
+                    node.Id
+                })
             .ToDictionaryAsync(node => node.CanonicalId, node => node.Id, ct);
         currentIds.Should().BeEquivalentTo(originalIds);
         var currentNames = await db.CodeNodes.ToDictionaryAsync(node => node.Id, node => node.FullyQualifiedName, ct);
         currentNames.Values.Should().Contain("Widget<U>");
         currentNames.Values.Should().NotIntersectWith(originalNames.Values);
-        (await db.MemoryNodes.AsNoTracking()
+        (await db.MemoryNodes
+            .AsNoTracking()
             .ToArrayAsync(ct)).Should().BeEquivalentTo(originalMemories);
 
         var memoriesByNode = await store.GetNodeMemories(originalIds.Values.ToArray(), [MemoryIntent.Invariant], ct);
         var memoriesById = await store.GetMemories(
-            originalMemories.Select(memory => memory.Id)
+            originalMemories
+                .Select(memory => memory.Id)
                 .ToArray(),
             ct);
         foreach (var memory in originalMemories)
@@ -129,8 +197,11 @@ public sealed class MemoryIdentityRegressionTests
             .Should().BeEquivalentTo(currentNames.Values);
 
         // Stable names and IDs remain idempotent on another full parse.
-        await repository.ReplaceWorkspace(Map(await engine.Extract("/repo/App.csproj", solution, repositoryWorkspace, ct: ct)), ct);
-        (await db.MemoryNodes.AsNoTracking()
+        await repository.ReplaceWorkspace(
+            Map(await engine.Extract("/repo/App.csproj", solution, repositoryWorkspace, ct: ct)),
+            ct);
+        (await db.MemoryNodes
+            .AsNoTracking()
             .ToArrayAsync(ct)).Should().BeEquivalentTo(originalMemories);
         await repository.ReplaceWorkspace(new([], [], [], []), ct);
         (await db.MemoryNodes.CountAsync(ct)).Should().Be(0);
@@ -138,26 +209,29 @@ public sealed class MemoryIdentityRegressionTests
 
     private static ExtractedNodes Map(KnowledgeGraphExtractionPayload payload)
         => new(
-            payload.Projects.Select(project => new IndexedProject(
-                project.Id,
-                project.Name,
-                project.RelativeFilePath,
-                project.ContentHash))
+            payload.Projects
+                .Select(project => new IndexedProject(
+                    project.Id,
+                    project.Name,
+                    project.RelativeFilePath,
+                    project.ContentHash))
                 .ToArray(),
-            payload.CodeNodes.Select(node => new IndexedCodeNode(
-                node.CanonicalId,
-                node.ProjectId,
-                node.FullyQualifiedName,
-                node.DisplayName,
-                node.NodeType,
-                node.RelativeFilePath,
-                node.StartLine,
-                node.EndLine,
-                node.Summary,
-                node.SearchText,
-                node.BodyHash))
+            payload.CodeNodes
+                .Select(node => new IndexedCodeNode(
+                    node.CanonicalId,
+                    node.ProjectId,
+                    node.FullyQualifiedName,
+                    node.DisplayName,
+                    node.NodeType,
+                    node.RelativeFilePath,
+                    node.StartLine,
+                    node.EndLine,
+                    node.Summary,
+                    node.SearchText,
+                    node.BodyHash))
                 .ToArray(),
-            payload.Edges.Select(edge => new IndexedDependency(edge.CallerId, edge.CalleeId, edge.EdgeType))
+            payload.Edges
+                .Select(edge => new IndexedDependency(edge.CallerId, edge.CalleeId, edge.EdgeType))
                 .ToArray(),
             []);
 }

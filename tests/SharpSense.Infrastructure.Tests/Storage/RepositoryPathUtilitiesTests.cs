@@ -60,7 +60,11 @@ public sealed class RepositoryWorkspaceTests
     {
         var fileSystem = CreateRepositoryFileSystem();
         var selection = new WorkspaceCatalog(fileSystem, "/workspace-home").Create("test", "/repo", []);
-        var expectedPath = Path.Combine("/workspace-home", "workspaces", selection.Definition.Id.ToString("D"), "index.db");
+        var expectedPath = Path.Combine(
+            "/workspace-home",
+            "workspaces",
+            selection.Definition.Id.ToString("D"),
+            "index.db");
 
         selection.Workspace.DatabasePath.Should().Be(expectedPath);
     }
@@ -114,8 +118,5 @@ public sealed class RepositoryWorkspaceTests
     private static IRepositoryWorkspace CreateWorkspace(
         MockFileSystem fileSystem,
         string workingDirectory)
-        => new RepositoryWorkspace(
-            workingDirectory,
-            "/test-storage/index.db",
-            fileSystem);
+        => new RepositoryWorkspace(workingDirectory, "/test-storage/index.db", fileSystem);
 }

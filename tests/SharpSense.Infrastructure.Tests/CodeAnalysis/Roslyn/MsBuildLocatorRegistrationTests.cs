@@ -1,31 +1,39 @@
 using AwesomeAssertions;
+using Microsoft.Build.Locator;
 using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 
 namespace SharpSense.Infrastructure.Tests.CodeAnalysis.Roslyn;
 
 public sealed class MsBuildLocatorRegistrationTests
 {
-    [Fact]
-    public void WhenSelectingPreferredInstance_ThenPrefersHighestVersionNameDiscoveryTypeAndPath()
+    [Theory]
+    [InlineData(9, "Zulu", DiscoveryType.DotNetSdk, "/sdk/z", 8, "Alpha", DiscoveryType.DeveloperConsole, "/sdk/a")]
+    [InlineData(8, "Alpha", DiscoveryType.DotNetSdk, "/sdk/z", 8, "Zulu", DiscoveryType.DeveloperConsole, "/sdk/a")]
+    [InlineData(8, "Alpha", DiscoveryType.DeveloperConsole, "/sdk/z", 8, "Alpha", DiscoveryType.DotNetSdk, "/sdk/a")]
+    [InlineData(8, "Alpha", DiscoveryType.DotNetSdk, "/sdk/a", 8, "Alpha", DiscoveryType.DotNetSdk, "/sdk/b")]
+    public void WhenSelectingPreferredInstance_ThenAppliesEachTieBreakerInOrder(
+        int preferredVersion,
+        string preferredName,
+        DiscoveryType preferredDiscovery,
+        string preferredPath,
+        int otherVersion,
+        string otherName,
+        DiscoveryType otherDiscovery,
+        string otherPath)
     {
-        var instances = new[]
-        {
-            new MsBuildInstanceCandidate("Zulu", "/sdk/zulu", new Version(8, 0, 200), Microsoft.Build.Locator.DiscoveryType.DotNetSdk),
-            new MsBuildInstanceCandidate("Alpha", "/sdk/alpha-b", new Version(8, 0, 200), Microsoft.Build.Locator.DiscoveryType.VisualStudioSetup),
-            new MsBuildInstanceCandidate("Alpha", "/sdk/alpha-a", new Version(8, 0, 200), Microsoft.Build.Locator.DiscoveryType.DeveloperConsole),
-            new MsBuildInstanceCandidate("Older", "/sdk/older", new Version(8, 0, 100), Microsoft.Build.Locator.DiscoveryType.DotNetSdk)
-        };
+        var preferred = new MsBuildInstanceCandidate(preferredName, preferredPath, new Version(preferredVersion, 0), preferredDiscovery);
+        var other = new MsBuildInstanceCandidate(otherName, otherPath, new Version(otherVersion, 0), otherDiscovery);
 
-        var selected = MsBuildLocatorRegistration.SelectPreferredInstance(instances);
+        var selected = MsBuildLocatorRegistration.SelectPreferredInstance([other, preferred]);
 
-        selected.Name.Should().Be("Alpha");
-        selected.DiscoveryType.Should().Be(Microsoft.Build.Locator.DiscoveryType.DeveloperConsole);
-        selected.MSBuildPath.Should().Be("/sdk/alpha-a");
+        selected.Should().Be(preferred);
     }
 
     [Fact]
-    public void WhenSelectingPreferredInstanceWithoutAvailableInstances_ThenThrowsInvalidOperationException()
+    public void WhenNoMsBuildInstancesAreAvailable_ThenThrowsInvalidOperationException()
     {
-        ((Action)(() => MsBuildLocatorRegistration.SelectPreferredInstance(Array.Empty<MsBuildInstanceCandidate>()))).Should().ThrowExactly<InvalidOperationException>();
+        var act = () => MsBuildLocatorRegistration.SelectPreferredInstance([]);
+
+        act.Should().ThrowExactly<InvalidOperationException>();
     }
 }
