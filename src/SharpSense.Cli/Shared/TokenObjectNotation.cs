@@ -6,29 +6,23 @@ using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace SharpSense.Cli.Shared;
 
 internal static class TokenObjectNotation
 {
-    internal static JsonSerializerOptions JsonOptions
-    {
-        get;
-    } = CreateJsonOptions();
-
     public static string SerializeSemanticSearch(IEnumerable<HybridSearchHit> results)
     {
         ArgumentNullException.ThrowIfNull(results);
 
-        return SerializeGroupedNodes(results.Select(static result => new ToonNode(
-            result.Id,
-            result.NodeType,
-            result.DisplayName,
-            result.RelativeFilePath,
-            result.StartLine,
-            result.EndLine)));
+        return SerializeGroupedNodes(results
+            .Select(static result => new ToonNode(
+                result.Id,
+                result.NodeType,
+                result.DisplayName,
+                result.RelativeFilePath,
+                result.StartLine,
+                result.EndLine)));
     }
 
     public static string SerializeCalleeTrace(
@@ -132,7 +126,8 @@ internal static class TokenObjectNotation
             }
         }
 
-        var allCallerNodes = chains.SelectMany(static chain => chain)
+        var allCallerNodes = chains
+            .SelectMany(static chain => chain)
             .ToArray();
         AppendMemorySummary(builder, rootNode, allCallerNodes, memoriesByNodeId);
 
@@ -524,8 +519,11 @@ internal static class TokenObjectNotation
     {
         if (!callersByCalleeId.TryGetValue(currentCalleeId, out var callerIds) || callerIds.Length == 0)
         {
-            chains.Add([.. currentPath.AsEnumerable()
-                .Reverse()]);
+            chains.Add(
+                [
+                    .. currentPath.AsEnumerable()
+                        .Reverse()
+                ]);
 
             return;
         }
@@ -550,22 +548,12 @@ internal static class TokenObjectNotation
         }
     }
 
-    private static JsonSerializerOptions CreateJsonOptions()
-    {
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
-        {
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-        };
-        options.Converters.Add(new JsonStringEnumConverter());
-
-        return options;
-    }
-
     internal static string GetNodeTypeShorthand(NodeType nodeType) =>
         nodeType switch
         {
             NodeType.Method => "M",
             NodeType.Class => "C",
+            NodeType.Component => "UI",
             NodeType.Interface => "I",
             NodeType.Property => "P",
             NodeType.Field => "F",
@@ -729,14 +717,8 @@ internal static class TokenObjectNotation
 
     private sealed class DirectoryGroup
     {
-        public List<string> FileOrder
-        {
-            get;
-        } = [];
-        public Dictionary<string, List<ToonNode>> Files
-        {
-            get;
-        } = new(StringComparer.Ordinal);
+        public List<string> FileOrder { get; } = [];
+        public Dictionary<string, List<ToonNode>> Files { get; } = new(StringComparer.Ordinal);
     }
 
     private readonly record struct ToonNode(

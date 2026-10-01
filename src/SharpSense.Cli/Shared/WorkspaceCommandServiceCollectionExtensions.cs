@@ -5,9 +5,10 @@ using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Cli.Shared;
 
-internal static class WorkspaceCommandServices
+internal static class WorkspaceCommandServiceCollectionExtensions
 {
-    public static IServiceCollection AddSelectedWorkspace(this IServiceCollection services,
+    public static IServiceCollection AddSelectedWorkspace(
+        this IServiceCollection services,
         GlobalSettings settings,
         bool discoverFromDirectory = false)
     {
@@ -15,8 +16,10 @@ internal static class WorkspaceCommandServices
         {
             var workingDirectory = CommandPathResolver.ResolveWorkspaceRoot(settings.WorkspaceRoot);
             services.AddWorkspaceCatalog();
-            services.TryAddSingleton(provider =>
-                provider.GetRequiredService<IWorkspaceCatalog>().ResolveFromDirectory(workingDirectory));
+            services
+                .TryAddSingleton(provider =>
+                provider.GetRequiredService<IWorkspaceCatalog>()
+                    .ResolveFromDirectory(workingDirectory));
         }
 
         services.AddRepositoryWorkspace(settings.Workspace);

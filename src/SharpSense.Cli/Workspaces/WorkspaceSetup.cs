@@ -15,7 +15,11 @@ internal sealed class WorkspaceSetup(IWorkspaceCatalog catalog, IWorkspaceIntera
         return await interactions.SelectWorkspace(catalog.List(), ct) ?? await Create(null, root, [], ct);
     }
 
-    public async Task<WorkspaceSelection?> Create(string? name, string root, IReadOnlyList<WorkspaceSource> sources, CancellationToken ct)
+    public async Task<WorkspaceSelection?> Create(
+        string? name,
+        string root,
+        IReadOnlyList<WorkspaceSource> sources,
+        CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(name) && sources.Count > 0)
         {

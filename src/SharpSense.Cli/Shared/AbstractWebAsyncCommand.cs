@@ -52,7 +52,9 @@ internal abstract class AbstractWebAsyncCommand<TSettings> : AsyncCommand<TSetti
             Logger.Information("Finished configuring web services for {SettingsType}", typeof(TSettings).FullName);
 
             app = builder.Build();
-            Logger.Information("Web service provider built successfully for {SettingsType}", typeof(TSettings).FullName);
+            Logger.Information(
+                "Web service provider built successfully for {SettingsType}",
+                typeof(TSettings).FullName);
 
             app.UseSerilogRequestLogging();
             ConfigureApp(settings, app);

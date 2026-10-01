@@ -80,7 +80,8 @@ internal static class DoctorChecks
                     "info",
                     $"MSBuild SDKs available: {string.Join(
                         ", ",
-                        instances.Select(instance => instance.Version)
+                        instances
+                            .Select(instance => instance.Version)
                             .Distinct())}.")
                 : new(
                     "msbuild-missing",
@@ -111,7 +112,10 @@ internal static class DoctorChecks
                 throw new InvalidOperationException("Packaged grammars could not parse valid TypeScript/TSX.");
             }
 
-            checks.Add(new("typescript-runtime", "info", "Native TypeScript and TSX parsers loaded and parsed successfully."));
+            checks.Add(new(
+                "typescript-runtime",
+                "info",
+                "Native TypeScript and TSX parsers loaded and parsed successfully."));
         }
         catch (Exception exception)
         {

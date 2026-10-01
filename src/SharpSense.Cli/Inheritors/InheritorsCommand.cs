@@ -21,16 +21,10 @@ internal sealed class InheritorsCommand : AbstractAsyncCommand<InheritorsCommand
     public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "<node-id>")]
-        public int NodeId
-        {
-            get; init;
-        }
+        public int NodeId { get; init; }
 
         [CommandOption("--toon")]
-        public bool UseToonFormat
-        {
-            get; init;
-        }
+        public bool UseToonFormat { get; init; }
 
         public override ValidationResult Validate()
             => NodeId <= 0
@@ -62,7 +56,7 @@ internal sealed class InheritorsCommand : AbstractAsyncCommand<InheritorsCommand
 
         var output = settings.UseToonFormat
             ? ToonOutputFormatter.Format(result)
-            : JsonSerializer.Serialize(result, TokenObjectNotation.JsonOptions);
+            : JsonSerializer.Serialize(result, CliJsonOptions.Default);
 
         CommandOutput.Write(context, output);
 

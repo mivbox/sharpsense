@@ -11,6 +11,6 @@ internal static class WorkspaceUiServices
     {
         services.AddSingleton(options);
 
-        return services.AddWorkspaceExecutionServices();
+        return services.AddWorkspaceExecution();
     }
 }

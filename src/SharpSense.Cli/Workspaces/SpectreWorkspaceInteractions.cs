@@ -4,17 +4,22 @@ using Spectre.Console;
 
 namespace SharpSense.Cli.Workspaces;
 
-internal sealed class SpectreWorkspaceInteractions(IAnsiConsole console, WorkspaceSourceDiscovery discovery) : IWorkspaceInteractions
+internal sealed class SpectreWorkspaceInteractions(
+    IAnsiConsole console,
+    WorkspaceSourceDiscovery discovery) : IWorkspaceInteractions
 {
     public bool IsInteractive => console.Profile.Capabilities.Interactive;
 
-    public async Task<WorkspaceSelection?> SelectWorkspace(IReadOnlyList<WorkspaceSelection> choices, CancellationToken ct)
+    public async Task<WorkspaceSelection?> SelectWorkspace(
+        IReadOnlyList<WorkspaceSelection> choices,
+        CancellationToken ct)
     {
-        var items = choices.Select(static selection => new WorkspaceChoice(selection))
+        var items = choices
+            .Select(static selection => new WorkspaceChoice(selection))
             .Append(new WorkspaceChoice(null));
         var choice = await console.PromptAsync(
             new SelectionPrompt<WorkspaceChoice>()
-            .Title("Select a workspace")
+                .Title("Select a workspace")
                 .UseConverter(static item => item.Selection is { } selection
                     ? Markup.Escape($"{selection.Definition.Name} — {selection.Definition.WorkspaceRoot}")
                     : "Create a workspace")
@@ -45,7 +50,7 @@ internal sealed class SpectreWorkspaceInteractions(IAnsiConsole console, Workspa
         {
             var action = await console.PromptAsync(
                 new SelectionPrompt<string>()
-                .Title($"Sources selected: {selected.Count}")
+                    .Title($"Sources selected: {selected.Count}")
                     .AddChoices("Discover sources", "Enter source manually", "Finish source selection"),
                 ct);
             if (action == "Finish source selection")
@@ -70,15 +75,16 @@ internal sealed class SpectreWorkspaceInteractions(IAnsiConsole console, Workspa
                     }
                     var sources = await console.PromptAsync(
                         new MultiSelectionPrompt<WorkspaceSource>()
-                        .Title("Choose sources (space to select, enter to continue)")
+                            .Title("Choose sources (space to select, enter to continue)")
                             .NotRequired()
                             .UseConverter(DescribeSource)
                             .AddChoices(discovered.Sources),
                         ct);
-                    selected.AddRange(sources.Select(source => source with
-                    {
-                        Path = Path.GetFullPath(source.Path, root)
-                    }));
+                    selected.AddRange(sources
+                        .Select(source => source with
+                        {
+                            Path = Path.GetFullPath(source.Path, root)
+                        }));
                 }
                 catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
                 {
@@ -90,7 +96,7 @@ internal sealed class SpectreWorkspaceInteractions(IAnsiConsole console, Workspa
             {
                 var kind = await console.PromptAsync(
                     new SelectionPrompt<WorkspaceSourceKind>()
-                    .Title("Source language:")
+                        .Title("Source language:")
                         .AddChoices(Enum.GetValues<WorkspaceSourceKind>()),
                     ct);
                 var label = kind switch
@@ -102,7 +108,8 @@ internal sealed class SpectreWorkspaceInteractions(IAnsiConsole console, Workspa
                 var path = await console.PromptAsync(new TextPrompt<string>(label), ct);
                 selected.Add(new WorkspaceSource(kind, Path.GetFullPath(path, root)));
             }
-            selected = selected.Distinct()
+            selected = selected
+                .Distinct()
                 .ToList();
         }
     }

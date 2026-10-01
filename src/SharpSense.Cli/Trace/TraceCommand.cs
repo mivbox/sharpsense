@@ -13,6 +13,7 @@ using SharpSense.Application.Trace.Abstractions;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Shared;
 using SharpSense.Domain.KnowledgeGraph.Enums;
+using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.ImpactAnalysis;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
@@ -30,45 +31,34 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
     public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "<identifier>")]
-        public string Identifier
-        {
-            get; init;
-        } = string.Empty;
+        public string Identifier { get; init; } = string.Empty;
 
         [CommandOption("-d|--direction <DIRECTION>")]
-        public string Direction
-        {
-            get; init;
-        } = "callee";
+        public string Direction { get; init; } = "callee";
 
         [CommandOption("--toon")]
-        public bool UseToonFormat
-        {
-            get; init;
-        }
+        public bool UseToonFormat { get; init; }
 
         [CommandOption("--include-structural")]
-        public bool IncludeStructural
-        {
-            get; init;
-        }
+        public bool IncludeStructural { get; init; }
 
         [CommandOption("--include-memories")]
-        public bool IncludeMemories
-        {
-            get; init;
-        }
+        public bool IncludeMemories { get; init; }
 
         public override ValidationResult Validate()
-            => string.IsNullOrWhiteSpace(Identifier)
-                ?
-                ValidationResult.Error("A symbol identifier is required.")
-                :
-                NormalizeDirection(Direction) is null
-                ?
-                    ValidationResult.Error("Direction must be either 'caller' or 'callee'.")
-                :
-                    base.Validate();
+        {
+            if (string.IsNullOrWhiteSpace(Identifier))
+            {
+                return ValidationResult.Error("A symbol identifier is required.");
+            }
+
+            if (NormalizeDirection(Direction) is null)
+            {
+                return ValidationResult.Error("Direction must be either 'caller' or 'callee'.");
+            }
+
+            return base.Validate();
+        }
     }
 
     protected override void Configure(
@@ -82,6 +72,7 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
         services.AddTraceInfrastructure();
         services.AddMemory();
         services.AddMemoryInfrastructure();
+        services.AddEmbeddingsInfrastructure();
         services.AddPersistence();
     }
 
@@ -99,7 +90,7 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
         var includedEdgeTypes = settings.IncludeStructural
             ? KnowledgeGraphEdgeTypes.All
             : null;
-        var rootNode = settings.UseToonFormat
+        var rootNode = settings.UseToonFormat || settings.IncludeMemories
             ? await traceNavigator.GetRootNode(settings.Identifier, ct)
             : null;
         CodeNodeResult[] nodes;
@@ -111,14 +102,14 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
                     impactResult = await services
                         .GetRequiredService<IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult>>()
                         .Handle(
-                        new ImpactAnalysisQuery(
-                            settings.Identifier,
-                            MaxDepth: 1,
-                            IncludeTransitive: false,
-                            IncludedEdgeTypes: includedEdgeTypes),
-                        ct);
+                            new ImpactAnalysisQuery(
+                                settings.Identifier,
+                                MaxDepth: 1,
+                                IncludeTransitive: false,
+                                IncludedEdgeTypes: includedEdgeTypes),
+                            ct);
 
-                    nodes = MapImpactedNodes(impactResult.ImpactedNodes);
+                    nodes = ImpactedNodeMapper.Map(impactResult.ImpactedNodes);
                     break;
                 }
             case "callee":
@@ -140,13 +131,43 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
                 ct);
         }
 
-        var output = settings.UseToonFormat
-            ? rootNode is null
-            ? string.Empty
-            : direction == "caller"
-                ? TokenObjectNotation.SerializeCallerTrace(rootNode, nodes, impactResult?.Dependencies ?? [], memoriesByNodeId)
-                : TokenObjectNotation.SerializeCalleeTrace(rootNode, nodes, memoriesByNodeId)
-            : JsonSerializer.Serialize(nodes, TokenObjectNotation.JsonOptions);
+        string output;
+        if (settings.UseToonFormat)
+        {
+            output = rootNode is null
+                ? string.Empty
+                : direction == "caller"
+                    ? TokenObjectNotation.SerializeCallerTrace(
+                        rootNode,
+                        nodes,
+                        impactResult?.Dependencies ?? [],
+                        memoriesByNodeId)
+                    : TokenObjectNotation.SerializeCalleeTrace(rootNode, nodes, memoriesByNodeId);
+        }
+        else if (settings.IncludeMemories)
+        {
+            output = JsonSerializer.Serialize(
+                new
+                {
+                    RootNode = rootNode,
+                    Nodes = nodes,
+                    MemoriesByNodeId = memoriesByNodeId?.ToDictionary(
+                        static pair => pair.Key,
+                        static pair => pair.Value
+                            .Select(static memory => new
+                            {
+                                memory.Id,
+                                memory.Intent,
+                                memory.IsStale,
+                                memory.Tags
+                            }))
+                },
+                CliJsonOptions.Default);
+        }
+        else
+        {
+            output = JsonSerializer.Serialize(nodes, CliJsonOptions.Default);
+        }
 
         CommandOutput.Write(context, output);
 
@@ -161,17 +182,4 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
             "callee" => "callee",
             _ => null
         };
-
-    private static CodeNodeResult[] MapImpactedNodes(IEnumerable<ImpactedCodeNode> impactedNodes)
-        => [.. impactedNodes.Select(static node => new CodeNodeResult(
-            node.Id,
-            node.CanonicalId,
-            node.ProjectId,
-            node.FullyQualifiedName,
-            node.DisplayName,
-            node.NodeType,
-            node.RelativeFilePath,
-            node.StartLine,
-            node.EndLine,
-            node.Summary))];
 }
