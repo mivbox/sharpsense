@@ -3,8 +3,6 @@ using System.IO.Abstractions;
 
 namespace SharpSense.Cli.Workspaces;
 
-internal sealed record DiscoveredWorkspaceSources(string WorkspaceRoot, IReadOnlyList<WorkspaceSource> Sources);
-
 /// <summary>
 /// Offers bounded source candidates without interpreting project files or executing build tooling.
 /// </summary>
@@ -20,7 +18,9 @@ internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
         ArgumentException.ThrowIfNullOrWhiteSpace(workspaceRoot);
         if (!fileSystem.Path.IsPathRooted(workspaceRoot) || !fileSystem.Directory.Exists(workspaceRoot))
         {
-            throw new ArgumentException("Workspace root must be an existing absolute directory.", nameof(workspaceRoot));
+            throw new ArgumentException(
+                "Workspace root must be an existing absolute directory.",
+                nameof(workspaceRoot));
         }
 
         var root = fileSystem.Path.GetFullPath(workspaceRoot);
@@ -51,15 +51,15 @@ internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
                 var relative = fileSystem.Path.GetRelativePath(root, file)
                     .Replace('\\', '/');
                 if (new[]
-                {
-                    ".csproj",
-                    ".sln",
-                    ".slnx"
-                }.Contains(extension, StringComparer.OrdinalIgnoreCase))
+                { ".csproj", ".sln", ".slnx" }.Contains(extension, StringComparer.OrdinalIgnoreCase))
                 {
                     candidates.Add(new(WorkspaceSourceKind.CSharp, relative));
                 }
-                else if (name.StartsWith("tsconfig", StringComparison.OrdinalIgnoreCase) && extension.Equals(".json", StringComparison.OrdinalIgnoreCase))
+                else if (name.StartsWith(
+                    "tsconfig",
+                    StringComparison.OrdinalIgnoreCase) && extension.Equals(
+                        ".json",
+                        StringComparison.OrdinalIgnoreCase))
                 {
                     candidates.Add(new(WorkspaceSourceKind.TypeScript, relative));
                 }
@@ -83,11 +83,15 @@ internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
             }
         }
 
-        candidates.AddRange(markdownDirectories.Select(static path => new WorkspaceSource(WorkspaceSourceKind.Markdown, path)));
+        candidates.AddRange(markdownDirectories
+            .Select(static path => new WorkspaceSource(
+                WorkspaceSourceKind.Markdown,
+                path)));
 
         return new DiscoveredWorkspaceSources(
             root,
-            candidates.OrderBy(static source => source.Kind)
+            candidates
+                .OrderBy(static source => source.Kind)
                 .ThenBy(static source => source.Path)
                 .ToArray());
     }

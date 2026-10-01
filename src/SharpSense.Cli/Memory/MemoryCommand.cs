@@ -11,6 +11,7 @@ using SharpSense.Application.Memory.GetNodeMemories.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Cli.Shared;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
+using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
 using Spectre.Console;
@@ -26,52 +27,28 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
     public sealed class Settings : GlobalSettings
     {
         [CommandArgument(0, "<action>")]
-        public string Action
-        {
-            get; init;
-        } = string.Empty;
+        public string Action { get; init; } = string.Empty;
 
         [CommandOption("--node-id <NODE_ID>")]
-        public int? NodeId
-        {
-            get; init;
-        }
+        public int? NodeId { get; init; }
 
         [CommandOption("--memory-id <MEMORY_ID>")]
-        public Guid? MemoryId
-        {
-            get; init;
-        }
+        public Guid? MemoryId { get; init; }
 
         [CommandOption("--memory-ids <MEMORY_IDS>")]
-        public Guid[]? MemoryIds
-        {
-            get; init;
-        }
+        public Guid[]? MemoryIds { get; init; }
 
         [CommandOption("--content <CONTENT>")]
-        public string? Content
-        {
-            get; init;
-        }
+        public string? Content { get; init; }
 
         [CommandOption("--tag <TAG>")]
-        public string[]? Tags
-        {
-            get; init;
-        }
+        public string[]? Tags { get; init; }
 
         [CommandOption("--intent <INTENT>")]
-        public string? IntentRaw
-        {
-            get; init;
-        }
+        public string? IntentRaw { get; init; }
 
         [CommandOption("--intent-filter <INTENT>")]
-        public string[]? IntentFilterRaw
-        {
-            get; init;
-        }
+        public string[]? IntentFilterRaw { get; init; }
 
         public override ValidationResult Validate()
         {
@@ -129,6 +106,7 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
         services.AddSelectedWorkspace(settings);
         services.AddMemory();
         services.AddMemoryInfrastructure();
+        services.AddEmbeddingsInfrastructure();
         services.AddPersistence();
     }
 
@@ -153,7 +131,11 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
         };
     }
 
-    private static async Task<int> AddMemory(CommandContext context, Settings settings, IServiceProvider services, CancellationToken ct)
+    private static async Task<int> AddMemory(
+        CommandContext context,
+        Settings settings,
+        IServiceProvider services,
+        CancellationToken ct)
     {
         var handler = services.GetRequiredService<ICommandHandler<AttachMemoryCommand, Result>>();
         var intent = string.IsNullOrWhiteSpace(settings.IntentRaw)
@@ -206,7 +188,11 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
         return 0;
     }
 
-    private static async Task<int> RemoveMemory(CommandContext context, Settings settings, IServiceProvider services, CancellationToken ct)
+    private static async Task<int> RemoveMemory(
+        CommandContext context,
+        Settings settings,
+        IServiceProvider services,
+        CancellationToken ct)
     {
         var handler = services.GetRequiredService<ICommandHandler<DeleteMemoryCommand, Result>>();
         var result = await handler.Handle(new DeleteMemoryCommand(settings.MemoryId!.Value), ct);
@@ -227,13 +213,19 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
         return 0;
     }
 
-    private static async Task<int> ListMemories(CommandContext context, Settings settings, IServiceProvider services, CancellationToken ct)
+    private static async Task<int> ListMemories(
+        CommandContext context,
+        Settings settings,
+        IServiceProvider services,
+        CancellationToken ct)
     {
         Domain.KnowledgeGraph.Enums.MemoryIntent[]? intentFilter = null;
         if (settings.IntentFilterRaw is { Length: > 0 })
         {
             intentFilter = settings.IntentFilterRaw
-                .Select(static raw => Enum.Parse<Domain.KnowledgeGraph.Enums.MemoryIntent>(raw, ignoreCase: true))
+                .Select(static raw => Enum.Parse<Domain.KnowledgeGraph.Enums.MemoryIntent>(
+                    raw,
+                    ignoreCase: true))
                 .ToArray();
         }
 
@@ -285,7 +277,11 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
         return 0;
     }
 
-    private static async Task<int> GetMemory(CommandContext context, Settings settings, IServiceProvider services, CancellationToken ct)
+    private static async Task<int> GetMemory(
+        CommandContext context,
+        Settings settings,
+        IServiceProvider services,
+        CancellationToken ct)
     {
         // Batch path: --memory-ids id1,id2,id3 → one round-trip, one combined block.
         if (settings.MemoryIds is { Length: > 0 })

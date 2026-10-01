@@ -9,11 +9,11 @@ using SharpSense.Infrastructure.Indexing;
 
 namespace SharpSense.Cli.Analyze;
 
-internal static class AnalyzeExecutionServices
+internal static class AnalyzeExecutionServiceCollectionExtensions
 {
     public static IServiceCollection AddAnalyzeExecution(this IServiceCollection services)
     {
-        services.AddWorkspaceExecutionServices();
+        services.AddWorkspaceExecution();
         services.TryAddSingleton<WorkspaceSourceDiscovery>();
         services.TryAddSingleton<IWorkspaceInteractions, SpectreWorkspaceInteractions>();
         services.TryAddSingleton<WorkspaceSetup>();

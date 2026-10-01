@@ -27,10 +27,7 @@ internal sealed class DoctorCommand : AbstractAsyncCommand<DoctorCommand.Setting
     public sealed class Settings : GlobalSettings
     {
         [CommandOption("--json")]
-        public bool Json
-        {
-            get; init;
-        }
+        public bool Json { get; init; }
     }
 
     protected override void Configure(Settings settings, IServiceCollection services)

@@ -11,13 +11,14 @@ internal static class ToonOutputFormatter
 
         return string.Join(
             Environment.NewLine,
-            nodes.Select(static node => FormatNode(
-                node.NodeType,
-                node.Id,
-                node.DisplayName,
-                node.RelativeFilePath,
-                node.StartLine,
-                node.EndLine)));
+            nodes
+                .Select(static node => FormatNode(
+                    node.NodeType,
+                    node.Id,
+                    node.DisplayName,
+                    node.RelativeFilePath,
+                    node.StartLine,
+                    node.EndLine)));
     }
 
     internal static string FormatNode(

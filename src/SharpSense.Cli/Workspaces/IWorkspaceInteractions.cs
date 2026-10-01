@@ -6,10 +6,7 @@ namespace SharpSense.Cli.Workspaces;
 /// <summary>Terminal choices only; indexing and web transports never depend on prompts.</summary>
 internal interface IWorkspaceInteractions
 {
-    bool IsInteractive
-    {
-        get;
-    }
+    bool IsInteractive { get; }
     Task<WorkspaceSelection?> SelectWorkspace(IReadOnlyList<WorkspaceSelection> choices, CancellationToken ct);
     Task<string> ReadName(string? current, CancellationToken ct);
     Task<string> ReadWorkspaceRoot(string current, CancellationToken ct);

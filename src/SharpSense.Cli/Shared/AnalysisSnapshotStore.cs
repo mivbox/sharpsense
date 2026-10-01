@@ -86,26 +86,34 @@ internal sealed class AnalysisSnapshotStore : IAnalysisNotifier
                         AnalysisNotificationKind.SourceReused => "reused",
                         _ => "running"
                     };
-                    sources = [.. sources.Where(row => row.Kind != source.Kind)
-                        .Append(new AnalysisSourceStatus(
-                            source.Kind,
-                            source.Path,
-                            sourceState,
-                            notification.CompletedItems,
-                            notification.TotalItems,
-                            Limit(notification.Message)))
-                        .OrderBy(row => row.Kind)];
+                    sources =
+                    [
+                        .. sources
+                            .Where(row => row.Kind != source.Kind)
+                            .Append(new AnalysisSourceStatus(
+                                source.Kind,
+                                source.Path,
+                                sourceState,
+                                notification.CompletedItems,
+                                notification.TotalItems,
+                                Limit(notification.Message)))
+                            .OrderBy(row => row.Kind)
+                    ];
                 }
             }
 
             if (state is "failed" or "cancelled")
             {
-                sources = [.. sources.Select(row => row.State == "running"
-                    ? row with
-                {
-                    State = state
-                }
-                    : row)];
+                sources =
+                [
+                    .. sources
+                        .Select(row => row.State == "running"
+                            ? row with
+                            {
+                                State = state
+                            }
+                            : row)
+                ];
             }
 
             var diagnostics = current.Diagnostics;
@@ -114,12 +122,18 @@ internal sealed class AnalysisSnapshotStore : IAnalysisNotifier
             {
                 var message = Limit(notification.Message)!;
                 diagnostics = notification.Kind == AnalysisNotificationKind.Failed
-                    ? [.. diagnostics.Prepend(message)
-                        .Distinct(StringComparer.Ordinal)
-                        .Take(20)]
-                    : [.. diagnostics.Append(message)
-                        .Distinct(StringComparer.Ordinal)
-                        .Take(20)];
+                    ?
+                    [
+                        .. diagnostics.Prepend(message)
+                            .Distinct(StringComparer.Ordinal)
+                            .Take(20)
+                    ]
+                    :
+                    [
+                        .. diagnostics.Append(message)
+                            .Distinct(StringComparer.Ordinal)
+                            .Take(20)
+                    ];
             }
 
             // Source counters belong to individual rows, not a fictitious overall percentage.

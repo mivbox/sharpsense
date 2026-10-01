@@ -13,7 +13,10 @@ using Spectre.Console;
 namespace SharpSense.Cli.Analyze;
 
 /// <summary>One lease and one bound scope cover initialization and the entire analysis/watch session.</summary>
-internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory, IWorkspaceCatalog catalog, IAnsiConsole console)
+internal sealed class WorkspaceAnalysisRunner(
+    IServiceScopeFactory scopeFactory,
+    IWorkspaceCatalog catalog,
+    IAnsiConsole console)
 {
     public async Task<int> Run(WorkspaceSelection selection, AnalyzeCommand.Settings settings, CancellationToken ct)
     {
@@ -58,7 +61,11 @@ internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory,
         }
     }
 
-    private static async Task Index(IServiceProvider services, SpectreAnalysisNotifier presentation, CancellationToken ct, bool recovering = false)
+    private static async Task Index(
+        IServiceProvider services,
+        SpectreAnalysisNotifier presentation,
+        CancellationToken ct,
+        bool recovering = false)
     {
         presentation.SetState(recovering ? "Recovering: rebuilding the full index..." : "Analyzing workspace...");
         var handler = services.GetRequiredService<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>>();
@@ -66,11 +73,17 @@ internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory,
         ct.ThrowIfCancellationRequested();
         if (result.IsFailed)
         {
-            throw new IndexingFailedException(string.Join(Environment.NewLine, result.Errors.Select(error => error.Message)));
+            throw new IndexingFailedException(string.Join(
+                Environment.NewLine,
+                result.Errors.Select(error => error.Message)));
         }
     }
 
-    private static async Task Watch(IServiceProvider services, string root, SpectreAnalysisNotifier presentation, CancellationToken ct)
+    private static async Task Watch(
+        IServiceProvider services,
+        string root,
+        SpectreAnalysisNotifier presentation,
+        CancellationToken ct)
     {
         var watcher = services.GetRequiredService<IWorkspaceWatcher>();
         var recovering = false;
@@ -131,11 +144,17 @@ internal sealed class WorkspaceAnalysisRunner(IServiceScopeFactory scopeFactory,
             {
                 presentation.SetState($"Updating {changes.Count} changed file(s)...");
                 var handler = services.GetRequiredService<ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>>();
-                var result = await handler.Handle(new UpdateWorkspaceFilesCommand(changes, Notifier: presentation), token);
+                var result = await handler.Handle(
+                    new UpdateWorkspaceFilesCommand(
+                        changes,
+                        Notifier: presentation),
+                    token);
                 token.ThrowIfCancellationRequested();
                 if (result.IsFailed)
                 {
-                    throw new InvalidOperationException(string.Join("; ", result.Errors.Select(error => error.Message)));
+                    throw new InvalidOperationException(string.Join(
+                        "; ",
+                        result.Errors.Select(error => error.Message)));
                 }
                 presentation.SetState(!ready
                     ? "Reconciling changes received during indexing..."

@@ -7,8 +7,5 @@ internal abstract class CliSettings : CommandSettings
 {
     [CommandOption("-v|--verbose")]
     [Description("Include diagnostic details in the command log.")]
-    public bool IsVerbose
-    {
-        get; init;
-    }
+    public bool IsVerbose { get; init; }
 }

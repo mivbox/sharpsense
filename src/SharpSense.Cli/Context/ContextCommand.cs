@@ -10,6 +10,7 @@ using SharpSense.Application.Memory.Abstractions;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Cli.Shared;
 using SharpSense.Infrastructure.Context360;
+using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
 using Spectre.Console;
@@ -26,23 +27,14 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
     public sealed class Settings : GlobalSettings
     {
         [CommandOption("--node-id <NODE_ID>")]
-        public int NodeId
-        {
-            get; init;
-        }
+        public int NodeId { get; init; }
 
         [CommandOption("--toon")]
         [Description("Use compact TOON output instead of JSON.")]
-        public bool UseToonFormat
-        {
-            get; init;
-        }
+        public bool UseToonFormat { get; init; }
 
         [CommandOption("--include-memories")]
-        public bool IncludeMemories
-        {
-            get; init;
-        }
+        public bool IncludeMemories { get; init; }
 
         public override ValidationResult Validate()
             => NodeId <= 0
@@ -59,6 +51,7 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
         services.AddContext360Infrastructure();
         services.AddMemory();
         services.AddMemoryInfrastructure();
+        services.AddEmbeddingsInfrastructure();
         services.AddPersistence();
     }
 
@@ -115,7 +108,7 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
                         memory.Tags
                     })
                 },
-                TokenObjectNotation.JsonOptions);
+                CliJsonOptions.Default);
 
         CommandOutput.Write(context, output);
 

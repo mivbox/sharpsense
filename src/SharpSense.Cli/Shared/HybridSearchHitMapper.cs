@@ -9,16 +9,20 @@ internal static class HybridSearchHitMapper
     {
         ArgumentNullException.ThrowIfNull(hits);
 
-        return [.. hits.Select(static hit => new CodeNodeResult(
-            hit.Id,
-            hit.CanonicalId,
-            hit.ProjectId,
-            hit.FullyQualifiedName,
-            hit.DisplayName,
-            hit.NodeType,
-            hit.RelativeFilePath,
-            hit.StartLine,
-            hit.EndLine,
-            hit.Summary))];
+        return
+        [
+            .. hits
+                .Select(static hit => new CodeNodeResult(
+                    hit.Id,
+                    hit.CanonicalId,
+                    hit.ProjectId,
+                    hit.FullyQualifiedName,
+                    hit.DisplayName,
+                    hit.NodeType,
+                    hit.RelativeFilePath,
+                    hit.StartLine,
+                    hit.EndLine,
+                    hit.Summary))
+        ];
     }
 }
