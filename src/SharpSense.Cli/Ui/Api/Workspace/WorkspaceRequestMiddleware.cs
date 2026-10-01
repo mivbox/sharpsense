@@ -15,7 +15,14 @@ internal static class WorkspaceRequestMiddleware
             var options = context.RequestServices.GetRequiredService<WorkspaceUiOptions>();
             var expected = options.Address;
             var request = context.Request;
-            var hostMatches = string.Equals(request.Host.Host.Trim('[', ']'), expected.Host.Trim('[', ']'), StringComparison.OrdinalIgnoreCase) &&
+            var hostMatches = string.Equals(
+                request.Host.Host.Trim(
+                    '[',
+                    ']'),
+                expected.Host.Trim(
+                    '[',
+                    ']'),
+                StringComparison.OrdinalIgnoreCase) &&
                               (request.Host.Port ?? (request.IsHttps ? 443 : 80)) == expected.Port;
             var origin = request.Headers.Origin.ToString();
             var originMatches = string.IsNullOrEmpty(origin) ||
@@ -24,7 +31,10 @@ internal static class WorkspaceRequestMiddleware
                                      originUri.GetLeftPart(UriPartial.Authority),
                                      expected.GetLeftPart(UriPartial.Authority),
                                      StringComparison.OrdinalIgnoreCase));
-            if (!hostMatches || !originMatches || string.Equals(request.Headers["Sec-Fetch-Site"], "cross-site", StringComparison.OrdinalIgnoreCase))
+            if (!hostMatches || !originMatches || string.Equals(
+                request.Headers["Sec-Fetch-Site"],
+                "cross-site",
+                StringComparison.OrdinalIgnoreCase))
             {
                 await Results.Problem(statusCode: 403, title: "Request origin is not allowed")
                     .ExecuteAsync(context);
@@ -51,7 +61,7 @@ internal static class WorkspaceRequestMiddleware
             }
 
             var catalog = context.RequestServices.GetRequiredService<IWorkspaceCatalog>();
-            var selection = WorkspaceCatalogEndpoints.Resolve(catalog, workspaceId);
+            var selection = catalog.ResolveById(workspaceId);
             context.RequestServices.GetRequiredService<IWorkspaceScope>()
                 .Bind(selection);
 

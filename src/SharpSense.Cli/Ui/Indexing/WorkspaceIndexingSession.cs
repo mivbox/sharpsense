@@ -38,7 +38,9 @@ internal static class WorkspaceIndexingSession
             if (result.IsFailed)
             {
                 token.ThrowIfCancellationRequested();
-                throw new InvalidOperationException(string.Join(Environment.NewLine, result.Errors.Select(static error => error.Message)));
+                throw new InvalidOperationException(string.Join(
+                    Environment.NewLine,
+                    result.Errors.Select(static error => error.Message)));
             }
 
             update(new WorkspaceIndexingUpdate(
@@ -65,7 +67,9 @@ internal static class WorkspaceIndexingSession
             if (changed.IsFailed && !ready)
             {
                 token.ThrowIfCancellationRequested();
-                throw new InvalidOperationException(string.Join(Environment.NewLine, changed.Errors.Select(static error => error.Message)));
+                throw new InvalidOperationException(string.Join(
+                    Environment.NewLine,
+                    changed.Errors.Select(static error => error.Message)));
             }
 
             update(new WorkspaceIndexingUpdate(

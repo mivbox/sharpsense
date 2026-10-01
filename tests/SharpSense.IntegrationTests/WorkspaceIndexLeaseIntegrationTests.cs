@@ -137,12 +137,12 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
         var staleCli = (await ((Func<Task>)(() =>
             cliProvider.GetRequiredService<WorkspaceAnalysisRunner>()
                 .Run(
-                fixture.Selection,
-                new AnalyzeCommand.Settings
-                {
-                    SkipEmbeddings = true
-                },
-                TestContext.Current.CancellationToken))).Should().ThrowExactlyAsync<WorkspaceDefinitionChangedException>()).Which;
+                    fixture.Selection,
+                    new AnalyzeCommand.Settings
+                    {
+                        SkipEmbeddings = true
+                    },
+                    TestContext.Current.CancellationToken))).Should().ThrowExactlyAsync<WorkspaceDefinitionChangedException>()).Which;
         staleCli.Message.Should().Contain("changed after this command selected it");
         (await DocumentPaths(fixture.Selection)).Should().Equal(["docs/first.md"]);
 
@@ -154,7 +154,9 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
         (await DocumentPaths(fixture.Selection)).Should().Equal(["docs/first.md"]);
     }
 
-    private static async Task<(int ExitCode, string Output)> RunAnalyze(WorkspaceCatalog catalog, WorkspaceSelection selection)
+    private static async Task<(int ExitCode, string Output)> RunAnalyze(
+        WorkspaceCatalog catalog,
+        WorkspaceSelection selection)
     {
         using var console = new TestConsole();
         var previous = AnsiConsole.Console;
@@ -164,11 +166,11 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
             var app = Cli.Program.CreateCommandApp(
                 console,
                 services =>
-            {
-                services.AddSingleton<IWorkspaceCatalog>(catalog);
-                services.AddSingleton(selection);
-                services.AddSingleton(selection.Workspace);
-            },
+                {
+                    services.AddSingleton<IWorkspaceCatalog>(catalog);
+                    services.AddSingleton(selection);
+                    services.AddSingleton(selection.Workspace);
+                },
                 enableFileLogging: false);
             var exit = await app.RunAsync(
                 ["analyze", "--workspace", selection.Definition.Name, "--repo-root", selection.Workspace.RootPath, "--no-embeddings"],
@@ -186,7 +188,7 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddWorkspaceUiServices(new WorkspaceUiOptions(null, root, new Uri("http://localhost:50069")));
+        services.AddWorkspaceUi(new WorkspaceUiOptions(null, root, new Uri("http://localhost:50069")));
         services.AddSingleton<IWorkspaceCatalog>(catalog);
         services.AddSingleton(Mock.Of<IHostApplicationLifetime>());
         services.AddIndexing();
@@ -252,25 +254,16 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
             File.WriteAllText(Path.Combine(RepositoryRoot, "docs", "first.md"), "# First workspace graph");
             File.WriteAllText(Path.Combine(RepositoryRoot, "docs", "second.md"), "# Replacement workspace graph");
             Catalog = new WorkspaceCatalog(new FileSystem(), HomeDirectory);
-            Selection = Catalog.Create("workspace", RepositoryRoot, [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/first.md")]);
+            Selection = Catalog.Create(
+                "workspace",
+                RepositoryRoot,
+                [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/first.md")]);
         }
 
-        public string RepositoryRoot
-        {
-            get;
-        }
-        public string HomeDirectory
-        {
-            get;
-        }
-        public WorkspaceCatalog Catalog
-        {
-            get;
-        }
-        public WorkspaceSelection Selection
-        {
-            get;
-        }
+        public string RepositoryRoot { get; }
+        public string HomeDirectory { get; }
+        public WorkspaceCatalog Catalog { get; }
+        public WorkspaceSelection Selection { get; }
 
         public void Dispose()
         {

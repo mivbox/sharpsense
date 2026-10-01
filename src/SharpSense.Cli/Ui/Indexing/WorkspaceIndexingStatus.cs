@@ -18,14 +18,3 @@ public sealed record WorkspaceIndexingStatus(
     Guid? StreamId = null,
     DateTimeOffset? UpdatedAt = null,
     AnalysisSnapshot? Analysis = null);
-
-public sealed record StartWorkspaceIndexingRequest(bool Watch = false, bool SkipEmbeddings = false);
-
-internal sealed record WorkspaceIndexingUpdate(
-    string State,
-    string Message,
-    int? CompletedItems = null,
-    int? TotalItems = null,
-    IReadOnlyList<string>? Diagnostics = null,
-    bool IndexCommitted = false,
-    AnalysisSnapshot? Analysis = null);

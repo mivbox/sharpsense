@@ -34,10 +34,7 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
     public sealed class Settings : GlobalSettings
     {
         [CommandOption("--url <url>")]
-        public string Url
-        {
-            get; set;
-        } = "http://localhost:50069";
+        public string Url { get; set; } = "http://localhost:50069";
     }
 
     protected override void ConfigureServices(Settings settings, IServiceCollection services)
@@ -49,7 +46,7 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
             throw new ArgumentException("The workspace UI must use a loopback HTTP or HTTPS address, such as http://localhost:50069.");
         }
 
-        services.AddWorkspaceUiServices(new WorkspaceUiOptions(
+        services.AddWorkspaceUi(new WorkspaceUiOptions(
             settings.Workspace,
             CommandPathResolver.ResolveWorkspaceRoot(settings.WorkspaceRoot),
             address));

@@ -24,7 +24,17 @@ internal sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAs
         IHostApplicationLifetime lifetime,
         ILogger<WorkspaceIndexingCoordinator> logger)
         : this(
-            (selection, request, update, ct) => WorkspaceIndexingSession.Run(scopeFactory, catalog, selection, request, update, ct),
+            (
+                selection,
+                request,
+                update,
+                ct) => WorkspaceIndexingSession.Run(
+                    scopeFactory,
+                    catalog,
+                    selection,
+                    request,
+                    update,
+                    ct),
             lifetime.ApplicationStopping,
             logger)
     {
@@ -70,7 +80,9 @@ internal sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAs
         return Start(() => selection, request);
     }
 
-    public WorkspaceIndexingStatus Start(Func<WorkspaceSelection> resolveSelection, StartWorkspaceIndexingRequest request)
+    public WorkspaceIndexingStatus Start(
+        Func<WorkspaceSelection> resolveSelection,
+        StartWorkspaceIndexingRequest request)
     {
         ArgumentNullException.ThrowIfNull(resolveSelection);
         ArgumentNullException.ThrowIfNull(request);
@@ -176,8 +188,12 @@ internal sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAs
                 job.Cancellation.Cancel();
             }
 
-            tasks = [.. _jobs.Values.Select(static job => job.Task)
-                .OfType<Task>()];
+            tasks =
+            [
+                .. _jobs.Values
+                    .Select(static job => job.Task)
+                    .OfType<Task>()
+            ];
         }
 
         try
@@ -278,24 +294,16 @@ internal sealed partial class WorkspaceIndexingCoordinator : IHostedService, IAs
 
     private static bool IsActive(string state) => state is "indexing" or "watching" or "stopping";
     private static string Limit(string message) => message.Length <= 2000 ? message : message[..2000];
-    private static string[] Bound(IReadOnlyList<string> diagnostics) => [.. diagnostics.Take(20)
-        .Select(Limit)];
+    private static string[] Bound(IReadOnlyList<string> diagnostics) =>
+        [
+            .. diagnostics.Take(20)
+                .Select(Limit)
+        ];
 
     private sealed class Job(CancellationTokenSource cancellation, WorkspaceIndexingStatus status)
     {
-        public CancellationTokenSource Cancellation
-        {
-            get;
-        } = cancellation;
-        public WorkspaceIndexingStatus Status
-        {
-            get; set;
-        } = status;
-        public Task? Task
-        {
-            get; set;
-        }
+        public CancellationTokenSource Cancellation { get; } = cancellation;
+        public WorkspaceIndexingStatus Status { get; set; } = status;
+        public Task? Task { get; set; }
     }
 }
-
-internal sealed class WorkspaceBusyException(string message) : InvalidOperationException(message);
