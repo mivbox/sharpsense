@@ -86,7 +86,3 @@ internal static class CommandInvocationParser
         }
     }
 }
-
-internal sealed record ParsedCommand(
-    string Executable,
-    string[] Arguments);

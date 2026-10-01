@@ -10,16 +10,17 @@ public sealed class TransientExecutionLogIndexTests
     [Fact]
     public async Task WhenAppendingAndSearchingLines_ThenItReturnsMatchedLineNumbersAndRanges()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<TransientExecutionLogDbContext>(options => new TransientExecutionLogDbContext(options));
         var dbContextFactory = inMemoryFactory.CreateDbContextFactory();
         var factory = new TransientExecutionLogIndexFactory(dbContextFactory);
-        await using var index = await factory.Create(TestContext.Current.CancellationToken);
+        await using var index = await factory.Create(ct);
 
-        var firstAppend = await index.AppendLine("Build started", TestContext.Current.CancellationToken);
-        var secondAppend = await index.AppendLine("Error: first failure", TestContext.Current.CancellationToken);
-        var thirdAppend = await index.AppendLine("Error: second failure", TestContext.Current.CancellationToken);
-        var matchResult = await index.FindMatches("Error", TestContext.Current.CancellationToken);
-        var rangeResult = await index.ReadRange(new ExecutionLineRange(2, 3), TestContext.Current.CancellationToken);
+        var firstAppend = await index.AppendLine("Build started", ct);
+        var secondAppend = await index.AppendLine("Error: first failure", ct);
+        var thirdAppend = await index.AppendLine("Error: second failure", ct);
+        var matchResult = await index.FindMatches("Error", ct);
+        var rangeResult = await index.ReadRange(new ExecutionLineRange(2, 3), ct);
 
         firstAppend.Value.Should().Be(1);
         secondAppend.Value.Should().Be(2);

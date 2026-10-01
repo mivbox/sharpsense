@@ -9,6 +9,8 @@ namespace SharpSense.Cli.Shared;
 internal abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings>
     where TSettings : CliSettings
 {
+    protected virtual int CancellationExitCode => 0;
+
     protected abstract void Configure(TSettings settings, IServiceCollection services);
 
     protected abstract Task<int> Execute(
@@ -25,7 +27,11 @@ internal abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings
         var executionContext = CommandOutput.GetExecutionContext(context);
         var enableFileLogging = executionContext?.EnableFileLogging ?? true;
         var previousLogger = Log.Logger;
-        SharpSenseLogging.UseGlobalLogger(settings.IsVerbose, context.Name, enableConsoleLogging: false, enableFileLogging);
+        SharpSenseLogging.UseGlobalLogger(
+            settings.IsVerbose,
+            context.Name,
+            enableConsoleLogging: false,
+            enableFileLogging);
 
         var builder = Host.CreateApplicationBuilder();
         var logFilePath = enableFileLogging ? SharpSenseLogging.GetLogFilePath(context.Name) : null;
@@ -71,7 +77,7 @@ internal abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            return 0;
+            return CancellationExitCode;
         }
         catch (Exception e)
         {

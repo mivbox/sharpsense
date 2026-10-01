@@ -455,7 +455,7 @@ public sealed class CliCommandTests
             {
                 await onOutput("Build succeeded in 13.7s", innerCt);
 
-                return Result.Ok(new CommandProcessResult(0));
+                return Result.Ok(new CommandProcessResult(0, 1));
             });
         var app = CreateCommandApp(
             console,
