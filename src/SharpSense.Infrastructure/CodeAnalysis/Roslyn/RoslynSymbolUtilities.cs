@@ -86,8 +86,8 @@ internal static class RoslynSymbolUtilities
 
         return string.Join(
             _searchTextSeparator,
-            new[] { summary, remarks
-                        }.Where(static text => !string.IsNullOrWhiteSpace(text)))
+            new[] { summary, remarks }
+                .Where(static text => !string.IsNullOrWhiteSpace(text)))
             .Trim();
     }
 

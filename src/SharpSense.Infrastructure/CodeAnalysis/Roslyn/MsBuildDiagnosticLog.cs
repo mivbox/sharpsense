@@ -42,10 +42,7 @@ internal sealed class MsBuildDiagnosticLog : IDisposable
         }
     }
 
-    public ILogger Logger
-    {
-        get;
-    }
+    public ILogger Logger { get; }
 
     internal string DirectoryPath => _directory.FullName;
 
@@ -70,9 +67,11 @@ internal sealed class MsBuildDiagnosticLog : IDisposable
         }
 
         return new MsBuildDiagnosticReport(
-            warnings.Distinct()
+            warnings
+                .Distinct()
                 .ToArray(),
-            errors.Distinct()
+            errors
+                .Distinct()
                 .ToArray());
     }
 
@@ -83,40 +82,4 @@ internal sealed class MsBuildDiagnosticLog : IDisposable
             _directory.Delete(recursive: true);
         }
     }
-}
-
-internal sealed record MsBuildDiagnosticReport(
-    IReadOnlyList<MsBuildMessage> Warnings,
-    IReadOnlyList<MsBuildMessage> Errors)
-{
-    public bool IsConfirmedWarning(WorkspaceDiagnostic diagnostic)
-        => diagnostic.Kind == WorkspaceDiagnosticKind.Failure &&
-           Warnings.Any(warning => warning.Matches(diagnostic)) &&
-           !Errors.Any(error => error.Matches(diagnostic));
-}
-
-internal sealed record MsBuildMessage(string? ProjectFile, string? Code, string? Message)
-{
-    public bool Matches(WorkspaceDiagnostic diagnostic)
-    {
-        // Match an observed typed event's complete message and owning project. Do not
-        // infer severity from English words, diagnostic codes, or an empty error list.
-        if (string.IsNullOrWhiteSpace(ProjectFile) || string.IsNullOrWhiteSpace(Message))
-        {
-            return false;
-        }
-
-        var pathComparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
-
-        return diagnostic.Message.Contains(
-            $"'{ProjectFile}'",
-            pathComparison) &&
-            diagnostic.Message.EndsWith(
-                $": {Message}",
-                StringComparison.Ordinal);
-    }
-
-    public string Format(string severity) => $"MSBuild {severity} {Code} in '{ProjectFile}': {Message}";
 }

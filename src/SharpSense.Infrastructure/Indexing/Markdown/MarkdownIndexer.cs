@@ -4,19 +4,18 @@ using Markdig.Syntax.Inlines;
 using SharpSense.Domain.KnowledgeGraph.Edges;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace SharpSense.Infrastructure.Indexing.Markdown;
 
 internal sealed class MarkdownIndexer : IMarkdownIndexer
 {
-    private const string DocumentRootName = "Document Root";
     private const string DocumentRootSlug = "document-root";
     private static readonly string[] _externalLinkPrefixes = ["mailto:", "tel:", "data:", "file:"];
     private static readonly MarkdownPipeline _pipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
         .Build();
-    private static readonly string[] _markdownExtensions = [".md", ".markdown", ".mdown", ".mkd"];
 
     public MarkdownIndexResult Index(
         string rawText,
@@ -77,7 +76,6 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
                 var headingName = ExtractHeadingName(headingBlock, blockText);
                 var slug = CreateUniqueSlug(headingName, blockStartLine, assignedSlugs);
                 currentChunk = MarkdownChunkBuilder.CreateChunk(
-                    headingName,
                     slug,
                     parentChunk?.Slug,
                     spanStart,
@@ -174,7 +172,8 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
             previousWasSeparator = true;
         }
 
-        return builder.ToString().Trim('-') is { Length: > 0 } slug
+        return builder.ToString()
+            .Trim('-') is { Length: > 0 } slug
             ? slug
             : "section";
     }
@@ -548,7 +547,8 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
             return true;
         }
 
-        if (!IsMarkdownDocumentPath(rawPath))
+        rawPath = Uri.UnescapeDataString(rawPath);
+        if (!MarkdownFileTypes.IsMarkdown(rawPath))
         {
             return false;
         }
@@ -575,7 +575,7 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
             normalizedPath = $"{normalizedPath}.md";
         }
 
-        if (!IsMarkdownDocumentPath(normalizedPath))
+        if (!MarkdownFileTypes.IsMarkdown(normalizedPath))
         {
             return string.Empty;
         }
@@ -646,7 +646,11 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
         }
 
         var repositoryRoot = GetSyntheticRepositoryRoot();
-        var currentAbsolutePath = Path.Combine(repositoryRoot, currentFilePath.Replace('/', Path.DirectorySeparatorChar));
+        var currentAbsolutePath = Path.Combine(
+            repositoryRoot,
+            currentFilePath.Replace(
+                '/',
+                Path.DirectorySeparatorChar));
         var currentDirectoryPath = Path.GetDirectoryName(currentAbsolutePath)
                                    ?? repositoryRoot;
         var resolvedAbsolutePath = Path.GetFullPath(
@@ -668,8 +672,6 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
         return Path.Combine(rootPath, "__sharpsense_markdown_root__");
     }
 
-    public static bool IsMarkdownDocumentPath(string targetPath)
-        => _markdownExtensions.Contains(Path.GetExtension(targetPath), StringComparer.OrdinalIgnoreCase);
 
     private static string BuildDocumentNodeId(
         string relativeFilePath,
@@ -689,7 +691,8 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
     {
         var summary = chunk.StartIndex is null || chunk.EndIndex is null
             ? string.Empty
-            : ExtractRawText(rawText, chunk.StartIndex.Value, chunk.EndIndex.Value).Trim();
+            : ExtractRawText(rawText, chunk.StartIndex.Value, chunk.EndIndex.Value)
+                .Trim();
 
         return new CodeNode
         {
@@ -701,7 +704,10 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
             RelativeFilePath = relativeFilePath,
             StartLine = chunk.StartLine,
             EndLine = chunk.EndLine,
-            Summary = summary
+            Summary = summary,
+            // The root represents the entire document; section memories track their own content.
+            BodyHash = Convert.ToHexStringLower(SHA256.HashData(
+                Encoding.UTF8.GetBytes(chunk.Slug == DocumentRootSlug ? rawText : summary)))
         };
     }
 
@@ -728,7 +734,6 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
     }
 
     private sealed class MarkdownChunkBuilder(
-        string headingName,
         string slug,
         string? parentSlug,
         int? startIndex,
@@ -738,55 +743,31 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
     {
         private readonly HashSet<string> _linkTargets = new(StringComparer.Ordinal);
 
-        public string HeadingName
-        {
-            get;
-        } = headingName;
+        public string Slug { get; } = slug;
 
-        public string Slug
-        {
-            get;
-        } = slug;
+        public string? ParentSlug { get; } = parentSlug;
 
-        public string? ParentSlug
-        {
-            get;
-        } = parentSlug;
+        public int? StartIndex { get; private set; } = startIndex;
 
-        public int? StartIndex
-        {
-            get; private set;
-        } = startIndex;
+        public int? EndIndex { get; private set; } = endIndex;
 
-        public int? EndIndex
-        {
-            get; private set;
-        } = endIndex;
+        public int StartLine { get; private set; } = startLine;
 
-        public int StartLine
-        {
-            get; private set;
-        } = startLine;
-
-        public int EndLine
-        {
-            get; private set;
-        } = endLine;
+        public int EndLine { get; private set; } = endLine;
 
         public IEnumerable<string> LinkTargets => _linkTargets;
 
         public static MarkdownChunkBuilder CreateDocumentRoot()
-            => new(DocumentRootName, DocumentRootSlug, null, null, null, 1, 1);
+            => new(DocumentRootSlug, null, null, null, 1, 1);
 
         public static MarkdownChunkBuilder CreateChunk(
-            string headingName,
             string slug,
             string? parentSlug,
             int startIndex,
             int endIndex,
             int startLine,
             int endLine)
-            => new(headingName, slug, parentSlug, startIndex, endIndex, startLine, endLine);
+            => new(slug, parentSlug, startIndex, endIndex, startLine, endLine);
 
         public void AbsorbBlock(
             int startIndex,

@@ -1,14 +1,13 @@
-using JetBrains.Annotations;
 using Serilog;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Indexing.Markdown;
+using SharpSense.Infrastructure.Storage;
 using System.Collections.Concurrent;
 using System.IO.Abstractions;
 
 namespace SharpSense.Infrastructure.Indexing.Watching;
 
-[PublicAPI]
 internal sealed class WorkspaceWatcher : IWorkspaceWatcher
 {
     private static readonly ILogger _logger = Log.ForContext<WorkspaceWatcher>();
@@ -198,7 +197,9 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
 
         WorkspaceFileChangeAction ClassifyMarkdownChange(string fullPath, WorkspaceFileChangeAction action)
         {
-            if (!MarkdownIndexer.IsMarkdownDocumentPath(fullPath) || !IsRelevantPath(normalizedRepositoryRoot, fullPath))
+            if (!MarkdownFileTypes.IsMarkdown(fullPath) || !IsRelevantPath(
+                normalizedRepositoryRoot,
+                fullPath))
             {
                 return action;
             }
@@ -441,7 +442,7 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
     private static bool IsTargetPath(string path)
     {
         return CSharpIndexingPathRules.IsRelevantChangePath(path) ||
-            MarkdownIndexer.IsMarkdownDocumentPath(path) ||
+            MarkdownFileTypes.IsMarkdown(path) ||
             TypeScriptIndexingPathRules.IsRelevantChangePath(path);
     }
 
@@ -479,7 +480,7 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
 
     private ConcurrentDictionary<string, byte> CreateKnownDirectories(string repositoryRoot)
     {
-        var knownDirectories = new ConcurrentDictionary<string, byte>(GetPathComparer());
+        var knownDirectories = new ConcurrentDictionary<string, byte>(FileSystemPaths.Comparer);
         AddKnownDirectoryTree(knownDirectories, repositoryRoot);
 
         return knownDirectories;
@@ -487,7 +488,7 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
 
     private HashSet<string> CreateKnownMarkdownPaths(string repositoryRoot, CancellationToken ct)
     {
-        var paths = new HashSet<string>(GetPathComparer());
+        var paths = new HashSet<string>(FileSystemPaths.Comparer);
         var pending = new Stack<string>();
         pending.Push(repositoryRoot);
         while (pending.TryPop(out var directory))
@@ -496,7 +497,7 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
             foreach (var file in _fileSystem.Directory.EnumerateFiles(directory))
             {
                 ct.ThrowIfCancellationRequested();
-                if (MarkdownIndexer.IsMarkdownDocumentPath(file) && IsRelevantPath(repositoryRoot, file) &&
+                if (MarkdownFileTypes.IsMarkdown(file) && IsRelevantPath(repositoryRoot, file) &&
                     (_fileSystem.FileInfo.New(file).Attributes & FileAttributes.ReparsePoint) == 0)
                 {
                     paths.Add(NormalizeDirectoryPath(file));
@@ -528,7 +529,10 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
 
         knownDirectories.TryAdd(NormalizeDirectoryPath(directoryPath), 0);
 
-        foreach (var childDirectory in _fileSystem.Directory.EnumerateDirectories(directoryPath, "*", SearchOption.AllDirectories))
+        foreach (var childDirectory in _fileSystem.Directory.EnumerateDirectories(
+            directoryPath,
+            "*",
+            SearchOption.AllDirectories))
         {
             knownDirectories.TryAdd(NormalizeDirectoryPath(childDirectory), 0);
         }
@@ -555,9 +559,7 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
         string path,
         string rootPath)
     {
-        var comparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
+        var comparison = FileSystemPaths.Comparison;
         var rootPathWithSeparator = rootPath.EndsWith(Path.DirectorySeparatorChar) ||
                                     rootPath.EndsWith(Path.AltDirectorySeparatorChar)
             ? rootPath
@@ -569,9 +571,6 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
 
     private string NormalizeDirectoryPath(string path)
         => _fileSystem.Path.TrimEndingDirectorySeparator(_fileSystem.Path.GetFullPath(path));
-
-    private static StringComparer GetPathComparer()
-        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
     private bool TryGetRepositoryRelativePath(
         string repositoryRoot,
@@ -588,9 +587,7 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
             return false;
         }
 
-        var comparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
+        var comparison = FileSystemPaths.Comparison;
 
         if (string.Equals(relativePath, ".", comparison))
         {

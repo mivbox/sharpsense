@@ -62,8 +62,7 @@ internal sealed class RoslynTargetAnalysisEngine : ITargetAnalysisEngine
                 solution,
                 orderedProjects,
                 projectIds,
-                nodeExtraction.DeclaredSymbols,
-                nodeExtraction.SymbolNodeIds);
+                nodeExtraction.DeclaredSymbols);
 
             activity.AddTag("index.code_node.count", nodeExtraction.CodeNodes.Count);
             activity.AddTag("index.dependency.count", edges.Count);
@@ -91,13 +90,14 @@ internal sealed class RoslynTargetAnalysisEngine : ITargetAnalysisEngine
 
         using var projectNodeActivity = SharpSenseTraceSpan.Start("roslyn.build-project-nodes");
         var projects = new List<ProjectNode>(orderedProjects.Count);
-        var projectIds = BuildProjectIds(orderedProjects, repositoryWorkspace);
+        var projectIds = new Dictionary<ProjectId, string>();
 
         foreach (var project in orderedProjects)
         {
             var projectFilePath = RoslynPathUtilities.GetRequiredProjectFilePath(project);
             var relativeFilePath = repositoryWorkspace.ToRepositoryRelativePath(projectFilePath);
-            var projectId = projectIds[project.Id];
+            var projectId = $"project:{relativeFilePath}";
+            projectIds[project.Id] = projectId;
             projects.Add(
                 new ProjectNode
                 {
@@ -113,52 +113,16 @@ internal sealed class RoslynTargetAnalysisEngine : ITargetAnalysisEngine
         return (projects, projectIds);
     }
 
-    private IReadOnlyDictionary<ProjectId, string> BuildProjectIds(
-        IReadOnlyList<Project> orderedProjects,
-        IRepositoryWorkspace repositoryWorkspace)
-    {
-        ArgumentNullException.ThrowIfNull(orderedProjects);
-        ArgumentNullException.ThrowIfNull(repositoryWorkspace);
-
-        var projectIds = new Dictionary<ProjectId, string>();
-
-        foreach (var project in orderedProjects)
-        {
-            var projectFilePath = RoslynPathUtilities.GetRequiredProjectFilePath(project);
-            var relativeFilePath = repositoryWorkspace.ToRepositoryRelativePath(projectFilePath);
-            projectIds[project.Id] = $"project:{relativeFilePath}";
-        }
-
-        return projectIds;
-    }
-
     private static IReadOnlyList<Project> OrderProjects(Solution solution)
     {
         ArgumentNullException.ThrowIfNull(solution);
 
         return
         [
-            .. solution.Projects
-                .OrderBy(static project => project.FilePath ?? project.Name, StringComparer.Ordinal)
+            .. solution.Projects.OrderBy(static project => project.FilePath ?? project.Name, StringComparer.Ordinal)
         ];
-    }
-
-    private string? NormalizePath(string? path, string repositoryRoot)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return null;
-        }
-
-        return _fileSystem.Path.GetFullPath(
-            _fileSystem.Path.IsPathRooted(path)
-                ? path
-                : _fileSystem.Path.Combine(repositoryRoot, path));
     }
 
     private static ConcurrentQueue<string> CreateDiagnostics(IReadOnlyCollection<string>? diagnostics)
         => diagnostics is null ? new ConcurrentQueue<string>() : new ConcurrentQueue<string>(diagnostics);
-
-    private static StringComparer GetPathComparer()
-        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 }

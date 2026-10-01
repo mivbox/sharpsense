@@ -255,7 +255,8 @@ internal sealed partial class EdgeExtractor
         InvocationExpressionSyntax invocation,
         IMethodSymbol? methodSymbol)
     {
-        var invocationTargetTypes = GetInvocationTargetTypes(semanticModel, invocation, methodSymbol).ToArray();
+        var invocationTargetTypes = GetInvocationTargetTypes(semanticModel, invocation, methodSymbol)
+            .ToArray();
         if (invocationTargetTypes.Length > 0)
         {
             foreach (var targetType in invocationTargetTypes)

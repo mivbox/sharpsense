@@ -27,7 +27,8 @@ internal sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
                 continue;
             }
 
-            foreach (var callExpression in EnumerateDescendants(parsedFile.RootNode).Where(static node => node.Type == "call_expression"))
+            foreach (var callExpression in TypeScriptSyntax.EnumerateDescendants(parsedFile.RootNode)
+                .Where(static node => node.Type == "call_expression"))
             {
                 if (!TryBuildHttpRequest(callExpression, out var method, out var url))
                 {
@@ -78,7 +79,8 @@ internal sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
             return false;
         }
 
-        var argumentNodes = argumentsNode.NamedChildren.Where(static node => node.Type != "comment")
+        var argumentNodes = argumentsNode.NamedChildren
+            .Where(static node => node.Type != "comment")
             .ToArray();
         if (functionNode.Text == "fetch")
         {
@@ -230,18 +232,5 @@ internal sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
         method = propertyName.ToUpperInvariant();
 
         return method is "GET" or "POST" or "PUT" or "PATCH" or "DELETE" or "HEAD" or "OPTIONS";
-    }
-
-    private static IEnumerable<Node> EnumerateDescendants(Node node)
-    {
-        yield return node;
-
-        foreach (var childNode in node.NamedChildren)
-        {
-            foreach (var descendantNode in EnumerateDescendants(childNode))
-            {
-                yield return descendantNode;
-            }
-        }
     }
 }

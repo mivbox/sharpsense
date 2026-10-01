@@ -6,6 +6,22 @@ namespace SharpSense.Infrastructure.Tests.Indexing.Markdown;
 
 public sealed class MarkdownIndexerTests
 {
+    [Theory]
+    [InlineData("space%20target.md", "space target.md#document-root")]
+    [InlineData("caf%C3%A9.md#Details", "café.md#details")]
+    [InlineData("hash%23target.md", "hash#target.md#document-root")]
+    [InlineData("query%3Ftarget.md", "query?target.md#document-root")]
+    [InlineData("literal%2520target.md", "literal%20target.md#document-root")]
+    public void WhenLocalLinkHasEncodedPath_ThenItResolvesDecodedDocument(string target, string expectedTarget)
+    {
+        var indexer = new MarkdownIndexer();
+
+        var result = indexer.Index($"[Target]({target})", "docs/Guide.md");
+
+        result.Edges.Should().ContainSingle()
+            .Which.CalleeId.Should().Be($"code:doc:docs/{expectedTarget}");
+    }
+
     [Fact]
     public void WhenIndexingMarkdownWithDuplicateHeadings_ThenChunksByHeadingAndDisambiguatesSlugsWithStartLine()
     {
@@ -68,24 +84,27 @@ public sealed class MarkdownIndexerTests
                 node.Summary.Should().Contain("Repeated body.");
             });
         result.Edges.Count.Should().Be(3);
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/Guide.md#document-root",
-            CalleeId: "code:doc:docs/Guide.md#overview",
-            EdgeType: EdgeType.ParentOf
-        }).Should().NotBeEmpty();
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/Guide.md#document-root",
-            CalleeId: "code:doc:docs/Guide.md#overview-l9",
-            EdgeType: EdgeType.ParentOf
-        }).Should().NotBeEmpty();
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/Guide.md#overview",
-            CalleeId: "code:doc:docs/Guide.md#details",
-            EdgeType: EdgeType.ParentOf
-        }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/Guide.md#document-root",
+                CalleeId: "code:doc:docs/Guide.md#overview",
+                EdgeType: EdgeType.ParentOf
+            }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/Guide.md#document-root",
+                CalleeId: "code:doc:docs/Guide.md#overview-l9",
+                EdgeType: EdgeType.ParentOf
+            }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/Guide.md#overview",
+                CalleeId: "code:doc:docs/Guide.md#details",
+                EdgeType: EdgeType.ParentOf
+            }).Should().NotBeEmpty();
     }
 
     [Fact]
@@ -128,30 +147,34 @@ public sealed class MarkdownIndexerTests
                 node.EndLine.Should().Be(5);
             });
         result.Edges.Count.Should().Be(4);
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/Guide.md#document-root",
-            CalleeId: "code:doc:docs/Guide.md#overview",
-            EdgeType: EdgeType.ParentOf
-        }).Should().NotBeEmpty();
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/Guide.md#overview",
-            CalleeId: "code:doc:docs/DocB.md#document-root",
-            EdgeType: EdgeType.DocumentLink
-        }).Should().NotBeEmpty();
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/Guide.md#overview",
-            CalleeId: "code:doc:docs/Guide.md#details",
-            EdgeType: EdgeType.DocumentLink
-        }).Should().NotBeEmpty();
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/Guide.md#overview",
-            CalleeId: "code:doc:docs/Guide.md#details",
-            EdgeType: EdgeType.ParentOf
-        }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/Guide.md#document-root",
+                CalleeId: "code:doc:docs/Guide.md#overview",
+                EdgeType: EdgeType.ParentOf
+            }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/Guide.md#overview",
+                CalleeId: "code:doc:docs/DocB.md#document-root",
+                EdgeType: EdgeType.DocumentLink
+            }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/Guide.md#overview",
+                CalleeId: "code:doc:docs/Guide.md#details",
+                EdgeType: EdgeType.DocumentLink
+            }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/Guide.md#overview",
+                CalleeId: "code:doc:docs/Guide.md#details",
+                EdgeType: EdgeType.ParentOf
+            }).Should().NotBeEmpty();
     }
 
     [Fact]
@@ -162,14 +185,14 @@ public sealed class MarkdownIndexerTests
         var result = indexer.Index("   \n", "docs/Empty.md");
 
         result.CodeNodes.Should().SatisfyRespectively(node =>
-            {
-                node.CanonicalId.Should().Be("code:doc:docs/Empty.md#document-root");
-                node.FullyQualifiedName.Should().Be("docs/Empty.md#document-root");
-                node.DisplayName.Should().Be("Empty");
-                node.StartLine.Should().Be(1);
-                node.EndLine.Should().Be(1);
-                node.Summary.Should().Be(string.Empty);
-            });
+        {
+            node.CanonicalId.Should().Be("code:doc:docs/Empty.md#document-root");
+            node.FullyQualifiedName.Should().Be("docs/Empty.md#document-root");
+            node.DisplayName.Should().Be("Empty");
+            node.StartLine.Should().Be(1);
+            node.EndLine.Should().Be(1);
+            node.Summary.Should().Be(string.Empty);
+        });
         result.Edges.Should().BeEmpty();
     }
 
@@ -203,30 +226,34 @@ public sealed class MarkdownIndexerTests
                 node.EndLine.Should().Be(2);
             });
         result.Edges.Count.Should().Be(4);
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/wiki/index.md#document-root",
-            CalleeId: "code:doc:docs/wiki/index.md#wiki-home",
-            EdgeType: EdgeType.ParentOf
-        }).Should().NotBeEmpty();
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/wiki/index.md#wiki-home",
-            CalleeId: "code:doc:docs/wiki/extractors/markdown.md#document-root",
-            EdgeType: EdgeType.DocumentLink
-        }).Should().NotBeEmpty();
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/wiki/index.md#wiki-home",
-            CalleeId: "code:doc:docs/wiki/persistence/sqlite-schema.md#document-root",
-            EdgeType: EdgeType.DocumentLink
-        }).Should().NotBeEmpty();
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/wiki/index.md#wiki-home",
-            CalleeId: "code:doc:docs/wiki/persistence/sqlite-schema.md#target-overwrites",
-            EdgeType: EdgeType.DocumentLink
-        }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/wiki/index.md#document-root",
+                CalleeId: "code:doc:docs/wiki/index.md#wiki-home",
+                EdgeType: EdgeType.ParentOf
+            }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/wiki/index.md#wiki-home",
+                CalleeId: "code:doc:docs/wiki/extractors/markdown.md#document-root",
+                EdgeType: EdgeType.DocumentLink
+            }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/wiki/index.md#wiki-home",
+                CalleeId: "code:doc:docs/wiki/persistence/sqlite-schema.md#document-root",
+                EdgeType: EdgeType.DocumentLink
+            }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/wiki/index.md#wiki-home",
+                CalleeId: "code:doc:docs/wiki/persistence/sqlite-schema.md#target-overwrites",
+                EdgeType: EdgeType.DocumentLink
+            }).Should().NotBeEmpty();
     }
 
     [Fact]
@@ -261,35 +288,40 @@ public sealed class MarkdownIndexerTests
                 node.DisplayName.Should().Be("architecture/incremental-watch#local-notes");
             });
         result.Edges.Count.Should().Be(5);
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#document-root",
-            CalleeId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
-            EdgeType: EdgeType.ParentOf
-        }).Should().NotBeEmpty();
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
-            CalleeId: "code:doc:docs/wiki/architecture/incremental-watch.md#local-notes",
-            EdgeType: EdgeType.DocumentLink
-        }).Should().NotBeEmpty();
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
-            CalleeId: "code:doc:docs/wiki/architecture/incremental-watch.md#local-notes",
-            EdgeType: EdgeType.ParentOf
-        }).Should().NotBeEmpty();
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
-            CalleeId: "code:doc:docs/wiki/extractors/markdown.md#document-root",
-            EdgeType: EdgeType.DocumentLink
-        }).Should().NotBeEmpty();
-        result.Edges.Where(static edge => edge is
-        {
-            CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
-            CalleeId: "code:doc:docs/wiki/persistence/sqlite-schema.md#target-overwrites",
-            EdgeType: EdgeType.DocumentLink
-        }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#document-root",
+                CalleeId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
+                EdgeType: EdgeType.ParentOf
+            }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
+                CalleeId: "code:doc:docs/wiki/architecture/incremental-watch.md#local-notes",
+                EdgeType: EdgeType.DocumentLink
+            }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
+                CalleeId: "code:doc:docs/wiki/architecture/incremental-watch.md#local-notes",
+                EdgeType: EdgeType.ParentOf
+            }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
+                CalleeId: "code:doc:docs/wiki/extractors/markdown.md#document-root",
+                EdgeType: EdgeType.DocumentLink
+            }).Should().NotBeEmpty();
+        result.Edges
+            .Where(static edge => edge is
+            {
+                CallerId: "code:doc:docs/wiki/architecture/incremental-watch.md#incremental-watch",
+                CalleeId: "code:doc:docs/wiki/persistence/sqlite-schema.md#target-overwrites",
+                EdgeType: EdgeType.DocumentLink
+            }).Should().NotBeEmpty();
     }
 }

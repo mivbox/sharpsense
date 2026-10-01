@@ -9,10 +9,3 @@ public sealed record WorkspaceSource(WorkspaceSourceKind Kind, string Path)
     {
     }
 }
-
-public enum WorkspaceSourceKind
-{
-    CSharp,
-    TypeScript,
-    Markdown
-}

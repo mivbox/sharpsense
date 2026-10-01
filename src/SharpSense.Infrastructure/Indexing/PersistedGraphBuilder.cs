@@ -1,6 +1,7 @@
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Indexing.TypeScript;
 using SharpSense.Infrastructure.Persistence.Records;
+using SharpSense.Infrastructure.Storage;
 using static SharpSense.Infrastructure.Indexing.GraphPaths;
 
 namespace SharpSense.Infrastructure.Indexing;
@@ -12,13 +13,17 @@ internal static class PersistedGraphBuilder
         ExtractedNodes updated,
         PersistedIdentityMaps identities)
     {
-        var currentProjectIds = current.Projects.Select(project => project.Id)
+        var currentProjectIds = current.Projects
+            .Select(project => project.Id)
             .ToHashSet(StringComparer.Ordinal);
-        var updatedProjectIds = updated.Projects.Select(project => project.Id)
+        var updatedProjectIds = updated.Projects
+            .Select(project => project.Id)
             .ToHashSet(StringComparer.Ordinal);
-        var removedProjects = current.Projects.Where(project => !updatedProjectIds.Contains(project.Id))
+        var removedProjects = current.Projects
+            .Where(project => !updatedProjectIds.Contains(project.Id))
             .ToArray();
-        var addedProjects = updated.Projects.Where(project => !currentProjectIds.Contains(project.Id))
+        var addedProjects = updated.Projects
+            .Where(project => !currentProjectIds.Contains(project.Id))
             .ToArray();
         var graphNodeIds = new Dictionary<string, int>(identities.GraphNodeIdsByCanonicalId, StringComparer.Ordinal);
 
@@ -32,7 +37,8 @@ internal static class PersistedGraphBuilder
                 continue;
             }
 
-            var candidates = removedProjects.Where(project =>
+            var candidates = removedProjects
+                .Where(project =>
                 project.Name == added.Name && project.ContentHash == added.ContentHash)
                 .ToArray();
             if (candidates.Length != 1)
@@ -40,12 +46,15 @@ internal static class PersistedGraphBuilder
                 continue;
             }
 
-            var before = current.CodeNodes.Where(node => node.ProjectId == candidates[0].Id)
+            var before = current.CodeNodes
+                .Where(node => node.ProjectId == candidates[0].Id)
                 .ToArray();
-            var after = updated.CodeNodes.Where(node => node.ProjectId == added.Id)
+            var after = updated.CodeNodes
+                .Where(node => node.ProjectId == added.Id)
                 .ToArray();
             var beforeByDeclaration = before.ToLookup(node => (node.FullyQualifiedName, node.BodyHash));
-            if (before.Length != after.Length || after.Any(node =>
+            if (before.Length != after.Length || after
+                .Any(node =>
                     string.IsNullOrEmpty(node.BodyHash) ||
                     beforeByDeclaration[(node.FullyQualifiedName, node.BodyHash)].Count() != 1))
             {
@@ -94,20 +103,23 @@ internal static class PersistedGraphBuilder
             .ToArray();
         var documents = BuildDocumentRecords(normalizedProjects, normalizedCodeNodes, identityMaps);
         var directories = BuildDirectoryRecords(documents, identityMaps);
-        var directoryIdsByPath = directories.ToDictionary(
-            static directory => directory.Path,
-            static directory => directory.Id,
-            GetPathComparer());
-        var documentsByRelativePath = documents.ToDictionary(
-            static document => document.RelativePath,
-            static document => document.Id,
-            GetPathComparer());
+        var directoryIdsByPath = directories
+            .ToDictionary(
+                static directory => directory.Path,
+                static directory => directory.Id,
+                FileSystemPaths.Comparer);
+        var documentsByRelativePath = documents
+            .ToDictionary(
+                static document => document.RelativePath,
+                static document => document.Id,
+                FileSystemPaths.Comparer);
         var directoryClosures = BuildDirectoryClosures(directories, directoryIdsByPath);
         var graphNodes = BuildGraphNodeRecords(normalizedProjects, normalizedCodeNodes, normalizedEdges, identityMaps);
-        var graphNodeIdsByCanonicalId = graphNodes.ToDictionary(
-            static graphNode => graphNode.CanonicalId,
-            static graphNode => graphNode.Id,
-            StringComparer.Ordinal);
+        var graphNodeIdsByCanonicalId = graphNodes
+            .ToDictionary(
+                static graphNode => graphNode.CanonicalId,
+                static graphNode => graphNode.Id,
+                StringComparer.Ordinal);
         var projectNodes = normalizedProjects
             .Select(
                 project => new ProjectNodeRecord
@@ -171,12 +183,12 @@ internal static class PersistedGraphBuilder
     {
         var projectPaths = projects
             .Select(static project => project.RelativeFilePath)
-            .ToHashSet(GetPathComparer());
+            .ToHashSet(FileSystemPaths.Comparer);
         var relativePaths = projectPaths
             .Concat(codeNodes.Select(static codeNode => codeNode.RelativeFilePath))
             .Where(static path => !string.IsNullOrWhiteSpace(path))
-            .Distinct(GetPathComparer())
-            .OrderBy(static path => path, GetPathComparer())
+            .Distinct(FileSystemPaths.Comparer)
+            .OrderBy(static path => path, FileSystemPaths.Comparer)
             .ToArray();
         var nextDocumentId = GetNextId(identityMaps.DocumentIdsByRelativePath.Values);
         var documents = new List<DocumentRecord>(relativePaths.Length);
@@ -208,7 +220,7 @@ internal static class PersistedGraphBuilder
         IEnumerable<DocumentRecord> documents,
         PersistedIdentityMaps identityMaps)
     {
-        var pathComparer = GetPathComparer();
+        var pathComparer = FileSystemPaths.Comparer;
         var directoryPaths = new HashSet<string>(pathComparer)
         {
             string.Empty
@@ -312,13 +324,14 @@ internal static class PersistedGraphBuilder
                     Kind = GraphNodeKind.Project
                 })
             .Concat(
-                codeNodes.Select(
-                    codeNode => new GraphNodeRecord
-                    {
-                        Id = identityMaps.GraphNodeIdsByCanonicalId.GetValueOrDefault(codeNode.CanonicalId),
-                        CanonicalId = codeNode.CanonicalId,
-                        Kind = GraphNodeKind.Code
-                    }))
+                codeNodes
+                    .Select(
+                        codeNode => new GraphNodeRecord
+                        {
+                            Id = identityMaps.GraphNodeIdsByCanonicalId.GetValueOrDefault(codeNode.CanonicalId),
+                            CanonicalId = codeNode.CanonicalId,
+                            Kind = GraphNodeKind.Code
+                        }))
             .Concat(
                 GetSyntheticNodeIds(edges)
                     .Select(
@@ -358,9 +371,9 @@ internal static class PersistedGraphBuilder
             .Distinct(StringComparer.Ordinal)
             .OrderBy(static syntheticNodeId => syntheticNodeId, StringComparer.Ordinal)
             .ToDictionary(
-            syntheticNodeId => syntheticNodeId,
-            static syntheticNodeId => GetSyntheticGraphNodeKind(syntheticNodeId),
-            StringComparer.Ordinal);
+                syntheticNodeId => syntheticNodeId,
+                static syntheticNodeId => GetSyntheticGraphNodeKind(syntheticNodeId),
+                StringComparer.Ordinal);
 
     private static GraphNodeKind GetSyntheticGraphNodeKind(
         string canonicalId)

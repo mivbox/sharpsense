@@ -149,8 +149,12 @@ internal sealed partial class EdgeExtractor
     {
         return (candidateMember, interfaceMember) switch
         {
-            (IMethodSymbol candidateMethod, IMethodSymbol interfaceMethod) => MatchesMethod(candidateMethod, interfaceMethod),
-            (IPropertySymbol candidateProperty, IPropertySymbol interfaceProperty) => MatchesProperty(candidateProperty, interfaceProperty),
+            (IMethodSymbol candidateMethod, IMethodSymbol interfaceMethod) => MatchesMethod(
+                candidateMethod,
+                interfaceMethod),
+            (IPropertySymbol candidateProperty, IPropertySymbol interfaceProperty) => MatchesProperty(
+                candidateProperty,
+                interfaceProperty),
             _ => false
         };
     }

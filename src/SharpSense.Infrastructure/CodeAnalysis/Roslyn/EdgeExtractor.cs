@@ -17,18 +17,16 @@ internal sealed partial class EdgeExtractor
         Solution solution,
         IReadOnlyList<Project> orderedProjects,
         IReadOnlyDictionary<ProjectId, string> projectIds,
-        IReadOnlyList<DeclaredSymbolContext> declaredSymbols,
-        IReadOnlyDictionary<string, string> symbolNodeIds)
+        IReadOnlyList<DeclaredSymbolContext> declaredSymbols)
     {
         ArgumentNullException.ThrowIfNull(solution);
         ArgumentNullException.ThrowIfNull(orderedProjects);
         ArgumentNullException.ThrowIfNull(projectIds);
         ArgumentNullException.ThrowIfNull(declaredSymbols);
-        ArgumentNullException.ThrowIfNull(symbolNodeIds);
 
         using var edgeActivity = SharpSenseTraceSpan.Start("roslyn.build-dependency-edges");
         var edgeKeys = new HashSet<(string CallerId, string CalleeId, EdgeType EdgeType)>();
-        var nodeResolver = new SymbolNodeResolver(solution, projectIds, symbolNodeIds);
+        var nodeResolver = new SymbolNodeResolver(solution, projectIds);
 
         AddProjectReferenceEdges(orderedProjects, projectIds, edgeKeys);
         AddTypeDependencyEdges(declaredSymbols, nodeResolver, edgeKeys);

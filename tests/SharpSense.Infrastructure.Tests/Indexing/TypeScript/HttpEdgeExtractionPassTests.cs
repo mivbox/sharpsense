@@ -65,7 +65,7 @@ public sealed class HttpEdgeExtractionPassTests
             new DiscoveredFile("/repo/client.ts", "client.ts"),
             source,
             parser.Parse(source) ?? throw new InvalidOperationException("Fixture did not parse."));
-        var context = new TypeScriptPassContext("/repo/tsconfig.json", [file]);
+        var context = new TypeScriptPassContext([file], TestContext.Current.CancellationToken);
         new CodeNodeExtractionPass().Execute(context);
         new HttpEdgeExtractionPass().Execute(context);
 

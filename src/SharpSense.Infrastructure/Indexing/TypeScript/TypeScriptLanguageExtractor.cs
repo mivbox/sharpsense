@@ -3,6 +3,7 @@ using SharpSense.Application.Indexing;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Errors;
+using SharpSense.Infrastructure.Storage;
 using System.IO.Abstractions;
 using TreeSitter;
 
@@ -32,10 +33,13 @@ internal sealed class TypeScriptLanguageExtractor(
                     context.TargetPath);
             }
 
-            context.Progress?.Report(new Application.Shared.Models.IndexingProgress("Discovering TypeScript files...", 0, 1));
+            context.Progress?.Report(new Application.Shared.Models.IndexingProgress(
+                "Discovering TypeScript files...",
+                0,
+                1));
             var discoveredFiles = await sourceDiscoverer.Discover(context.TargetPath, ct);
 
-            return Result.Ok(await ExecutePasses(context.TargetPath, context.Progress, discoveredFiles, ct));
+            return Result.Ok(await ExecutePasses(context.Progress, discoveredFiles, ct));
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -57,7 +61,6 @@ internal sealed class TypeScriptLanguageExtractor(
     }
 
     private async Task<ExtractedNodes> ExecutePasses(
-        string targetPath,
         IProgress<Application.Shared.Models.IndexingProgress>? progress,
         IReadOnlyList<DiscoveredFile> discoveredFiles,
         CancellationToken ct)
@@ -72,7 +75,8 @@ internal sealed class TypeScriptLanguageExtractor(
         using var typeScriptParser = new Parser(typeScriptLanguage);
         using var tsxParser = new Parser(tsxLanguage);
         var parsedFiles = new List<TypeScriptParsedFile>(discoveredFiles.Count);
-        var orderedPasses = extractionPasses.OrderBy(GetPassOrder)
+        var orderedPasses = extractionPasses
+            .OrderBy(GetPassOrder)
             .ToArray();
         var totalSteps = discoveredFiles.Count + orderedPasses.Length;
         var completedSteps = 0;
@@ -117,7 +121,7 @@ internal sealed class TypeScriptLanguageExtractor(
                     totalSteps));
             }
 
-            var passContext = new TypeScriptPassContext(targetPath, parsedFiles, progress, ct);
+            var passContext = new TypeScriptPassContext(parsedFiles, ct);
             foreach (var extractionPass in orderedPasses)
             {
                 ct.ThrowIfCancellationRequested();
@@ -130,11 +134,7 @@ internal sealed class TypeScriptLanguageExtractor(
             }
 
             return new ExtractedNodes(
-                [
-                    .. passContext.Projects
-                        .OrderBy(static project => project.Name, StringComparer.Ordinal)
-                        .ThenBy(static project => project.Id, StringComparer.Ordinal)
-                ],
+                [],
                 [
                     .. passContext.CodeNodes
                         .OrderBy(static codeNode => codeNode.FullyQualifiedName, StringComparer.Ordinal)
@@ -147,9 +147,12 @@ internal sealed class TypeScriptLanguageExtractor(
                         .ThenBy(static edge => edge.EdgeType)
                 ],
                 [.. passContext.Diagnostics],
-                [.. discoveredFiles.Select(static file => file.AbsolutePath)
-                    .Concat(sourceDiscoverer.ResolutionInputPaths)
-                    .Distinct(GetPathComparer())],
+                [
+                    .. discoveredFiles
+                        .Select(static file => file.AbsolutePath)
+                        .Concat(sourceDiscoverer.ResolutionInputPaths)
+                        .Distinct(FileSystemPaths.Comparer)
+                ],
                 CanReuseForDocumentationChanges: true);
         }
         finally
@@ -161,16 +164,10 @@ internal sealed class TypeScriptLanguageExtractor(
         }
     }
 
-    private static StringComparer GetPathComparer()
-        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-
     private sealed class TypeScriptSourceException(string filePath, string message, Exception? innerException = null)
         : Exception(message, innerException)
     {
-        public string FilePath
-        {
-            get;
-        } = filePath;
+        public string FilePath { get; } = filePath;
     }
 
     private static int GetPassOrder(ITypeScriptExtractionPass extractionPass)

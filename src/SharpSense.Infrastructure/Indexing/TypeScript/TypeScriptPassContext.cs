@@ -1,88 +1,32 @@
 using SharpSense.Application.Indexing.Models;
-using SharpSense.Application.Shared.Models;
 
 namespace SharpSense.Infrastructure.Indexing.TypeScript;
 
 internal sealed class TypeScriptPassContext
 {
     public TypeScriptPassContext(
-        string targetPath,
         IReadOnlyList<TypeScriptParsedFile> parsedFiles,
-        IProgress<IndexingProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
         ArgumentNullException.ThrowIfNull(parsedFiles);
 
-        TargetPath = targetPath;
         ParsedFiles = parsedFiles;
-        DiscoveredFiles =
-        [
-            .. parsedFiles.Select(static parsedFile => parsedFile.DiscoveredFile)
-        ];
-        Progress = progress;
         CancellationToken = cancellationToken;
     }
 
-    public string TargetPath
-    {
-        get;
-    }
+    public IReadOnlyList<TypeScriptParsedFile> ParsedFiles { get; }
 
-    public IReadOnlyList<TypeScriptParsedFile> ParsedFiles
-    {
-        get;
-    }
+    public CancellationToken CancellationToken { get; }
 
-    public IReadOnlyList<DiscoveredFile> DiscoveredFiles
-    {
-        get;
-    }
+    public List<IndexedCodeNode> CodeNodes { get; } = [];
 
-    public IProgress<IndexingProgress>? Progress
-    {
-        get;
-    }
+    public List<IndexedDependency> Edges { get; } = [];
 
-    public CancellationToken CancellationToken
-    {
-        get;
-    }
+    public List<string> Diagnostics { get; } = [];
 
-    public List<IndexedProject> Projects
-    {
-        get;
-    } = [];
+    internal Dictionary<string, Dictionary<string, string>> ExportsByFile { get; } = new(StringComparer.Ordinal);
 
-    public List<IndexedCodeNode> CodeNodes
-    {
-        get;
-    } = [];
+    internal List<TypeScriptReExport> ReExports { get; } = [];
 
-    public List<IndexedDependency> Edges
-    {
-        get;
-    } = [];
-
-    public List<string> Diagnostics
-    {
-        get;
-    } = [];
-
-    internal Dictionary<string, Dictionary<string, string>> ExportsByFile
-    {
-        get;
-    } = new(StringComparer.Ordinal);
-
-    internal List<TypeScriptReExport> ReExports
-    {
-        get;
-    } = [];
-
-    internal Dictionary<string, TreeSitter.Node> DeclarationNodes
-    {
-        get;
-    } = new(StringComparer.Ordinal);
+    internal Dictionary<string, TreeSitter.Node> DeclarationNodes { get; } = new(StringComparer.Ordinal);
 }
-
-internal sealed record TypeScriptReExport(string FilePath, string Source, string? ImportedName, string? ExportedName);

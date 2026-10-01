@@ -25,7 +25,7 @@ internal sealed class IndexWorkspaceCommandHandler(
     ILogger<IndexWorkspaceCommandHandler> logger)
     : ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>
 {
-    private readonly WorkspaceExecutionOptions _options = executionOptions?.Value ?? throw new ArgumentNullException(nameof(executionOptions));
+    private readonly WorkspaceExecutionOptions _options = executionOptions.Value;
 
     public async Task<Result<IndexWorkspaceOutcome>> Handle(IndexWorkspaceCommand command, CancellationToken ct)
     {
@@ -63,16 +63,18 @@ internal sealed class IndexWorkspaceCommandHandler(
         {
             analysis?.Phase(AnalysisPhase.Discovery, "Preparing workspace sources...");
             using var extractionLease = await workspaceExtraction.Acquire(ct);
-            WorkspaceExtractionBatch? workspaceBatch;
             using var extractActivity = SharpSenseTraceSpan.Start("index.extract");
-            Result<ExtractedNodes> extractionResult;
+            Result<WorkspaceExtractionBatch> extractionResult;
             using (run.Measure("extraction"))
             {
                 analysis?.Phase(AnalysisPhase.Extraction, "Analyzing workspace sources...");
                 var context = new ExtractionContext(absoluteTargetPath, command.Progress, command.ChangedFiles);
-                var extraction = await workspaceExtraction.Extract(_options.WorkspaceId, _options.WorkspaceSources, context, ct, analysis);
-                workspaceBatch = extraction.IsSuccess ? extraction.Value : null;
-                extractionResult = extraction.IsSuccess ? Result.Ok(extraction.Value.Graph) : Result.Fail(extraction.Errors);
+                extractionResult = await workspaceExtraction.Extract(
+                    _options.WorkspaceId,
+                    _options.WorkspaceSources,
+                    context,
+                    ct,
+                    analysis);
             }
 
             if (extractionResult.IsFailed)
@@ -88,7 +90,8 @@ internal sealed class IndexWorkspaceCommandHandler(
                 return Result.Fail(extractionResult.Errors);
             }
 
-            var extractedNodes = extractionResult.Value;
+            var workspaceBatch = extractionResult.Value;
+            var extractedNodes = workspaceBatch.Graph;
             run.Extracted(extractedNodes);
             analysis?.Diagnostics(extractedNodes.Diagnostics);
             var projectCount = extractedNodes.Projects.Count;
@@ -142,10 +145,7 @@ internal sealed class IndexWorkspaceCommandHandler(
                 await knowledgeGraphRepository.ReplaceWorkspace(extractedNodes, ct);
             }
 
-            if (workspaceBatch is not null)
-            {
-                workspaceExtraction.Commit(workspaceBatch);
-            }
+            workspaceExtraction.Commit(workspaceBatch);
 
             run.Succeeded();
             analysis?.Committed(extractedNodes);
