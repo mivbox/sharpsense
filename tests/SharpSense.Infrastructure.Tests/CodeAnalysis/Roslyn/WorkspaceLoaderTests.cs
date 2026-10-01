@@ -32,26 +32,19 @@ public sealed class WorkspaceLoaderTests
             });
         using var loader = new WorkspaceLoader(workspaceFactory, fileSystem);
 
-        await loader.Load(
-            fixture.ProjectFilePath,
-            ct: timeout.Token);
+        await loader.Load(fixture.ProjectFilePath, ct: timeout.Token);
         fixture.WriteUpdatedSource();
 
         var result = await loader.UpdateDocuments(
             fixture.ProjectFilePath,
             [
-                new WorkspaceFileChange(
-                    WorkspaceFileChangeAction.Modified,
-                    NewPath: fixture.SourceFilePath)
+                new WorkspaceFileChange(WorkspaceFileChangeAction.Modified, NewPath: fixture.SourceFilePath)
             ],
             timeout.Token);
 
         workspaceFactory.CreateCount.Should().Be(1);
         readAttempts.Should().Be(2);
-        var updatedContents = await ReadDocumentContents(
-            result.Value.Solution,
-            fixture.SourceFilePath,
-            timeout.Token);
+        var updatedContents = await ReadDocumentContents(result.Value.Solution, fixture.SourceFilePath, timeout.Token);
         updatedContents.Should().Contain("Updated()");
     }
 
@@ -71,26 +64,19 @@ public sealed class WorkspaceLoaderTests
             });
         using var loader = new WorkspaceLoader(workspaceFactory, fileSystem);
 
-        await loader.Load(
-            fixture.ProjectFilePath,
-            ct: timeout.Token);
+        await loader.Load(fixture.ProjectFilePath, ct: timeout.Token);
         fixture.WriteUpdatedSource();
 
         var result = await loader.UpdateDocuments(
             fixture.ProjectFilePath,
             [
-                new WorkspaceFileChange(
-                    WorkspaceFileChangeAction.Modified,
-                    NewPath: fixture.SourceFilePath)
+                new WorkspaceFileChange(WorkspaceFileChangeAction.Modified, NewPath: fixture.SourceFilePath)
             ],
             timeout.Token);
 
         workspaceFactory.CreateCount.Should().Be(2);
         readAttempts.Should().Be(6);
-        var updatedContents = await ReadDocumentContents(
-            result.Value.Solution,
-            fixture.SourceFilePath,
-            timeout.Token);
+        var updatedContents = await ReadDocumentContents(result.Value.Solution, fixture.SourceFilePath, timeout.Token);
         updatedContents.Should().Contain("Updated()");
     }
 
@@ -104,17 +90,13 @@ public sealed class WorkspaceLoaderTests
         var fileSystem = CreateFileSystem((path, ct) => File.ReadAllTextAsync(path, ct));
         using var loader = new WorkspaceLoader(workspaceFactory, fileSystem);
 
-        await loader.Load(
-            fixture.ProjectFilePath,
-            ct: timeout.Token);
+        await loader.Load(fixture.ProjectFilePath, ct: timeout.Token);
         fixture.DeleteSource();
 
         var result = await loader.UpdateDocuments(
             fixture.ProjectFilePath,
             [
-                new WorkspaceFileChange(
-                    WorkspaceFileChangeAction.Deleted,
-                    OldPath: fixture.SourceFilePath)
+                new WorkspaceFileChange(WorkspaceFileChangeAction.Deleted, OldPath: fixture.SourceFilePath)
             ],
             timeout.Token);
 
@@ -132,10 +114,7 @@ public sealed class WorkspaceLoaderTests
         var initial = await loader.Load(fixture.ProjectFilePath, ct);
         initial.IsSuccess.Should().BeTrue(string.Join("; ", initial.Errors.Select(error => error.Message)));
         var validProject = await File.ReadAllTextAsync(fixture.ProjectFilePath, ct);
-        await File.WriteAllTextAsync(
-            fixture.ProjectFilePath,
-            "<invalid-project-xml",
-            ct);
+        await File.WriteAllTextAsync(fixture.ProjectFilePath, "<invalid-project-xml", ct);
 
         var failed = await loader.Reload(fixture.ProjectFilePath, ct);
         failed.IsFailed.Should().BeTrue();
@@ -156,15 +135,19 @@ public sealed class WorkspaceLoaderTests
         var file = new Mock<IFile>(MockBehavior.Strict);
         var fileSystem = new Mock<IFileSystem>(MockBehavior.Strict);
 
-        file.Setup(candidate => candidate.Exists(It.IsAny<string>()))
+        file
+            .Setup(candidate => candidate.Exists(It.IsAny<string>()))
             .Returns((string candidatePath) => File.Exists(candidatePath));
-        file.Setup(candidate => candidate.ReadAllTextAsync(
-            It.IsAny<string>(),
-            It.IsAny<CancellationToken>()))
+        file
+            .Setup(candidate => candidate.ReadAllTextAsync(
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
             .Returns((string candidatePath, CancellationToken ct) => readContents(candidatePath, ct));
-        fileSystem.SetupGet(candidate => candidate.File)
+        fileSystem
+            .SetupGet(candidate => candidate.File)
             .Returns(file.Object);
-        fileSystem.SetupGet(candidate => candidate.Path)
+        fileSystem
+            .SetupGet(candidate => candidate.Path)
             .Returns(realFileSystem.Path);
 
         return fileSystem.Object;
@@ -206,10 +189,7 @@ public sealed class WorkspaceLoaderTests
     {
         private readonly MsBuildWorkspaceFactory _innerFactory = new();
 
-        public int CreateCount
-        {
-            get; private set;
-        }
+        public int CreateCount { get; private set; }
 
         public MSBuildWorkspace Create()
         {
@@ -231,20 +211,11 @@ public sealed class WorkspaceLoaderTests
             SourceFilePath = sourceFilePath;
         }
 
-        public string RootPath
-        {
-            get;
-        }
+        public string RootPath { get; }
 
-        public string ProjectFilePath
-        {
-            get;
-        }
+        public string ProjectFilePath { get; }
 
-        public string SourceFilePath
-        {
-            get;
-        }
+        public string SourceFilePath { get; }
 
         public static TemporaryProject Create()
         {

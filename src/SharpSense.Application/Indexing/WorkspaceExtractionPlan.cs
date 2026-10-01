@@ -3,11 +3,6 @@ using SharpSense.Application.Indexing.Models;
 
 namespace SharpSense.Application.Indexing;
 
-internal sealed record WorkspaceExtractionStep(
-    WorkspaceSource Source,
-    ILanguageExtractor Extractor,
-    ExtractionContext Context);
-
 internal static class WorkspaceExtractionPlan
 {
     public static IReadOnlyList<WorkspaceExtractionStep> Create(
@@ -82,7 +77,8 @@ internal static class WorkspaceExtractionPlan
             .Where(project => paths.ToRepositoryRelativePath(project.RelativeFilePath)
                 .Equals(selectedPath, comparison))
             .ToArray();
-        var projectIds = projects.Select(static project => project.Id)
+        var projectIds = projects
+            .Select(static project => project.Id)
             .ToHashSet(StringComparer.Ordinal);
         var codeNodes = extractedNodes.CodeNodes
             .Where(node => node.ProjectId is not null && projectIds.Contains(node.ProjectId))

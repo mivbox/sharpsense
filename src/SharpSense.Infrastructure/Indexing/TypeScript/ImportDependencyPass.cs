@@ -18,17 +18,14 @@ internal sealed class ImportDependencyPass(
         var callerIdsByFile = context.CodeNodes
             .GroupBy(static node => node.RelativeFilePath, StringComparer.Ordinal)
             .ToDictionary(
-            static group => group.Key,
-            static group => group.Select(static node => node.CanonicalId)
-                .ToArray(),
-            StringComparer.Ordinal);
-        var edgeIndexes = context.Edges
-            .Select(static (edge, index) => new
-            {
-                Identity = (edge.CallerId, edge.CalleeId, edge.EdgeType),
-                Index = index
-            })
-            .ToDictionary(static item => item.Identity, static item => item.Index);
+                static group => group.Key,
+                static group => group
+                    .Select(static node => node.CanonicalId)
+                    .ToArray(),
+                StringComparer.Ordinal);
+        var edgeIdentities = context.Edges
+            .Select(static edge => (edge.CallerId, edge.CalleeId, edge.EdgeType))
+            .ToHashSet();
 
         foreach (var parsedFile in context.ParsedFiles)
         {
@@ -40,7 +37,8 @@ internal sealed class ImportDependencyPass(
             }
 
             var jsxTagNames = ExtractJsxTagNames(parsedFile);
-            foreach (var importNode in parsedFile.RootNode.NamedChildren.Where(static node => node.Type == "import_statement"))
+            foreach (var importNode in parsedFile.RootNode.NamedChildren
+                .Where(static node => node.Type == "import_statement"))
             {
                 var importPath = importNode.GetChildForField("source")?.Text.Trim('\'', '"');
                 if (string.IsNullOrWhiteSpace(importPath))
@@ -48,7 +46,10 @@ internal sealed class ImportDependencyPass(
                     continue;
                 }
 
-                var resolvedImportPath = tsConfigResolver.ResolveImport(importPath, parsedFile.DiscoveredFile.AbsolutePath, context.CancellationToken);
+                var resolvedImportPath = tsConfigResolver.ResolveImport(
+                    importPath,
+                    parsedFile.DiscoveredFile.AbsolutePath,
+                    context.CancellationToken);
                 IReadOnlyList<ResolvedImportTarget> targets;
                 if (string.IsNullOrWhiteSpace(resolvedImportPath))
                 {
@@ -81,12 +82,11 @@ internal sealed class ImportDependencyPass(
                         }
 
                         var edgeIdentity = (callerId, target.CalleeId, EdgeType.Import);
-                        if (edgeIndexes.ContainsKey(edgeIdentity))
+                        if (!edgeIdentities.Add(edgeIdentity))
                         {
                             continue;
                         }
 
-                        edgeIndexes[edgeIdentity] = context.Edges.Count;
                         context.Edges.Add(new IndexedDependency(
                             callerId,
                             target.CalleeId,
@@ -103,11 +103,16 @@ internal sealed class ImportDependencyPass(
         string targetRelativePath,
         TypeScriptPassContext context)
     {
-        var importedBindings = ExtractImportedBindings(importNode);
+        var importedBindings = TypeScriptSyntax.ReadImports(importNode)
+            .Distinct()
+            .ToArray();
         if (importedBindings.Length == 0)
         {
-            return [.. ResolveExports(context, targetRelativePath, null, new(StringComparer.Ordinal))
-                .Select(id => new ResolvedImportTarget(id, null))];
+            return
+            [
+                .. ResolveExports(context, targetRelativePath, null, new(StringComparer.Ordinal))
+                    .Select(id => new ResolvedImportTarget(id, null))
+            ];
         }
 
         var targetsByCalleeId = new Dictionary<string, ResolvedImportTarget>(StringComparer.Ordinal);
@@ -117,23 +122,27 @@ internal sealed class ImportDependencyPass(
             {
                 foreach (var id in ResolveExports(context, targetRelativePath, null, new(StringComparer.Ordinal)))
                 {
-                    AddResolvedTarget(targetsByCalleeId, new(id, null));
+                    AddTarget(targetsByCalleeId, new(id, null));
                 }
                 continue;
             }
 
             if (!string.IsNullOrWhiteSpace(importedBinding.ExportName))
             {
-                foreach (var id in ResolveExports(context, targetRelativePath, importedBinding.ExportName, new(StringComparer.Ordinal)))
+                foreach (var id in ResolveExports(
+                    context,
+                    targetRelativePath,
+                    importedBinding.ExportName,
+                    new(StringComparer.Ordinal)))
                 {
-                    AddResolvedTarget(targetsByCalleeId, new(id, null));
+                    AddTarget(targetsByCalleeId, new(id, null));
                 }
                 continue;
             }
 
             foreach (var id in ResolveExports(context, targetRelativePath, "default", new(StringComparer.Ordinal)))
             {
-                AddResolvedTarget(targetsByCalleeId, new(id, null));
+                AddTarget(targetsByCalleeId, new(id, null));
             }
         }
 
@@ -148,7 +157,11 @@ internal sealed class ImportDependencyPass(
     {
         if (name is null)
         {
-            foreach (var exportedName in GetExportNames(context, path, new(StringComparer.Ordinal)).Distinct(StringComparer.Ordinal))
+            foreach (var exportedName in GetExportNames(
+                context,
+                path,
+                new(StringComparer.Ordinal))
+                .Distinct(StringComparer.Ordinal))
             {
                 foreach (var id in ResolveExports(context, path, exportedName, visiting))
                 {
@@ -179,7 +192,8 @@ internal sealed class ImportDependencyPass(
             {
                 yield break;
             }
-            var reExports = context.ReExports.Where(binding => binding.FilePath == path)
+            var reExports = context.ReExports
+                .Where(binding => binding.FilePath == path)
                 .ToArray();
             var hasExplicitExport = reExports.Any(binding => binding.ExportedName == name);
             foreach (var binding in reExports)
@@ -193,7 +207,10 @@ internal sealed class ImportDependencyPass(
                 {
                     continue;
                 }
-                var resolved = tsConfigResolver.ResolveImport(binding.Source, source.DiscoveredFile.AbsolutePath, context.CancellationToken);
+                var resolved = tsConfigResolver.ResolveImport(
+                    binding.Source,
+                    source.DiscoveredFile.AbsolutePath,
+                    context.CancellationToken);
                 if (resolved is null)
                 {
                     if (!IsRelativeImport(binding.Source) && binding.ImportedName is not null)
@@ -244,12 +261,18 @@ internal sealed class ImportDependencyPass(
                     yield return binding.ExportedName;
                     continue;
                 }
-                var resolved = tsConfigResolver.ResolveImport(binding.Source, source.DiscoveredFile.AbsolutePath, context.CancellationToken);
+                var resolved = tsConfigResolver.ResolveImport(
+                    binding.Source,
+                    source.DiscoveredFile.AbsolutePath,
+                    context.CancellationToken);
                 if (resolved is null)
                 {
                     continue;
                 }
-                foreach (var name in GetExportNames(context, repositoryWorkspace.ToRepositoryRelativePath(resolved), visiting))
+                foreach (var name in GetExportNames(
+                    context,
+                    repositoryWorkspace.ToRepositoryRelativePath(resolved),
+                    visiting))
                 {
                     if (name != "default")
                     {
@@ -269,7 +292,9 @@ internal sealed class ImportDependencyPass(
         string importPath,
         IReadOnlySet<string> jsxTagNames)
     {
-        var importedBindings = ExtractImportedBindings(importNode);
+        var importedBindings = TypeScriptSyntax.ReadImports(importNode)
+            .Distinct()
+            .ToArray();
         if (importedBindings.Length == 0)
         {
             return
@@ -327,46 +352,6 @@ internal sealed class ImportDependencyPass(
         return [.. targetsByCalleeId.Values];
     }
 
-    private static ImportedBinding[] ExtractImportedBindings(TreeSitter.Node importNode)
-    {
-        var clause = importNode.NamedChildren.FirstOrDefault(node => node.Type == "import_clause");
-        if (clause is null)
-        {
-            return [];
-        }
-
-        var bindings = new List<ImportedBinding>();
-        foreach (var child in clause.NamedChildren)
-        {
-            if (child.Type == "identifier")
-            {
-                bindings.Add(new(null, child.Text, false));
-            }
-            else if (child.Type == "namespace_import")
-            {
-                var local = child.NamedChildren.FirstOrDefault(node => node.Type == "identifier")?.Text;
-                if (local is not null)
-                {
-                    bindings.Add(new(null, local, true));
-                }
-            }
-            else if (child.Type == "named_imports")
-            {
-                foreach (var specifier in child.NamedChildren.Where(node => node.Type == "import_specifier"))
-                {
-                    var name = specifier.GetChildForField("name")?.Text.Trim('\'', '"');
-                    var local = specifier.GetChildForField("alias")?.Text ?? name;
-                    if (name is not null && local is not null)
-                    {
-                        bindings.Add(new(name, local, false));
-                    }
-                }
-            }
-        }
-
-        return [.. bindings.Distinct()];
-    }
-
     private static bool IsRelativeImport(string importPath)
         => importPath.StartsWith("./", StringComparison.Ordinal) ||
            importPath.StartsWith("../", StringComparison.Ordinal);
@@ -375,7 +360,7 @@ internal sealed class ImportDependencyPass(
     {
         var jsxTagNames = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var node in EnumerateDescendants(parsedFile.RootNode))
+        foreach (var node in TypeScriptSyntax.EnumerateDescendants(parsedFile.RootNode))
         {
             if (node.Type is not "jsx_opening_element" and not "jsx_self_closing_element")
             {
@@ -404,40 +389,12 @@ internal sealed class ImportDependencyPass(
         return jsxTagNames;
     }
 
-    private static IEnumerable<TreeSitter.Node> EnumerateDescendants(TreeSitter.Node node)
-    {
-        yield return node;
-
-        foreach (var childNode in node.NamedChildren)
-        {
-            foreach (var descendantNode in EnumerateDescendants(childNode))
-            {
-                yield return descendantNode;
-            }
-        }
-    }
-
     private static void AddTarget(
         IDictionary<string, ResolvedImportTarget> targetsByCalleeId,
         ResolvedImportTarget target)
     {
-        if (targetsByCalleeId.ContainsKey(target.CalleeId))
-        {
-            return;
-        }
-
-        targetsByCalleeId[target.CalleeId] = target;
+        targetsByCalleeId.TryAdd(target.CalleeId, target);
     }
-
-    private static void AddResolvedTarget(
-        IDictionary<string, ResolvedImportTarget> targetsByCalleeId,
-        ResolvedImportTarget target)
-        => AddTarget(targetsByCalleeId, target);
-
-    private sealed record ImportedBinding(
-        string? ExportName,
-        string LocalName,
-        bool IsNamespaceImport);
 
     private sealed record ResolvedImportTarget(
         string CalleeId,

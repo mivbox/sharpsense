@@ -7,6 +7,7 @@ using Polly.Retry;
 using Serilog;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Errors;
+using SharpSense.Infrastructure.Storage;
 using System.Collections.Concurrent;
 using System.IO.Abstractions;
 using System.Runtime.CompilerServices;
@@ -30,7 +31,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
 
     private readonly IMsBuildWorkspaceFactory _workspaceFactory;
     private readonly IFileSystem _fileSystem;
-    private readonly ConcurrentDictionary<string, WorkspaceSession> _activeWorkspaces = new(GetPathComparer());
+    private readonly ConcurrentDictionary<string, WorkspaceSession> _activeWorkspaces = new(FileSystemPaths.Comparer);
     private bool _disposed;
 
     public WorkspaceLoader(
@@ -133,15 +134,29 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         {
             if (changedFiles.Any(IsStructuralChange))
             {
-                return await ReloadAndReturn(normalizedTargetPath, activeWorkspace, diagnostics, criticalDiagnostics, ct);
+                return await ReloadAndReturn(
+                    normalizedTargetPath,
+                    activeWorkspace,
+                    diagnostics,
+                    criticalDiagnostics,
+                    ct);
             }
 
             var readResults = await ReadDocumentMutations(changedFiles, normalizedTargetPath, ct);
-            var updatedSolution = ApplyFileMutations(activeWorkspace, activeWorkspace.ActiveSolution, changedFiles, readResults);
+            var updatedSolution = ApplyFileMutations(
+                activeWorkspace,
+                activeWorkspace.ActiveSolution,
+                changedFiles,
+                readResults);
 
             if (updatedSolution is null)
             {
-                return await ReloadAndReturn(normalizedTargetPath, activeWorkspace, diagnostics, criticalDiagnostics, ct);
+                return await ReloadAndReturn(
+                    normalizedTargetPath,
+                    activeWorkspace,
+                    diagnostics,
+                    criticalDiagnostics,
+                    ct);
             }
 
             activeWorkspace.UpdateActiveSolution(updatedSolution);
@@ -159,7 +174,8 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         string normalizedTargetPath,
         CancellationToken ct)
     {
-        var mutations = changedFiles.Where(static f => f.ActionType is not WorkspaceFileChangeAction.Deleted)
+        var mutations = changedFiles
+            .Where(static f => f.ActionType is not WorkspaceFileChangeAction.Deleted)
             .ToList();
         var readResults = new ConcurrentBag<(WorkspaceFileChange File, string Path, SourceText? Text)>();
 
@@ -222,7 +238,10 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
 
                 foreach (var id in documentIds)
                 {
-                    updatedSolution = updatedSolution.WithDocumentText(id, result.Text, PreservationMode.PreserveIdentity);
+                    updatedSolution = updatedSolution.WithDocumentText(
+                        id,
+                        result.Text,
+                        PreservationMode.PreserveIdentity);
                 }
             }
             else if (result.File.ActionType is WorkspaceFileChangeAction.Added)
@@ -259,7 +278,12 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         ConcurrentBag<ServiceError> criticalDiagnostics,
         CancellationToken ct)
     {
-        var reloadResult = await ReplaceWorkspace(normalizedTargetPath, activeWorkspace, diagnostics, criticalDiagnostics, ct);
+        var reloadResult = await ReplaceWorkspace(
+            normalizedTargetPath,
+            activeWorkspace,
+            diagnostics,
+            criticalDiagnostics,
+            ct);
 
         if (reloadResult.IsFailed)
         {
@@ -444,11 +468,14 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
     }
 
     private bool IsSolutionTargetPath(string absoluteTargetPath)
-        => string.Equals(_fileSystem.Path.GetExtension(absoluteTargetPath), ".sln", StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(_fileSystem.Path.GetExtension(absoluteTargetPath), ".slnx", StringComparison.OrdinalIgnoreCase);
-
-    private static StringComparer GetPathComparer()
-        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        => string.Equals(
+            _fileSystem.Path.GetExtension(absoluteTargetPath),
+            ".sln",
+            StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(
+               _fileSystem.Path.GetExtension(absoluteTargetPath),
+               ".slnx",
+               StringComparison.OrdinalIgnoreCase);
 
     private static async Task<Result<WorkspaceLoadResult>> CreateLoadResult(
         WorkspaceSession workspaceSession,
@@ -480,7 +507,7 @@ internal sealed class WorkspaceLoader : IWorkspaceLoader
         var errors = criticalDiagnostics.ToArray();
 
         return errors.Length == 0
-            ? Result.Ok(new WorkspaceLoadResult(workspaceSession.ActiveSolution, diagnostics.ToArray(), errors))
+            ? Result.Ok(new WorkspaceLoadResult(workspaceSession.ActiveSolution, diagnostics.ToArray()))
             : Result.Fail(errors);
     }
 

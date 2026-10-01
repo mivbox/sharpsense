@@ -18,7 +18,10 @@ internal sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDisco
         ArgumentNullException.ThrowIfNull(context);
         ArgumentException.ThrowIfNullOrWhiteSpace(context.TargetPath);
 
-        var discoveredDocuments = await documentDiscoverer.Discover(context.TargetPath, ct, context.IncludePatterns ?? []);
+        var discoveredDocuments = await documentDiscoverer.Discover(
+            context.TargetPath,
+            ct,
+            context.IncludePatterns ?? []);
 
         return Result.Ok(new ExtractedNodes(
             [],
@@ -41,7 +44,7 @@ internal sealed class MarkdownDocumentExtractor(DocumentDiscoverer documentDisco
             string.IsNullOrWhiteSpace(codeNode.Summary)
                 ? codeNode.DisplayName
                 : $"{codeNode.DisplayName}\n{codeNode.Summary}",
-            null,
+            codeNode.BodyHash,
             codeNode.VectorEmbedding);
 
     private static IndexedDependency ToIndexedDependency(DependencyEdge dependencyEdge)

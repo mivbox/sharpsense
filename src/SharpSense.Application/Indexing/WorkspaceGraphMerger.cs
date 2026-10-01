@@ -47,17 +47,29 @@ internal static class WorkspaceGraphMerger
         }
 
         return Result.Ok(new ExtractedNodes(
-            [.. projects.Values.OrderBy(static project => project.Name, StringComparer.Ordinal)
-                .ThenBy(static project => project.Id, StringComparer.Ordinal)],
-            [.. nodes.Values.OrderBy(static node => node.FullyQualifiedName, StringComparer.Ordinal)
-                .ThenBy(static node => node.CanonicalId, StringComparer.Ordinal)],
-            [.. contributions.SelectMany(static contribution => contribution.Edges)
-                .Distinct()
-                .OrderBy(static edge => edge.CallerId, StringComparer.Ordinal)
-                .ThenBy(static edge => edge.CalleeId, StringComparer.Ordinal)
-                .ThenBy(static edge => edge.EdgeType)],
-            [.. contributions.SelectMany(static contribution => contribution.Diagnostics)
-                .Distinct(StringComparer.Ordinal)]));
+            [
+                .. projects.Values
+                    .OrderBy(static project => project.Name, StringComparer.Ordinal)
+                    .ThenBy(static project => project.Id, StringComparer.Ordinal)
+            ],
+            [
+                .. nodes.Values
+                    .OrderBy(static node => node.FullyQualifiedName, StringComparer.Ordinal)
+                    .ThenBy(static node => node.CanonicalId, StringComparer.Ordinal)
+            ],
+            [
+                .. contributions
+                    .SelectMany(static contribution => contribution.Edges)
+                    .Distinct()
+                    .OrderBy(static edge => edge.CallerId, StringComparer.Ordinal)
+                    .ThenBy(static edge => edge.CalleeId, StringComparer.Ordinal)
+                    .ThenBy(static edge => edge.EdgeType)
+            ],
+            [
+                .. contributions
+                    .SelectMany(static contribution => contribution.Diagnostics)
+                    .Distinct(StringComparer.Ordinal)
+            ]));
     }
 
     private static Result<ExtractedNodes> Conflict(string kind, string identity)

@@ -59,12 +59,15 @@ internal sealed class CSharpLanguageExtractor(
             [.. extractionPayload.CodeNodes.Select(ToIndexedCodeNode)],
             [.. extractionPayload.Edges.Select(ToIndexedDependency)],
             extractionPayload.Diagnostics,
-            [.. loadedWorkspace.Value.Solution.Projects
-                .SelectMany(static project => project.Documents.Select(static document => document.FilePath)
-                    .Concat(project.AdditionalDocuments.Select(static document => document.FilePath))
-                    .Concat(project.AnalyzerConfigDocuments.Select(static document => document.FilePath)))
-                .OfType<string>()
-                .Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)],
+            [
+                .. loadedWorkspace.Value.Solution.Projects
+                    .SelectMany(static project => project.Documents
+                        .Select(static document => document.FilePath)
+                        .Concat(project.AdditionalDocuments.Select(static document => document.FilePath))
+                        .Concat(project.AnalyzerConfigDocuments.Select(static document => document.FilePath)))
+                    .OfType<string>()
+                    .Distinct(FileSystemPaths.Comparer)
+            ],
             CanReuseForDocumentationChanges: true));
     }
 
@@ -91,7 +94,8 @@ internal sealed class CSharpLanguageExtractor(
             return loadedWorkspace;
         }
 
-        if (loadedWorkspace.Value.Solution.Projects.Any(static project => project.AdditionalDocuments.Any()))
+        if (loadedWorkspace.Value.Solution.Projects
+            .Any(static project => project.AdditionalDocuments.Any()))
         {
             // Generators may depend on arbitrary AdditionalFiles that are not source-file
             // events. Reload these workspaces so the next source edit observes those inputs.

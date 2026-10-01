@@ -3,7 +3,7 @@ using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Infrastructure.Shared;
-using static SharpSense.Infrastructure.Indexing.GraphPaths;
+using SharpSense.Infrastructure.Storage;
 using static SharpSense.Infrastructure.Indexing.PersistedGraphBuilder;
 
 namespace SharpSense.Infrastructure.Indexing;
@@ -41,27 +41,7 @@ internal static class GraphPersistence
                     projectNode.RelativeFilePath,
                     projectNode.ContentHash))
             .ToArrayAsync(ct);
-        var codeNodes = await CodeNodeNavigationQueries.ProjectCodeNodes(
-            context,
-            context.CodeNodes
-                .AsNoTracking()
-                .OrderBy(static codeNode => codeNode.FullyQualifiedName)
-                .ThenBy(static codeNode => codeNode.Id))
-            .Select(
-                static codeNode => new IndexedCodeNode(
-                    codeNode.CanonicalId,
-                    codeNode.ProjectId,
-                    codeNode.FullyQualifiedName,
-                    codeNode.DisplayName,
-                    codeNode.NodeType,
-                    codeNode.RelativeFilePath,
-                    codeNode.StartLine,
-                    codeNode.EndLine,
-                    codeNode.Summary,
-                    codeNode.SearchText,
-                    codeNode.BodyHash,
-                    codeNode.VectorEmbedding))
-            .ToArrayAsync(ct);
+        var codeNodes = await LoadPersistedCodeNodes(context, ct);
         var edges = (await CodeNodeNavigationQueries.ProjectDependencyEdges(
             context,
             context.DependencyEdges
@@ -115,7 +95,7 @@ internal static class GraphPersistence
         SharpSenseDbContext context,
         CancellationToken ct)
     {
-        var pathComparer = GetPathComparer();
+        var pathComparer = FileSystemPaths.Comparer;
         var persistedDirectories = await context.Directories
             .AsNoTracking()
             .Select(static directory => new
@@ -142,9 +122,21 @@ internal static class GraphPersistence
             .ToArrayAsync(ct);
 
         return new PersistedIdentityMaps(
-            persistedDirectories.ToDictionary(static directory => directory.Path, static directory => directory.Id, pathComparer),
-            persistedDocuments.ToDictionary(static document => document.RelativePath, static document => document.Id, pathComparer),
-            persistedGraphNodes.ToDictionary(static graphNode => graphNode.CanonicalId, static graphNode => graphNode.Id, StringComparer.Ordinal));
+            persistedDirectories
+                .ToDictionary(
+                    static directory => directory.Path,
+                    static directory => directory.Id,
+                    pathComparer),
+            persistedDocuments
+                .ToDictionary(
+                    static document => document.RelativePath,
+                    static document => document.Id,
+                    pathComparer),
+            persistedGraphNodes
+                .ToDictionary(
+                    static graphNode => graphNode.CanonicalId,
+                    static graphNode => graphNode.Id,
+                    StringComparer.Ordinal));
     }
 
     internal static async Task ReplacePersistedGraph(
@@ -157,19 +149,25 @@ internal static class GraphPersistence
         // ancestor would cascade through CodeNodes and destroy their authored memories.
         await context.DependencyEdges.ExecuteDeleteAsync(ct);
         await context.DirectoryClosures.ExecuteDeleteAsync(ct);
-        var graphNodeIds = graph.GraphNodes.Select(static node => node.Id)
+        var graphNodeIds = graph.GraphNodes
+            .Select(static node => node.Id)
             .ToArray();
-        await context.GraphNodes.Where(node => !EF.Parameter(graphNodeIds)
-            .Contains(node.Id))
+        await context.GraphNodes
+            .Where(node => !EF.Parameter(graphNodeIds)
+                .Contains(node.Id))
             .ExecuteDeleteAsync(ct);
-        var documentIds = graph.Documents.Select(static document => document.Id)
+        var documentIds = graph.Documents
+            .Select(static document => document.Id)
             .ToArray();
         // Documents and directories are pruned after surviving nodes have been moved to new files.
-        var directoryIds = graph.Directories.Select(static directory => directory.Id)
+        var directoryIds = graph.Directories
+            .Select(static directory => directory.Id)
             .ToArray();
-        var persistedCodeNodeIds = await context.CodeNodes.Select(static node => node.Id)
+        var persistedCodeNodeIds = await context.CodeNodes
+            .Select(static node => node.Id)
             .ToHashSetAsync(ct);
-        var persistedProjectNodeIds = await context.ProjectNodes.Select(static node => node.Id)
+        var persistedProjectNodeIds = await context.ProjectNodes
+            .Select(static node => node.Id)
             .ToHashSetAsync(ct);
         context.ChangeTracker.Clear();
 
@@ -189,16 +187,21 @@ internal static class GraphPersistence
         }
 
         await context.SaveChangesAsync(ct);
-        await context.Documents.Where(document => !EF.Parameter(documentIds)
-            .Contains(document.Id))
+        await context.Documents
+            .Where(document => !EF.Parameter(documentIds)
+                .Contains(document.Id))
             .ExecuteDeleteAsync(ct);
-        await context.Directories.Where(directory => !EF.Parameter(directoryIds)
-            .Contains(directory.Id))
+        await context.Directories
+            .Where(directory => !EF.Parameter(directoryIds)
+                .Contains(directory.Id))
             .ExecuteDeleteAsync(ct);
         await RefreshSearchIndex(context, ct);
     }
 
-    private static void UpsertDirectories(SharpSenseDbContext context, DirectoryRecord[] directories, PersistedIdentityMaps identityMaps)
+    private static void UpsertDirectories(
+        SharpSenseDbContext context,
+        DirectoryRecord[] directories,
+        PersistedIdentityMaps identityMaps)
     {
         if (directories.Length == 0)
         {
@@ -218,7 +221,10 @@ internal static class GraphPersistence
         }
     }
 
-    private static void UpsertDocuments(SharpSenseDbContext context, DocumentRecord[] documents, PersistedIdentityMaps identityMaps)
+    private static void UpsertDocuments(
+        SharpSenseDbContext context,
+        DocumentRecord[] documents,
+        PersistedIdentityMaps identityMaps)
     {
         if (documents.Length == 0)
         {
@@ -238,7 +244,10 @@ internal static class GraphPersistence
         }
     }
 
-    private static void UpsertGraphNodes(SharpSenseDbContext context, GraphNodeRecord[] graphNodes, PersistedIdentityMaps identityMaps)
+    private static void UpsertGraphNodes(
+        SharpSenseDbContext context,
+        GraphNodeRecord[] graphNodes,
+        PersistedIdentityMaps identityMaps)
     {
         if (graphNodes.Length == 0)
         {
@@ -258,7 +267,10 @@ internal static class GraphPersistence
         }
     }
 
-    private static void UpsertCodeNodes(SharpSenseDbContext context, CodeNodeRecord[] codeNodes, IReadOnlySet<int> persistedIds)
+    private static void UpsertCodeNodes(
+        SharpSenseDbContext context,
+        CodeNodeRecord[] codeNodes,
+        IReadOnlySet<int> persistedIds)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(codeNodes);
@@ -281,7 +293,10 @@ internal static class GraphPersistence
         }
     }
 
-    private static void UpsertProjectNodes(SharpSenseDbContext context, ProjectNodeRecord[] projectNodes, IReadOnlySet<int> persistedIds)
+    private static void UpsertProjectNodes(
+        SharpSenseDbContext context,
+        ProjectNodeRecord[] projectNodes,
+        IReadOnlySet<int> persistedIds)
     {
         if (projectNodes.Length == 0)
         {

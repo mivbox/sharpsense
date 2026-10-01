@@ -28,7 +28,6 @@ internal sealed class NodeExtractor
         using var codeNodeActivity = SharpSenseTraceSpan.Start("roslyn.build-code-nodes");
         var codeNodesByCanonicalId = new Dictionary<string, CodeNode>(StringComparer.Ordinal);
         var declaredSymbols = new List<DeclaredSymbolContext>();
-        var symbolNodeIds = new Dictionary<string, string>(StringComparer.Ordinal);
 
         for (var projectIndex = 0; projectIndex < orderedProjects.Count; projectIndex++)
         {
@@ -86,12 +85,13 @@ internal sealed class NodeExtractor
                         diagnostics,
                         codeNodesByCanonicalId,
                         declaredSymbols,
-                        symbolNodeIds,
                         projectId,
                         ct);
                 }
 
-                projectActivity.AddTag("project.code_node.count", codeNodesByCanonicalId.Count - codeNodeCountBeforeProject);
+                projectActivity.AddTag(
+                    "project.code_node.count",
+                    codeNodesByCanonicalId.Count - codeNodeCountBeforeProject);
             }
             catch (Exception ex)
             {
@@ -107,7 +107,7 @@ internal sealed class NodeExtractor
             .ToArray();
         codeNodeActivity.AddTag("index.code_node.count", codeNodes.Length);
 
-        return new NodeExtractionResult(codeNodes, declaredSymbols, symbolNodeIds);
+        return new NodeExtractionResult(codeNodes, declaredSymbols);
     }
 
     private static async Task ExtractSyntaxTree(
@@ -118,7 +118,6 @@ internal sealed class NodeExtractor
         ConcurrentQueue<string> diagnostics,
         IDictionary<string, CodeNode> codeNodesByCanonicalId,
         ICollection<DeclaredSymbolContext> declaredSymbols,
-        IDictionary<string, string> symbolNodeIds,
         string projectId,
         CancellationToken ct)
     {
@@ -133,7 +132,6 @@ internal sealed class NodeExtractor
             diagnostics,
             codeNodesByCanonicalId,
             declaredSymbols,
-            symbolNodeIds,
             projectId);
     }
 
@@ -146,7 +144,6 @@ internal sealed class NodeExtractor
         ConcurrentQueue<string> diagnostics,
         IDictionary<string, CodeNode> codeNodesByCanonicalId,
         ICollection<DeclaredSymbolContext> declaredSymbols,
-        IDictionary<string, string> symbolNodeIds,
         string projectId)
     {
         var relativeFilePath = RoslynPathUtilities.GetRelativeSyntaxTreePath(
@@ -163,63 +160,22 @@ internal sealed class NodeExtractor
         {
             switch (syntaxNode)
             {
-                case ClassDeclarationSyntax classDeclaration:
+                case TypeDeclarationSyntax typeDeclaration:
                     AddDeclaredSymbol(
                         codeNodesByCanonicalId,
                         declaredSymbols,
-                        symbolNodeIds,
                         semanticModel,
-                        classDeclaration,
-                        semanticModel.GetDeclaredSymbol(classDeclaration),
+                        typeDeclaration,
+                        semanticModel.GetDeclaredSymbol(typeDeclaration),
                         projectId,
                         relativeFilePath,
-                        NodeType.Class);
-                    break;
-
-                case InterfaceDeclarationSyntax interfaceDeclaration:
-                    AddDeclaredSymbol(
-                        codeNodesByCanonicalId,
-                        declaredSymbols,
-                        symbolNodeIds,
-                        semanticModel,
-                        interfaceDeclaration,
-                        semanticModel.GetDeclaredSymbol(interfaceDeclaration),
-                        projectId,
-                        relativeFilePath,
-                        NodeType.Interface);
-                    break;
-
-                case RecordDeclarationSyntax recordDeclaration:
-                    AddDeclaredSymbol(
-                        codeNodesByCanonicalId,
-                        declaredSymbols,
-                        symbolNodeIds,
-                        semanticModel,
-                        recordDeclaration,
-                        semanticModel.GetDeclaredSymbol(recordDeclaration),
-                        projectId,
-                        relativeFilePath,
-                        NodeType.Class);
-                    break;
-
-                case StructDeclarationSyntax structDeclaration:
-                    AddDeclaredSymbol(
-                        codeNodesByCanonicalId,
-                        declaredSymbols,
-                        symbolNodeIds,
-                        semanticModel,
-                        structDeclaration,
-                        semanticModel.GetDeclaredSymbol(structDeclaration),
-                        projectId,
-                        relativeFilePath,
-                        NodeType.Class);
+                        typeDeclaration is InterfaceDeclarationSyntax ? NodeType.Interface : NodeType.Class);
                     break;
 
                 case MethodDeclarationSyntax methodDeclaration:
                     AddDeclaredSymbol(
                         codeNodesByCanonicalId,
                         declaredSymbols,
-                        symbolNodeIds,
                         semanticModel,
                         methodDeclaration,
                         semanticModel.GetDeclaredSymbol(methodDeclaration),
@@ -232,7 +188,6 @@ internal sealed class NodeExtractor
                     AddDeclaredSymbol(
                         codeNodesByCanonicalId,
                         declaredSymbols,
-                        symbolNodeIds,
                         semanticModel,
                         propertyDeclaration,
                         semanticModel.GetDeclaredSymbol(propertyDeclaration),
@@ -247,7 +202,6 @@ internal sealed class NodeExtractor
                         AddDeclaredSymbol(
                             codeNodesByCanonicalId,
                             declaredSymbols,
-                            symbolNodeIds,
                             semanticModel,
                             variable,
                             semanticModel.GetDeclaredSymbol(variable),
@@ -264,7 +218,6 @@ internal sealed class NodeExtractor
     private static void AddDeclaredSymbol(
         IDictionary<string, CodeNode> codeNodesByCanonicalId,
         ICollection<DeclaredSymbolContext> declaredSymbols,
-        IDictionary<string, string> symbolNodeIds,
         SemanticModel semanticModel,
         SyntaxNode declarationSyntax,
         ISymbol? symbol,
@@ -278,13 +231,10 @@ internal sealed class NodeExtractor
         }
 
         var canonicalSymbol = RoslynSymbolUtilities.Canonicalize(symbol);
-        var symbolLookupKey = RoslynSymbolUtilities.GetCanonicalId(projectId, canonicalSymbol);
         var canonicalId = RoslynSymbolUtilities.GetCanonicalId(projectId, canonicalSymbol);
         var fullyQualifiedName = RoslynSymbolUtilities.GetFullyQualifiedName(canonicalSymbol);
         var (startLine, endLine) = GetSourceLineRange(declarationSyntax);
 
-        symbolNodeIds.TryAdd(symbolLookupKey, canonicalId);
-        symbolNodeIds.TryAdd(RoslynSymbolUtilities.GetCanonicalId(projectId, symbol), canonicalId);
 
         // Partial declarations share an identity within their declaring project.
         // Identically named declarations in different projects remain distinct.
@@ -307,7 +257,12 @@ internal sealed class NodeExtractor
             };
         }
 
-        declaredSymbols.Add(new DeclaredSymbolContext(canonicalId, projectId, canonicalSymbol, declarationSyntax, semanticModel));
+        declaredSymbols.Add(new DeclaredSymbolContext(
+            canonicalId,
+            projectId,
+            canonicalSymbol,
+            declarationSyntax,
+            semanticModel));
     }
 
     private static (int StartLine, int EndLine) GetSourceLineRange(SyntaxNode declarationSyntax)
@@ -320,8 +275,3 @@ internal sealed class NodeExtractor
             lineSpan.EndLinePosition.Line + 1);
     }
 }
-
-internal sealed record NodeExtractionResult(
-    IReadOnlyList<CodeNode> CodeNodes,
-    IReadOnlyList<DeclaredSymbolContext> DeclaredSymbols,
-    IReadOnlyDictionary<string, string> SymbolNodeIds);

@@ -21,10 +21,7 @@ public static class IndexingInfrastructureServiceCollectionExtensions
         services.TryAddSingleton<NodeExtractor>();
         services.TryAddSingleton<EdgeExtractor>();
         services.TryAddScoped<IWorkspaceLoader, WorkspaceLoader>();
-        services.TryAddSingleton<ITargetAnalysisEngine>(serviceProvider => new RoslynTargetAnalysisEngine(
-            serviceProvider.GetRequiredService<NodeExtractor>(),
-            serviceProvider.GetRequiredService<EdgeExtractor>(),
-            serviceProvider.GetRequiredService<System.IO.Abstractions.IFileSystem>()));
+        services.TryAddSingleton<ITargetAnalysisEngine, RoslynTargetAnalysisEngine>();
         services.TryAddSingleton<IMarkdownIndexer, MarkdownIndexer>();
         services.TryAddSingleton<IWorkspaceWatcher, WorkspaceWatcher>();
         services.TryAddScoped<IWorkspaceFileDiscoverer, WorkspaceFileDiscoverer>();

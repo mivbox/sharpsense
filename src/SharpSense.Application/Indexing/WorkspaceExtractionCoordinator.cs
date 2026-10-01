@@ -63,7 +63,8 @@ internal sealed class WorkspaceExtractionCoordinator(
         var results = new Result<ExtractedNodes>?[plan.Count];
         ExceptionDispatchInfo? workerFailure = null;
         using var workers = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var groups = plan.Select((step, index) => (Step: step, Index: index))
+        var groups = plan
+            .Select((step, index) => (Step: step, Index: index))
             .GroupBy(item => item.Step.Source.Kind);
 
         try
@@ -86,7 +87,10 @@ internal sealed class WorkspaceExtractionCoordinator(
                     {
                         token.ThrowIfCancellationRequested();
                         var source = new AnalysisSource(step.Source.Kind, step.Source.Path);
-                        if (previous is not null && CanReuse(step, previous.Contributions[index], context.ChangedFiles!))
+                        if (previous is not null && CanReuse(
+                            step,
+                            previous.Contributions[index],
+                            context.ChangedFiles!))
                         {
                             contributions[index] = previous.Contributions[index];
                             progress?.Report(new IndexingProgress(
@@ -101,7 +105,9 @@ internal sealed class WorkspaceExtractionCoordinator(
                         var result = await step.Extractor.Extract(
                             step.Context with
                             {
-                                Progress = analysis?.SourceProgress(source, step.Context.Progress) ?? step.Context.Progress
+                                Progress = analysis?.SourceProgress(
+                                    source,
+                                    step.Context.Progress) ?? step.Context.Progress
                             },
                             token);
                         results[index] = result;
@@ -112,7 +118,10 @@ internal sealed class WorkspaceExtractionCoordinator(
                             return;
                         }
 
-                        contributions[index] = Normalize(WorkspaceExtractionPlan.SelectEmittedProjects(step, result.Value, paths));
+                        contributions[index] = Normalize(WorkspaceExtractionPlan.SelectEmittedProjects(
+                            step,
+                            result.Value,
+                            paths));
                         analysis?.SourceCompleted(source);
                     }
                 }
@@ -135,7 +144,8 @@ internal sealed class WorkspaceExtractionCoordinator(
 
         ct.ThrowIfCancellationRequested();
         workerFailure?.Throw();
-        var errors = results.Where(result => result?.IsFailed == true)
+        var errors = results
+            .Where(result => result?.IsFailed == true)
             .SelectMany(result => result!.Errors)
             .ToArray();
         if (errors.Length > 0)
@@ -171,7 +181,10 @@ internal sealed class WorkspaceExtractionCoordinator(
         _committed = new CommittedContributions(batch.Key, batch.Contributions);
     }
 
-    private bool CanReuse(WorkspaceExtractionStep step, ExtractedNodes contribution, IReadOnlyList<WorkspaceFileChange> changes)
+    private bool CanReuse(
+        WorkspaceExtractionStep step,
+        ExtractedNodes contribution,
+        IReadOnlyList<WorkspaceFileChange> changes)
     {
         if (step.Source.Kind == WorkspaceSourceKind.Markdown || !contribution.CanReuseForDocumentationChanges)
         {
@@ -181,7 +194,8 @@ internal sealed class WorkspaceExtractionCoordinator(
         // A new/renamed Markdown file could match an AdditionalFiles glob that had no
         // previous matches. Reevaluate C# rather than guessing MSBuild's item membership.
         if (step.Source.Kind == WorkspaceSourceKind.CSharp &&
-            changes.Any(change => change.ActionType is WorkspaceFileChangeAction.Added or WorkspaceFileChangeAction.Renamed))
+            changes
+                .Any(change => change.ActionType is WorkspaceFileChangeAction.Added or WorkspaceFileChangeAction.Renamed))
         {
             return false;
         }
@@ -195,28 +209,41 @@ internal sealed class WorkspaceExtractionCoordinator(
 
         return changes
             .SelectMany(change => change.GetAffectedPaths())
-            .All(path => paths.TryToRepositoryRelativePath(path, out var relativePath) && !inputs.Contains(relativePath));
+            .All(path => paths.TryToRepositoryRelativePath(
+                path,
+                out var relativePath) && !inputs.Contains(relativePath));
     }
 
     private static bool IsDocumentationOnly(IReadOnlyList<WorkspaceFileChange>? changes)
         => changes is { Count: > 0 } && changes.All(change =>
             change.ActionType is WorkspaceFileChangeAction.Added or WorkspaceFileChangeAction.Modified
                 or WorkspaceFileChangeAction.Deleted or WorkspaceFileChangeAction.Renamed &&
-            change.GetAffectedPaths().Any() &&
-            change.GetAffectedPaths().All(path =>
-                Path.GetExtension(path).ToLowerInvariant() is ".md" or ".markdown" or ".mdown" or ".mkd"));
+            change.GetAffectedPaths()
+                .Any() &&
+            change.GetAffectedPaths()
+                .All(path =>
+                Path.GetExtension(path)
+                    .ToLowerInvariant() is ".md" or ".markdown" or ".mdown" or ".mkd"));
 
     private ExtractedNodes Normalize(ExtractedNodes contribution)
         => contribution with
         {
-            Projects = [.. contribution.Projects.Select(project => project with
-            {
-                RelativeFilePath = paths.ToRepositoryRelativePath(project.RelativeFilePath)
-            })],
-            CodeNodes = [.. contribution.CodeNodes.Select(node => node with
-            {
-                RelativeFilePath = paths.ToRepositoryRelativePath(node.RelativeFilePath)
-            })],
+            Projects =
+            [
+                .. contribution.Projects
+                    .Select(project => project with
+                    {
+                        RelativeFilePath = paths.ToRepositoryRelativePath(project.RelativeFilePath)
+                    })
+            ],
+            CodeNodes =
+            [
+                .. contribution.CodeNodes
+                    .Select(node => node with
+                    {
+                        RelativeFilePath = paths.ToRepositoryRelativePath(node.RelativeFilePath)
+                    })
+            ],
             Edges = [.. contribution.Edges],
             Diagnostics = [.. contribution.Diagnostics],
             InputPaths = contribution.InputPaths is null ? null : [.. contribution.InputPaths]
@@ -244,5 +271,3 @@ internal sealed class WorkspaceExtractionCoordinator(
         }
     }
 }
-
-internal sealed record WorkspaceExtractionBatch(string Key, IReadOnlyList<ExtractedNodes> Contributions, ExtractedNodes Graph);

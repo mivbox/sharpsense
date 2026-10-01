@@ -56,43 +56,13 @@ internal static class GraphSnapshot
             extractedNodes.Diagnostics);
     }
 
-    internal static bool AreEquivalentSnapshots(
-        ExtractedNodes currentSnapshot,
-        ExtractedNodes updatedSnapshot)
-    {
-        return AreEquivalentProjects(currentSnapshot.Projects, updatedSnapshot.Projects) &&
-            AreEquivalentCodeNodes(currentSnapshot.CodeNodes, updatedSnapshot.CodeNodes) &&
-            AreEquivalentEdges(currentSnapshot.Edges, updatedSnapshot.Edges);
-    }
-
-    internal static string DescribeSnapshotDifference(
+    internal static string? DescribeSnapshotDifference(
         ExtractedNodes currentSnapshot,
         ExtractedNodes updatedSnapshot)
     {
         return DescribeProjectDifference(currentSnapshot.Projects, updatedSnapshot.Projects) ??
             DescribeCodeNodeDifference(currentSnapshot.CodeNodes, updatedSnapshot.CodeNodes) ??
-                DescribeEdgeDifference(currentSnapshot.Edges, updatedSnapshot.Edges) ??
-                    "no difference detected";
-    }
-
-    private static bool AreEquivalentProjects(
-        IReadOnlyList<IndexedProject> currentProjects,
-        IReadOnlyList<IndexedProject> updatedProjects)
-    {
-        if (currentProjects.Count != updatedProjects.Count)
-        {
-            return false;
-        }
-
-        for (var index = 0; index < currentProjects.Count; index++)
-        {
-            if (!EqualityComparer<IndexedProject>.Default.Equals(currentProjects[index], updatedProjects[index]))
-            {
-                return false;
-            }
-        }
-
-        return true;
+                DescribeEdgeDifference(currentSnapshot.Edges, updatedSnapshot.Edges);
     }
 
     private static string? DescribeProjectDifference(
@@ -118,7 +88,10 @@ internal static class GraphSnapshot
                 return $"project[{index}] name differs: persisted='{currentProject.Name}', updated='{updatedProject.Name}'";
             }
 
-            if (!string.Equals(currentProject.RelativeFilePath, updatedProject.RelativeFilePath, StringComparison.Ordinal))
+            if (!string.Equals(
+                currentProject.RelativeFilePath,
+                updatedProject.RelativeFilePath,
+                StringComparison.Ordinal))
             {
                 return $"project[{index}] relative path differs: persisted='{currentProject.RelativeFilePath}', updated='{updatedProject.RelativeFilePath}'";
             }
@@ -130,39 +103,6 @@ internal static class GraphSnapshot
         }
 
         return null;
-    }
-
-    private static bool AreEquivalentCodeNodes(
-        IReadOnlyList<IndexedCodeNode> currentCodeNodes,
-        IReadOnlyList<IndexedCodeNode> updatedCodeNodes)
-    {
-        if (currentCodeNodes.Count != updatedCodeNodes.Count)
-        {
-            return false;
-        }
-
-        for (var index = 0; index < currentCodeNodes.Count; index++)
-        {
-            var currentCodeNode = currentCodeNodes[index];
-            var updatedCodeNode = updatedCodeNodes[index];
-            if (!EqualityComparer<string>.Default.Equals(currentCodeNode.CanonicalId, updatedCodeNode.CanonicalId) ||
-                !EqualityComparer<string?>.Default.Equals(currentCodeNode.ProjectId, updatedCodeNode.ProjectId) ||
-                !EqualityComparer<string>.Default.Equals(currentCodeNode.FullyQualifiedName, updatedCodeNode.FullyQualifiedName) ||
-                !EqualityComparer<string>.Default.Equals(currentCodeNode.DisplayName, updatedCodeNode.DisplayName) ||
-                currentCodeNode.NodeType != updatedCodeNode.NodeType ||
-                !EqualityComparer<string>.Default.Equals(currentCodeNode.RelativeFilePath, updatedCodeNode.RelativeFilePath) ||
-                currentCodeNode.StartLine != updatedCodeNode.StartLine ||
-                currentCodeNode.EndLine != updatedCodeNode.EndLine ||
-                !EqualityComparer<string>.Default.Equals(currentCodeNode.Summary, updatedCodeNode.Summary) ||
-                !EqualityComparer<string>.Default.Equals(currentCodeNode.SearchText, updatedCodeNode.SearchText) ||
-                !EqualityComparer<string?>.Default.Equals(currentCodeNode.BodyHash, updatedCodeNode.BodyHash) ||
-                !VectorsEqual(currentCodeNode.VectorEmbedding, updatedCodeNode.VectorEmbedding))
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private static string? DescribeCodeNodeDifference(
@@ -188,7 +128,10 @@ internal static class GraphSnapshot
                 return $"code node[{index}] project id differs: persisted='{currentCodeNode.ProjectId}', updated='{updatedCodeNode.ProjectId}'";
             }
 
-            if (!string.Equals(currentCodeNode.FullyQualifiedName, updatedCodeNode.FullyQualifiedName, StringComparison.Ordinal))
+            if (!string.Equals(
+                currentCodeNode.FullyQualifiedName,
+                updatedCodeNode.FullyQualifiedName,
+                StringComparison.Ordinal))
             {
                 return $"code node[{index}] fully qualified name differs: persisted='{currentCodeNode.FullyQualifiedName}', updated='{updatedCodeNode.FullyQualifiedName}'";
             }
@@ -203,7 +146,10 @@ internal static class GraphSnapshot
                 return $"code node[{index}] node type differs: persisted='{currentCodeNode.NodeType}', updated='{updatedCodeNode.NodeType}'";
             }
 
-            if (!string.Equals(currentCodeNode.RelativeFilePath, updatedCodeNode.RelativeFilePath, StringComparison.Ordinal))
+            if (!string.Equals(
+                currentCodeNode.RelativeFilePath,
+                updatedCodeNode.RelativeFilePath,
+                StringComparison.Ordinal))
             {
                 return $"code node[{index}] relative path differs: persisted='{currentCodeNode.RelativeFilePath}', updated='{updatedCodeNode.RelativeFilePath}'";
             }
@@ -240,26 +186,6 @@ internal static class GraphSnapshot
         }
 
         return null;
-    }
-
-    private static bool AreEquivalentEdges(
-        IReadOnlyList<IndexedDependency> currentEdges,
-        IReadOnlyList<IndexedDependency> updatedEdges)
-    {
-        if (currentEdges.Count != updatedEdges.Count)
-        {
-            return false;
-        }
-
-        for (var index = 0; index < currentEdges.Count; index++)
-        {
-            if (!EqualityComparer<IndexedDependency>.Default.Equals(currentEdges[index], updatedEdges[index]))
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private static string? DescribeEdgeDifference(

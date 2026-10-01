@@ -15,8 +15,10 @@ public static class IndexingServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddScoped<WorkspaceExtractionCoordinator>();
-        services.TryAddTransient<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>, IndexWorkspaceCommandHandler>();
-        services.TryAddTransient<ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>, UpdateWorkspaceFilesCommandHandler>();
+        services
+            .TryAddTransient<ICommandHandler<IndexWorkspaceCommand, Result<IndexWorkspaceOutcome>>, IndexWorkspaceCommandHandler>();
+        services
+            .TryAddTransient<ICommandHandler<UpdateWorkspaceFilesCommand, Result<UpdateWorkspaceFilesOutcome>>, UpdateWorkspaceFilesCommandHandler>();
 
         return services;
     }

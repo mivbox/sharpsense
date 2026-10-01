@@ -42,18 +42,18 @@ internal sealed class WorkspaceFileDiscoverer(
             return Task.FromResult<IReadOnlyList<DiscoveredFile>>([]);
         }
 
-        var matcher = new Matcher(GetPathComparison());
+        var matcher = new Matcher(FileSystemPaths.Comparison);
         foreach (var includeGlob in normalizedGlobs)
         {
             matcher.AddInclude(includeGlob);
         }
 
         var ignoreEngine = CreateIgnoreEngine();
-        var discoveredFilesByRelativePath = new Dictionary<string, DiscoveredFile>(GetPathComparer());
+        var discoveredFilesByRelativePath = new Dictionary<string, DiscoveredFile>(FileSystemPaths.Comparer);
 
         foreach (var absolutePath in fileSystem.Directory
-                     .EnumerateFiles(absoluteTargetDirectory, "*", SearchOption.AllDirectories)
-            .OrderBy(static path => path, GetPathComparer()))
+            .EnumerateFiles(absoluteTargetDirectory, "*", SearchOption.AllDirectories)
+            .OrderBy(static path => path, FileSystemPaths.Comparer))
         {
             ct.ThrowIfCancellationRequested();
 
@@ -84,7 +84,7 @@ internal sealed class WorkspaceFileDiscoverer(
         return Task.FromResult<IReadOnlyList<DiscoveredFile>>(
             [
                 .. discoveredFilesByRelativePath.Values
-                    .OrderBy(static file => file.RelativeFilePath, GetPathComparer())
+                    .OrderBy(static file => file.RelativeFilePath, FileSystemPaths.Comparer)
             ]);
     }
 
@@ -99,10 +99,4 @@ internal sealed class WorkspaceFileDiscoverer(
 
         return ignoreEngine.Add(fileSystem.File.ReadAllLines(gitIgnorePath));
     }
-
-    private static StringComparer GetPathComparer()
-        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-
-    private static StringComparison GetPathComparison()
-        => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 }

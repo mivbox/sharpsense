@@ -163,8 +163,13 @@ internal sealed class AnalysisOperation
         }
     }
 
-    private void Publish(AnalysisNotificationKind kind, AnalysisSource? source = null, string? message = null,
-        int? completed = null, int? total = null, AnalysisSummary? summary = null)
+    private void Publish(
+        AnalysisNotificationKind kind,
+        AnalysisSource? source = null,
+        string? message = null,
+        int? completed = null,
+        int? total = null,
+        AnalysisSummary? summary = null)
     {
         lock (_gate)
         {

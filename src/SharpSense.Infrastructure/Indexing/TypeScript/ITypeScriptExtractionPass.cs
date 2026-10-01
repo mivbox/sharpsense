@@ -1,5 +1,3 @@
-using JetBrains.Annotations;
-
 namespace SharpSense.Infrastructure.Indexing.TypeScript;
 
 /// <summary>
@@ -7,7 +5,6 @@ namespace SharpSense.Infrastructure.Indexing.TypeScript;
 /// the same discovered-file and extraction-output context. Implementations are expected to mutate the supplied context
 /// only by appending projects, code nodes, dependency edges, or diagnostics for the current TypeScript indexing run.
 /// </summary>
-[PublicAPI]
 internal interface ITypeScriptExtractionPass
 {
     /// <summary>

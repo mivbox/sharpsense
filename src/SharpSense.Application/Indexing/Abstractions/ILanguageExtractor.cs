@@ -13,10 +13,7 @@ namespace SharpSense.Application.Indexing.Abstractions;
 [PublicAPI]
 public interface ILanguageExtractor
 {
-    WorkspaceSourceKind SourceKind
-    {
-        get;
-    }
+    WorkspaceSourceKind SourceKind { get; }
 
     /// <summary>
     /// Extracts all knowledge-graph data handled by this strategy for the absolute target path described by the supplied

@@ -4,6 +4,7 @@ using SharpSense.Application.Indexing;
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Options;
+using SharpSense.Infrastructure.Storage;
 
 namespace SharpSense.Infrastructure.Indexing.Watching;
 
@@ -15,9 +16,7 @@ internal sealed class WorkspaceChangeFilter(
     IIndexingWorkspacePaths workspacePaths,
     IOptions<WorkspaceExecutionOptions> options) : IWorkspaceChangeFilter
 {
-    private readonly StringComparer _pathComparer = OperatingSystem.IsWindows()
-        ? StringComparer.OrdinalIgnoreCase
-        : StringComparer.Ordinal;
+    private readonly StringComparer _pathComparer = FileSystemPaths.Comparer;
     private readonly Dictionary<WorkspaceSourceKind, HashSet<string>> _trackedFiles = [];
     private readonly Dictionary<WorkspaceSourceKind, HashSet<string>> _trackedDirectories = [];
     private readonly Dictionary<WorkspaceSourceKind, HashSet<string>> _declaredInputs = [];
@@ -30,9 +29,7 @@ internal sealed class WorkspaceChangeFilter(
             return true;
         }
 
-        var markdownMatcher = new Matcher(OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal);
+        var markdownMatcher = new Matcher(FileSystemPaths.Comparison);
         markdownMatcher.AddIncludePatterns(sources
             .Where(static source => source.Kind == WorkspaceSourceKind.Markdown)
             .Select(static source => source.Path));
@@ -106,7 +103,11 @@ internal sealed class WorkspaceChangeFilter(
         }
     }
 
-    private bool IsRelevantSourcePath(WorkspaceSource source, string path, bool directoryChange, WorkspaceFileChangeAction action)
+    private bool IsRelevantSourcePath(
+        WorkspaceSource source,
+        string path,
+        bool directoryChange,
+        WorkspaceFileChangeAction action)
     {
         // Declared semantic inputs can have arbitrary extensions, including Markdown
         // generator inputs outside documentation selections. Check them before language filters.
@@ -114,8 +115,12 @@ internal sealed class WorkspaceChangeFilter(
         var declaredInputs = GetPaths(_declaredInputs, source.Kind, StringComparer.OrdinalIgnoreCase);
         // Only invalidation of already-declared inputs is conservative about casing.
         // Repository containment and selected source identity retain their original rules.
-        if (declaredInputs.Contains(path) || directoryChange && declaredInputs.Any(input =>
-                input.StartsWith(Normalize(path).TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase)))
+        if (declaredInputs.Contains(path) || directoryChange && declaredInputs
+            .Any(input =>
+                input.StartsWith(
+                    Normalize(path)
+                        .TrimEnd('/') + "/",
+                    StringComparison.OrdinalIgnoreCase)))
         {
             return true;
         }
@@ -196,14 +201,13 @@ internal sealed class WorkspaceChangeFilter(
     private bool IsWithin(string path, string directory)
     {
         path = Normalize(path);
-        directory = Normalize(directory).TrimEnd('/');
+        directory = Normalize(directory)
+            .TrimEnd('/');
 
         return directory is "" or "." || _pathComparer.Equals(path, directory) ||
             path.StartsWith(
                 directory + "/",
-                OperatingSystem.IsWindows()
-                    ? StringComparison.OrdinalIgnoreCase
-                    : StringComparison.Ordinal);
+                FileSystemPaths.Comparison);
     }
 
     private static string Normalize(string path) => path.Replace('\\', '/');

@@ -1,5 +1,4 @@
 using FluentResults;
-using Microsoft.CodeAnalysis;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Application.Shared.Errors;
 
@@ -29,14 +28,6 @@ internal interface IWorkspaceLoader : IDisposable
     /// <summary>Reopens the target from disk, discarding cached project evaluation and document snapshots.</summary>
     Task<Result<WorkspaceLoadResult>> Reload(string targetPath, CancellationToken ct = default);
 
-    Task<Result<WorkspaceLoadResult>> UpdateDocuments(
-        string targetPath,
-        IReadOnlyList<WorkspaceFileChange> changedFiles)
-        => UpdateDocuments(
-            targetPath,
-            changedFiles,
-            CancellationToken.None);
-
     /// <summary>
     /// Applies the supplied file changes to an already-loaded workspace, reloading the workspace when incremental document
     /// updates are no longer safe. Returns the updated solution snapshot wrapped in a <see cref="Result{T}"/> so any
@@ -53,45 +44,4 @@ internal interface IWorkspaceLoader : IDisposable
         string targetPath,
         IReadOnlyList<WorkspaceFileChange> changedFiles,
         CancellationToken ct = default);
-}
-
-internal sealed class WorkspaceLoadResult
-{
-    public WorkspaceLoadResult(
-        Solution solution,
-        IReadOnlyList<string> diagnostics)
-        : this(solution, diagnostics, [])
-    {
-    }
-
-    public WorkspaceLoadResult(
-        Solution solution,
-        IReadOnlyList<string> diagnostics,
-        IReadOnlyList<ServiceError> errors)
-    {
-        Solution = solution ?? throw new ArgumentNullException(nameof(solution));
-        Diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
-        Errors = errors ?? throw new ArgumentNullException(nameof(errors));
-    }
-
-    public Solution Solution
-    {
-        get;
-    }
-
-    public IReadOnlyList<string> Diagnostics
-    {
-        get;
-    }
-
-    public IReadOnlyList<ServiceError> Errors
-    {
-        get;
-    }
-
-    public IReadOnlyList<Project> OrderedProjects =>
-    [
-        .. Solution.Projects
-            .OrderBy(static project => project.FilePath ?? project.Name, StringComparer.Ordinal)
-    ];
 }

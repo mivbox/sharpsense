@@ -29,9 +29,10 @@ internal static class CodeNodeEmbeddingCoordinator
 
         var persistedCodeNodesByCanonicalId = disableCache || persistedCodeNodes.Count == 0
             ? null
-            : persistedCodeNodes.ToDictionary(
-                static codeNode => codeNode.CanonicalId,
-                StringComparer.Ordinal);
+            : persistedCodeNodes
+                .ToDictionary(
+                    static codeNode => codeNode.CanonicalId,
+                    StringComparer.Ordinal);
         var updatedCodeNodes = new IndexedCodeNode[codeNodes.Count];
         var embeddingRequests = new List<(int Index, string SearchText)>();
         var reusedEmbeddingCount = 0;

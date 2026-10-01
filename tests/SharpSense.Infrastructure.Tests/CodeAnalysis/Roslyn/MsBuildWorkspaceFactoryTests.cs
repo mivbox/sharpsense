@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using Microsoft.CodeAnalysis;
 using SharpSense.Domain.KnowledgeGraph.Enums;
+using SharpSense.Infrastructure.CodeAnalysis;
 using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 using SharpSense.Infrastructure.Storage;
 using System.Diagnostics;
@@ -26,7 +27,8 @@ public sealed class MsBuildWorkspaceFactoryTests
         result.Value.Diagnostics.Should().Contain(diagnostic =>
             diagnostic.Contains("MSBuild warning NU1904", StringComparison.Ordinal) &&
             diagnostic.Contains("Synthetic critical audit warning", StringComparison.Ordinal));
-        result.Value.Solution.Projects.SelectMany(project => project.Documents).Should().Contain(document => document.Name == "Feature.cs");
+        result.Value.Solution.Projects
+            .SelectMany(project => project.Documents).Should().Contain(document => document.Name == "Feature.cs");
         File.ReadAllText(fixture.ProjectPath).Should().Be(projectBefore);
     }
 
@@ -35,8 +37,9 @@ public sealed class MsBuildWorkspaceFactoryTests
     [InlineData("Error", false)]
     public async Task WhenAssetsReplayAuditDiagnostic_ThenOnlyWarningPromotionIsRelaxed(string level, bool succeeds)
     {
+        var ct = TestContext.Current.CancellationToken;
         using var fixture = new WarningProject();
-        await fixture.Restore(TestContext.Current.CancellationToken);
+        await fixture.Restore(ct);
         var assets = JsonNode.Parse(File.ReadAllText(fixture.AssetsPath))!.AsObject();
         assets["logs"] = new JsonArray(new JsonObject
         {
@@ -50,7 +53,7 @@ public sealed class MsBuildWorkspaceFactoryTests
         var assetsBefore = File.ReadAllText(fixture.AssetsPath);
         using var loader = new WorkspaceLoader(new MsBuildWorkspaceFactory(), new FileSystem());
 
-        var result = await loader.Load(fixture.ProjectPath, TestContext.Current.CancellationToken);
+        var result = await loader.Load(fixture.ProjectPath, ct);
 
         (succeeds == result.IsSuccess).Should().BeTrue(string.Join("; ", result.Errors.Select(error => error.Message)));
         var diagnostics = result.IsSuccess
@@ -73,7 +76,9 @@ public sealed class MsBuildWorkspaceFactoryTests
         var result = await loader.Load(fixture.ProjectPath, TestContext.Current.CancellationToken);
 
         result.IsFailed.Should().BeTrue();
-        result.Errors.Should().Contain(error => error.Message.Contains("Required project input is unavailable", StringComparison.Ordinal));
+        result.Errors.Should().Contain(error => error.Message.Contains(
+            "Required project input is unavailable",
+            StringComparison.Ordinal));
     }
 
     [Fact]
@@ -98,7 +103,9 @@ public sealed class MsBuildWorkspaceFactoryTests
         using var loader = new WorkspaceLoader(new MsBuildWorkspaceFactory(), new FileSystem());
 
         await ((Func<Task>)(() =>
-            loader.Load(fixture.ProjectPath, new CancellationToken(canceled: true)))).Should().ThrowAsync<OperationCanceledException>();
+            loader.Load(
+                fixture.ProjectPath,
+                new CancellationToken(canceled: true)))).Should().ThrowAsync<OperationCanceledException>();
     }
 
     [Fact]
@@ -146,7 +153,10 @@ public sealed class MsBuildWorkspaceFactoryTests
         var compilation = await project.GetCompilationAsync(TestContext.Current.CancellationToken);
         compilation.Should().NotBeNull();
         compilation.GetDiagnostics(TestContext.Current.CancellationToken).Should().Contain(diagnostic => diagnostic.Id == "CS0103" && diagnostic.Severity == DiagnosticSeverity.Error);
-        var workspace = new RepositoryWorkspace(fixture.RootPath, Path.Combine(fixture.RootPath, "unused.db"), fileSystem);
+        var workspace = new RepositoryWorkspace(
+            fixture.RootPath,
+            Path.Combine(fixture.RootPath, "unused.db"),
+            fileSystem);
         var engine = new RoslynTargetAnalysisEngine(new NodeExtractor(), new EdgeExtractor(), fileSystem);
 
         var graph = await engine.Extract(
@@ -159,6 +169,73 @@ public sealed class MsBuildWorkspaceFactoryTests
         var callee = graph.CodeNodes.Should().ContainSingle(node => node.FullyQualifiedName == "Fixture.Feature.Known()").Which;
         graph.Edges.Should().Contain(edge => edge.CallerId == caller.CanonicalId &&
             edge.CalleeId == callee.CanonicalId && edge.EdgeType == EdgeType.MethodCall);
+    }
+
+    [Fact]
+    public async Task WhenReferencedProjectHasBuildOutput_ThenPreservesSourceRelationships()
+    {
+        using var fixture = new WarningProject();
+        var ct = TestContext.Current.CancellationToken;
+        var dependencyDirectory = Path.Combine(fixture.RootPath, "Dependency");
+        Directory.CreateDirectory(dependencyDirectory);
+        File.WriteAllText(
+            Path.Combine(dependencyDirectory, "Dependency.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+            </Project>
+            """);
+        File.WriteAllText(
+            Path.Combine(dependencyDirectory, "Target.cs"),
+            """
+            namespace Dependency;
+            public class Target { public int Get() => 1; }
+            """);
+        File.WriteAllText(
+            fixture.SourcePath,
+            """
+            namespace Fixture;
+            public class Feature { public int Run() => new Dependency.Target().Get(); }
+            """);
+        File.WriteAllText(
+            fixture.ProjectPath,
+            File.ReadAllText(fixture.ProjectPath)
+                .Replace(
+                    "</Project>",
+                    """
+              <ItemGroup>
+                <Compile Remove="Dependency/**/*.cs" />
+                <ProjectReference Include="Dependency/Dependency.csproj" />
+              </ItemGroup>
+            </Project>
+            """));
+        await fixture.Restore(ct);
+        var fileSystem = new FileSystem();
+        var repository = new RepositoryWorkspace(
+            fixture.RootPath,
+            Path.Combine(fixture.RootPath, "unused.db"),
+            fileSystem);
+        var engine = new RoslynTargetAnalysisEngine(new NodeExtractor(), new EdgeExtractor(), fileSystem);
+
+        async Task<KnowledgeGraphExtractionPayload> Extract()
+        {
+            using var loader = new WorkspaceLoader(new MsBuildWorkspaceFactory(), fileSystem);
+            var result = await loader.Load(fixture.ProjectPath, ct);
+            result.IsSuccess.Should().BeTrue(string.Join("; ", result.Errors.Select(error => error.Message)));
+
+            return await engine.Extract(fixture.ProjectPath, result.Value.Solution, repository, ct: ct);
+        }
+
+        var before = await Extract();
+        await fixture.Build(ct);
+        var after = await Extract();
+
+        var caller = before.CodeNodes.Should().ContainSingle(node => node.FullyQualifiedName == "Fixture.Feature.Run()").Which;
+        var callee = before.CodeNodes.Should().ContainSingle(node => node.FullyQualifiedName == "Dependency.Target.Get()").Which;
+        before.Edges.Should().Contain(edge => edge.CallerId == caller.CanonicalId &&
+            edge.CalleeId == callee.CanonicalId && edge.EdgeType == EdgeType.MethodCall);
+        after.CodeNodes.Should().Contain(node => node.CanonicalId == callee.CanonicalId);
+        after.Edges.Should().BeEquivalentTo(before.Edges);
     }
 
     private sealed class WarningProject : IDisposable
@@ -196,15 +273,18 @@ public sealed class MsBuildWorkspaceFactoryTests
                 """);
         }
 
-        public string RootPath
-        {
-            get;
-        }
+        public string RootPath { get; }
         public string ProjectPath => Path.Combine(RootPath, "Fixture.csproj");
         public string SourcePath => Path.Combine(RootPath, "Feature.cs");
         public string AssetsPath => Path.Combine(RootPath, "obj", "project.assets.json");
 
-        public async Task Restore(CancellationToken ct)
+        public Task Restore(CancellationToken ct)
+            => RunDotnet(["restore", ProjectPath, "--configfile", Path.Combine(RootPath, "NuGet.Config")], ct);
+
+        public Task Build(CancellationToken ct)
+            => RunDotnet(["build", ProjectPath, "--no-restore"], ct);
+
+        private async Task RunDotnet(string[] arguments, CancellationToken ct)
         {
             var start = new ProcessStartInfo("dotnet")
             {
@@ -213,10 +293,10 @@ public sealed class MsBuildWorkspaceFactoryTests
                 RedirectStandardError = true,
                 UseShellExecute = false
             };
-            start.ArgumentList.Add("restore");
-            start.ArgumentList.Add(ProjectPath);
-            start.ArgumentList.Add("--configfile");
-            start.ArgumentList.Add(Path.Combine(RootPath, "NuGet.Config"));
+            foreach (var argument in arguments)
+            {
+                start.ArgumentList.Add(argument);
+            }
             using var process = Process.Start(start)!;
             var output = process.StandardOutput.ReadToEndAsync(ct);
             var error = process.StandardError.ReadToEndAsync(ct);

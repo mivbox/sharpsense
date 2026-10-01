@@ -53,9 +53,9 @@ internal sealed class TypeScriptSourceDiscoverer(
                 .Where(static file => !string.IsNullOrWhiteSpace(file.AbsolutePath) &&
                     !string.IsNullOrWhiteSpace(file.RelativeFilePath))
                 .Where(file => TypeScriptIndexingPathRules.IsIndexedPath(file.RelativeFilePath))
-                .GroupBy(static file => file.RelativeFilePath, GetPathComparer())
+                .GroupBy(static file => file.RelativeFilePath, FileSystemPaths.Comparer)
                 .Select(static group => group.First())
-                .OrderBy(static file => file.RelativeFilePath, GetPathComparer())
+                .OrderBy(static file => file.RelativeFilePath, FileSystemPaths.Comparer)
         ];
     }
 
@@ -65,16 +65,17 @@ internal sealed class TypeScriptSourceDiscoverer(
     {
         var discoveredFiles = new List<DiscoveredFile>();
         foreach (var scope in new[]
-        {
-            targetPath
-        }.Concat(tsConfigResolver.GetReferencedConfigPaths(targetPath)))
+        { targetPath }.Concat(tsConfigResolver.GetReferencedConfigPaths(targetPath)))
         {
             var targetDirectoryPath = repositoryWorkspace.GetRequiredTargetDirectoryPath(scope);
             // Configured files/includes can point above the configuration directory. Start from
             // repository-owned, nonignored candidates, then apply that configuration's root rules.
             var files = tsConfigResolver.HasTargetConfiguration(scope)
                 ? (await GetRepositoryFilesByAbsolutePath(ct)).Values.ToArray()
-                : await fileDiscoverer.GetAllowedFiles(targetDirectoryPath, TypeScriptIndexingPathRules.IncludeGlobs, ct);
+                : await fileDiscoverer.GetAllowedFiles(
+                    targetDirectoryPath,
+                    TypeScriptIndexingPathRules.IncludeGlobs,
+                    ct);
             discoveredFiles.AddRange(tsConfigResolver.FilterRootFiles(scope, files));
         }
 
@@ -91,7 +92,7 @@ internal sealed class TypeScriptSourceDiscoverer(
         }
 
         var discoveredFilesByAbsolutePath = seedFiles
-            .ToDictionary(static file => file.AbsolutePath, GetPathComparer());
+            .ToDictionary(static file => file.AbsolutePath, FileSystemPaths.Comparer);
         var pendingFiles = new Queue<DiscoveredFile>(seedFiles);
 
         while (pendingFiles.Count > 0)
@@ -100,7 +101,11 @@ internal sealed class TypeScriptSourceDiscoverer(
 
             var discoveredFile = pendingFiles.Dequeue();
             var sourceText = await fileSystem.File.ReadAllTextAsync(discoveredFile.AbsolutePath, ct);
-            foreach (var importPath in ExtractImportPaths(sourceText, discoveredFile.RelativeFilePath.EndsWith(".tsx", StringComparison.OrdinalIgnoreCase)))
+            foreach (var importPath in ExtractImportPaths(
+                sourceText,
+                discoveredFile.RelativeFilePath.EndsWith(
+                    ".tsx",
+                    StringComparison.OrdinalIgnoreCase)))
             {
                 var resolvedImportPath = tsConfigResolver.ResolveImport(importPath, discoveredFile.AbsolutePath, ct);
                 if (string.IsNullOrWhiteSpace(resolvedImportPath))
@@ -132,7 +137,7 @@ internal sealed class TypeScriptSourceDiscoverer(
         return
         [
             .. discoveredFilesByAbsolutePath.Values
-                .OrderBy(static file => file.RelativeFilePath, GetPathComparer())
+                .OrderBy(static file => file.RelativeFilePath, FileSystemPaths.Comparer)
         ];
     }
 
@@ -149,7 +154,7 @@ internal sealed class TypeScriptSourceDiscoverer(
                 TypeScriptIndexingPathRules.IncludeGlobs,
                 ct));
         _repositoryFilesByAbsolutePath = repositoryFiles
-            .ToDictionary(static file => file.AbsolutePath, GetPathComparer());
+            .ToDictionary(static file => file.AbsolutePath, FileSystemPaths.Comparer);
 
         return _repositoryFilesByAbsolutePath;
     }
@@ -165,7 +170,8 @@ internal sealed class TypeScriptSourceDiscoverer(
         {
             yield break;
         }
-        foreach (var node in tree.RootNode.NamedChildren.Where(node => node.Type is "import_statement" or "export_statement"))
+        foreach (var node in tree.RootNode.NamedChildren
+            .Where(node => node.Type is "import_statement" or "export_statement"))
         {
             var path = node.GetChildForField("source")?.Text.Trim('\'', '"');
             if (!string.IsNullOrWhiteSpace(path))
@@ -174,7 +180,4 @@ internal sealed class TypeScriptSourceDiscoverer(
             }
         }
     }
-
-    private static StringComparer GetPathComparer()
-        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 }

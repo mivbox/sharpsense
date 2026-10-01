@@ -30,7 +30,8 @@ internal sealed class MsBuildWorkspaceFactory : IMsBuildWorkspaceFactory
         var workspace = MSBuildWorkspace.Create(properties, _hostServices.Value);
 
         workspace.SkipUnrecognizedProjects = true;
-        workspace.LoadMetadataForReferencedProjects = true;
+        // Graph relationships require source-project identities even when referenced DLLs exist.
+        workspace.LoadMetadataForReferencedProjects = false;
 
         return workspace;
     }

@@ -88,10 +88,22 @@ internal sealed partial class EdgeExtractor
         switch (GetServiceReceiverKind(semanticModel, invocation))
         {
             case ServiceReceiverKind.ServiceCollection:
-                AddServiceRegistrationEdges(callerId, semanticModel, invocation, referencedMethodSymbol, nodeResolver, edgeKeys);
+                AddServiceRegistrationEdges(
+                    callerId,
+                    semanticModel,
+                    invocation,
+                    referencedMethodSymbol,
+                    nodeResolver,
+                    edgeKeys);
                 break;
             case ServiceReceiverKind.ServiceProvider:
-                AddServiceLocatorEdges(callerId, semanticModel, invocation, referencedMethodSymbol, nodeResolver, edgeKeys);
+                AddServiceLocatorEdges(
+                    callerId,
+                    semanticModel,
+                    invocation,
+                    referencedMethodSymbol,
+                    nodeResolver,
+                    edgeKeys);
                 break;
         }
     }

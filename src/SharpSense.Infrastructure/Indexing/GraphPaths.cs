@@ -1,3 +1,4 @@
+using SharpSense.Infrastructure.Indexing.Markdown;
 using SharpSense.Infrastructure.Persistence.Records;
 
 namespace SharpSense.Infrastructure.Indexing;
@@ -64,22 +65,15 @@ internal static class GraphPaths
             return DocumentKind.ProjectFile;
         }
 
-        var extension = Path.GetExtension(relativePath);
-        if (string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(extension, ".markdown", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(extension, ".mdown", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(extension, ".mkd", StringComparison.OrdinalIgnoreCase))
+        if (MarkdownFileTypes.IsMarkdown(relativePath))
         {
             return DocumentKind.Markdown;
         }
 
-        return extension switch
+        return Path.GetExtension(relativePath) switch
         {
             ".cs" or ".ts" or ".tsx" or ".js" or ".jsx" => DocumentKind.Source,
             _ => DocumentKind.Other
         };
     }
-
-    internal static StringComparer GetPathComparer()
-        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 }

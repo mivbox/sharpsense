@@ -15,33 +15,30 @@ public sealed class KnowledgeGraphRepositoryTests
     {
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
             options => new SharpSenseDbContext(options),
-            new InMemoryContextFactoryOptions(
-                UseMigrations: true,
-                LoadVectorExtension: true));
+            new InMemoryContextFactoryOptions(UseMigrations: true, LoadVectorExtension: true));
         var repository = new KnowledgeGraphRepository(inMemoryFactory.CreateDbContextFactory());
 
         await repository.ReplaceWorkspace(
             new ExtractedNodes(
                 [],
                 [
-                new IndexedCodeNode(
-                    "code:fixture:src/Fixture/Orphan.cs:T:Orphan",
-                    "project:missing",
-                    "Fixture.Orphan",
-                    "Orphan",
-                    NodeType.Class,
-                    "src/Fixture/Orphan.cs",
-                    1,
-                    12,
-                    "Orphan node.",
-                    "Orphan\nOrphan node.")
+                    new IndexedCodeNode(
+                        "code:fixture:src/Fixture/Orphan.cs:T:Orphan",
+                        "project:missing",
+                        "Fixture.Orphan",
+                        "Orphan",
+                        NodeType.Class,
+                        "src/Fixture/Orphan.cs",
+                        1,
+                        12,
+                        "Orphan node.",
+                        "Orphan\nOrphan node.")
                 ],
                 [],
                 []),
             TestContext.Current.CancellationToken);
 
-        await using var context = await inMemoryFactory.GetContext(
-            ct: TestContext.Current.CancellationToken);
+        await using var context = await inMemoryFactory.GetContext(ct: TestContext.Current.CancellationToken);
         var persistedNode = await context.CodeNodes
             .AsNoTracking()
             .SingleAsync(TestContext.Current.CancellationToken);
@@ -53,11 +50,10 @@ public sealed class KnowledgeGraphRepositoryTests
     [Fact]
     public async Task WhenGettingPersistedCodeNodes_ThenItReturnsSearchTextAndBodyHash()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
             options => new SharpSenseDbContext(options),
-            new InMemoryContextFactoryOptions(
-                UseMigrations: true,
-                LoadVectorExtension: true));
+            new InMemoryContextFactoryOptions(UseMigrations: true, LoadVectorExtension: true));
         var repository = new KnowledgeGraphRepository(inMemoryFactory.CreateDbContextFactory());
 
         await repository.ReplaceWorkspace(
@@ -80,9 +76,9 @@ public sealed class KnowledgeGraphRepositoryTests
                 ],
                 [],
                 []),
-            TestContext.Current.CancellationToken);
+            ct);
 
-        var persistedCodeNodes = await repository.GetPersistedCodeNodes(TestContext.Current.CancellationToken);
+        var persistedCodeNodes = await repository.GetPersistedCodeNodes(ct);
         var persistedCodeNode = persistedCodeNodes.Should().ContainSingle().Subject;
 
         persistedCodeNode.SearchText.Should().Be("Processor.Run()\nRuns the processor.");
@@ -95,11 +91,7 @@ public sealed class KnowledgeGraphRepositoryTests
     {
         var persistedSnapshot = new ExtractedNodes(
             [
-                new IndexedProject(
-                    "project:fixture",
-                    "Fixture",
-                    "src/Fixture/Fixture.csproj",
-                    "project-hash")
+                new IndexedProject("project:fixture", "Fixture", "src/Fixture/Fixture.csproj", "project-hash")
             ],
             [
                 new IndexedCodeNode(
@@ -148,17 +140,18 @@ public sealed class KnowledgeGraphRepositoryTests
             []);
         var canonicalSnapshot = GraphSnapshot.CanonicalizeSnapshot(equivalentSnapshot);
 
-        GraphSnapshot.AreEquivalentSnapshots(persistedSnapshot, canonicalSnapshot).Should().BeTrue();
+        canonicalSnapshot.Projects.Should().Equal(persistedSnapshot.Projects);
+        canonicalSnapshot.CodeNodes.Should().BeEquivalentTo(persistedSnapshot.CodeNodes);
+        canonicalSnapshot.Edges.Should().Equal(persistedSnapshot.Edges);
     }
 
     [Fact]
     public async Task WhenReplacingTargetWithDistinctIdentitiesAndMatchingNames_ThenPersistsBoth()
     {
+        var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
             options => new SharpSenseDbContext(options),
-            new InMemoryContextFactoryOptions(
-                UseMigrations: true,
-                LoadVectorExtension: true));
+            new InMemoryContextFactoryOptions(UseMigrations: true, LoadVectorExtension: true));
         var repository = new KnowledgeGraphRepository(inMemoryFactory.CreateDbContextFactory());
         const string projectId = "project:fixture";
         const string processorPath = "src/Fixture/Processor.Part1.cs";
@@ -169,11 +162,7 @@ public sealed class KnowledgeGraphRepositoryTests
         await repository.ReplaceWorkspace(
             new ExtractedNodes(
                 [
-                    new IndexedProject(
-                        projectId,
-                        "Fixture",
-                        "src/Fixture/Fixture.csproj",
-                        "project-hash")
+                    new IndexedProject(projectId, "Fixture", "src/Fixture/Fixture.csproj", "project-hash")
                 ],
                 [
                     new IndexedCodeNode(
@@ -203,11 +192,12 @@ public sealed class KnowledgeGraphRepositoryTests
                 ],
                 [],
                 []),
-            TestContext.Current.CancellationToken);
+            ct);
 
-        var persistedCodeNodes = await repository.GetPersistedCodeNodes(TestContext.Current.CancellationToken);
+        var persistedCodeNodes = await repository.GetPersistedCodeNodes(ct);
         persistedCodeNodes.Should().HaveCount(2);
-        persistedCodeNodes.Select(node => node.CanonicalId)
+        persistedCodeNodes
+            .Select(node => node.CanonicalId)
             .Should().BeEquivalentTo(firstCanonicalId, secondCanonicalId);
         persistedCodeNodes.Should().OnlyContain(node => node.FullyQualifiedName == "Fixture.Processor");
     }

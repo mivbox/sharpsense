@@ -46,9 +46,9 @@ internal sealed class DocumentDiscoverer(
             .Where(static file => !string.IsNullOrWhiteSpace(file.AbsolutePath) &&
                                   !string.IsNullOrWhiteSpace(file.RelativeFilePath))
             .Where(file => fileSystem.File.Exists(file.AbsolutePath))
-            .GroupBy(static file => file.RelativeFilePath, GetPathComparer())
+            .GroupBy(static file => file.RelativeFilePath, FileSystemPaths.Comparer)
             .Select(static group => group.First())
-            .OrderBy(static file => file.RelativeFilePath, GetPathComparer())
+            .OrderBy(static file => file.RelativeFilePath, FileSystemPaths.Comparer)
             .ToArray();
 
         foreach (var discoveredFile in orderedFiles)
@@ -64,7 +64,7 @@ internal sealed class DocumentDiscoverer(
         return new MarkdownIndexResult(
             [
                 .. documentNodes
-                    .OrderBy(static node => node.RelativeFilePath, GetPathComparer())
+                    .OrderBy(static node => node.RelativeFilePath, FileSystemPaths.Comparer)
                     .ThenBy(static node => node.StartLine)
                     .ThenBy(static node => node.CanonicalId, StringComparer.Ordinal)
             ],
@@ -75,7 +75,4 @@ internal sealed class DocumentDiscoverer(
                     .ThenBy(static edge => edge.EdgeType)
             ]);
     }
-
-    private static StringComparer GetPathComparer()
-        => OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 }

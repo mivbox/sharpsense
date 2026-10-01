@@ -18,11 +18,14 @@ internal sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
             var exports = context.ExportsByFile[path] = new(StringComparer.Ordinal);
             var declarations = new Dictionary<string, Declaration>(StringComparer.Ordinal);
             var importedBindings = ReadImportedBindings(file.RootNode);
-            var exportNodes = file.RootNode.NamedChildren.Where(node => node.Type == "export_statement")
+            var exportNodes = file.RootNode.NamedChildren
+                .Where(node => node.Type == "export_statement")
                 .ToArray();
             foreach (var node in file.RootNode.NamedChildren)
             {
-                foreach (var declaration in ReadDeclarations(node.Type == "export_statement" ? node.NamedChildren : [node], file))
+                foreach (var declaration in ReadDeclarations(
+                    node.Type == "export_statement" ? node.NamedChildren : [node],
+                    file))
                 {
                     // Prefer implementation over overload signature with same symbol name.
                     if (!declarations.TryGetValue(declaration.Name, out var existing) ||
@@ -42,7 +45,8 @@ internal sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
                     continue;
                 }
 
-                var isDefault = DefaultExportRegex().IsMatch(export.Text);
+                var isDefault = DefaultExportRegex()
+                    .IsMatch(export.Text);
                 foreach (var declaration in ReadDeclarations(export.NamedChildren, file))
                 {
                     var selected = declarations.GetValueOrDefault(declaration.Name, declaration);
@@ -52,7 +56,7 @@ internal sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
                 }
 
                 foreach (var specifier in export.NamedChildren
-                             .Where(node => node.Type == "export_clause")
+                    .Where(node => node.Type == "export_clause")
                     .SelectMany(node => node.NamedChildren)
                     .Where(node => node.Type == "export_specifier"))
                 {
@@ -60,10 +64,18 @@ internal sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
                     var alias = specifier.GetChildForField("alias")?.Text.Trim('\'', '"') ?? local;
                     if (local is not null && alias is not null && declarations.TryGetValue(local, out var declaration))
                     {
-                        exports[alias] = AddNode(context, file, declaration.Node, declaration.Name, declaration.Kind, declaration.Node);
+                        exports[alias] = AddNode(
+                            context,
+                            file,
+                            declaration.Node,
+                            declaration.Name,
+                            declaration.Kind,
+                            declaration.Node);
                         AddMembers(context, file, declaration, exports[alias]);
                     }
-                    else if (local is not null && alias is not null && importedBindings.TryGetValue(local, out var imported))
+                    else if (local is not null && alias is not null && importedBindings.TryGetValue(
+                        local,
+                        out var imported))
                     {
                         context.ReExports.Add(new(path, imported.Source, imported.ImportedName, alias));
                     }
@@ -74,7 +86,13 @@ internal sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
                     var value = export.GetChildForField("value");
                     if (value?.Type == "identifier" && declarations.TryGetValue(value.Text, out var declaration))
                     {
-                        exports["default"] = AddNode(context, file, declaration.Node, declaration.Name, declaration.Kind, declaration.Node);
+                        exports["default"] = AddNode(
+                            context,
+                            file,
+                            declaration.Node,
+                            declaration.Name,
+                            declaration.Kind,
+                            declaration.Node);
                         AddMembers(context, file, declaration, exports["default"]);
                     }
                     else if (value?.Type == "identifier" && importedBindings.TryGetValue(value.Text, out var imported))
@@ -83,7 +101,16 @@ internal sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
                     }
                     else if (value is not null && IsFunction(value))
                     {
-                        exports["default"] = AddNode(context, file, value, "default", FunctionKind(file, "default", value), export);
+                        exports["default"] = AddNode(
+                            context,
+                            file,
+                            value,
+                            "default",
+                            FunctionKind(
+                                file,
+                                "default",
+                                value),
+                            export);
                     }
                 }
             }
@@ -96,38 +123,15 @@ internal sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
         foreach (var import in root.NamedChildren.Where(node => node.Type == "import_statement"))
         {
             var source = import.GetChildForField("source")?.Text.Trim('\'', '"');
-            var clause = import.NamedChildren.FirstOrDefault(node => node.Type == "import_clause");
-            if (source is null || clause is null)
+            if (source is null)
             {
                 continue;
             }
 
-            foreach (var child in clause.NamedChildren)
+            foreach (var binding in TypeScriptSyntax.ReadImports(import))
             {
-                if (child.Type == "identifier")
-                {
-                    bindings[child.Text] = (source, "default");
-                }
-                else if (child.Type == "namespace_import")
-                {
-                    var name = child.NamedChildren.FirstOrDefault(node => node.Type == "identifier")?.Text;
-                    if (name is not null)
-                    {
-                        bindings[name] = (source, null);
-                    }
-                }
-                else if (child.Type == "named_imports")
-                {
-                    foreach (var specifier in child.NamedChildren.Where(node => node.Type == "import_specifier"))
-                    {
-                        var name = specifier.GetChildForField("name")?.Text.Trim('\'', '"');
-                        var alias = specifier.GetChildForField("alias")?.Text ?? name;
-                        if (name is not null && alias is not null)
-                        {
-                            bindings[alias] = (source, name);
-                        }
-                    }
-                }
+                var importedName = binding.IsNamespaceImport ? null : binding.ExportName ?? "default";
+                bindings[binding.LocalName] = (source, importedName);
             }
         }
 
@@ -228,7 +232,8 @@ internal sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
                 accessor is null ? kind.Value : NodeType.Property,
                 member,
                 memberKind);
-            if (!context.Edges.Any(edge => edge.CallerId == parentId && edge.CalleeId == id && edge.EdgeType == EdgeType.ParentOf))
+            if (!context.Edges
+                .Any(edge => edge.CallerId == parentId && edge.CalleeId == id && edge.EdgeType == EdgeType.ParentOf))
             {
                 context.Edges.Add(new(parentId, id, EdgeType.ParentOf));
             }
@@ -311,9 +316,10 @@ internal sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
 
         return string.Join(
             "\n",
-            lines[line..(end + 1)].Select(text => text.Trim()
-                .TrimStart('/')
-                .Trim('*', '/', ' ')))
+            lines[line..(end + 1)]
+                .Select(text => text.Trim()
+                    .TrimStart('/')
+                    .Trim('*', '/', ' ')))
             .Trim();
     }
 
@@ -343,7 +349,8 @@ internal sealed partial class CodeNodeExtractionPass : ITypeScriptExtractionPass
     private static NodeType FunctionKind(TypeScriptParsedFile file, string name, Node node)
         => file.DiscoveredFile.RelativeFilePath.EndsWith(".tsx", StringComparison.OrdinalIgnoreCase) &&
            (name == "default" || char.IsUpper(name[0])) &&
-           Descendants(node).Any(child => child.Type is "jsx_element" or "jsx_self_closing_element" or "jsx_fragment")
+           Descendants(node)
+               .Any(child => child.Type is "jsx_element" or "jsx_self_closing_element" or "jsx_fragment")
             ? NodeType.Component
             : NodeType.Method;
 

@@ -32,7 +32,8 @@ internal sealed class KnowledgeGraphRepository(
             await using var transaction = await context.Database.BeginTransactionAsync(ct);
             var normalizedExtractedNodes = CanonicalizeSnapshot(extractedNodes);
             var currentSnapshot = await LoadCurrentSnapshot(context, ct);
-            if (AreEquivalentSnapshots(currentSnapshot, normalizedExtractedNodes))
+            var difference = DescribeSnapshotDifference(currentSnapshot, normalizedExtractedNodes);
+            if (difference is null)
             {
                 trace.AddTag("index.persist.skipped", true);
                 _logger.Information("Skipping full index persistence because no graph changes were detected.");
@@ -42,7 +43,7 @@ internal sealed class KnowledgeGraphRepository(
 
             _logger.Debug(
                 "Full index persistence required because {SnapshotDifference}",
-                DescribeSnapshotDifference(currentSnapshot, normalizedExtractedNodes));
+                difference);
 
             var identityMaps = await LoadIdentityMaps(context, ct);
             identityMaps = MatchMovedProjectIdentities(currentSnapshot, normalizedExtractedNodes, identityMaps);
