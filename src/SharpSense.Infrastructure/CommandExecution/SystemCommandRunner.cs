@@ -3,10 +3,12 @@ using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.Models;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO.Pipes;
+using System.Text.Json;
 
 namespace SharpSense.Infrastructure.CommandExecution;
 
-internal sealed class SystemCommandRunner : ICommandProcessRunner
+internal sealed class SystemCommandRunner(CommandProcessHost host) : ICommandProcessRunner
 {
     public async Task<Result<CommandProcessResult>> Execute(
         CommandProcessRequest request,
@@ -37,9 +39,17 @@ internal sealed class SystemCommandRunner : ICommandProcessRunner
             return Result.Fail<CommandProcessResult>(parsedCommand.Errors);
         }
 
+        ct.ThrowIfCancellationRequested();
+        var pipeName = "ss-" + Guid.NewGuid().ToString("N");
+        using var control = new NamedPipeServerStream(
+            pipeName,
+            PipeDirection.InOut,
+            1,
+            PipeTransmissionMode.Byte,
+            PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
         using var process = new Process
         {
-            StartInfo = CreateStartInfo(parsedCommand.Value, request.WorkingDirectory)
+            StartInfo = CreateStartInfo(parsedCommand.Value, request.WorkingDirectory, pipeName)
         };
 
         try
@@ -57,13 +67,15 @@ internal sealed class SystemCommandRunner : ICommandProcessRunner
         }
 
         using var executionCancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        using var cancellationRegistration = executionCancellation.Token.Register(() => TryKill(process));
+        using var cancellationRegistration = executionCancellation.Token.Register(control.Dispose);
         using var capture = new BoundedCommandOutput(request.MaxCapturedLines, request.MaxCapturedBytes, onOutput);
         var standardOutputTask = capture.Read(process.StandardOutput, executionCancellation.Token);
         var standardErrorTask = capture.Read(process.StandardError, executionCancellation.Token);
 
         CancelOnFault(standardOutputTask, executionCancellation);
         CancelOnFault(standardErrorTask, executionCancellation);
+        var completionTask = ReadCompletion(control, executionCancellation.Token);
+        CancelOnFault(completionTask, executionCancellation);
 
         try
         {
@@ -71,31 +83,67 @@ internal sealed class SystemCommandRunner : ICommandProcessRunner
             await Task.WhenAll(
                 standardOutputTask,
                 standardErrorTask,
+                completionTask,
                 waitForExitTask);
+            var completion = await completionTask;
 
-            return Result.Ok(new CommandProcessResult(process.ExitCode, capture.TotalLines, capture.Truncated));
+            return completion.Error is { } error
+                ? Result.Fail<CommandProcessResult>($"Failed to run command: {error}")
+                : Result.Ok(new CommandProcessResult(completion.ExitCode, capture.TotalLines, capture.Truncated));
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (Exception) when (ct.IsCancellationRequested)
         {
-            TryKill(process);
-            throw;
+            throw new OperationCanceledException(ct);
         }
         catch (Exception ex)
         {
-            TryKill(process);
             var captureException = GetCaptureException(standardOutputTask, standardErrorTask) ?? ex;
 
             return Result.Fail<CommandProcessResult>($"Failed while capturing command output: {captureException.Message}");
         }
+        finally
+        {
+            // EOF tells the supervisor to terminate its own group, including
+            // descendants whose original parent has already exited.
+            control.Dispose();
+            try
+            {
+                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            }
+            catch (TimeoutException)
+            {
+                TryKill(process);
+                await process.WaitForExitAsync();
+            }
+        }
     }
 
-    private static ProcessStartInfo CreateStartInfo(
+    private static async Task<CommandProcessCompletion> ReadCompletion(
+        NamedPipeServerStream control,
+        CancellationToken ct)
+    {
+        using var startup = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        startup.CancelAfter(TimeSpan.FromSeconds(15));
+        // A fast supervisor may exit while its connection/result is still queued.
+        // Accept that result rather than racing process-exit notification delivery.
+        await control.WaitForConnectionAsync(startup.Token);
+        using var reader = new StreamReader(control, leaveOpen: true);
+        var line = await reader.ReadLineAsync(ct);
+
+        return line is null
+            ? throw new InvalidOperationException("Command supervisor exited without a result.")
+            : JsonSerializer.Deserialize<CommandProcessCompletion>(line)
+              ?? throw new InvalidOperationException("Command supervisor returned an invalid result.");
+    }
+
+    private ProcessStartInfo CreateStartInfo(
         ParsedCommand parsedCommand,
-        string workingDirectory)
+        string workingDirectory,
+        string pipeName)
     {
         var startInfo = new ProcessStartInfo
         {
-            FileName = parsedCommand.Executable,
+            FileName = host.Executable,
             WorkingDirectory = workingDirectory,
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
@@ -103,6 +151,14 @@ internal sealed class SystemCommandRunner : ICommandProcessRunner
             UseShellExecute = false
         };
 
+        foreach (var argument in host.Arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+        startInfo.ArgumentList.Add(CommandProcessSupervisor.Argument);
+        startInfo.ArgumentList.Add(pipeName);
+        startInfo.ArgumentList.Add(workingDirectory);
+        startInfo.ArgumentList.Add(parsedCommand.Executable);
         foreach (var argument in parsedCommand.Arguments)
         {
             startInfo.ArgumentList.Add(argument);

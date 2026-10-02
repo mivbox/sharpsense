@@ -43,7 +43,7 @@ internal sealed class ExecuteCommand : AbstractAsyncCommand<ExecuteCommand.Setti
     {
         services.AddSelectedWorkspace(settings);
         services.AddCommandExecution()
-            .AddCommandExecutionInfrastructure();
+            .AddCommandExecutionInfrastructure(new CommandProcessHost("dotnet", [typeof(Program).Assembly.Location]));
     }
 
     protected override async Task<int> Execute(

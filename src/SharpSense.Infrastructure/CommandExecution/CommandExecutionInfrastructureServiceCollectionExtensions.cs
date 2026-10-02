@@ -7,9 +7,12 @@ namespace SharpSense.Infrastructure.CommandExecution;
 
 public static class CommandExecutionInfrastructureServiceCollectionExtensions
 {
-    public static IServiceCollection AddCommandExecutionInfrastructure(this IServiceCollection services)
+    public static IServiceCollection AddCommandExecutionInfrastructure(this IServiceCollection services, CommandProcessHost host)
     {
         ArgumentNullException.ThrowIfNull(services);
+
+        ArgumentNullException.ThrowIfNull(host);
+        services.TryAddSingleton(host);
 
         services.AddDbContextFactory<TransientExecutionLogDbContext>(options =>
             options.UseSqlite("Data Source=:memory:;Mode=Memory;Cache=Private;Pooling=False"));

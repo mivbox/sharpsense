@@ -1,6 +1,12 @@
 using JetBrains.Annotations;
 using Serilog;
 using SharpSense.Cli.Shared;
+using SharpSense.Infrastructure.CommandExecution;
+
+if (args is [CommandProcessSupervisor.Argument, var pipeName, var workingDirectory, var executable, .. var commandArguments])
+{
+    return await CommandProcessSupervisor.Run(pipeName, workingDirectory, executable, commandArguments);
+}
 
 try
 {
