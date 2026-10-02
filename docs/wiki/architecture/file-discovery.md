@@ -16,7 +16,7 @@ Markdown selections are combined into one pass, which allows links between selec
 
 ## Filesystem filtering
 
-`IWorkspaceFileDiscoverer` provides glob-based discovery with normalized repository-relative paths and the root `.gitignore` rules. Language adapters apply their own membership and generated/dependency-directory exclusions. C# membership follows MSBuild rather than treating a filesystem glob as a project.
+`IWorkspaceFileDiscoverer` provides glob-based discovery with normalized repository-relative paths and the root `.gitignore` rules. Discovery prunes ignored directories and skips symbolic links before traversal, so external linked folders cannot abort or escape a documentation scan. Language adapters apply their own membership and generated/dependency-directory exclusions. C# membership follows MSBuild rather than treating a filesystem glob as a project.
 
 TypeScript excludes dependency/build directories such as `node_modules`, `dist`, and `coverage`. Its supported source extensions are currently `.ts` and `.tsx`; JavaScript and `.mts`/`.cts` are not part of this source-discovery contract.
 

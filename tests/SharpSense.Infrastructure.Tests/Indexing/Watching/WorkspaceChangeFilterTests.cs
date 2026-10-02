@@ -12,6 +12,19 @@ namespace SharpSense.Infrastructure.Tests.Indexing.Watching;
 public sealed class WorkspaceChangeFilterTests
 {
     [Fact]
+    public void WhenGeneratedTypeScriptOutputChanges_ThenOnlyDeclaredInputsTriggerReconciliation()
+    {
+        var source = new WorkspaceSource(WorkspaceSourceKind.TypeScript, "tsconfig.json");
+        var filter = Create(source);
+        filter.TrackSource(source, new([], [], [], [], ["/repo/dist/declared.json"]));
+
+        filter.IsRelevant([Modified("dist/declared.json")]).Should().BeTrue();
+        filter.IsRelevant([Modified("dist/output.json")]).Should().BeFalse();
+        filter.IsRelevant([Modified("dist/output.ts")]).Should().BeFalse();
+        filter.IsRelevant([Modified("src/app.ts")]).Should().BeTrue();
+    }
+
+    [Fact]
     public void WhenGeneratorInputsOrMarkdownMembershipChange_ThenCSharpIsInvalidatedOutsideDocumentationSelections()
     {
         var source = new WorkspaceSource(WorkspaceSourceKind.CSharp, "app/App.csproj");

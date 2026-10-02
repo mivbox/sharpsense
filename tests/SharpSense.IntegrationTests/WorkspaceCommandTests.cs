@@ -18,6 +18,7 @@ public sealed class WorkspaceCommandTests
     {
         var fixture = new Fixture();
         var result = await fixture.Run(
+            TestContext.Current.CancellationToken,
             "configure",
             "product",
             "--repo-root",
@@ -58,8 +59,17 @@ public sealed class WorkspaceCommandTests
     public async Task WhenManagingWorkspaceSources_ThenExistingDatabasesRemainUnchanged()
     {
         var fixture = new Fixture();
-        (await fixture.Run("workspace", "create", "backend", "--repo-root", "/repo", "--csharp", "src/Api/Api.csproj")).ExitCode.Should().Be(0);
         (await fixture.Run(
+            TestContext.Current.CancellationToken,
+            "workspace",
+            "create",
+            "backend",
+            "--repo-root",
+            "/repo",
+            "--csharp",
+            "src/Api/Api.csproj")).ExitCode.Should().Be(0);
+        (await fixture.Run(
+            TestContext.Current.CancellationToken,
             "workspace",
             "create",
             "frontend",
@@ -70,15 +80,38 @@ public sealed class WorkspaceCommandTests
         var backend = fixture.Catalog.Resolve("backend");
         fixture.FileSystem.AddFile(backend.Workspace.DatabasePath, new MockFileData("preserved database"));
 
-        (await fixture.Run("workspace", "add", "backend", "--repo-root", "/repo", "--markdown", "docs/**/*.md")).ExitCode.Should().Be(0);
+        (await fixture.Run(
+            TestContext.Current.CancellationToken,
+            "workspace",
+            "add",
+            "backend",
+            "--repo-root",
+            "/repo",
+            "--markdown",
+            "docs/**/*.md")).ExitCode.Should().Be(0);
         fixture.Catalog.Resolve("backend").Definition.Sources.Should().BeEquivalentTo(new[]
         {
             new WorkspaceSource(WorkspaceSourceKind.CSharp, "src/Api/Api.csproj"),
             new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/**/*.md")
         });
 
-        (await fixture.Run("workspace", "remove", "backend", "--repo-root", "/repo", "--markdown", "docs/**/*.md")).ExitCode.Should().Be(0);
-        var merged = await fixture.Run("workspace", "merge", "product", "backend", "frontend", "--json");
+        (await fixture.Run(
+            TestContext.Current.CancellationToken,
+            "workspace",
+            "remove",
+            "backend",
+            "--repo-root",
+            "/repo",
+            "--markdown",
+            "docs/**/*.md")).ExitCode.Should().Be(0);
+        var merged = await fixture.Run(
+            TestContext.Current.CancellationToken,
+            "workspace",
+            "merge",
+            "product",
+            "backend",
+            "frontend",
+            "--json");
 
         merged.ExitCode.Should().Be(0, merged.Output);
         var product = fixture.Catalog.Resolve("product");
@@ -100,6 +133,7 @@ public sealed class WorkspaceCommandTests
         var fixture = new Fixture();
 
         var result = await fixture.Run(
+            TestContext.Current.CancellationToken,
             "workspace",
             "create",
             "api",
@@ -119,8 +153,8 @@ public sealed class WorkspaceCommandTests
     {
         var fixture = new Fixture();
 
-        var legacy = await fixture.Run("analyze", "src/Api/Api.csproj", "--repo-root", "/repo");
-        var unregistered = await fixture.Run("analyze", "--repo-root", "/repo", "--no-embeddings");
+        var legacy = await fixture.Run(TestContext.Current.CancellationToken, "analyze", "src/Api/Api.csproj", "--repo-root", "/repo");
+        var unregistered = await fixture.Run(TestContext.Current.CancellationToken, "analyze", "--repo-root", "/repo", "--no-embeddings");
 
         legacy.ExitCode.Should().NotBe(0);
         unregistered.ExitCode.Should().Be(1);
@@ -136,8 +170,9 @@ public sealed class WorkspaceCommandTests
         var broken = fixture.Catalog.Create("broken", "/repo", []);
         fixture.FileSystem.File.WriteAllText(broken.ConfigurationPath, "private: [ malformed yaml");
 
-        var listed = await fixture.Run("workspace", "list", "--json");
+        var listed = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "list", "--json");
         var selected = await fixture.Run(
+            TestContext.Current.CancellationToken,
             "workspace",
             "show",
             "--workspace",
@@ -171,9 +206,9 @@ public sealed class WorkspaceCommandTests
         var filesBefore = fixture.FileSystem.AllFiles
             .ToDictionary(path => path, path => fixture.FileSystem.File.ReadAllText(path));
 
-        var listed = await fixture.Run("workspace", "list", "--json");
-        var ambiguous = await fixture.Run("workspace", "show", "--repo-root", "/repo");
-        var selected = await fixture.Run("workspace", "show", "--workspace", "frontend", "--json");
+        var listed = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "list", "--json");
+        var ambiguous = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "show", "--repo-root", "/repo");
+        var selected = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "show", "--workspace", "frontend", "--json");
 
         listed.ExitCode.Should().Be(0);
         ambiguous.ExitCode.Should().Be(1);
@@ -195,10 +230,10 @@ public sealed class WorkspaceCommandTests
         var first = fixture.Catalog.Create("first", "/repo", []);
         var second = fixture.Catalog.Create("second", "/repo", []);
 
-        var used = await fixture.Run("workspace", "use", "second", "--json");
-        var shown = await fixture.Run("workspace", "show", "--repo-root", "/elsewhere", "--json");
-        var overridden = await fixture.Run("workspace", "show", "--workspace", "first", "--json");
-        var listed = await fixture.Run("workspace", "ls", "--json");
+        var used = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "use", "second", "--json");
+        var shown = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "show", "--repo-root", "/elsewhere", "--json");
+        var overridden = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "show", "--workspace", "first", "--json");
+        var listed = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "ls", "--json");
 
         used.ExitCode.Should().Be(0);
         shown.ExitCode.Should().Be(0);
@@ -214,9 +249,9 @@ public sealed class WorkspaceCommandTests
         listJson.RootElement.EnumerateArray().Should().ContainSingle(item => item.GetProperty("isDefault")
             .GetBoolean()).Which.GetProperty("id")
             .GetGuid().Should().Be(second.Definition.Id);
-        (await fixture.Run("workspace", "ls")).Output.Should().Contain("(default)");
+        (await fixture.Run(TestContext.Current.CancellationToken, "workspace", "ls")).Output.Should().Contain("(default)");
 
-        var noExplicitMcp = await fixture.Run("mcp", "--workspace-root", "/repo");
+        var noExplicitMcp = await fixture.Run(TestContext.Current.CancellationToken, "mcp", "--workspace-root", "/repo");
         noExplicitMcp.ExitCode.Should().NotBe(0);
         noExplicitMcp.Output.Should().Contain("Multiple workspaces match");
         fixture.Catalog.GetDefaultWorkspaceId().Should().Be(second.Definition.Id);
@@ -306,6 +341,7 @@ public sealed class WorkspaceCommandTests
         var fixture = new Fixture();
 
         var result = await fixture.Run(
+            TestContext.Current.CancellationToken,
             "workspace",
             "create",
             "frontend",
@@ -330,7 +366,7 @@ public sealed class WorkspaceCommandTests
         var fixture = new Fixture();
         fixture.Catalog.Create("product", "/repo", []);
 
-        var result = await fixture.Run("workspace", "show", "--workspace-root", "/repo");
+        var result = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "show", "--workspace-root", "/repo");
 
         result.ExitCode.Should().Be(1);
         result.Output.Should().Contain("No workspace is selected");
@@ -343,8 +379,8 @@ public sealed class WorkspaceCommandTests
         var fixture = new Fixture();
         fixture.Catalog.Create("docs", "/repo", [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/**/*.md")]);
 
-        var listed = await fixture.Run("workspace", "list", "--json");
-        var alias = await fixture.Run("workspace", "ls", "--json");
+        var listed = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "list", "--json");
+        var alias = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "ls", "--json");
 
         alias.ExitCode.Should().Be(0);
         alias.Output.Should().Be(listed.Output);
@@ -380,6 +416,7 @@ public sealed class WorkspaceCommandTests
             string[] createRootOptions = useExplicitBase ? ["--workspace-root", "repo"] : [];
 
             var created = await fixture.Run(
+                TestContext.Current.CancellationToken,
                 [
                     "workspace",
                     "create",
@@ -398,7 +435,9 @@ public sealed class WorkspaceCommandTests
             Environment.SetEnvironmentVariable("PWD", repositoryRoot);
             string[] rootOptions = useExplicitBase ? ["--workspace-root", "repo/src/Api"] : [];
 
-            var added = await fixture.Run(["workspace", "add", "api", .. rootOptions, "--csharp", "../Core/Core.csproj", "--json"]);
+            var added = await fixture.Run(
+                TestContext.Current.CancellationToken,
+                ["workspace", "add", "api", .. rootOptions, "--csharp", "../Core/Core.csproj", "--json"]);
 
             added.ExitCode.Should().Be(0);
             var sources = fixture.Catalog.Resolve("api").Definition.Sources;
@@ -408,6 +447,7 @@ public sealed class WorkspaceCommandTests
             sources.Should().Contain(new WorkspaceSource(WorkspaceSourceKind.Markdown, "src/Api/docs/*.md"));
 
             var removed = await fixture.Run(
+                TestContext.Current.CancellationToken,
                 [
                     "workspace",
                     "remove",
@@ -454,6 +494,7 @@ public sealed class WorkspaceCommandTests
         string[] outputOptions = json ? ["--json"] : [];
 
         var result = await fixture.Run(
+            TestContext.Current.CancellationToken,
             [
                 "workspace",
                 "remove",
@@ -496,7 +537,7 @@ public sealed class WorkspaceCommandTests
     [InlineData("remove", true)]
     public async Task WhenDisplayingCatalogHelp_ThenOnlyRelevantOptionsAreAdvertised(string command, bool hasSourceBase)
     {
-        var result = await new Fixture().Run("workspace", command, "--help");
+        var result = await new Fixture().Run(TestContext.Current.CancellationToken, "workspace", command, "--help");
 
         result.ExitCode.Should().Be(0);
         var options = result.Output[result.Output.IndexOf("OPTIONS:", StringComparison.Ordinal)..];
@@ -511,6 +552,7 @@ public sealed class WorkspaceCommandTests
         fixture.Catalog.Create("docs", "/repo", [new WorkspaceSource(WorkspaceSourceKind.Markdown, "docs/**/*.md")]);
 
         var unsupported = await fixture.Run(
+            TestContext.Current.CancellationToken,
             "workspace",
             "add",
             "docs",
@@ -520,7 +562,7 @@ public sealed class WorkspaceCommandTests
             "/repo",
             "--markdown",
             "more/**/*.md");
-        var conflicting = await fixture.Run("workspace", "show", "docs", "--workspace", "other");
+        var conflicting = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "show", "docs", "--workspace", "other");
 
         unsupported.ExitCode.Should().NotBe(0);
         unsupported.Output.Should().Contain("Unknown option");
@@ -552,7 +594,7 @@ public sealed class WorkspaceCommandTests
         try
         {
             Console.SetError(errors);
-            var result = await fixture.Run(["workspace", command, .. options]);
+            var result = await fixture.Run(TestContext.Current.CancellationToken, ["workspace", command, .. options]);
 
             result.ExitCode.Should().Be(0);
             errors.ToString().Should().Contain("Warning:");
@@ -583,7 +625,7 @@ public sealed class WorkspaceCommandTests
             Console.SetError(previousError);
         }
 
-        (await fixture.Run("workspace", "use", "second")).ExitCode.Should().Be(0);
+        (await fixture.Run(TestContext.Current.CancellationToken, "workspace", "use", "second")).ExitCode.Should().Be(0);
         fixture.Catalog.Resolve(null).Definition.Name.Should().Be("second");
     }
 
@@ -597,8 +639,15 @@ public sealed class WorkspaceCommandTests
         fixture.Catalog.Create("second", "/repo", []);
         fixture.Catalog.Use("first");
 
-        var blank = await fixture.Run("workspace", "show", selector, "--json");
-        var conflict = await fixture.Run("workspace", "show", selector, "--workspace", "second", "--json");
+        var blank = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "show", selector, "--json");
+        var conflict = await fixture.Run(
+            TestContext.Current.CancellationToken,
+            "workspace",
+            "show",
+            selector,
+            "--workspace",
+            "second",
+            "--json");
 
         blank.ExitCode.Should().NotBe(0);
         blank.Output.Should().Contain("must not be empty");
@@ -625,7 +674,7 @@ public sealed class WorkspaceCommandTests
 
         public Fixture() => Catalog = new WorkspaceCatalog(FileSystem, "/test-home/.sharpsense");
 
-        public async Task<(int ExitCode, string Output)> Run(params string[] args)
+        public async Task<(int ExitCode, string Output)> Run(CancellationToken ct, params string[] args)
         {
             using var console = new TestConsole();
             var app = Cli.Program.CreateCommandApp(
@@ -636,7 +685,7 @@ public sealed class WorkspaceCommandTests
                     services.AddSingleton<IWorkspaceCatalog>(Catalog);
                 },
                 enableFileLogging: false);
-            var exitCode = await app.RunAsync(args, TestContext.Current.CancellationToken);
+            var exitCode = await app.RunAsync(args, ct);
 
             return (exitCode, console.Output);
         }

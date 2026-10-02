@@ -33,7 +33,9 @@ public sealed class DocumentDiscovererTests
         var result = await subject.Discover("/repo", ct, patterns);
 
         result.CodeNodes.Should().BeEmpty();
-        discoverer.VerifyAll();
+        discoverer.Verify(
+            candidate => candidate.GetAllowedFiles("/repo", patterns, ct),
+            Times.Once);
     }
 
     [Fact]

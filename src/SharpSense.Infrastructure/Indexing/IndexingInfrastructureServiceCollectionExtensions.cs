@@ -23,7 +23,7 @@ public static class IndexingInfrastructureServiceCollectionExtensions
         services.TryAddScoped<IWorkspaceLoader, WorkspaceLoader>();
         services.TryAddSingleton<ITargetAnalysisEngine, RoslynTargetAnalysisEngine>();
         services.TryAddSingleton<IMarkdownIndexer, MarkdownIndexer>();
-        services.TryAddSingleton<IWorkspaceWatcher, WorkspaceWatcher>();
+        services.TryAddScoped<IWorkspaceWatcher, WorkspaceWatcher>();
         services.TryAddScoped<IWorkspaceFileDiscoverer, WorkspaceFileDiscoverer>();
         services.TryAddScoped<IIndexingWorkspacePaths, IndexingWorkspacePaths>();
         services.TryAddScoped<IWorkspaceChangeFilter, WorkspaceChangeFilter>();

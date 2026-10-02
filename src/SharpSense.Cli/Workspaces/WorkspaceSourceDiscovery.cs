@@ -1,4 +1,5 @@
 using SharpSense.Application.Indexing;
+using SharpSense.Application.Indexing.Models;
 using System.IO.Abstractions;
 
 namespace SharpSense.Cli.Workspaces;
@@ -10,7 +11,17 @@ internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
 {
     private static readonly HashSet<string> _excludedDirectories = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".git", ".sharpsense", "node_modules", "bin", "obj", "dist", "build", ".next", ".turbo", "coverage", "vendor"
+        ".git",
+        ".sharpsense",
+        "node_modules",
+        "bin",
+        "obj",
+        "dist",
+        "build",
+        ".next",
+        ".turbo",
+        "coverage",
+        "vendor"
     };
 
     public DiscoveredWorkspaceSources Discover(string workspaceRoot, CancellationToken ct)
@@ -48,24 +59,22 @@ internal sealed class WorkspaceSourceDiscovery(IFileSystem fileSystem)
 
                 var extension = fileSystem.Path.GetExtension(file);
                 var name = fileSystem.Path.GetFileName(file);
-                var relative = fileSystem.Path.GetRelativePath(root, file)
+                var relative = fileSystem.Path
+                    .GetRelativePath(root, file)
                     .Replace('\\', '/');
-                if (new[]
-                { ".csproj", ".sln", ".slnx" }.Contains(extension, StringComparer.OrdinalIgnoreCase))
+                if (CSharpIndexingPathRules.IsWorkspaceTarget(file))
                 {
                     candidates.Add(new(WorkspaceSourceKind.CSharp, relative));
                 }
-                else if (name.StartsWith(
-                    "tsconfig",
-                    StringComparison.OrdinalIgnoreCase) && extension.Equals(
-                        ".json",
-                        StringComparison.OrdinalIgnoreCase))
+                else if (name.StartsWith("tsconfig", StringComparison.OrdinalIgnoreCase) &&
+                         extension.Equals(".json", StringComparison.OrdinalIgnoreCase))
                 {
                     candidates.Add(new(WorkspaceSourceKind.TypeScript, relative));
                 }
                 else if (extension.Equals(".md", StringComparison.OrdinalIgnoreCase))
                 {
-                    var relativeDirectory = fileSystem.Path.GetRelativePath(root, directory)
+                    var relativeDirectory = fileSystem.Path
+                        .GetRelativePath(root, directory)
                         .Replace('\\', '/');
                     markdownDirectories.Add(relativeDirectory == "."
                         ? "*.md"
