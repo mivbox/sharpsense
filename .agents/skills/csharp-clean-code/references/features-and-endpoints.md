@@ -1,8 +1,8 @@
 # Features and endpoints
 
-Read this when changing application handlers, dependency registration or minimal HTTP endpoints. The shapes
-below reflect the user's preferred organization. Keep the consuming repository's existing dispatch and error
-contracts; do not transplant ServiceKit's infrastructure or add dependencies to reproduce an example.
+Read this when changing application handlers, dependency registration or minimal HTTP endpoints. The examples
+apply standards for responsibility, visibility and composition. Keep the repository's existing dispatch and error
+contracts; do not add infrastructure or dependencies solely to reproduce an example.
 
 ## One operation per endpoint file
 

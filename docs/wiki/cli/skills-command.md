@@ -22,7 +22,7 @@ They follow the consuming repository's conventions and can move with their refer
 
 The clean-code and behavior-test skills allow implicit selection. Their descriptions identify when each applies;
 their `SKILL.md` files direct the agent to load only the relevant files in `references/`. Examples are
-self-contained and do not require the ServiceKit or MyCrmAiChat checkouts. A newly added skill becomes available
+self-contained and follow generic coding and testing standards. A newly added skill becomes available
 when the client refreshes its skill catalog.
 
 ## Prerequisites
