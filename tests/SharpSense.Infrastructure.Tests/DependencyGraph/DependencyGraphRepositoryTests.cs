@@ -27,7 +27,7 @@ public sealed class DependencyGraphRepositoryTests
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
         await using var context = await inMemoryFactory.GetContext(ct: TestContext.Current.CancellationToken);
 
-        await SeedGraph(context);
+        await SeedGraph(context, TestContext.Current.CancellationToken);
         var service = Repository(context);
 
         var result = (await service.GetNodesPage(
@@ -79,7 +79,7 @@ public sealed class DependencyGraphRepositoryTests
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
         await using var context = await inMemoryFactory.GetContext(ct: TestContext.Current.CancellationToken);
 
-        await SeedGraph(context);
+        await SeedGraph(context, TestContext.Current.CancellationToken);
         var service = Repository(context);
 
         var result = (await service.GetEdgesPage(
@@ -119,7 +119,7 @@ public sealed class DependencyGraphRepositoryTests
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
         await using var context = await inMemoryFactory.GetContext(ct: TestContext.Current.CancellationToken);
 
-        await SeedGraph(context);
+        await SeedGraph(context, TestContext.Current.CancellationToken);
         context.GraphNodes.Add(
             new GraphNodeRecord
             {
@@ -153,8 +153,8 @@ public sealed class DependencyGraphRepositoryTests
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
         await using var context = await inMemoryFactory.GetContext(ct: TestContext.Current.CancellationToken);
 
-        await SeedGraph(context);
-        await SeedBoundaryImplementsScenario(context);
+        await SeedGraph(context, TestContext.Current.CancellationToken);
+        await SeedBoundaryImplementsScenario(context, TestContext.Current.CancellationToken);
         var service = Repository(context);
 
         var nodes = (await service.GetNodesPage(
@@ -194,7 +194,7 @@ public sealed class DependencyGraphRepositoryTests
             }).Should().NotBeEmpty();
     }
 
-    private static async Task SeedGraph(SharpSenseDbContext db)
+    private static async Task SeedGraph(SharpSenseDbContext db, CancellationToken ct)
     {
         db.Directories.AddRange(
             new DirectoryRecord
@@ -393,10 +393,10 @@ public sealed class DependencyGraphRepositoryTests
                 EdgeType = EdgeType.MethodCall
             });
 
-        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await db.SaveChangesAsync(ct);
     }
 
-    private static async Task SeedBoundaryImplementsScenario(SharpSenseDbContext db)
+    private static async Task SeedBoundaryImplementsScenario(SharpSenseDbContext db, CancellationToken ct)
     {
         db.Documents.AddRange(
             new DocumentRecord
@@ -459,7 +459,7 @@ public sealed class DependencyGraphRepositoryTests
                 EdgeType = EdgeType.Implements
             });
 
-        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await db.SaveChangesAsync(ct);
     }
 
     private static GraphPageRepository Repository(SharpSenseDbContext context)

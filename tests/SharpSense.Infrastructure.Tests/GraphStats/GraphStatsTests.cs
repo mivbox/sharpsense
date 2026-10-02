@@ -48,8 +48,8 @@ public sealed class GraphStatsTests
     {
         var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
-        await fixture.Initialize();
-        await fixture.Seed();
+        await fixture.Initialize(ct);
+        await fixture.Seed(ct);
         await using (var context = fixture.CreateDbContext())
         {
             await context.Database.ExecuteSqlInterpolatedAsync(
@@ -59,7 +59,7 @@ public sealed class GraphStatsTests
         var success = Run("succeeded", 1);
         await fixture.Store.Record(success, ct);
 
-        var result = await fixture.Read();
+        var result = await fixture.Read(ct);
 
         result.DatabaseState.Should().Be("ready");
         result.IsIndexed.Should().BeTrue();
@@ -92,8 +92,8 @@ public sealed class GraphStatsTests
     {
         var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
-        await fixture.Initialize();
-        await fixture.Seed();
+        await fixture.Initialize(ct);
+        await fixture.Seed(ct);
         var success = Run("succeeded", 1);
         await fixture.Store.Record(success, ct);
         await fixture.Store.Record(
@@ -110,13 +110,13 @@ public sealed class GraphStatsTests
                 ]
             },
             ct);
-        var failed = await fixture.Read();
+        var failed = await fixture.Read(ct);
         failed.LastAttempt!.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.FilePath == "Widget.tsx");
         failed.LastSuccessfulIndex!.CompletedAt.Should().Be(success.CompletedAt);
 
         await fixture.Store.Record(Run("cancelled", 3), ct);
         await fixture.Store.Record(Run("failed", 2), ct);
-        var cancelled = await fixture.Read();
+        var cancelled = await fixture.Read(ct);
 
         cancelled.LastAttempt!.Outcome.Should().Be("cancelled");
         cancelled.LastSuccessfulIndex!.CompletedAt.Should().Be(success.CompletedAt);
@@ -130,9 +130,9 @@ public sealed class GraphStatsTests
     {
         var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
-        await fixture.Initialize();
+        await fixture.Initialize(ct);
         await fixture.Store.Record(Run("succeeded", 1), ct);
-        await fixture.Execute("UPDATE IndexRunState SET GraphRevision = 'graph-commit-revision';");
+        await fixture.Execute("UPDATE IndexRunState SET GraphRevision = 'graph-commit-revision';", ct);
 
         await fixture.Store.Record(Run("failed", 2), ct);
         await fixture.Store.Record(Run("cancelled", 3), ct);
@@ -150,7 +150,7 @@ public sealed class GraphStatsTests
     {
         var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
-        await fixture.Initialize();
+        await fixture.Initialize(ct);
         await fixture.Store.Record(
             Run("failed", 1) with
             {
@@ -169,7 +169,7 @@ public sealed class GraphStatsTests
             },
             ct);
 
-        var result = await fixture.Read();
+        var result = await fixture.Read(ct);
 
         result.LastAttempt!.Diagnostics.Should().HaveCount(20);
         result.LastAttempt.Diagnostics.Should().OnlyContain(diagnostic => diagnostic.Message.Length <= 1024 &&
@@ -186,7 +186,7 @@ public sealed class GraphStatsTests
     public async Task WhenHistoryLimits_ThenPreserveFatalErrorAfterManyExtractionWarnings()
     {
         using var fixture = new Fixture();
-        await fixture.Initialize();
+        await fixture.Initialize(TestContext.Current.CancellationToken);
         var warnings = Enumerable.Range(0, 50)
             .Select(index => new IndexDiagnostic(
                 "extraction-diagnostic",
@@ -204,7 +204,7 @@ public sealed class GraphStatsTests
             },
             TestContext.Current.CancellationToken);
 
-        var result = await fixture.Read();
+        var result = await fixture.Read(TestContext.Current.CancellationToken);
 
         result.LastAttempt!.Diagnostics.Should().HaveCount(20);
         result.LastAttempt.Diagnostics!.First().Message.Should().Be("Embedding generation failed.");
@@ -215,12 +215,12 @@ public sealed class GraphStatsTests
     {
         var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
-        await fixture.Initialize();
-        await fixture.Seed();
-        await fixture.Execute("UPDATE DependencyEdges SET EdgeType = 'DocumentHierarchy';");
+        await fixture.Initialize(ct);
+        await fixture.Seed(ct);
+        await fixture.Execute("UPDATE DependencyEdges SET EdgeType = 'DocumentHierarchy';", ct);
         var before = await File.ReadAllBytesAsync(fixture.Workspace.DatabasePath, ct);
 
-        var result = await fixture.Read();
+        var result = await fixture.Read(ct);
 
         result.DatabaseState.Should().Be("incompatible");
         result.Diagnostics.Should().ContainSingle(diagnostic => diagnostic.Message.Contains("DocumentHierarchy") && diagnostic.Suggestion!.Contains("authored memories"));
@@ -234,11 +234,13 @@ public sealed class GraphStatsTests
     {
         var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
-        await fixture.Initialize();
-        await fixture.Seed();
-        await fixture.Execute("INSERT INTO __EFMigrationsHistory (MigrationId, ProductVersion) VALUES ('20990101000000_Unknown', '99.0.0');");
+        await fixture.Initialize(ct);
+        await fixture.Seed(ct);
+        await fixture.Execute(
+            "INSERT INTO __EFMigrationsHistory (MigrationId, ProductVersion) VALUES ('20990101000000_Unknown', '99.0.0');",
+            ct);
 
-        var result = await fixture.Read();
+        var result = await fixture.Read(ct);
 
         result.DatabaseState.Should().Be("incompatible");
         await using var db = fixture.CreateDbContext();
@@ -251,10 +253,10 @@ public sealed class GraphStatsTests
     {
         var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
-        await fixture.Initialize("20260923000200_MemoryStableNodeIdentity");
-        await fixture.Seed();
+        await fixture.Initialize(ct, "20260923000200_MemoryStableNodeIdentity");
+        await fixture.Seed(ct);
 
-        var result = await fixture.Read();
+        var result = await fixture.Read(ct);
 
         result.DatabaseState.Should().Be("upgrade_required");
         result.CodeNodeCount.Should().Be(2);
@@ -266,7 +268,7 @@ public sealed class GraphStatsTests
 
         await db.Database.MigrateAsync(ct);
         (await db.MemoryNodes.SingleAsync(ct)).Content.Should().Be("Authored invariant");
-        (await fixture.Read()).DatabaseState.Should().Be("ready");
+        (await fixture.Read(ct)).DatabaseState.Should().Be("ready");
     }
 
     [Theory]
@@ -276,8 +278,8 @@ public sealed class GraphStatsTests
     {
         var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
-        await fixture.Initialize();
-        await fixture.Seed();
+        await fixture.Initialize(ct);
+        await fixture.Seed(ct);
         await fixture.Store.Record(Run("succeeded", 1), ct);
         await using (var db = fixture.CreateDbContext())
         {
@@ -286,7 +288,7 @@ public sealed class GraphStatsTests
                 ct);
         }
 
-        var result = await fixture.Read();
+        var result = await fixture.Read(ct);
 
         result.CodeNodeCount.Should().Be(2);
         result.LastAttempt.Should().BeNull();
@@ -301,7 +303,7 @@ public sealed class GraphStatsTests
         using var fixture = new Fixture();
         await File.WriteAllTextAsync(fixture.Workspace.DatabasePath, "Not a SQLite database", ct);
 
-        var result = await fixture.Read();
+        var result = await fixture.Read(ct);
 
         result.DatabaseState.Should().Be("unreadable");
         (await File.ReadAllTextAsync(fixture.Workspace.DatabasePath, ct)).Should().Be("Not a SQLite database");
@@ -350,20 +352,21 @@ public sealed class GraphStatsTests
                 .UseSqlite($"Data Source={Workspace.DatabasePath};Pooling=False")
                 .AddInterceptors(new SqlitePragmaInterceptor()).Options);
 
-        public async Task Initialize(string? migration = null)
+        public async Task Initialize(CancellationToken ct, string? migration = null)
         {
             await using var db = CreateDbContext();
             await db.GetService<IMigrator>()
-                .MigrateAsync(migration, TestContext.Current.CancellationToken);
+                .MigrateAsync(migration, ct);
         }
 
-        public async Task Execute(string sql)
+        public async Task Execute(string sql, CancellationToken ct)
         {
             await using var db = CreateDbContext();
-            await db.Database.ExecuteSqlRawAsync(sql, TestContext.Current.CancellationToken);
+            await db.Database.ExecuteSqlRawAsync(sql, ct);
         }
 
-        public Task Seed() => Execute("""
+        public Task Seed(CancellationToken ct) => Execute(
+            """
             INSERT INTO Directories (Id, ParentId, Path, Name) VALUES (1, NULL, '', '');
             INSERT INTO Documents (Id, DirectoryId, FileName, Extension, RelativePath, Kind)
                 VALUES (1, 1, 'Widget.cs', '.cs', 'Widget.cs', 'Source'),
@@ -381,9 +384,10 @@ public sealed class GraphStatsTests
                 TagsJson, Intent, VectorEmbedding, CreatedAt)
                 VALUES ('F11E5391-64A7-4F5A-B85D-6CC48B9F18C1', 1, 'body', 'Authored invariant',
                 'content-hash', '[]', 'Invariant', NULL, '2026-09-24 00:00:00+00:00');
-            """);
+            """,
+            ct);
 
-        public Task<GraphStatsSnapshot> Read() => new GraphStatsReader(Workspace).Read(TestContext.Current.CancellationToken);
+        public Task<GraphStatsSnapshot> Read(CancellationToken ct) => new GraphStatsReader(Workspace).Read(ct);
 
         public void Dispose() => Directory.Delete(recursive: true);
     }

@@ -99,7 +99,7 @@ public sealed class WorkspaceInteractionsTests
         var fixture = new Fixture();
         fixture.SetupCreation(save);
         string[] command = alias ? ["configure"] : ["workspace", "create"];
-        var result = await fixture.Run([.. command, "--repo-root", "/repo"]);
+        var result = await fixture.Run(TestContext.Current.CancellationToken, [.. command, "--repo-root", "/repo"]);
         result.Exit.Should().Be(0);
         fixture.Catalog.List().Count.Should().Be(save ? 1 : 0);
         fixture.Interactions.Verify(
@@ -121,7 +121,7 @@ public sealed class WorkspaceInteractionsTests
     {
         var fixture = new Fixture();
         string[] command = alias ? ["configure"] : ["workspace", "create"];
-        var result = await fixture.Run([.. command, "--repo-root", "/repo", "--json"]);
+        var result = await fixture.Run(TestContext.Current.CancellationToken, [.. command, "--repo-root", "/repo", "--json"]);
         result.Exit.Should().Be(1);
         result.Output.Should().Contain("JSON mode requires");
         fixture.Interactions.Verify(x => x.ReadName(It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
@@ -139,6 +139,7 @@ public sealed class WorkspaceInteractionsTests
         string[] outputOptions = json ? ["--json"] : [];
 
         var result = await fixture.Run(
+            TestContext.Current.CancellationToken,
             [
                 .. command,
                 "explicit",
@@ -165,7 +166,7 @@ public sealed class WorkspaceInteractionsTests
             .Returns(false);
         string[] command = alias ? ["configure"] : ["workspace", "create"];
 
-        var result = await fixture.Run([.. command, "incomplete", "--repo-root", "/repo"]);
+        var result = await fixture.Run(TestContext.Current.CancellationToken, [.. command, "incomplete", "--repo-root", "/repo"]);
 
         result.Exit.Should().Be(1);
         result.Output.Should().Contain("Provide a workspace name");
@@ -216,16 +217,16 @@ public sealed class WorkspaceInteractionsTests
         var fixture = new Fixture();
         var original = fixture.Catalog.Create("old", "/repo", [new(WorkspaceSourceKind.Markdown, "docs/*.md")]);
         fixture.FileSystem.AddFile(original.Workspace.DatabasePath, new MockFileData("preserved graph"));
-        var result = await fixture.Run("workspace", "rename", "old", "new", "--json");
+        var result = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "rename", "old", "new", "--json");
         result.Exit.Should().Be(0);
         var renamed = fixture.Catalog.Resolve("new");
         renamed.Definition.Id.Should().Be(original.Definition.Id);
         fixture.FileSystem.File.ReadAllText(renamed.Workspace.DatabasePath).Should().Be("preserved graph");
         fixture.Catalog.Create("taken", "/repo", []);
-        (await fixture.Run("workspace", "rename", "new", "taken")).Exit.Should().Be(1);
+        (await fixture.Run(TestContext.Current.CancellationToken, "workspace", "rename", "new", "taken")).Exit.Should().Be(1);
         using (fixture.Catalog.AcquireIndexLease(renamed))
         {
-            var locked = await fixture.Run("workspace", "rename", "new", "blocked");
+            var locked = await fixture.Run(TestContext.Current.CancellationToken, "workspace", "rename", "new", "blocked");
             locked.Exit.Should().Be(1);
             locked.Output.Should().Contain("already being indexed or watched");
         }
@@ -293,7 +294,7 @@ public sealed class WorkspaceInteractionsTests
                 .ReturnsAsync(save);
         }
 
-        public async Task<(int Exit, string Output)> Run(params string[] args)
+        public async Task<(int Exit, string Output)> Run(CancellationToken ct, params string[] args)
         {
             using var console = new TestConsole();
             var app = Program.CreateCommandApp(
@@ -305,7 +306,7 @@ public sealed class WorkspaceInteractionsTests
                     services.AddSingleton(Interactions.Object);
                 },
                 enableFileLogging: false);
-            var exit = await app.RunAsync(args, TestContext.Current.CancellationToken);
+            var exit = await app.RunAsync(args, ct);
 
             return (exit, console.Output);
         }

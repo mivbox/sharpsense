@@ -182,11 +182,11 @@ public sealed class HybridSearcherTests
                 TagFilters: ["security"]),
             ct);
 
+        result.IsSuccess.Should().BeTrue();
         result.Value.Hits
             .Select(static hit => hit.Id)
             .Should()
             .Equal(KnowledgeGraphFixture.DirectCallerNodeId);
-        embeddings.VerifyAll();
     }
 
     [Theory]

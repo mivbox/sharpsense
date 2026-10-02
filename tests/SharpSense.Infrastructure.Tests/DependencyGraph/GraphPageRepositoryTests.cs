@@ -278,7 +278,7 @@ public sealed class GraphPageRepositoryTests
                 PageSize = 5_001
             },
             ct))).Should().ThrowExactlyAsync<ArgumentException>();
-        using var cancelled = new CancellationTokenSource();
+        using var cancelled = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         cancelled.Cancel();
         await ((Func<Task>)(() => repository.GetNodesPage(request, cancelled.Token))).Should().ThrowAsync<OperationCanceledException>();
     }

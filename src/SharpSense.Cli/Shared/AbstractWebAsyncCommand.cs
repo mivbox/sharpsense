@@ -19,7 +19,7 @@ internal abstract class AbstractWebAsyncCommand<TSettings> : AsyncCommand<TSetti
 
     protected abstract void ConfigureApp(TSettings settings, WebApplication app);
 
-    protected sealed override async Task<int> ExecuteAsync(
+    public sealed override async Task<int> ExecuteAsync(
         CommandContext context,
         TSettings settings,
         CancellationToken ct)

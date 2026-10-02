@@ -79,7 +79,7 @@ public sealed class WorkspaceIndexingHttpEventsTests
                 started.SetResult();
                 await Task.Delay(Timeout.InfiniteTimeSpan, token);
             },
-            CancellationToken.None,
+            ct,
             NullLogger<WorkspaceIndexingCoordinator>.Instance);
         var baseUrl = $"http://127.0.0.1:{AvailablePort()}";
         var app = Cli.Program.CreateCommandApp(
@@ -90,7 +90,7 @@ public sealed class WorkspaceIndexingHttpEventsTests
                 services.AddSingleton(coordinator);
             },
             enableFileLogging: false);
-        using var shutdown = new CancellationTokenSource();
+        using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var runTask = app.RunAsync(["ui", "--url", baseUrl], shutdown.Token);
         using var client = new HttpClient
         {
@@ -229,6 +229,7 @@ public sealed class WorkspaceIndexingHttpEventsTests
         finally
         {
             await shutdown.CancelAsync();
+            // Cleanup must finish even when the test is cancelled.
             await runTask.WaitAsync(TimeSpan.FromSeconds(15), CancellationToken.None);
         }
     }

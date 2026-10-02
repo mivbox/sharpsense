@@ -143,7 +143,7 @@ public sealed class IndexingDiagnosticsTests
     [Fact]
     public async Task WhenIncrementalIndexIsCancelled_ThenRecordsCancellationUsingIndependentToken()
     {
-        using var cancellation = new CancellationTokenSource();
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         using var fixture = new Fixture();
         fixture.Extractor
             .Setup(extractor => extractor.Extract(
@@ -282,7 +282,7 @@ public sealed class IndexingDiagnosticsTests
                 Options,
                 Store);
 
-        public async Task<ResultBase> Handle(bool incremental, CancellationToken ct = default)
+        public async Task<ResultBase> Handle(bool incremental, CancellationToken ct)
         {
             if (incremental)
             {

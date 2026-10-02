@@ -19,7 +19,7 @@ internal abstract class AbstractAsyncCommand<TSettings> : AsyncCommand<TSettings
         IHost host,
         CancellationToken ct);
 
-    protected sealed override async Task<int> ExecuteAsync(
+    public sealed override async Task<int> ExecuteAsync(
         CommandContext context,
         TSettings settings,
         CancellationToken ct)

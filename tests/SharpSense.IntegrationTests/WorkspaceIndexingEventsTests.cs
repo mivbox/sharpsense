@@ -175,5 +175,5 @@ public sealed class WorkspaceIndexingEventsTests
 
     private static WorkspaceIndexingCoordinator Create(
         Func<WorkspaceSelection, StartWorkspaceIndexingRequest, Action<WorkspaceIndexingUpdate>, CancellationToken, Task> run)
-        => new(run, CancellationToken.None, NullLogger<WorkspaceIndexingCoordinator>.Instance);
+        => new(run, TestContext.Current.CancellationToken, NullLogger<WorkspaceIndexingCoordinator>.Instance);
 }

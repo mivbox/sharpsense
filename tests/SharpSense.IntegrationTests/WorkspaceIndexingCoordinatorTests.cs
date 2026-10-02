@@ -55,7 +55,7 @@ public sealed class WorkspaceIndexingCoordinatorTests
     public async Task WhenHostCancellation_ThenStopsSessionsAndWaitsForTheirCleanup()
     {
         var selection = Selection("app");
-        using var stopping = new CancellationTokenSource();
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var started = Completion();
         var cleanedUp = Completion();
         await using var coordinator = new WorkspaceIndexingCoordinator(
@@ -97,11 +97,11 @@ public sealed class WorkspaceIndexingCoordinatorTests
             : Task.CompletedTask);
 
         var failed = coordinator.Start(selection, new StartWorkspaceIndexingRequest());
-        await WaitForState(coordinator, selection.Definition.Id, "failed");
+        await WaitForState(coordinator, selection.Definition.Id, "failed", TestContext.Current.CancellationToken);
         coordinator.GetStatus(selection.Definition.Id).Diagnostics.Should().Contain("Selected source could not be read.");
 
         var restarted = coordinator.Start(selection, new StartWorkspaceIndexingRequest());
-        await WaitForState(coordinator, selection.Definition.Id, "completed");
+        await WaitForState(coordinator, selection.Definition.Id, "completed", TestContext.Current.CancellationToken);
         (restarted.JobId != failed.JobId).Should().BeTrue();
         coordinator.GetStatus(selection.Definition.Id).Diagnostics.Should().BeEmpty();
     }
@@ -143,7 +143,7 @@ public sealed class WorkspaceIndexingCoordinatorTests
 
     private static WorkspaceIndexingCoordinator Create(
         Func<WorkspaceSelection, StartWorkspaceIndexingRequest, Action<WorkspaceIndexingUpdate>, CancellationToken, Task> run)
-        => new(run, CancellationToken.None, NullLogger<WorkspaceIndexingCoordinator>.Instance);
+        => new(run, TestContext.Current.CancellationToken, NullLogger<WorkspaceIndexingCoordinator>.Instance);
 
     private static TaskCompletionSource Completion() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -159,9 +159,9 @@ public sealed class WorkspaceIndexingCoordinatorTests
             "/home/workspace/workspace.yaml",
             Mock.Of<IRepositoryWorkspace>());
 
-    private static async Task WaitForState(WorkspaceIndexingCoordinator coordinator, Guid workspaceId, string state)
+    private static async Task WaitForState(WorkspaceIndexingCoordinator coordinator, Guid workspaceId, string state, CancellationToken ct)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(5));
         while (coordinator.GetStatus(workspaceId).State != state)
         {

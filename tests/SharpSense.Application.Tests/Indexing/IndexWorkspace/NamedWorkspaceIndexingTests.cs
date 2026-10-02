@@ -180,10 +180,12 @@ public sealed class NamedWorkspaceIndexingTests : IDisposable
                 [edge],
                 [])));
         var repository = new Mock<IKnowledgeGraphRepository>(MockBehavior.Strict);
+        ExtractedNodes? persisted = null;
         repository
             .Setup(candidate => candidate.ReplaceWorkspace(
-                It.Is<ExtractedNodes>(nodes => nodes.CodeNodes.Count == 1 && nodes.Edges.Count == 1),
+                It.IsAny<ExtractedNodes>(),
                 ct))
+            .Callback<ExtractedNodes, CancellationToken>((nodes, _) => persisted = nodes)
             .Returns(Task.CompletedTask);
         var handler = CreateHandler(
             [new(WorkspaceSourceKind.TypeScript, "first/tsconfig.json"), new(WorkspaceSourceKind.TypeScript, "second/tsconfig.json")],
@@ -193,7 +195,12 @@ public sealed class NamedWorkspaceIndexingTests : IDisposable
         var result = await handler.Handle(new IndexWorkspaceCommand(), ct);
 
         result.IsSuccess.Should().BeTrue();
-        repository.VerifyAll();
+        persisted.Should().NotBeNull();
+        persisted.CodeNodes.Should().ContainSingle().Which.Should().Be(source);
+        persisted.Edges.Should().ContainSingle().Which.Should().Be(edge);
+        repository.Verify(
+            candidate => candidate.ReplaceWorkspace(It.IsAny<ExtractedNodes>(), ct),
+            Times.Once);
     }
 
     [Fact]
@@ -207,7 +214,6 @@ public sealed class NamedWorkspaceIndexingTests : IDisposable
                 It.Is<IndexWorkspaceCommand>(command => command.ChangedFiles == changes),
                 ct))
             .ReturnsAsync(Result.Ok(new IndexWorkspaceOutcome(2, 7, 5, 1)));
-        var repository = new Mock<IKnowledgeGraphRepository>(MockBehavior.Strict);
         var handler = new UpdateWorkspaceFilesCommandHandler(
             indexer.Object,
             Mock.Of<IWorkspaceChangeFilter>(filter => filter.IsRelevant(It.IsAny<IReadOnlyList<WorkspaceFileChange>>()) == true));
@@ -217,9 +223,12 @@ public sealed class NamedWorkspaceIndexingTests : IDisposable
             ct);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.CodeNodesPersisted.Should().Be(7);
-        indexer.VerifyAll();
-        repository.VerifyNoOtherCalls();
+        result.Value.Should().Be(new UpdateWorkspaceFilesOutcome(2, 7, 5));
+        indexer.Verify(
+            candidate => candidate.Handle(
+                It.Is<IndexWorkspaceCommand>(command => command.ChangedFiles == changes),
+                ct),
+            Times.Once);
     }
 
     private IndexWorkspaceCommandHandler CreateHandler(
