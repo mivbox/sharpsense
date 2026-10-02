@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using SharpSense.Infrastructure.Storage;
@@ -20,8 +21,14 @@ internal sealed class SharpSenseDesignTimeDbContextFactory : IDesignTimeDbContex
 
         Directory.CreateDirectory(designTimeDirectory);
 
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = designTimeDatabasePath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Cache = SqliteCacheMode.Shared
+        }.ToString();
         optionsBuilder.UseSqlite(
-            $"Data Source={designTimeDatabasePath};Mode=ReadWriteCreate;Cache=Shared",
+            connectionString,
             sqlite => sqlite.MigrationsAssembly(typeof(SharpSenseDbContext).Assembly.FullName));
 
         return new SharpSenseDbContext(optionsBuilder.Options);

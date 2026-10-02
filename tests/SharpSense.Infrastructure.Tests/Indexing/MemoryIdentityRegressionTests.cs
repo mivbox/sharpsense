@@ -23,6 +23,94 @@ namespace SharpSense.Infrastructure.Tests.Indexing;
 public sealed class MemoryIdentityRegressionTests
 {
     [Theory]
+    [InlineData(
+        "public partial class Sample { public partial int Read(); }",
+        "public partial class Sample { public partial int Read() => 1; }",
+        "public partial class Sample { public partial int Read() => 2; }",
+        "Sample")]
+    [InlineData(
+        "public partial class Sample { public partial int Read(); }",
+        "public partial class Sample { public partial int Read() => 1; }",
+        "public partial class Sample { public partial int Read() => 2; }",
+        "Sample.Read()")]
+    [InlineData(
+        "public partial class Sample { }",
+        "public partial class Sample { public int Read(int a, int b) => a + ++b; }",
+        "public partial class Sample { public int Read(int a, int b) => a++ + b; }",
+        "Sample.Read(int, int)")]
+    [InlineData(
+        "public partial class Sample { }",
+        "public partial class Sample { public int Value; }",
+        "public partial class Sample { public string Value; }",
+        "Sample.Value")]
+    [InlineData(
+        "public partial class Sample { }",
+        "public partial class Sample { public int Value; }",
+        "public partial class Sample { public readonly int Value; }",
+        "Sample.Value")]
+    [InlineData(
+        "public partial class Sample { }",
+        "public partial class Sample { public int Value; }",
+        "public partial class Sample { [System.Obsolete] public int Value; }",
+        "Sample.Value")]
+    [InlineData(
+        "public partial class Sample { }",
+        "public partial class Sample { public int Value = 1, Other = 2; }",
+        "public partial class Sample { public int Value = 3, Other = 2; }",
+        "Sample.Value")]
+    public async Task WhenContributingDeclarationChanges_ThenRetainsMemoryAndMarksItStale(
+        string firstPart,
+        string secondPart,
+        string changedPart,
+        string symbol)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true));
+        var factory = database.CreateDbContextFactory();
+        var repository = new KnowledgeGraphRepository(factory);
+        using var workspace = new AdhocWorkspace();
+        var projectId = ProjectId.CreateNewId();
+        var secondDocument = DocumentId.CreateNewId(projectId);
+        var solution = workspace.CurrentSolution
+            .AddProject(ProjectInfo.Create(projectId, VersionStamp.Create(), "App", "App", LanguageNames.CSharp, filePath: "/repo/App.csproj"))
+            .AddMetadataReference(projectId, MetadataReference.CreateFromFile(typeof(object).Assembly.Location))
+            .AddDocument(DocumentId.CreateNewId(projectId), "A.cs", SourceText.From(firstPart), filePath: "/repo/A.cs")
+            .AddDocument(secondDocument, "B.cs", SourceText.From(secondPart), filePath: "/repo/B.cs");
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            ["/repo/App.csproj"] = new("<Project />")
+        });
+        var repositoryWorkspace = new RepositoryWorkspace("/repo", "/repo/index.db", fileSystem);
+        var engine = new RoslynTargetAnalysisEngine(new NodeExtractor(), new EdgeExtractor(), fileSystem);
+        var initial = await engine.Extract("/repo/App.csproj", solution, repositoryWorkspace, ct: ct);
+        await repository.ReplaceWorkspace(Map(initial), ct);
+        await using var context = await database.GetContext(ct);
+        var nodeId = await context.CodeNodes
+            .Where(node => node.FullyQualifiedName == symbol)
+            .Select(node => node.Id)
+            .SingleAsync(ct);
+        var embeddings = new Mock<IEmbeddingGenerator>();
+        embeddings.Setup(generator => generator.Generate("Keep this note", ct))
+            .ReturnsAsync(new TextEmbedding("Keep this note", [1f, 0f]));
+        var store = new MemoryStore(factory, embeddings.Object);
+        var attached = await store.AttachMemory(nodeId, "Keep this note", [], MemoryIntent.Invariant, ct);
+        attached.IsSuccess.Should().BeTrue();
+
+        var triviaOnly = solution.WithDocumentText(secondDocument, SourceText.From("// comment\n" + secondPart));
+        await repository.ReplaceWorkspace(Map(await engine.Extract("/repo/App.csproj", triviaOnly, repositoryWorkspace, ct: ct)), ct);
+        (await store.GetMemory(attached.Value.Id, ct))!.IsStale.Should().BeFalse();
+        var changed = solution.WithDocumentText(secondDocument, SourceText.From(changedPart));
+        await repository.ReplaceWorkspace(Map(await engine.Extract("/repo/App.csproj", changed, repositoryWorkspace, ct: ct)), ct);
+
+        var memory = await store.GetMemory(attached.Value.Id, ct);
+        memory.Should().NotBeNull();
+        memory!.Content.Should().Be("Keep this note");
+        memory.IsStale.Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData("document-root", true)]
     [InlineData("guide", true)]
     [InlineData("unchanged", false)]

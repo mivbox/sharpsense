@@ -45,15 +45,19 @@ internal sealed class WorkspaceTreeRepository(SharpSenseDbContext context)
         var documentChildren = await (
                 from document in context.Documents.AsNoTracking()
                 where document.DirectoryId == parentDirectory.Id
-                join projectNode in context.ProjectNodes.AsNoTracking() on document.Id equals projectNode.ProjectDocumentId into projectNodes
-                from projectNode in projectNodes.DefaultIfEmpty()
-                orderby projectNode != null ? 0 : 1, projectNode != null ? projectNode.Name : document.FileName, document.RelativePath
+                let projectName = context.ProjectNodes.Count(project => project.ProjectDocumentId == document.Id) == 1
+                    ? context.ProjectNodes
+                        .Where(project => project.ProjectDocumentId == document.Id)
+                        .Select(project => project.Name)
+                        .FirstOrDefault()
+                    : null
+                orderby document.Kind == DocumentKind.ProjectFile ? 0 : 1, projectName ?? document.FileName, document.RelativePath
                 select new WorkspaceTreeNode(
                     document.Id,
                     parentDirectory.Id,
                     document.RelativePath,
-                    projectNode != null ? projectNode.Name : document.FileName,
-                    projectNode != null ? "project" : "file",
+                    projectName ?? document.FileName,
+                    document.Kind == DocumentKind.ProjectFile ? "project" : "file",
                     false,
                     null,
                     false))

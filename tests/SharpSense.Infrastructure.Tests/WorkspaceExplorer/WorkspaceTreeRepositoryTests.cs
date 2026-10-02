@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using Microsoft.EntityFrameworkCore;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Infrastructure.WorkspaceExplorer;
@@ -13,7 +14,7 @@ public sealed class WorkspaceTreeRepositoryTests
     {
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
         await using var context = await inMemoryFactory.GetContext(ct: TestContext.Current.CancellationToken);
-        await SeedTree(context);
+        await SeedTree(context, TestContext.Current.CancellationToken);
         var repository = new WorkspaceTreeRepository(context);
 
         var result = await repository.GetTree("/", TestContext.Current.CancellationToken);
@@ -31,7 +32,7 @@ public sealed class WorkspaceTreeRepositoryTests
     {
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
         await using var context = await inMemoryFactory.GetContext(ct: TestContext.Current.CancellationToken);
-        await SeedTree(context);
+        await SeedTree(context, TestContext.Current.CancellationToken);
         var repository = new WorkspaceTreeRepository(context);
 
         var result = await repository.GetTree("docs", TestContext.Current.CancellationToken);
@@ -48,7 +49,7 @@ public sealed class WorkspaceTreeRepositoryTests
     {
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
         await using var context = await inMemoryFactory.GetContext(ct: TestContext.Current.CancellationToken);
-        await SeedTree(context);
+        await SeedTree(context, TestContext.Current.CancellationToken);
         var repository = new WorkspaceTreeRepository(context);
 
         var result = await repository.GetTree("root", TestContext.Current.CancellationToken);
@@ -60,7 +61,38 @@ public sealed class WorkspaceTreeRepositoryTests
             .Equal("root/child.txt");
     }
 
-    private static async Task SeedTree(SharpSenseDbContext context)
+    [Fact]
+    public async Task WhenProjectHasMultipleTargets_ThenShowsItsDocumentOnce()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        await using var context = await database.GetContext(ct);
+        await SeedTree(context, ct);
+        var existingProject = await context.ProjectNodes.SingleAsync(ct);
+        context.GraphNodes.Add(new GraphNodeRecord
+        {
+            Id = 999,
+            CanonicalId = "project:SharpSense.App.csproj#other-target",
+            Kind = GraphNodeKind.Project
+        });
+        context.ProjectNodes.Add(new ProjectNodeRecord
+        {
+            Id = 999,
+            Name = "SharpSense.App(other-target)",
+            ProjectDocumentId = existingProject.ProjectDocumentId
+        });
+        await context.SaveChangesAsync(ct);
+        var repository = new WorkspaceTreeRepository(context);
+
+        var result = await repository.GetTree("/", ct);
+
+        var project = result.Nodes.Should().ContainSingle(node => node.Kind == "project").Which;
+        project.Path.Should().Be("SharpSense.App.csproj");
+        project.Label.Should().Be("SharpSense.App.csproj");
+        result.Nodes.Select(node => node.Id).Should().OnlyHaveUniqueItems();
+    }
+
+    private static async Task SeedTree(SharpSenseDbContext context, CancellationToken ct)
     {
         context.Directories.AddRange(
             new DirectoryRecord
@@ -167,6 +199,6 @@ public sealed class WorkspaceTreeRepositoryTests
                 ContentHash = "project-root"
             });
 
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await context.SaveChangesAsync(ct);
     }
 }

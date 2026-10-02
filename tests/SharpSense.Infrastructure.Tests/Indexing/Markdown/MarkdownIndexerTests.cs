@@ -22,6 +22,36 @@ public sealed class MarkdownIndexerTests
             .Which.CalleeId.Should().Be($"code:doc:docs/{expectedTarget}");
     }
 
+    [Theory]
+    [InlineData("```md\n[[Target#ignored]]\n```")]
+    [InlineData("    [[Target#ignored]]")]
+    [InlineData("> ```md\n> [[Target#ignored]]\n> ```")]
+    [InlineData("- Example:\n\n      [[Target#ignored]]")]
+    public void WhenWikiLinksAppearInCodeBlocks_ThenOnlyProseCreatesDependencies(string example)
+    {
+        var indexer = new MarkdownIndexer();
+
+        var result = indexer.Index($"{example}\n\n[[Target#real]]", "docs/wiki/Guide.md");
+
+        result.Edges.Where(edge => edge.EdgeType == EdgeType.DocumentLink)
+            .Select(edge => edge.CalleeId).Should().Equal("code:doc:docs/wiki/Target.md#real");
+        result.CodeNodes.Should().Contain(node => node.Summary.Contains("Target#ignored"));
+    }
+
+    [Theory]
+    [InlineData("bad%00.md")]
+    [InlineData("folder%2Fbad%00.md")]
+    public void WhenLocalLinkDecodesToInvalidPath_ThenKeepsDocumentAndValidLinks(string target)
+    {
+        var indexer = new MarkdownIndexer();
+
+        var result = indexer.Index($"# Guide\n[Bad]({target}) and [Good](Valid.md)", "docs/Guide.md");
+
+        result.CodeNodes.Should().Contain(node => node.Summary.Contains("Bad"));
+        result.Edges.Where(edge => edge.EdgeType == EdgeType.DocumentLink)
+            .Select(edge => edge.CalleeId).Should().Equal("code:doc:docs/Valid.md#document-root");
+    }
+
     [Fact]
     public void WhenIndexingMarkdownWithDuplicateHeadings_ThenChunksByHeadingAndDisambiguatesSlugsWithStartLine()
     {

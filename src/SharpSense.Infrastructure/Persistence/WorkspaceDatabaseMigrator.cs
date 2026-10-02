@@ -54,7 +54,13 @@ internal static class WorkspaceDatabaseMigrator
         var currentMigrationIds = dbContext.GetService<IMigrationsAssembly>().Migrations.Keys
             .ToHashSet(StringComparer.Ordinal);
 
-        await using var connection = new SqliteConnection($"Data Source={databasePath};Mode=ReadWrite;Cache=Shared");
+        var connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Mode = SqliteOpenMode.ReadWrite,
+            Cache = SqliteCacheMode.Shared
+        }.ToString();
+        await using var connection = new SqliteConnection(connectionString);
         await connection.OpenAsync(ct);
 
         var userTableNames = await GetUserTableNames(connection, ct);

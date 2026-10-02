@@ -4,9 +4,9 @@ C# sources use Roslyn and MSBuild. Select explicit `.csproj`, `.sln`, or `.slnx`
 
 ## Analysis
 
-The workspace loader resolves project membership, references, parse options, and compilation context. Referenced projects are loaded from source for semantic resolution even when their compiled DLLs exist. Building a project does not change the source identities or cross-project relationships in the selected graph.
+The workspace loader resolves project membership, references, parse options, and compilation context. Referenced projects are loaded from source for semantic resolution even when their compiled DLLs exist. Building a project does not change the source identities or cross-project relationships in the selected graph. Multi-target projects contribute a separate graph per target framework, with framework-specific project identities and reference resolution. Single-target project identities remain unchanged.
 
-Node and edge extraction uses syntax and semantic symbols to identify declarations, calls, type relationships, and structural containment. XML `summary` and `remarks` contribute searchable documentation. Method-body hashes ignore trivia so formatting-only changes need not invalidate existing embeddings or memories.
+Node and edge extraction uses syntax and semantic symbols to identify declarations, calls, type relationships, and structural containment. XML `summary` and `remarks` contribute searchable documentation. Body hashes include every contributing partial declaration and preserve token boundaries while ignoring trivia. Editing a later partial declaration invalidates its symbol memory; formatting alone does not. The first reindex with this hash format conservatively marks existing C# memories stale while retaining their content.
 
 Canonical C# identity includes the owning project. Two projects can declare the same fully qualified name and still produce distinct graph nodes. Partial declarations within one project are consolidated by symbol identity. Do not deduplicate unrelated projects solely by name.
 

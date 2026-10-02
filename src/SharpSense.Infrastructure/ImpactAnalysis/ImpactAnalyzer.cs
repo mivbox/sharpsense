@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.ImpactAnalysis.Abstractions;
 using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
@@ -17,6 +18,9 @@ internal sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCo
         ArgumentException.ThrowIfNullOrWhiteSpace(query.Identifier);
 
         await using var context = await dbContextFactory.CreateDbContextAsync(ct);
+        await context.Database.OpenConnectionAsync(ct);
+        await using var snapshot = ((SqliteConnection)context.Database.GetDbConnection()).BeginTransaction(deferred: true);
+        await using var transaction = await context.Database.UseTransactionAsync(snapshot, ct);
 
         var rootNode = await CodeNodeNavigationQueries.FindRootNode(context, query.Identifier, ct);
         if (rootNode is null)

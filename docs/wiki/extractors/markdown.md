@@ -8,6 +8,8 @@ Each selected document is read through the filesystem boundary and parsed into s
 
 The extractor emits structural `ParentOf` edges for heading hierarchy and `DocumentLink` edges for resolvable local links. Standard Markdown links resolve relative to the source file. URL-encoded path segments are decoded once after separating the query and fragment, so spaces, Unicode and literal encoded delimiters resolve to the selected document. Wiki links support `[[page]]`, `[[page#heading]]`, and `[[page|alias]]`; bare targets inside `docs/wiki/` resolve from the wiki root, while `./` and `../` stay relative to the page.
 
+Wiki links inside inline code, fenced blocks, and indented code blocks (including nested containers) remain literal text. Invalid decoded local paths are skipped without aborting the document index.
+
 Public documentation uses relative Markdown links so navigation also works on GitHub. Links to unselected documents cannot provide an indexed target node.
 
 ## Watching
