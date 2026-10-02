@@ -462,6 +462,23 @@ try {
       '[data-testid="tool-results"]',
       (element) => element.textContent ?? "",
     );
+    const tabs = await page.$eval('[data-testid="tool-results"]', (element) =>
+      [...element.querySelectorAll('[role="tab"]')].map((tab) => {
+        const panel = document.getElementById(
+          tab.getAttribute("aria-controls") ?? "",
+        );
+        return {
+          linked: Boolean(
+            tab.id && panel?.getAttribute("aria-labelledby") === tab.id,
+          ),
+          role: panel?.getAttribute("role"),
+        };
+      }),
+    );
+    assert.deepEqual(tabs, [
+      { linked: true, role: "tabpanel" },
+      { linked: true, role: "tabpanel" },
+    ]);
     if (tool === "graph_stats") {
       const stats = payload as { graphNodeCount: number };
       assert.ok(stats.graphNodeCount > 0);
