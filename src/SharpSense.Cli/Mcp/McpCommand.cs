@@ -22,6 +22,7 @@ using SharpSense.Infrastructure.ImpactAnalysis;
 using SharpSense.Infrastructure.Inheritors;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
+using SharpSense.Infrastructure.Storage;
 using SharpSense.Infrastructure.Trace;
 using Spectre.Console.Cli;
 using System.Diagnostics.CodeAnalysis;
@@ -64,10 +65,27 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
         services.AddImpactAnalysisInfrastructure();
         services.AddTrace();
         services.AddTraceInfrastructure();
-        services.AddPersistence();
+        services.AddPersistence(initializeOnStartup: false);
 
         services.AddMcpServer()
             .WithStdioServerTransport()
+            .WithRequestFilters(filters => filters.AddCallToolFilter(next => async (request, ct) =>
+            {
+                if (request.Params?.Name is nameof(SharpSenseMcpTools.semantic_search)
+                    or nameof(SharpSenseMcpTools.context)
+                    or nameof(SharpSenseMcpTools.trace_node)
+                    or nameof(SharpSenseMcpTools.get_inheritors)
+                    or nameof(SharpSenseMcpTools.attach_memory)
+                    or nameof(SharpSenseMcpTools.delete_memory)
+                    or nameof(SharpSenseMcpTools.get_memory)
+                    or nameof(SharpSenseMcpTools.get_memories))
+                {
+                    await request.Services!.GetRequiredService<IWorkspaceDatabaseInitializer>()
+                        .Initialize(ct);
+                }
+
+                return await next(request, ct);
+            }))
             .WithTools<SharpSenseMcpTools>(_toolSerializerOptions);
     }
 
@@ -77,6 +95,8 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
         IHost host,
         CancellationToken ct)
     {
+        // Resolve selection at startup without opening or migrating its database.
+        _ = host.Services.GetRequiredService<WorkspaceSelection>();
         await host.WaitForShutdownAsync(ct);
 
         return 0;

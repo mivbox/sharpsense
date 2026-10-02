@@ -48,7 +48,7 @@ internal sealed class DoctorCommand : AbstractAsyncCommand<DoctorCommand.Setting
         var stats = await handler.Handle(new GetGraphStatsQuery(), ct);
         var workspace = host.Services.GetRequiredService<WorkspaceSelection>();
         var options = host.Services.GetRequiredService<IOptions<LocalEmbeddingsOptions>>().Value;
-        var checks = DoctorChecks.Run(workspace, options, ct);
+        var checks = DoctorChecks.Run(workspace, host.Services.GetRequiredService<IWorkspaceCatalog>(), options, ct);
         var hasErrors = checks.Any(check => check.Severity == "error") ||
             stats.Diagnostics.Any(diagnostic => diagnostic.Severity == "error") ||
             stats.LastAttempt?.Outcome is "failed" or "cancelled";

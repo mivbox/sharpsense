@@ -24,14 +24,23 @@ namespace SharpSense.IntegrationTests;
 
 public sealed class DoctorGraphStatsIntegrationTests
 {
-    [Fact]
-    public async Task WhenDoctorJsonFindsMissingDatabase_ThenReturnsReportWithoutCreatingAnIndex()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WhenDoctorJsonFindsMissingDatabase_ThenReturnsReportWithoutCreatingAnIndex(bool legacyConfiguration)
     {
         using var fixture = new Fixture();
+        if (legacyConfiguration)
+        {
+            var path = fixture.Selection.ConfigurationPath;
+            var yaml = await File.ReadAllTextAsync(path, TestContext.Current.CancellationToken);
+            await File.WriteAllTextAsync(path, yaml.Replace("workspaceRoot:", "repositoryRoot:", StringComparison.Ordinal), TestContext.Current.CancellationToken);
+        }
         using var console = new TestConsole();
         var app = Cli.Program.CreateCommandApp(
             console,
             services => services
+                .AddSingleton<IWorkspaceCatalog>(fixture.Catalog)
                 .AddSingleton(fixture.Selection)
                 .AddSingleton(fixture.Workspace),
             enableFileLogging: false);
@@ -62,12 +71,13 @@ public sealed class DoctorGraphStatsIntegrationTests
     {
         var ct = TestContext.Current.CancellationToken;
         using var fixture = new Fixture();
-        await fixture.CreateLegacyEnumDatabase();
+        await fixture.CreateLegacyEnumDatabase(ct);
         var before = await File.ReadAllBytesAsync(fixture.Workspace.DatabasePath, ct);
         using var console = new TestConsole();
         var app = Cli.Program.CreateCommandApp(
             console,
             services => services
+                .AddSingleton<IWorkspaceCatalog>(fixture.Catalog)
                 .AddSingleton(fixture.Selection)
                 .AddSingleton(fixture.Workspace),
             enableFileLogging: false);
@@ -166,7 +176,9 @@ public sealed class DoctorGraphStatsIntegrationTests
         }
         finally
         {
-            await app.StopAsync(CancellationToken.None);
+            // Cleanup must finish even when the test is cancelled.
+            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await app.StopAsync(cleanup.Token);
         }
     }
 
@@ -178,10 +190,12 @@ public sealed class DoctorGraphStatsIntegrationTests
 
         public WorkspaceSelection Selection { get; }
 
+        public IWorkspaceCatalog Catalog { get; }
+
         public Fixture()
         {
-            var catalog = new WorkspaceCatalog(new FileSystem(), Path.Combine(Directory.FullName, "home"));
-            Selection = catalog.Create(
+            Catalog = new WorkspaceCatalog(new FileSystem(), Path.Combine(Directory.FullName, "home"));
+            Selection = Catalog.Create(
                 "fixture",
                 Directory.FullName,
                 [new WorkspaceSource(WorkspaceSourceKind.Markdown, "**/*.md")]);
@@ -195,12 +209,12 @@ public sealed class DoctorGraphStatsIntegrationTests
                 .AddGraphStatsInfrastructure();
         }
 
-        public async Task CreateLegacyEnumDatabase()
+        public async Task CreateLegacyEnumDatabase(CancellationToken ct)
         {
             await using var db = new SharpSenseDbContext(new DbContextOptionsBuilder<SharpSenseDbContext>()
                 .UseSqlite($"Data Source={Workspace.DatabasePath};Pooling=False")
                 .AddInterceptors(new SqlitePragmaInterceptor()).Options);
-            await db.Database.MigrateAsync(TestContext.Current.CancellationToken);
+            await db.Database.MigrateAsync(ct);
             await db.Database.ExecuteSqlRawAsync(
                 """
                 INSERT INTO Directories (Id, ParentId, Path, Name) VALUES (1, NULL, '', '');
@@ -216,7 +230,7 @@ public sealed class DoctorGraphStatsIntegrationTests
                     VALUES ('F11E5391-64A7-4F5A-B85D-6CC48B9F18C1', 1, 'body', 'Authored invariant',
                     'content-hash', '[]', 'Invariant', NULL, '2026-09-24 00:00:00+00:00');
                 """,
-                TestContext.Current.CancellationToken);
+                ct);
         }
 
         public void Dispose() => Directory.Delete(recursive: true);

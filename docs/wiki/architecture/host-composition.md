@@ -8,7 +8,7 @@ Memory, context, and trace commands register the embedding infrastructure requir
 
 Query commands and MCP bind one workspace per host. CLI selection uses an explicit workspace or the saved global default. MCP uses an explicit workspace or `ResolveFromDirectory` to find exactly one root containing its launch directory, without consulting the CLI default. Selection is fixed at startup; overlapping roots are ambiguous. `WorkspaceSetup` handles creation and interactive analysis selection through CLI-only `IWorkspaceInteractions` before creating a bound execution scope. Bare `workspace` shows subcommand help. `WorkspaceExecutionServiceCollectionExtensions` shares explicit scope registration with the web host. Analyze/watch retain one dependency-injection scope per session, keeping Roslyn state and change filtering together. The indexing lease starts before database initialization and lasts through teardown.
 
-The UI has a global catalog. Workspace-specific HTTP operations bind `IWorkspaceScope` from the required `X-SharpSense-Workspace` header; indexing routes select a workspace by route ID and create a separate job scope. Query services and the database factory resolve the selected workspace from that scope. The optional UI startup workspace is an initial view hint, not global mutable state.
+The UI has a global catalog. Workspace-specific HTTP operations bind `IWorkspaceScope` from the required `X-SharpSense-Workspace` header; indexing routes select a workspace by route ID and create a separate job scope. Query services and the database factory resolve the selected workspace from that scope. The optional UI startup workspace is an initial view hint, not global mutable state. Its validated loopback URL overrides ambient Kestrel endpoint configuration.
 
 `IAnalysisNotifier` and immutable notification/snapshot contracts belong to the application indexing slice. The internal `AnalysisSnapshotStore` in CLI shared presentation reduces notifications for both Spectre and browser SSE. Language workers publish typed progress; terminal rendering and browser SSE consume bounded state without blocking extraction. Spectre prompts stay in `IWorkspaceInteractions`, and terminal rendering stays in its presenter. Shared source discovery returns application source models; HTTP endpoints map them into API models.
 
@@ -29,7 +29,7 @@ Persistence registration stays in `PersistenceServiceCollectionExtensions`. `Wor
 | `IWorkspaceDatabaseInitializer` | Initialize the selected workspace database when needed. |
 | `SharpSenseHome` | Resolve the absolute override or default `~/.sharpsense` home. |
 
-Catalog reads and doctor do not create or migrate databases. Logs use the same home under `logs/`. Production configuration does not read project-local YAML or synthesize an implicit workspace.
+Catalog reads, doctor and MCP startup do not create or migrate databases. MCP initializes storage when a graph or memory tool needs it; `graph_stats` and command execution remain available independently. Logs use the same home under `logs/`. Production configuration does not read project-local YAML or synthesize an implicit workspace.
 
 See [analyze](../cli/analyze-command.md), [MCP](../cli/mcp-command.md), and [UI](../cli/ui-command.md).
 

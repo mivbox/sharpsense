@@ -14,7 +14,10 @@ internal static class WorkspaceApiContract
     public static bool IsWorkspaceScopedPath(PathString path) =>
         path.StartsWithSegments("/api") &&
         !path.StartsWithSegments("/api/workspaces") &&
-        !path.Equals(new PathString("/api/tools"));
+        !MatchesRoute(path, "/api/tools");
+
+    public static bool MatchesRoute(PathString path, string route) =>
+        string.Equals(path.Value?.TrimEnd('/'), route, StringComparison.OrdinalIgnoreCase);
 
     public static Task DescribeWorkspaceHeader(
         OpenApiOperation operation,

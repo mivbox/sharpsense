@@ -23,11 +23,59 @@ public sealed class UiCommandIntegrationTests
     private const string CoreFolderPath = "src/Fixture.Core";
     private const string RootTreePath = "%2F";
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("/")]
+    public async Task WhenDiagnosticRoutesHaveOptionalTrailingSlash_ThenKeepWorkspaceAndDatabasePolicies(string suffix)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
+        {
+            ["/repo/Guide.md"] = new("# Guide")
+        });
+        var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
+        var workspace = catalog.Create("fixture", "/repo", []);
+        var initializer = new Moq.Mock<IWorkspaceDatabaseInitializer>(Moq.MockBehavior.Strict);
+        var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
+        var app = Cli.Program.CreateCommandApp(configureServices: services =>
+        {
+            services.AddSingleton<IFileSystem>(fileSystem);
+            services.AddSingleton<IWorkspaceCatalog>(catalog);
+            services.AddSingleton(initializer.Object);
+        }, enableFileLogging: false);
+        using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var runTask = app.RunAsync(["ui", "--url", baseUrl], shutdown.Token);
+        try
+        {
+            await WaitForServer(runTask, baseUrl, ct);
+            using var client = new HttpClient { BaseAddress = new Uri(baseUrl) };
+            using var tools = await client.GetAsync($"/api/tools{suffix}", ct);
+            tools.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var noWorkspace = await client.GetAsync($"/api/tools/graph-stats{suffix}", ct);
+            noWorkspace.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            client.DefaultRequestHeaders.Add("X-SharpSense-Workspace", workspace.Definition.Id.ToString());
+
+            using var response = await client.GetAsync($"/api/tools/graph-stats{suffix}", ct);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var stats = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            stats.RootElement.GetProperty("databaseState").GetString().Should().Be("missing");
+            fileSystem.File.Exists(workspace.Workspace.DatabasePath).Should().BeFalse();
+            initializer.VerifyNoOtherCalls();
+        }
+        finally
+        {
+            await shutdown.CancelAsync();
+            // Cleanup must finish even when the test is cancelled.
+            await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+        }
+    }
+
     [Fact]
     public async Task WhenGraphPages_ThenReturnCompactCompleteResultsAndValidateRevisionAndCursor()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var database = await UiCommandTestDatabase.Create();
+        await using var database = await UiCommandTestDatabase.Create(ct);
         var fileSystem = new MockFileSystem(
             new Dictionary<string, MockFileData>
             {
@@ -51,7 +99,8 @@ public sealed class UiCommandIntegrationTests
         {
             await WaitForServer(
                 runTask,
-                $"{baseUrl}/");
+                $"{baseUrl}/",
+                ct);
             using var client = new HttpClient
             {
                 BaseAddress = new Uri(baseUrl)
@@ -163,6 +212,7 @@ public sealed class UiCommandIntegrationTests
         finally
         {
             shutdown.Cancel();
+            // Cleanup must finish even when the test is cancelled.
             await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
         }
     }
@@ -171,7 +221,7 @@ public sealed class UiCommandIntegrationTests
     public async Task WhenWorkspaceTreeIsScoped_ThenGraphIncludesSelectedAndBoundaryNodes()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var host = await UiHost.Start();
+        await using var host = await UiHost.Start(ct);
         var httpClient = host.Client;
         var baseUrl = host.BaseUrl;
 
@@ -308,7 +358,7 @@ public sealed class UiCommandIntegrationTests
     public async Task WhenWorkspaceIsIndexed_ThenOverviewReportsItsCodeNodeCount()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var host = await UiHost.Start();
+        await using var host = await UiHost.Start(ct);
         var httpClient = host.Client;
         var baseUrl = host.BaseUrl;
 
@@ -327,7 +377,7 @@ public sealed class UiCommandIntegrationTests
     public async Task WhenOpenApiIsRequested_ThenDocumentsSupportedRoutesAndWorkspaceHeaders()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var host = await UiHost.Start();
+        await using var host = await UiHost.Start(ct);
         var httpClient = host.Client;
         var baseUrl = host.BaseUrl;
 
@@ -372,7 +422,7 @@ public sealed class UiCommandIntegrationTests
     [InlineData("/api/missing")]
     public async Task WhenApiRouteDoesNotExist_ThenReturnsProblemDetails(string route)
     {
-        await using var host = await UiHost.Start();
+        await using var host = await UiHost.Start(TestContext.Current.CancellationToken);
 
         using var response = await host.Client.GetAsync(route, TestContext.Current.CancellationToken);
 
@@ -390,7 +440,7 @@ public sealed class UiCommandIntegrationTests
         string resultProperty,
         int expectedNodeId)
     {
-        await using var host = await UiHost.Start();
+        await using var host = await UiHost.Start(TestContext.Current.CancellationToken);
         var ct = TestContext.Current.CancellationToken;
 
         using var response = await host.Client.PostAsJsonAsync($"/api/tools/{tool}", new
@@ -410,7 +460,7 @@ public sealed class UiCommandIntegrationTests
     [Fact]
     public async Task WhenMethodHasNoInheritors_ThenReturnsAnEmptyArray()
     {
-        await using var host = await UiHost.Start();
+        await using var host = await UiHost.Start(TestContext.Current.CancellationToken);
         var ct = TestContext.Current.CancellationToken;
 
         using var response = await host.Client.PostAsJsonAsync("/api/tools/inheritors", new
@@ -430,7 +480,7 @@ public sealed class UiCommandIntegrationTests
     [InlineData("impact")]
     public async Task WhenGraphToolTargetsAnUnknownNode_ThenReturnsNotFound(string tool)
     {
-        await using var host = await UiHost.Start();
+        await using var host = await UiHost.Start(TestContext.Current.CancellationToken);
 
         using var response = await host.Client.PostAsJsonAsync(
             $"/api/tools/{tool}",
@@ -447,7 +497,7 @@ public sealed class UiCommandIntegrationTests
     [Fact]
     public async Task WhenSearchIsBlank_ThenReturnsBadRequest()
     {
-        await using var host = await UiHost.Start();
+        await using var host = await UiHost.Start(TestContext.Current.CancellationToken);
 
         using var response = await host.Client.PostAsJsonAsync(
             "/api/tools/search",
@@ -468,7 +518,7 @@ public sealed class UiCommandIntegrationTests
     [InlineData("UnknownColumn:MessageProvider*", true)]
     public async Task WhenSearchContainsPunctuation_ThenSearchesItsPlainTextTerms(string expression, bool hasMatch)
     {
-        await using var host = await UiHost.Start();
+        await using var host = await UiHost.Start(TestContext.Current.CancellationToken);
         var ct = TestContext.Current.CancellationToken;
 
         using var response = await host.Client.PostAsJsonAsync(
@@ -483,8 +533,11 @@ public sealed class UiCommandIntegrationTests
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         using var result = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
         result.RootElement.GetProperty("searchText").GetString().Should().Be(expression);
-        var ids = result.RootElement.GetProperty("hits").EnumerateArray()
-            .Select(hit => hit.GetProperty("id").GetInt32()).ToArray();
+        var ids = result.RootElement
+            .GetProperty("hits")
+            .EnumerateArray()
+            .Select(hit => hit.GetProperty("id").GetInt32())
+            .ToArray();
         if (hasMatch)
         {
             ids.Should().Contain(201);
@@ -498,8 +551,8 @@ public sealed class UiCommandIntegrationTests
     [Fact]
     public async Task WhenTracingOwnedMembers_ThenExcludesStructuralEdgesAndMarksOnlyCodeParentsSelectable()
     {
-        await using var database = await UiCommandTestDatabase.Create();
-        await database.AddStructuralRelationships();
+        await using var database = await UiCommandTestDatabase.Create(TestContext.Current.CancellationToken);
+        await database.AddStructuralRelationships(TestContext.Current.CancellationToken);
         var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
         var fileSystem = new MockFileSystem(
             new Dictionary<string, MockFileData>
@@ -523,7 +576,8 @@ public sealed class UiCommandIntegrationTests
         {
             await WaitForServer(
                 runTask,
-                $"{baseUrl}/");
+                $"{baseUrl}/",
+                TestContext.Current.CancellationToken);
             using var client = new HttpClient
             {
                 Timeout = TimeSpan.FromSeconds(5)
@@ -636,6 +690,7 @@ public sealed class UiCommandIntegrationTests
         finally
         {
             shutdown.Cancel();
+            // Cleanup must finish even when the test is cancelled.
             await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
         }
     }
@@ -644,9 +699,9 @@ public sealed class UiCommandIntegrationTests
     public async Task WhenGlobalUi_ThenStartsEmptyAndKeepsConcurrentWorkspaceRequestsAndMemoriesIsolated()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var firstDatabase = await UiCommandTestDatabase.Create();
-        await using var secondDatabase = await UiCommandTestDatabase.Create();
-        await secondDatabase.AddStructuralRelationships();
+        await using var firstDatabase = await UiCommandTestDatabase.Create(ct);
+        await using var secondDatabase = await UiCommandTestDatabase.Create(ct);
+        await secondDatabase.AddStructuralRelationships(ct);
         var fileSystem = new MockFileSystem(
             new Dictionary<string, MockFileData>
             {
@@ -679,7 +734,8 @@ public sealed class UiCommandIntegrationTests
         {
             await WaitForServer(
                 runTask,
-                $"{baseUrl}/");
+                $"{baseUrl}/",
+                ct);
             using var globalClient = new HttpClient
             {
                 BaseAddress = new Uri(baseUrl)
@@ -837,6 +893,7 @@ public sealed class UiCommandIntegrationTests
         finally
         {
             shutdown.Cancel();
+            // Cleanup must finish even when the test is cancelled.
             await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
         }
     }
@@ -866,7 +923,8 @@ public sealed class UiCommandIntegrationTests
         {
             await WaitForServer(
                 runTask,
-                $"{baseUrl}/");
+                $"{baseUrl}/",
+                ct);
             using var client = new HttpClient
             {
                 BaseAddress = new Uri(baseUrl)
@@ -898,11 +956,89 @@ public sealed class UiCommandIntegrationTests
         finally
         {
             shutdown.Cancel();
+            // Cleanup must finish even when the test is cancelled.
             await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
         }
     }
 
-    private static async Task WaitForServer(Task<int> runTask, string url)
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WhenAmbientKestrelEndpointConflicts_ThenListensOnlyAtSelectedUrl(bool useEnvironment)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var directory = Directory.CreateTempSubdirectory("sharpsense-ui-binding-");
+        var previousDirectory = Environment.CurrentDirectory;
+        const string endpointVariable = "Kestrel__Endpoints__Ambient__Url";
+        var previousEndpoint = Environment.GetEnvironmentVariable(endpointVariable);
+        using var occupiedEndpoint = new TcpListener(IPAddress.Loopback, 0);
+        occupiedEndpoint.Start();
+        var ambientUrl = $"http://127.0.0.1:{((IPEndPoint)occupiedEndpoint.LocalEndpoint).Port}";
+        var selectedUrl = $"http://127.0.0.1:{GetAvailablePort()}";
+        var fileSystem = new MockFileSystem();
+        var catalog = new WorkspaceCatalog(fileSystem, "/workspace-home");
+        using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        Task<int>? runTask = null;
+
+        try
+        {
+            Environment.CurrentDirectory = directory.FullName;
+            Environment.SetEnvironmentVariable(endpointVariable, useEnvironment ? ambientUrl : null);
+            if (!useEnvironment)
+            {
+                await File.WriteAllTextAsync(
+                    Path.Combine(directory.FullName, "appsettings.json"),
+                    JsonSerializer.Serialize(new
+                    {
+                        Kestrel = new
+                        {
+                            Endpoints = new
+                            {
+                                Ambient = new { Url = ambientUrl }
+                            }
+                        }
+                    }),
+                    ct);
+            }
+            var app = Cli.Program.CreateCommandApp(
+                configureServices: services =>
+                {
+                    services.AddSingleton<IFileSystem>(fileSystem);
+                    services.AddSingleton<IWorkspaceCatalog>(catalog);
+                },
+                enableFileLogging: false);
+
+            runTask = app.RunAsync(["ui", "--url", selectedUrl], shutdown.Token);
+            await WaitForServer(runTask, selectedUrl, ct);
+
+            using var client = new HttpClient();
+            using var response = await client.GetAsync($"{selectedUrl}/api/workspaces", ct);
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var catalogResponse = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            catalogResponse.RootElement.GetProperty("workspaces")
+                .EnumerateArray().Should().BeEmpty();
+        }
+        finally
+        {
+            try
+            {
+                await shutdown.CancelAsync();
+                if (runTask is not null)
+                {
+                    // Cleanup must finish even when the test is cancelled.
+                    await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
+                }
+            }
+            finally
+            {
+                Environment.CurrentDirectory = previousDirectory;
+                Environment.SetEnvironmentVariable(endpointVariable, previousEndpoint);
+                directory.Delete(recursive: true);
+            }
+        }
+    }
+
+    private static async Task WaitForServer(Task<int> runTask, string url, CancellationToken ct)
     {
         using var httpClient = new HttpClient
         {
@@ -920,7 +1056,7 @@ public sealed class UiCommandIntegrationTests
 
             try
             {
-                using var response = await httpClient.GetAsync(url, TestContext.Current.CancellationToken);
+                using var response = await httpClient.GetAsync(url, ct);
                 if (response.IsSuccessStatusCode && !runTask.IsCompleted)
                 {
                     return;
@@ -933,7 +1069,7 @@ public sealed class UiCommandIntegrationTests
             {
             }
 
-            await Task.Delay(TimeSpan.FromMilliseconds(250), TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromMilliseconds(250), ct);
         }
 
         throw new TimeoutException($"The UI command did not become ready at '{url}'.");
@@ -951,7 +1087,7 @@ public sealed class UiCommandIntegrationTests
     public async Task WhenMemoryEndpointsAreCalled_ThenTheyAttachListFetchAndDelete()
     {
         var ct = TestContext.Current.CancellationToken;
-        await using var database = await UiCommandTestDatabase.Create();
+        await using var database = await UiCommandTestDatabase.Create(ct);
         var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
         var fileSystem = new MockFileSystem(
             new Dictionary<string, MockFileData>
@@ -978,7 +1114,8 @@ public sealed class UiCommandIntegrationTests
         {
             await WaitForServer(
                 runTask,
-                $"{baseUrl}/");
+                $"{baseUrl}/",
+                ct);
 
             using var httpClient = new HttpClient
             {
@@ -1075,6 +1212,7 @@ public sealed class UiCommandIntegrationTests
             shutdown.Cancel();
             try
             {
+                // Cleanup must finish even when the test is cancelled.
                 await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
             }
             catch (OperationCanceledException)
@@ -1094,9 +1232,9 @@ public sealed class UiCommandIntegrationTests
         public string BaseUrl { get; } = baseUrl;
         public HttpClient Client { get; } = client;
 
-        public static async Task<UiHost> Start()
+        public static async Task<UiHost> Start(CancellationToken ct)
         {
-            var database = await UiCommandTestDatabase.Create();
+            var database = await UiCommandTestDatabase.Create(ct);
             var baseUrl = $"http://127.0.0.1:{GetAvailablePort()}";
             var fileSystem = new MockFileSystem(
                 new Dictionary<string, MockFileData>
@@ -1114,7 +1252,7 @@ public sealed class UiCommandIntegrationTests
                     database.ConfigureServices(services);
                 },
                 enableFileLogging: false);
-            var shutdown = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            var shutdown = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var runTask = app.RunAsync(["ui", "--url", baseUrl, "--repo-root", RepositoryRoot], shutdown.Token);
             var client = new HttpClient
             {
@@ -1125,7 +1263,7 @@ public sealed class UiCommandIntegrationTests
             var host = new UiHost(database, baseUrl, client, shutdown, runTask);
             try
             {
-                await WaitForServer(runTask, baseUrl + "/");
+                await WaitForServer(runTask, baseUrl + "/", ct);
 
                 return host;
             }
@@ -1141,6 +1279,7 @@ public sealed class UiCommandIntegrationTests
             try
             {
                 await shutdown.CancelAsync();
+                // Cleanup must finish even when the test is cancelled.
                 await runTask.WaitAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
             }
             finally
@@ -1159,15 +1298,23 @@ public sealed class UiCommandIntegrationTests
         public const string CallerCanonicalId = "code:project:src/Fixture.App/Fixture.App.csproj:Fixture.App.HttpEndpoint.Handle()";
         public const string CalleeCanonicalId = "code:project:src/Fixture.Core/Fixture.Core.csproj:Fixture.Core.MessageProvider.GetMessage()";
 
-        public static async Task<UiCommandTestDatabase> Create()
+        public static async Task<UiCommandTestDatabase> Create(CancellationToken ct)
         {
             var contextFactory = new InMemoryContextFactory<SharpSenseDbContext>(
                 options => new SharpSenseDbContext(options),
                 new InMemoryContextFactoryOptions(UseMigrations: true, LoadVectorExtension: true));
             var database = new UiCommandTestDatabase(contextFactory);
-            await database.Initialize();
+            try
+            {
+                await database.Initialize(ct);
 
-            return database;
+                return database;
+            }
+            catch
+            {
+                await database.DisposeAsync();
+                throw;
+            }
         }
 
         public void ConfigureServices(IServiceCollection services)
@@ -1180,9 +1327,8 @@ public sealed class UiCommandIntegrationTests
             await contextFactory.DisposeAsync();
         }
 
-        public async Task AddStructuralRelationships()
+        public async Task AddStructuralRelationships(CancellationToken ct)
         {
-            var ct = TestContext.Current.CancellationToken;
             await using var context = await contextFactory.GetContext(ct);
             context.GraphNodes.Add(new GraphNodeRecord
             {
@@ -1224,9 +1370,9 @@ public sealed class UiCommandIntegrationTests
             await context.SaveChangesAsync(ct);
         }
 
-        private async Task Initialize()
+        private async Task Initialize(CancellationToken ct)
         {
-            await using var dbContext = await contextFactory.GetContext(ct: TestContext.Current.CancellationToken);
+            await using var dbContext = await contextFactory.GetContext(ct: ct);
 
             dbContext.Directories.AddRange(
                 new DirectoryRecord
@@ -1427,7 +1573,7 @@ public sealed class UiCommandIntegrationTests
                 EdgeType = EdgeType.MethodCall
             });
 
-            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+            await dbContext.SaveChangesAsync(ct);
             await dbContext.Database.ExecuteSqlRawAsync(
                 """
                 INSERT INTO CodeNodeSearch (Id, CanonicalId, DisplayName, FullyQualifiedName, SearchText, RelativeFilePath)
@@ -1437,7 +1583,7 @@ public sealed class UiCommandIntegrationTests
                 JOIN GraphNodes ON GraphNodes.Id = CodeNodes.Id
                 JOIN Documents ON Documents.Id = CodeNodes.DocumentId;
                 """,
-                TestContext.Current.CancellationToken);
+                ct);
         }
     }
 }
