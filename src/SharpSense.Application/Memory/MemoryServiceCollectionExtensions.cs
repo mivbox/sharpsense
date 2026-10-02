@@ -22,7 +22,7 @@ public static class MemoryServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.TryAddTransient<ICommandHandler<AttachMemoryCommand, Result>, AttachMemoryCommandHandler>();
+        services.TryAddTransient<ICommandHandler<AttachMemoryCommand, Result<MemoryNode>>, AttachMemoryCommandHandler>();
         services.TryAddTransient<ICommandHandler<DeleteMemoryCommand, Result>, DeleteMemoryCommandHandler>();
         services
             .TryAddTransient<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>, GetNodeMemoriesQueryHandler>();

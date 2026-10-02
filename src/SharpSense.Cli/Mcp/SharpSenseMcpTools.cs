@@ -135,7 +135,7 @@ internal sealed class SharpSenseMcpTools
 
     [McpServerTool, Description("Attach persistent semantic memory to a persisted code node id. The intent classifies the memory so it can be filtered at retrieval time.")]
     public static async Task<CallToolResult> attach_memory(
-        ICommandHandler<AttachMemoryCommand, Result> handler,
+        ICommandHandler<AttachMemoryCommand, Result<MemoryNode>> handler,
         [Description("The persisted integer ID of the target node.")] int nodeId,
         [Description("The markdown-formatted memory payload to attach.")] string content,
         [Description("Optional tags used for filtering and classification.")] string[]? tags = null,
