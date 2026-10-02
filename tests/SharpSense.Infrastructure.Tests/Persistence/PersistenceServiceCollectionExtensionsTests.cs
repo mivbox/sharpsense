@@ -14,6 +14,35 @@ namespace SharpSense.Infrastructure.Tests.Persistence;
 public sealed class PersistenceServiceCollectionExtensionsTests
 {
     [Fact]
+    public async Task WhenDatabasePathContainsConnectionStringDelimiters_ThenInitializesThatExactFile()
+    {
+        var directory = Directory.CreateTempSubdirectory("sharpsense-path-");
+        var ct = TestContext.Current.CancellationToken;
+        try
+        {
+            var databasePath = Path.Combine(directory.FullName, "home;segment", "index.db");
+            var services = new ServiceCollection();
+            services.AddSingleton<IRepositoryWorkspace>(new RepositoryWorkspace(directory.FullName, databasePath, new FileSystem()));
+            services.AddPersistence(initializeOnStartup: false);
+            await using var provider = services.BuildServiceProvider();
+            await using var scope = provider.CreateAsyncScope();
+
+            await scope.ServiceProvider.GetRequiredService<IWorkspaceDatabaseInitializer>().Initialize(ct);
+            await new WorkspaceDatabaseStartup(provider, new FileSystem()).StartAsync(ct);
+
+            File.Exists(databasePath).Should().BeTrue();
+            await using var context = await provider.GetRequiredService<IDbContextFactory<SharpSenseDbContext>>().CreateDbContextAsync(ct);
+            (await context.Database.GetPendingMigrationsAsync(ct)).Should().BeEmpty();
+            (await context.CodeNodes.CountAsync(ct)).Should().Be(0);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            directory.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task WhenStartingWithUnknownMigrationHistory_ThenPreservesDatabaseAndReportsIncompatibility()
     {
         var tempDirectory = Directory.CreateTempSubdirectory("sharp-sense-persistence-");
@@ -22,8 +51,8 @@ public sealed class PersistenceServiceCollectionExtensionsTests
         {
             var databasePath = Path.Combine(tempDirectory.FullName, "sharpsense.db");
 
-            await CreateLegacyDatabase(databasePath, includeMigrationHistory: true);
-            await AssertDatabaseWasPreserved(databasePath);
+            await CreateLegacyDatabase(databasePath, includeMigrationHistory: true, ct: TestContext.Current.CancellationToken);
+            await AssertDatabaseWasPreserved(databasePath, TestContext.Current.CancellationToken);
         }
         finally
         {
@@ -40,8 +69,8 @@ public sealed class PersistenceServiceCollectionExtensionsTests
         {
             var databasePath = Path.Combine(tempDirectory.FullName, "sharpsense.db");
 
-            await CreateLegacyDatabase(databasePath, includeMigrationHistory: false);
-            await AssertDatabaseWasPreserved(databasePath);
+            await CreateLegacyDatabase(databasePath, includeMigrationHistory: false, ct: TestContext.Current.CancellationToken);
+            await AssertDatabaseWasPreserved(databasePath, TestContext.Current.CancellationToken);
         }
         finally
         {
@@ -49,20 +78,21 @@ public sealed class PersistenceServiceCollectionExtensionsTests
         }
     }
 
-    private static async Task AssertDatabaseWasPreserved(string databasePath)
+    private static async Task AssertDatabaseWasPreserved(string databasePath, CancellationToken ct)
     {
         using var serviceProvider = CreateServiceProvider(databasePath);
         var startup = new WorkspaceDatabaseStartup(
             serviceProvider,
             new FileSystem());
-        var start = () => startup.StartAsync(TestContext.Current.CancellationToken);
+        var start = () => startup.StartAsync(ct);
         await start.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*has been preserved*");
         (await ReadScalarInt(
             databasePath,
-            "SELECT COUNT(*) FROM pragma_table_info('CodeNodes') WHERE name = 'RelativeFilePath';"))
+            "SELECT COUNT(*) FROM pragma_table_info('CodeNodes') WHERE name = 'RelativeFilePath';",
+            ct))
             .Should().Be(1);
-        (await ReadStrings(databasePath, "SELECT Content FROM MemoryNodes;"))
+        (await ReadStrings(databasePath, "SELECT Content FROM MemoryNodes;", ct))
             .Should().Equal("Irreplaceable authored context");
     }
 
@@ -80,8 +110,8 @@ public sealed class PersistenceServiceCollectionExtensionsTests
                 new FileSystem());
             await startup.StartAsync(ct);
             await startup.StartAsync(ct);
-            (await ReadStrings(databasePath, "SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId;"))
-                .Should().Equal(await GetExpectedMigrationIds(serviceProvider));
+            (await ReadStrings(databasePath, "SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId;", ct))
+                .Should().Equal(await GetExpectedMigrationIds(serviceProvider, ct));
         }
         finally
         {
@@ -110,10 +140,10 @@ public sealed class PersistenceServiceCollectionExtensionsTests
         return services.BuildServiceProvider();
     }
 
-    private static async Task<string[]> GetExpectedMigrationIds(IServiceProvider serviceProvider)
+    private static async Task<string[]> GetExpectedMigrationIds(IServiceProvider serviceProvider, CancellationToken ct)
     {
         var dbContextFactory = serviceProvider.GetRequiredService<IDbContextFactory<SharpSenseDbContext>>();
-        await using var dbContext = await dbContextFactory.CreateDbContextAsync(TestContext.Current.CancellationToken);
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync(ct);
 
         return dbContext.GetService<IMigrationsAssembly>().Migrations.Keys
             .OrderBy(static migrationId => migrationId, StringComparer.Ordinal)
@@ -122,10 +152,11 @@ public sealed class PersistenceServiceCollectionExtensionsTests
 
     private static async Task CreateLegacyDatabase(
         string databasePath,
-        bool includeMigrationHistory)
+        bool includeMigrationHistory,
+        CancellationToken ct)
     {
         await using var connection = new SqliteConnection($"Data Source={databasePath};Mode=ReadWriteCreate;Cache=Shared");
-        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await connection.OpenAsync(ct);
 
         using var command = connection.CreateCommand();
         command.CommandText = includeMigrationHistory
@@ -148,24 +179,25 @@ public sealed class PersistenceServiceCollectionExtensionsTests
                 );
                 """;
 
-        await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        await command.ExecuteNonQueryAsync(ct);
         command.CommandText = "CREATE TABLE MemoryNodes (Content TEXT NOT NULL); INSERT INTO MemoryNodes VALUES ('Irreplaceable authored context');";
-        await command.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        await command.ExecuteNonQueryAsync(ct);
     }
 
     private static async Task<string[]> ReadStrings(
         string databasePath,
-        string sql)
+        string sql,
+        CancellationToken ct)
     {
         await using var connection = new SqliteConnection($"Data Source={databasePath};Mode=ReadWrite;Cache=Shared");
-        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await connection.OpenAsync(ct);
 
         using var command = connection.CreateCommand();
         command.CommandText = sql;
 
         var values = new List<string>();
-        await using var reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken);
-        while (await reader.ReadAsync(TestContext.Current.CancellationToken))
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
         {
             values.Add(reader.GetString(0));
         }
@@ -175,16 +207,17 @@ public sealed class PersistenceServiceCollectionExtensionsTests
 
     private static async Task<int> ReadScalarInt(
         string databasePath,
-        string sql)
+        string sql,
+        CancellationToken ct)
     {
         await using var connection = new SqliteConnection($"Data Source={databasePath};Mode=ReadWrite;Cache=Shared");
-        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await connection.OpenAsync(ct);
 
         using var command = connection.CreateCommand();
         command.CommandText = sql;
 
         return Convert.ToInt32(
-            await command.ExecuteScalarAsync(TestContext.Current.CancellationToken),
+            await command.ExecuteScalarAsync(ct),
             System.Globalization.CultureInfo.InvariantCulture);
     }
 }

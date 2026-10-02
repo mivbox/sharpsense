@@ -34,7 +34,6 @@ internal sealed class ProjectNodeConfiguration : IEntityTypeConfiguration<Projec
             .HasForeignKey(projectNode => projectNode.ProjectDocumentId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(projectNode => projectNode.ProjectDocumentId)
-            .IsUnique();
+        builder.HasIndex(projectNode => projectNode.ProjectDocumentId);
     }
 }

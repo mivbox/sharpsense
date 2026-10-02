@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
@@ -26,8 +27,15 @@ public static class PersistenceServiceCollectionExtensions
                     "Configuring SQLite database context for {DatabasePath}",
                     repositoryWorkspace.DatabasePath);
 
+                var connectionString = new SqliteConnectionStringBuilder
+                {
+                    DataSource = repositoryWorkspace.DatabasePath,
+                    Mode = SqliteOpenMode.ReadWriteCreate,
+                    Cache = SqliteCacheMode.Shared
+                }.ToString();
+
                 options.UseSqlite(
-                    $"Data Source={repositoryWorkspace.DatabasePath};Mode=ReadWriteCreate;Cache=Shared",
+                    connectionString,
                     b => b.MigrationsAssembly(typeof(SharpSenseDbContext).Assembly.FullName))
                     .AddInterceptors(serviceProvider.GetRequiredService<SqlitePragmaInterceptor>());
             },

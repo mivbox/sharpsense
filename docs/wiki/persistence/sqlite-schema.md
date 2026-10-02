@@ -15,7 +15,7 @@ Each registered workspace owns `<home>/workspaces/<workspace-guid>/index.db`. Th
 | `MemoryNodes` | Immutable Markdown notes attached to code-node IDs. |
 | `IndexRunState` | Bounded records of the latest successful index and latest attempt. |
 
-FTS5 provides keyword lookup; sqlite-vec supplies vector-distance operations. The workspace explorer projects from normalized directory/document/project tables rather than a dedicated tree table.
+FTS5 provides keyword lookup; sqlite-vec supplies vector-distance operations. The workspace explorer projects from normalized directory/document/project tables rather than a dedicated tree table. Target-framework variants share one project document, which appears once in the file tree. The migration permits that sharing without replacing existing graph rows or memories.
 
 ## Identity and memories
 
@@ -29,7 +29,7 @@ Graph reconciliation retains surviving canonical identities and their memories. 
 
 Selected source graphs are extracted and merged before one transactional replacement. Embeddings can be reused when their relevant content/hash is unchanged. A required extraction failure leaves the previous committed graph intact; diagnostics record the failed attempt separately.
 
-An OS-held indexing lease excludes concurrent index/watch writers and source mutations for the same workspace. CLI analysis takes the lease before database initialization. Read operations remain workspace-scoped.
+An OS-held indexing lease excludes concurrent index/watch writers and source mutations for the same workspace. CLI analysis takes the lease before database initialization. Read operations remain workspace-scoped. Impact analysis keeps traversal and endpoint lookup in one SQLite read transaction, so concurrent indexing cannot mix graph snapshots.
 
 Catalog listing/resolution and doctor do not create or migrate a database. Supported schema upgrades use migrations; incompatible legacy data is preserved and reported rather than automatically deleted or silently adopted into a named workspace.
 

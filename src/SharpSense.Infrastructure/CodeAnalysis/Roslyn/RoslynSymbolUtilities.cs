@@ -108,18 +108,41 @@ internal static class RoslynSymbolUtilities
     {
         ArgumentNullException.ThrowIfNull(declarationSyntax);
 
-        var normalizedDeclaration = string.Concat(
-            declarationSyntax
-                .DescendantTokens()
-                .Select(static token => token.Text));
-        if (string.IsNullOrEmpty(normalizedDeclaration))
+        return ComputeBodyHash([declarationSyntax]);
+    }
+
+    public static string? ComputeBodyHash(IEnumerable<SyntaxNode> declarations)
+    {
+        var declarationHashes = declarations
+            .Select(declaration =>
+            {
+                var tokens = new StringBuilder();
+                foreach (var token in declaration.DescendantTokens())
+                {
+                    // Kind and length retain token boundaries while ignoring trivia.
+                    tokens.Append(token.RawKind)
+                        .Append(':')
+                        .Append(token.Text.Length)
+                        .Append(':')
+                        .Append(token.Text);
+                }
+
+                return tokens.Length == 0
+                    ? null
+                    : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(tokens.ToString())));
+            })
+            .Where(hash => hash is not null)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        if (declarationHashes.Length == 0)
         {
             return null;
         }
 
-        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedDeclaration));
+        // Fixed-length hashes make declaration order immaterial without losing boundaries.
+        var combined = string.Concat(declarationHashes);
 
-        return Convert.ToHexString(hashBytes)
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(combined)))
             .ToLowerInvariant();
     }
 
