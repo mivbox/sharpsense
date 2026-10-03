@@ -1,6 +1,6 @@
 ---
 name: csharp-behavior-tests
-description: Apply C# testing standards when writing, improving or reviewing behavior tests using xUnit, Moq and AwesomeAssertions. Use for regression coverage, meaningful assertions, readable fixtures and test cleanup; production-code layout belongs to csharp-clean-code.
+description: "Write or improve C# behavior tests with xUnit, Moq and AwesomeAssertions: regression cases, meaningful assertions and fixture lifetimes."
 ---
 
 # C# testing standards

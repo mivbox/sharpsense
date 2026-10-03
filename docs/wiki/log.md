@@ -6,6 +6,14 @@ Historical implementation notes follow. Each dated entry describes behavior at t
 
 - `2026-10-03` — Bounded SQLite collection parameters in impact, callee, inheritor and batch-memory reads; added regression coverage for large neighborhoods. See [trace](cli/trace-command.md).
 
+- `2026-10-03` — Restricted serialized releases to `main` and pinned tags to the tested commit. See [build conventions](architecture/dotnet-conventions.md).
+
+- `2026-10-03` — Clarified CLI installation and memory help.
+
+- `2026-10-03` — Added the evaluated `sharpsense-memory` skill to plugin version 1.2.0 for requested note maintenance. Exploration and impact skills retain on-demand memory retrieval. See [skills](cli/skills-command.md) and [memories](cli/memory-command.md).
+
+- `2026-10-03` — Tuned skill discovery descriptions and bounded graph workflows; added Codex metadata while retaining workspace verification and source evidence. See [skills](cli/skills-command.md).
+
 - `2026-10-02` — Audited test cancellation, made helper tokens explicit, linked test host lifetimes and bounded cleanup waits. Kept xUnit v3 on package version 4.0.1. See [build and test conventions](architecture/dotnet-conventions.md).
 
 - `2026-10-02` — Upgraded compatible backend and frontend dependencies, adapted Spectre command overrides and xUnit parallelization, and retained VSTest/Coverlet support. Kept MSBuild and OpenAPI on their .NET 10-compatible lines. See [build and test conventions](architecture/dotnet-conventions.md).

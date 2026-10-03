@@ -1,6 +1,6 @@
 ---
 name: csharp-clean-code
-description: Apply C# coding standards when writing, refactoring or reviewing production code for clear responsibilities, readable control flow, deliberate visibility and consistent formatting. Use for ordinary implementation and cleanup; test design belongs to csharp-behavior-tests.
+description: "Refactor or review production C# for readability, naming, visibility and formatting. Use for cleanup; behavior tests and feature architecture have separate skills."
 ---
 
 # C# coding standards

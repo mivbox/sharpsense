@@ -1,0 +1,6 @@
+interface:
+  display_name: "Summarize Command Output"
+  short_description: "Extract useful evidence from noisy command output"
+  default_prompt: "Use $sharpsense-summarize-output to run this command and explain its result."
+policy:
+  allow_implicit_invocation: true

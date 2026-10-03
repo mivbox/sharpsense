@@ -1,13 +1,14 @@
 # SharpSense plugin
 
-The `sharpsense` plugin provides code navigation, change assessment, and command-output summaries for Codex,
+The `sharpsense` plugin provides code navigation, change assessment, memory maintenance and command-output summaries for Codex,
 Copilot CLI, and Copilot in VS Code. It also registers a local stdio MCP connection.
 
 | Skill | Purpose |
 | --- | --- |
-| `sharpsense-exploring` | Delegate substantial discovery, navigate the graph and verify relevant source. |
+| `sharpsense-exploring` | Find relevant code, expand unresolved relationships and verify source. |
 | `sharpsense-impact-analysis` | Inspect callers, contracts and source evidence before a change. |
 | `sharpsense-summarize-output` | Reduce large command output through `ctx_execute`. |
+| `sharpsense-memory` | Save, replace, delete or audit code notes when requested. |
 
 Development skills under `.agents/skills/` are repository tooling, separate from the published SharpSense plugin.
 They follow the consuming repository's conventions and can move with their reference directories.
@@ -20,10 +21,16 @@ They follow the consuming repository's conventions and can move with their refer
 | `ef-query-work` | Preserve query shape, persistence semantics and transaction ownership. |
 | `async-workflows` | Preserve operation identity, cancellation, bounded work and disposal. |
 
-The clean-code and behavior-test skills allow implicit selection. Their descriptions identify when each applies;
-their `SKILL.md` files direct the agent to load only the relevant files in `references/`. Examples are
-self-contained and follow generic coding and testing standards. A newly added skill becomes available
-when the client refreshes its skill catalog.
+Skill descriptions identify when each workflow applies. Codex loads the matching `SKILL.md` on demand; the
+development skills link references only for the relevant work. Examples use portable standards and require no
+external reference repository. The four plugin skills include Codex UI metadata and allow implicit selection.
+Refresh the client's catalog if updated skills are not visible.
+
+Use graph navigation when relationships are unclear, impact analysis for a proposed contract change, and output
+reduction for noisy commands. Use `sharpsense-memory` for remember/forget requests and stale-note reviews;
+ordinary exploration and impact analysis retrieve relevant notes themselves. Small commands and existing logs use
+ordinary tools. The skills verify workspace binding, avoid unnecessary tracing and preserve source verification.
+See [evaluating token usage](../../token-usage.md).
 
 ## Prerequisites
 
@@ -63,7 +70,7 @@ copilot plugin list
 ```
 
 Choose either a local checkout or the GitHub source below for the marketplace named `sharpsense-marketplace`.
-Start a new client session after installation and confirm that all three skills are available. Codex marketplace
+Start a new client session after installation and confirm that all four skills are available. Codex marketplace
 registration and local plugin loading are described in the [official OpenAI documentation](https://developers.openai.com/plugins/build/plugins);
 Copilot commands are documented in the [Copilot CLI plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference).
 
@@ -171,5 +178,5 @@ The root manifest deliberately omits the portable `$schema`: portable plugin MCP
 working directory from the installed plugin root, which would defeat workspace discovery from the project directory.
 No executable wrappers or hooks are required.
 
-Plugin version `1.1.0` is independent of the CLI/NuGet version. When releasing a plugin update, keep its identity and
+Plugin version `1.2.0` is independent of the CLI/NuGet version. When releasing a plugin update, keep its identity and
 version consistent across both manifests and marketplace metadata.

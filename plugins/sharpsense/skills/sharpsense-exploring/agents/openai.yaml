@@ -1,0 +1,6 @@
+interface:
+  display_name: "Explore Code"
+  short_description: "Explain code paths and dependencies with SharpSense"
+  default_prompt: "Use $sharpsense-exploring to explain this code path with source evidence."
+policy:
+  allow_implicit_invocation: true

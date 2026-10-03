@@ -132,7 +132,7 @@ counts.
 
 ## Install the agent plugin
 
-The `sharpsense` plugin includes exploration, impact-analysis and command-output skills, plus a stdio MCP connection
+The `sharpsense` plugin includes exploration, impact-analysis, memory-maintenance and command-output skills, plus a stdio MCP connection
 for Codex and Copilot. Install the SharpSense CLI on the client's `PATH`, then create, and analyse a workspace before
 starting the client from a directory within that workspace.
 
