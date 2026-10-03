@@ -4,6 +4,7 @@ using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Inheritors;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
+using SharpSense.Infrastructure.Tests.TestData;
 using SharpSense.Testkit;
 
 namespace SharpSense.Infrastructure.Tests.Inheritors;
@@ -22,6 +23,54 @@ public sealed class InheritorFinderTests
     private const int DerivedBetaNodeId = 102;
     private const int InterfaceNodeId = 103;
     private const int InterfaceImplementerNodeId = 104;
+
+    [Fact]
+    public async Task WhenInheritorsExceedSqliteParameterLimit_ThenReturnsEveryClassAndExcludesInterfaces()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        await using var context = await factory.GetContext(ct);
+        await Seed(context, ct);
+        var classes = await KnowledgeGraphFixture.AddCodeNodes(
+            context,
+            BaseNodeId,
+            96,
+            NodeType.Class,
+            ct);
+        var interfaces = await KnowledgeGraphFixture.AddCodeNodes(
+            context,
+            BaseNodeId,
+            1,
+            NodeType.Interface,
+            ct);
+        context.DependencyEdges.AddRange(classes
+            .Concat(interfaces)
+            .Select(node => new DependencyEdgeRecord
+            {
+                CallerNodeId = node.Id,
+                CalleeNodeId = BaseNodeId,
+                EdgeType = EdgeType.Implements
+            }));
+
+        await context.SaveChangesAsync(ct);
+        SQLitePCL.raw.sqlite3_limit(
+            factory.GetSqliteConnection().Handle!,
+            SQLitePCL.raw.SQLITE_LIMIT_VARIABLE_NUMBER,
+            64);
+        var finder = new InheritorFinder(factory.CreateDbContextFactory());
+
+        var result = await finder.GetInheritors(new GetInheritorsQuery(BaseNodeId), ct);
+
+        result
+            .Select(node => node.Id)
+            .Should()
+            .Equal(new[]
+            {
+                DerivedAlphaNodeId,
+                DerivedBetaNodeId
+            }.Concat(classes.Select(node => node.Id)));
+        result.Should().OnlyContain(node => node.NodeType == NodeType.Class);
+    }
 
     [Fact]
     public async Task WhenGetInheritorsUsesBaseClassNodeId_ThenReturnsDistinctOrderedDerivedClasses()

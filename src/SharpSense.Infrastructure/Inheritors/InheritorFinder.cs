@@ -44,8 +44,9 @@ internal sealed class InheritorFinder(IDbContextFactory<SharpSenseDbContext> dbC
             context.CodeNodes
                 .AsNoTracking()
                 .Where(codeNode =>
-                    derivedNodeIds.Contains(codeNode.Id) &&
-                        codeNode.NodeType == NodeType.Class)
+                    EF.Parameter(derivedNodeIds)
+                        .Contains(codeNode.Id) &&
+                    codeNode.NodeType == NodeType.Class)
                 .OrderBy(static codeNode => codeNode.FullyQualifiedName)
                 .ThenBy(static codeNode => codeNode.Id))
             .ToArrayAsync(ct);
