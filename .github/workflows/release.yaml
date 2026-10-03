@@ -3,8 +3,13 @@ name: Release SharpSense
 on:
   workflow_dispatch:
 
+concurrency:
+  group: sharpsense-release
+  cancel-in-progress: false
+
 jobs:
   build-test-publish:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -94,5 +99,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.versioning.outputs.version_tag }}
+          target_commitish: ${{ github.sha }}
           name: Release ${{ steps.versioning.outputs.version_tag }}
           generate_release_notes: true

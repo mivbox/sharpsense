@@ -3,7 +3,7 @@ title: ".NET Build and Code Conventions"
 type: architecture
 tags: [csharp, build, testing]
 created: 2026-09-27
-updated: 2026-10-02
+updated: 2026-10-03
 confidence: high
 ---
 
@@ -55,7 +55,8 @@ dotnet test SharpSense.sln --no-build -c Release
 
 For subsequent backend-only builds, `-p:FrontendBuildCompleted=true` reuses an already built `src/SharpSense.UI/dist`; build the UI first on a clean checkout. Tool packaging additionally requires a local pack/install smoke check, including workspace creation and analysis.
 
-No validation command publishes a package.
+No validation command publishes a package. The manual release workflow runs only from `main`, serializes release runs,
+and tags the exact commit used to build and test the package.
 
 For EF design-time checks, explicitly select the graph context (the assembly also contains a transient execution-log context):
 
