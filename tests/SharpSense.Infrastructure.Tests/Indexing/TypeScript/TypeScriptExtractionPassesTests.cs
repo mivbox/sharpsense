@@ -360,10 +360,10 @@ public sealed class TypeScriptExtractionPassesTests
                 """),
             ("/repo/apps/web/src/App.tsx",
                 """
-                import { useGetConversationById } from "@loanmarket/ai-chat-api/query-hooks/use-get-conversation-by-id-query.g";
+                import { useGetNodeById } from "@sharpsense/graph-api/query-hooks/use-get-node-by-id-query.g";
 
                 export function App() {
-                    return useGetConversationById({
+                    return useGetNodeById({
                         params: {
                             path: {
                                 id: "123"
@@ -372,13 +372,13 @@ public sealed class TypeScriptExtractionPassesTests
                     });
                 }
                 """),
-            ("/repo/packages/ai-chat-api/package.json",
+            ("/repo/packages/graph-api/package.json",
                 """
                 {
-                  "name": "@loanmarket/ai-chat-api"
+                  "name": "@sharpsense/graph-api"
                 }
                 """),
-            ("/repo/packages/ai-chat-api/tsconfig.json",
+            ("/repo/packages/graph-api/tsconfig.json",
                 """
                 {
                   "compilerOptions": {
@@ -386,13 +386,13 @@ public sealed class TypeScriptExtractionPassesTests
                   }
                 }
                 """),
-            ("/repo/packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts",
+            ("/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts",
                 """
-                const useGetConversationById = () => {
+                const useGetNodeById = () => {
                     return null;
                 };
 
-                export { useGetConversationById };
+                export { useGetNodeById };
                 """));
         var extractor = CreateExtractor(fileSystem);
 
@@ -402,12 +402,12 @@ public sealed class TypeScriptExtractionPassesTests
 
         result.Value.CodeNodes.Should().Contain(node =>
             node.CanonicalId ==
-            "code:ts:packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts:useGetConversationById" &&
+            "code:ts:packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts:useGetNodeById" &&
             node.NodeType == NodeType.Method);
         result.Value.Edges.Should().Contain(edge =>
             edge.CallerId == "code:ts:apps/web/src/App.tsx:App" &&
             edge.CalleeId ==
-            "code:ts:packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts:useGetConversationById" &&
+            "code:ts:packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts:useGetNodeById" &&
             edge.EdgeType == EdgeType.Import &&
             edge.Metadata == null);
     }

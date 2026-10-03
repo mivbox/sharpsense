@@ -93,31 +93,31 @@ public sealed class TypeScriptSourceDiscovererTests
                 [
                     new DiscoveredFile("/repo/apps/web/src/App.tsx", "apps/web/src/App.tsx"),
                     new DiscoveredFile(
-                        "/repo/packages/ai-chat-api/src/query-hooks/index.ts",
-                        "packages/ai-chat-api/src/query-hooks/index.ts"),
+                        "/repo/packages/graph-api/src/query-hooks/index.ts",
+                        "packages/graph-api/src/query-hooks/index.ts"),
                     new DiscoveredFile(
-                        "/repo/packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts",
-                        "packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts")
+                        "/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts",
+                        "packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts")
                 ]);
         var fileSystem = new MockFileSystem(
             new Dictionary<string, MockFileData>
             {
                 ["/repo/apps/web/src/App.tsx"] = new(
                     """
-                import { useGetConversationById } from "@loanmarket/ai-chat-api/query-hooks";
+                import { useGetNodeById } from "@sharpsense/graph-api/query-hooks";
 
                 export function App() {
-                    return useGetConversationById();
+                    return useGetNodeById();
                 }
                 """),
                 ["/repo/apps/web/tsconfig.json"] = new("{}"),
-                ["/repo/packages/ai-chat-api/package.json"] = new(
+                ["/repo/packages/graph-api/package.json"] = new(
                     """
                 {
-                  "name": "@loanmarket/ai-chat-api"
+                  "name": "@sharpsense/graph-api"
                 }
                 """),
-                ["/repo/packages/ai-chat-api/tsconfig.json"] = new(
+                ["/repo/packages/graph-api/tsconfig.json"] = new(
                     """
                 {
                   "compilerOptions": {
@@ -125,13 +125,13 @@ public sealed class TypeScriptSourceDiscovererTests
                   }
                 }
                 """),
-                ["/repo/packages/ai-chat-api/src/query-hooks/index.ts"] = new(
+                ["/repo/packages/graph-api/src/query-hooks/index.ts"] = new(
                     """
-                export { useGetConversationById } from "./use-get-conversation-by-id-query.g";
+                export { useGetNodeById } from "./use-get-node-by-id-query.g";
                 """),
-                ["/repo/packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts"] = new(
+                ["/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts"] = new(
                     """
-                export function useGetConversationById() {
+                export function useGetNodeById() {
                     return null;
                 }
                 """)
@@ -150,7 +150,7 @@ public sealed class TypeScriptSourceDiscovererTests
             .Should()
             .Equal(
                 "apps/web/src/App.tsx",
-                "packages/ai-chat-api/src/query-hooks/index.ts",
-                "packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts");
+                "packages/graph-api/src/query-hooks/index.ts",
+                "packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts");
     }
 }
