@@ -121,7 +121,8 @@ internal sealed class MemoryStore(
         await using var context = await dbContextFactory.CreateDbContextAsync(ct);
         var codeNodes = await context.CodeNodes
             .AsNoTracking()
-            .Where(codeNode => normalizedNodeIds.Contains(codeNode.Id))
+            .Where(codeNode => EF.Parameter(normalizedNodeIds)
+                .Contains(codeNode.Id))
             .Select(static codeNode => new
             {
                 codeNode.Id,
@@ -136,7 +137,8 @@ internal sealed class MemoryStore(
 
         var memoriesQuery = context.MemoryNodes
             .AsNoTracking()
-            .Where(memoryNode => normalizedNodeIds.Contains(memoryNode.TargetCodeNodeId));
+            .Where(memoryNode => EF.Parameter(normalizedNodeIds)
+                .Contains(memoryNode.TargetCodeNodeId));
         if (normalizedIntents.Length > 0)
         {
             var intentNames = normalizedIntents
@@ -216,7 +218,8 @@ internal sealed class MemoryStore(
         await using var context = await dbContextFactory.CreateDbContextAsync(ct);
         var records = await context.MemoryNodes
             .AsNoTracking()
-            .Where(record => normalizedIds.Contains(record.Id))
+            .Where(record => EF.Parameter(normalizedIds)
+                .Contains(record.Id))
             .ToArrayAsync(ct);
         if (records.Length == 0)
         {
@@ -229,7 +232,8 @@ internal sealed class MemoryStore(
             .ToArray();
         var nodesById = await context.CodeNodes
             .AsNoTracking()
-            .Where(codeNode => nodeIds.Contains(codeNode.Id))
+            .Where(codeNode => EF.Parameter(nodeIds)
+                .Contains(codeNode.Id))
             .Select(static codeNode => new
             {
                 codeNode.Id,

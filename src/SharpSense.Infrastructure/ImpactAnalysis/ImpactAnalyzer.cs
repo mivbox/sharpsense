@@ -49,7 +49,8 @@ internal sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCo
         {
             var inboundEdgesQuery = context.DependencyEdges
                 .AsNoTracking()
-                .Where(edge => frontierNodeIds.Contains(edge.CalleeNodeId));
+                .Where(edge => EF.Parameter(frontierNodeIds)
+                    .Contains(edge.CalleeNodeId));
 
             inboundEdgesQuery = inboundEdgesQuery.Where(edge => includedEdgeTypes.Contains(edge.EdgeType));
 
@@ -77,7 +78,8 @@ internal sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCo
                 context,
                 context.CodeNodes
                     .AsNoTracking()
-                    .Where(codeNode => impactedNodeIds.Contains(codeNode.Id))
+                    .Where(codeNode => EF.Parameter(impactedNodeIds)
+                        .Contains(codeNode.Id))
                     .OrderBy(codeNode => codeNode.FullyQualifiedName)
                     .ThenBy(codeNode => codeNode.Id))
                 .ToArrayAsync(ct);
@@ -93,7 +95,8 @@ internal sealed class ImpactAnalyzer(IDbContextFactory<SharpSenseDbContext> dbCo
             ? []
             : await context.GraphNodes
                 .AsNoTracking()
-                .Where(graphNode => edgeNodeIds.Contains(graphNode.Id))
+                .Where(graphNode => EF.Parameter(edgeNodeIds)
+                    .Contains(graphNode.Id))
                 .ToDictionaryAsync(static graphNode => graphNode.Id, static graphNode => graphNode.CanonicalId, ct);
         var orderedImpactedEdges = impactedEdges
             .OrderBy(edge => canonicalIdsByNodeId[edge.CallerNodeId], StringComparer.Ordinal)

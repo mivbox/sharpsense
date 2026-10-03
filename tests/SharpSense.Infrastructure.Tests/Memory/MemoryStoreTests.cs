@@ -3,8 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using Moq;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
+using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Memory;
 using SharpSense.Infrastructure.Persistence;
+using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Infrastructure.Tests.TestData;
 using SharpSense.Testkit;
 
@@ -12,6 +14,71 @@ namespace SharpSense.Infrastructure.Tests.Memory;
 
 public sealed class MemoryStoreTests
 {
+    [Fact]
+    public async Task WhenMemoryOwnersExceedSqliteParameterLimit_ThenReturnsNotesAndEmptyOwners()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        await using var context = await factory.GetContext(ct);
+        var memories = await SeedMemories(context, ct);
+        var ownerIds = memories
+            .Select(memory => memory.TargetCodeNodeId)
+            .Append(KnowledgeGraphFixture.TargetNodeId)
+            .ToArray();
+        SQLitePCL.raw.sqlite3_limit(
+            factory.GetSqliteConnection().Handle!,
+            SQLitePCL.raw.SQLITE_LIMIT_VARIABLE_NUMBER,
+            64);
+        var store = new MemoryStore(
+            factory.CreateDbContextFactory(),
+            new Mock<IEmbeddingGenerator>(MockBehavior.Strict).Object);
+
+        var result = await store.GetNodeMemories([.. ownerIds, int.MaxValue], [MemoryIntent.Decision], ct);
+
+        result.Keys.Should().BeEquivalentTo(ownerIds);
+        result[KnowledgeGraphFixture.TargetNodeId].Should().BeEmpty();
+        foreach (var expected in memories)
+        {
+            var actual = result[expected.TargetCodeNodeId].Should().ContainSingle().Subject;
+            actual.Id.Should().Be(expected.Id);
+            actual.Content.Should().Be(expected.Content);
+            actual.TargetFullyQualifiedName.Should().Be($"SharpSense.Graph.Node{expected.TargetCodeNodeId:D4}");
+        }
+    }
+
+    [Fact]
+    public async Task WhenMemoryIdsExceedSqliteParameterLimit_ThenReturnsNotesAndPreservesMissingIds()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var factory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
+        await using var context = await factory.GetContext(ct);
+        var memories = await SeedMemories(context, ct);
+        var missingId = Guid.NewGuid();
+        var memoryIds = memories
+            .Select(memory => memory.Id)
+            .Append(missingId)
+            .ToArray();
+        SQLitePCL.raw.sqlite3_limit(
+            factory.GetSqliteConnection().Handle!,
+            SQLitePCL.raw.SQLITE_LIMIT_VARIABLE_NUMBER,
+            64);
+        var store = new MemoryStore(
+            factory.CreateDbContextFactory(),
+            new Mock<IEmbeddingGenerator>(MockBehavior.Strict).Object);
+
+        var result = await store.GetMemories([.. memoryIds, memoryIds[0]], ct);
+
+        result.Keys.Should().BeEquivalentTo(memoryIds);
+        result[missingId].Should().BeNull();
+        foreach (var expected in memories)
+        {
+            var actual = result[expected.Id];
+            actual.Should().NotBeNull();
+            actual!.Content.Should().Be(expected.Content);
+            actual.TargetFullyQualifiedName.Should().Be($"SharpSense.Graph.Node{expected.TargetCodeNodeId:D4}");
+        }
+    }
+
     [Fact]
     public async Task WhenBodyHashChangesAfterAttach_ThenReturnedMemoryIsMarkedStale()
     {
@@ -122,5 +189,30 @@ public sealed class MemoryStoreTests
         embeddings.Verify(
             candidate => candidate.Generate("Reusable memory", ct),
             Times.Once);
+    }
+
+    private static async Task<MemoryNodeRecord[]> SeedMemories(SharpSenseDbContext context, CancellationToken ct)
+    {
+        await KnowledgeGraphFixture.Seed(context, ct);
+        var nodes = await KnowledgeGraphFixture.AddCodeNodes(
+            context,
+            KnowledgeGraphFixture.TargetNodeId,
+            96,
+            NodeType.Method,
+            ct);
+        var memories = nodes
+            .Select(node => new MemoryNodeRecord
+            {
+                Id = Guid.NewGuid(),
+                TargetCodeNodeId = node.Id,
+                Content = $"Preserve graph node {node.Id} during reindexing.",
+                Intent = nameof(MemoryIntent.Decision)
+            })
+            .ToArray();
+        context.MemoryNodes.AddRange(memories);
+
+        await context.SaveChangesAsync(ct);
+
+        return memories;
     }
 }

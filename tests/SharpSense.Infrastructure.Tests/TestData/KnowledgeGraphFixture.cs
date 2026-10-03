@@ -49,6 +49,41 @@ internal static class KnowledgeGraphFixture
     public const string MessageProviderTypeDisplayName = "MessageProvider";
     public const string CachedMessageDisplayName = "MessageProvider.GetCachedMessage()";
 
+    public static async Task<CodeNodeRecord[]> AddCodeNodes(
+        SharpSenseDbContext context,
+        int sourceNodeId,
+        int count,
+        NodeType nodeType,
+        CancellationToken ct)
+    {
+        var documentId = await context.CodeNodes
+            .Where(node => node.Id == sourceNodeId)
+            .Select(node => node.DocumentId)
+            .SingleAsync(ct);
+        var firstNodeId = await context.GraphNodes.MaxAsync(node => node.Id, ct) + 1;
+        var nodes = Enumerable.Range(firstNodeId, count)
+            .Select(id => new CodeNodeRecord
+            {
+                Id = id,
+                DocumentId = documentId,
+                FullyQualifiedName = $"SharpSense.Graph.Node{id:D4}",
+                DisplayName = $"Node{id:D4}",
+                NodeType = nodeType
+            })
+            .ToArray();
+        context.GraphNodes.AddRange(nodes.Select(node => new GraphNodeRecord
+        {
+            Id = node.Id,
+            CanonicalId = $"code:sharpsense:{node.Id}",
+            Kind = GraphNodeKind.Code
+        }));
+        context.CodeNodes.AddRange(nodes);
+
+        await context.SaveChangesAsync(ct);
+
+        return nodes;
+    }
+
     public static async Task Seed(SharpSenseDbContext context, CancellationToken ct)
     {
         context.Directories.AddRange(

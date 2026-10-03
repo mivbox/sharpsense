@@ -66,7 +66,8 @@ internal sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbCo
             context,
             context.CodeNodes
                 .AsNoTracking()
-                .Where(codeNode => calleeIds.Contains(codeNode.Id))
+                .Where(codeNode => EF.Parameter(calleeIds)
+                    .Contains(codeNode.Id))
                 .OrderBy(static codeNode => codeNode.FullyQualifiedName)
                 .ThenBy(static codeNode => codeNode.Id))
             .ToArrayAsync(ct);

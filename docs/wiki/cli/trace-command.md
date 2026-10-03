@@ -20,4 +20,6 @@ MCP `trace_node` shares query infrastructure, but its caller traversal uses impa
 
 See [context](context-command.md) for a bounded immediate overview and [inheritors](inheritors-command.md) for direct type relationships.
 
+UI callee traces show up to 1,000 nodes, including the root, and report when this limit truncates the result.
+
 Traces show static graph relationships. They do not establish runtime execution order or cover every dynamic branch; verify relevant conditions and ordering in source.
