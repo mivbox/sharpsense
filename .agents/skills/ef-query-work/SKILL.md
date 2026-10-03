@@ -1,6 +1,6 @@
 ---
 name: ef-query-work
-description: Change or review EF Core queries and writes with deliberate SQL shape, transaction ownership and provider-appropriate validation.
+description: "Review or change EF Core queries and writes: SQL shape, transactions, tracking and provider-specific behavior."
 ---
 
 # EF query work

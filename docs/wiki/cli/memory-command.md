@@ -24,8 +24,10 @@ The add command prints the identity and content returned by its own save, even w
 | `--intent` | Convention, Invariant, Todo, Warning, or Decision; defaults to Convention. |
 | `--intent-filter` | Repeatable intent filters for list. |
 
-Memories are immutable. Delete and attach a replacement when content changes. A memory is marked stale when its saved target hash differs from the current node hash. Markdown root memories track the whole document; section memories track their own heading and body. The first reindex after upgrading conservatively marks older Markdown memories stale because they were attached without a content hash. Tags may be omitted, but null elements in a supplied tag list are rejected. Undefined memory intents are rejected before saving.
+Memories are immutable. Save and verify a replacement before deleting the superseded note when content changes. A memory is marked stale when its saved target hash differs from the current node hash. Markdown root memories track the whole document; section memories track their own heading and body. The first reindex after upgrading conservatively marks older Markdown memories stale because they were attached without a content hash. Tags may be omitted, but null elements in a supplied tag list are rejected. Undefined memory intents are rejected before saving.
 
 Persistence binds memories to `CodeNodes.Id`, not a globally unique symbol name. Reindexing preserves memories while the owning canonical node survives; removing that node cascades deletion of its memories. Changing workspace sources can therefore remove attached notes after the next index.
 
 [Context](context-command.md) and [trace](trace-command.md) include memory metadata only when requested. Retrieve full text with get. The [MCP tools](mcp-command.md) and UI share the same memory handlers and workspace isolation.
+
+The exploration and impact skills retrieve relevant memories on demand. The plugin’s separate [`sharpsense-memory` skill](skills-command.md) handles requests to save, replace, delete or audit notes; it does not automatically record every task. Prefer `AGENTS.md` for repository-wide instructions and versioned documentation for shared decisions.

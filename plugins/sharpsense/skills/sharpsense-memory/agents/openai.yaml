@@ -1,0 +1,6 @@
+interface:
+  display_name: "Maintain Code Memories"
+  short_description: "Record and maintain useful code decisions and notes"
+  default_prompt: "Use $sharpsense-memory to maintain the requested code memories and verify the saved result."
+policy:
+  allow_implicit_invocation: true

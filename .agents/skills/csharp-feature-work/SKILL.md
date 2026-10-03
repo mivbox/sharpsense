@@ -1,6 +1,6 @@
 ---
 name: csharp-feature-work
-description: Implement or refactor C# features using the repository's CQRS handlers, vertical slices, visibility and formatting conventions.
+description: "Add or restructure C# use cases, CQRS handlers, feature registration and minimal HTTP endpoints using the repository's vertical slices."
 ---
 
 # C# feature work

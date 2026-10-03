@@ -1,6 +1,6 @@
 ---
 name: async-workflows
-description: Change concurrent workers, background jobs or streaming workflows with explicit ownership, cancellation and bounded resource use.
+description: "Review or change concurrent workers, background jobs and streams: operation ownership, cancellation, buffering and shutdown."
 ---
 
 # Async workflows

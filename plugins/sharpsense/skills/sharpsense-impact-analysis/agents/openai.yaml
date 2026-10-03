@@ -1,0 +1,6 @@
+interface:
+  display_name: "Assess Change Impact"
+  short_description: "Check affected contracts and callers with SharpSense"
+  default_prompt: "Use $sharpsense-impact-analysis to assess this proposed change and its validation needs."
+policy:
+  allow_implicit_invocation: true

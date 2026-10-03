@@ -1,64 +1,48 @@
 ---
 name: sharpsense-impact-analysis
-description: >-
-  Assess the effects of a proposed code change with SharpSense and current source evidence.
-  Use for "Is it safe to change X?", "What depends on this?", "What will break?", or a dependency
-  review before a non-trivial edit or commit.
+description: "Assess a proposed code change or deletion with SharpSense: affected callers, contracts and validation. Use for change-risk questions, not routine edits or general code explanation."
 ---
 
 # Assess change impact with SharpSense
 
-Establish the proposed signature, behaviour or lifecycle change before assessing its effects. Direct callers
-are candidates to inspect, not proof of breakage. An interface change and a contract-preserving method cleanup
-can have the same callers but different consequences.
+Identify the proposed signature, behavior or lifecycle change. A caller is a candidate to inspect, not proof of
+breakage: a contract-preserving cleanup differs from adding a required parameter.
 
-## Workflow
+Inspect the declaration and relevant uses first. For a purely local change whose contract and observable behavior
+remain unchanged, answer from that source evidence; a graph inventory adds no evidence. Otherwise, use the graph
+to find consumers or relationships that still need inspection.
 
-1. `semantic_search({query: "<target symbol or concept>"})` finds candidates. Disambiguate by path, project
-   and current source before using the persisted ID. Search is plain text, not raw FTS syntax.
-2. `context({nodeId: 42})` shows immediate callers, callees and inheritance. Use `edgeCategories: "All"`
-   when relevant memory metadata is needed; the default `"Structural"` omits it.
-3. `trace_node({nodeId: "42", direction: "caller"})` expands upstream dependencies. Inspect direct callers
-   first, then relevant indirect paths. MCP caller traversal defaults to depth three.
-4. Use `trace_node({nodeId: "42", direction: "callee"})` when downstream behaviour matters, and
-   `get_inheritors({nodeId: 42})` for affected base/interface contracts and implementations.
-5. Read the target, consumers, registrations, configuration and relevant tests. Verify the proposed change
-   against actual use: signatures, serialisation, persistence, state ownership, cancellation and failure paths
-   as applicable. Fetch relevant notes with `get_memory` or `get_memories` and verify them against source.
-6. Report confirmed incompatibilities, potential effects and unresolved coverage, with file/line evidence
-   and specific validation steps. Run focused checks when within the requested work; separate checks run
-   from recommendations.
+## Find affected contracts
 
-If MCP is unavailable, use explicit CLI selection or source tools:
+Before graph calls, use `graph_stats({})` once unless the MCP workspace is already verified in this session. Check
+the root, index outcome and coverage against the intended checkout. Index timestamps are not revision guarantees.
+For an unavailable or wrong workspace, use source evidence and report the limitation; do not silently analyze a different checkout.
 
-## Interpret the evidence
+1. Locate the target with `semantic_search({query: "<distinctive symbol>", limit: 5})`. Disambiguate by source path,
+   project and declaration before using its persisted numeric ID. Queries are plain text, not FTS syntax.
+2. Inspect `context({nodeId: 42})` and the target's source. Check the direct consumers against the proposed contract.
+   `incoming.callers` identifies consumers; `incoming.implementers` identifies affected implementations.
+3. Trace a changed member for its callers and a type/interface for its implementations. Reuse relationships
+   already returned rather than querying them again. Use `trace_node({nodeId: "42", direction: "caller"})` for
+   indirect upstream paths,
+   `direction: "callee"` for changed downstream behavior, or `get_inheritors({nodeId: 42})` for type implementations.
+   Verify relevant registrations, configuration and tests from source; stop expanding once the question is resolved.
 
-| Signal                        | What to check                                                           |
-|-------------------------------|-------------------------------------------------------------------------|
-| `incoming.callers`            | Direct consumers and the contract each relies on.                       |
-| `incoming.implementers`       | Implementations affected by a hierarchy or contract change.             |
-| `outgoing.callees`            | Dependencies whose behaviour or lifecycle the target relies on.         |
-| `outgoing.inherits`           | Base/interface contracts that constrain the change.                     |
-| No callers or missing results | Coverage is inconclusive; search source before claiming unused or safe. |
+For pending edits, inspect staged, unstaged and relevant untracked changes in the actual checkout. The workspace
+root may span repositories; graph queries do not inspect a Git diff.
 
-Dynamic dispatch, reflection in the indexed product, external consumers and cross-language calls may be absent
-from the graph. TypeScript imports are module relationships rather than compiler-resolved function calls.
-Truncation, missing sources or tool failures reduce confidence; report them instead of treating empty results as
-no impact. A static trace does not establish execution order or every runtime branch.
+Read each affected contract before classifying its consequence. Consider serialization, persistence, ownership,
+cancellation and external callers when the proposed change touches them. For relevant recorded decisions, request
+`edgeCategories: "All"` on context/trace and fetch the surfaced IDs with `get_memory` or `get_memories`. Verify stale
+notes; analysis alone does not authorize memory edits.
 
-Do not derive severity solely from relationship counts or label every direct caller "WILL BREAK". Use the
-actual contract change, evidence and consequence. This analysis informs the user's requested work; it does not
-create an extra approval gate or authorise commits, pushes or unrelated edits.
+## Calibrate the conclusion
 
-Example: changing `ValidateUser` to accept a new parameter may require updates to a login handler and a token
-refresh path. Confirm both from source, identify incompatible calls, then recommend or run their focused tests.
-If no callers are indexed, report the uncertainty and search source before concluding the method is unused.
+No indexed callers means unknown coverage, not unused or safe. Search source before concluding absence. Dynamic
+dispatch and external or cross-language consumers may be missing; TypeScript import edges are module relationships.
+Static traces do not establish execution order. Report truncation or failed queries as incomplete evidence.
+For CLI fallback, inspect help and select the workspace explicitly; its default caller depth is one, versus MCP's three.
 
-## Report and memory hygiene
-
-For each finding include the affected behaviour, evidence, confidence (confirmed, potential or unknown), and a concrete
-check. A small report with verified findings is more useful than an unsupported risk score.
-
-Stale notes mean their attached symbol changed, not that the note must be deleted. Memory curation belongs only
-in the requested scope. Preserve accurate decisions; for a verified correction, attach the replacement before
-deleting the old immutable note. Follow the repository's conventions for any authorised fixes.
+Report confirmed incompatibilities, plausible effects and unresolved coverage with source locations and concrete
+validation. Separate tests actually run from tests recommended. Do not infer severity from counts or label every
+caller as broken. Keep the answer proportional to the change; analysis adds no approval gate or authorization to commit.
