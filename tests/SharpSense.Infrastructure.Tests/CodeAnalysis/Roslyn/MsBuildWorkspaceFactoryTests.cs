@@ -1,9 +1,15 @@
 using AwesomeAssertions;
 using Microsoft.CodeAnalysis;
+using Microsoft.EntityFrameworkCore;
+using SharpSense.Application.Indexing.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.CodeAnalysis;
 using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
+using SharpSense.Infrastructure.Indexing;
+using SharpSense.Infrastructure.Indexing.CSharp;
+using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Storage;
+using SharpSense.Testkit;
 using System.Diagnostics;
 using System.IO.Abstractions;
 using System.Text.Json.Nodes;
@@ -236,6 +242,107 @@ public sealed class MsBuildWorkspaceFactoryTests
             edge.CalleeId == callee.CanonicalId && edge.EdgeType == EdgeType.MethodCall);
         after.CodeNodes.Should().Contain(node => node.CanonicalId == callee.CanonicalId);
         after.Edges.Should().BeEquivalentTo(before.Edges);
+    }
+
+    [Fact]
+    public async Task WhenProjectsTargetMultipleFrameworks_ThenPersistsDistinctSymbolsAndMatchingReferences()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var fixture = new WarningProject();
+        const string projectXml = """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFrameworks>net10.0;netstandard2.1</TargetFrameworks>
+                <LangVersion>latest</LangVersion>
+              </PropertyGroup>
+            </Project>
+            """;
+        var dependencyDirectory = Path.Combine(fixture.RootPath, "Dependency");
+        Directory.CreateDirectory(dependencyDirectory);
+        await File.WriteAllTextAsync(Path.Combine(dependencyDirectory, "Dependency.csproj"), projectXml, ct);
+        await File.WriteAllTextAsync(
+            Path.Combine(dependencyDirectory, "Target.cs"),
+            """
+            namespace Dependency;
+            public static class Target
+            {
+                public static int Read() => 1;
+            #if NET10_0
+                public static int Modern() => 2;
+            #endif
+            }
+            """,
+            ct);
+        await File.WriteAllTextAsync(
+            fixture.ProjectPath,
+            projectXml.Replace("</Project>", """
+              <ItemGroup>
+                <Compile Remove="Dependency/**/*.cs" />
+                <ProjectReference Include="Dependency/Dependency.csproj" />
+              </ItemGroup>
+            </Project>
+            """),
+            ct);
+        await File.WriteAllTextAsync(
+            fixture.SourcePath,
+            """
+            namespace Fixture;
+            public static class Feature
+            {
+                public static int Run() => Dependency.Target.Read();
+            #if NET10_0
+                public static int Modern() => Dependency.Target.Modern();
+            #endif
+            }
+            """,
+            ct);
+        await fixture.Restore(ct);
+        var fileSystem = new FileSystem();
+        var workspace = new RepositoryWorkspace(fixture.RootPath, Path.Combine(fixture.RootPath, "unused.db"), fileSystem);
+        using var loader = new WorkspaceLoader(new MsBuildWorkspaceFactory(), fileSystem);
+        var engine = new RoslynTargetAnalysisEngine(new NodeExtractor(), new EdgeExtractor(), fileSystem);
+        var extractor = new CSharpLanguageExtractor(
+            loader,
+            engine,
+            workspace,
+            new CSharpWorkspaceTargetResolver(workspace, fileSystem));
+
+        var result = await extractor.Extract(new ExtractionContext(fixture.ProjectPath, null), ct);
+
+        result.IsSuccess.Should().BeTrue(string.Join("; ", result.Errors.Select(error => error.Message)));
+        var graph = result.Value;
+        graph.Projects.Should().HaveCount(4);
+        graph.Projects.Select(project => project.Id).Should().OnlyHaveUniqueItems();
+        foreach (var framework in new[] { "net10.0", "netstandard2.1" })
+        {
+            var project = graph.Projects.Single(project => project.Name == $"Fixture({framework})");
+            var dependency = graph.Projects.Single(project => project.Name == $"Dependency({framework})");
+            var caller = graph.CodeNodes.Single(node => node.ProjectId == project.Id && node.FullyQualifiedName == "Fixture.Feature.Run()");
+            var callee = graph.CodeNodes.Single(node => node.ProjectId == dependency.Id && node.FullyQualifiedName == "Dependency.Target.Read()");
+            graph.Edges.Should().Contain(edge => edge.CallerId == project.Id &&
+                edge.CalleeId == dependency.Id && edge.EdgeType == EdgeType.ProjectReference);
+            graph.Edges.Should().Contain(edge => edge.CallerId == caller.CanonicalId &&
+                edge.CalleeId == callee.CanonicalId && edge.EdgeType == EdgeType.MethodCall);
+            graph.Edges.Should().NotContain(edge => edge.CallerId == caller.CanonicalId &&
+                edge.CalleeId != callee.CanonicalId && edge.EdgeType == EdgeType.MethodCall);
+            graph.CodeNodes.Count(node => node.ProjectId == project.Id && node.FullyQualifiedName == "Fixture.Feature.Modern()")
+                .Should().Be(framework == "net10.0" ? 1 : 0);
+        }
+
+        await using var database = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new(UseMigrations: true, LoadVectorExtension: true));
+        var repository = new KnowledgeGraphRepository(database.CreateDbContextFactory());
+        await repository.ReplaceWorkspace(graph, ct);
+        await using var context = await database.GetContext(ct);
+        (await context.ProjectNodes.CountAsync(ct)).Should().Be(4);
+        var persisted = await repository.GetPersistedCodeNodes(ct);
+        persisted.Select(node => node.CanonicalId).Should().BeEquivalentTo(graph.CodeNodes.Select(node => node.CanonicalId));
+
+        var reloaded = await extractor.Extract(new ExtractionContext(fixture.ProjectPath, null), ct);
+        reloaded.IsSuccess.Should().BeTrue(string.Join("; ", reloaded.Errors.Select(error => error.Message)));
+        reloaded.Value.Projects.Select(project => project.Id).Should().BeEquivalentTo(graph.Projects.Select(project => project.Id));
+        reloaded.Value.Edges.Should().BeEquivalentTo(graph.Edges);
     }
 
     private sealed class WarningProject : IDisposable

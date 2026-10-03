@@ -92,20 +92,30 @@ internal sealed class RoslynTargetAnalysisEngine : ITargetAnalysisEngine
         var projects = new List<ProjectNode>(orderedProjects.Count);
         var projectIds = new Dictionary<ProjectId, string>();
 
-        foreach (var project in orderedProjects)
+        foreach (var projectGroup in orderedProjects.GroupBy(
+            RoslynPathUtilities.GetRequiredProjectFilePath,
+            FileSystemPaths.Comparer))
         {
-            var projectFilePath = RoslynPathUtilities.GetRequiredProjectFilePath(project);
-            var relativeFilePath = repositoryWorkspace.ToRepositoryRelativePath(projectFilePath);
-            var projectId = $"project:{relativeFilePath}";
-            projectIds[project.Id] = projectId;
-            projects.Add(
-                new ProjectNode
-                {
-                    Id = projectId,
-                    Name = project.Name,
-                    RelativeFilePath = relativeFilePath,
-                    ContentHash = RoslynPathUtilities.ComputeContentHash(_fileSystem, projectFilePath)
-                });
+            var relativeFilePath = repositoryWorkspace.ToRepositoryRelativePath(projectGroup.Key);
+            var contentHash = RoslynPathUtilities.ComputeContentHash(_fileSystem, projectGroup.Key);
+            var hasMultipleTargets = projectGroup.Skip(1).Any();
+
+            foreach (var project in projectGroup)
+            {
+                // Roslyn includes the target framework in each multi-target project name.
+                // Keep existing single-target identities stable across reindexing.
+                var targetSuffix = hasMultipleTargets ? $"#{Uri.EscapeDataString(project.Name)}" : string.Empty;
+                var projectId = $"project:{relativeFilePath}{targetSuffix}";
+                projectIds[project.Id] = projectId;
+                projects.Add(
+                    new ProjectNode
+                    {
+                        Id = projectId,
+                        Name = project.Name,
+                        RelativeFilePath = relativeFilePath,
+                        ContentHash = contentHash
+                    });
+            }
         }
 
         projectNodeActivity.AddTag("target.project.count", projects.Count);

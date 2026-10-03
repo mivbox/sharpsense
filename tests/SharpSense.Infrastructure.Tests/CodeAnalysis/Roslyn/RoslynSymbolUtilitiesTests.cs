@@ -63,6 +63,15 @@ public sealed class RoslynSymbolUtilitiesTests
         left.Should().NotBe(right);
     }
 
+    [Fact]
+    public void WhenTokenBoundariesChange_ThenBodyHashChanges()
+    {
+        var before = ComputeBodyHash<MethodDeclarationSyntax>("class Sample { int M(int a, int b) => a + ++b; }");
+        var after = ComputeBodyHash<MethodDeclarationSyntax>("class Sample { int M(int a, int b) => a++ + b; }");
+
+        before.Should().NotBe(after);
+    }
+
     private static string? ComputeBodyHash<TSyntaxNode>(string source)
         where TSyntaxNode : SyntaxNode
     {

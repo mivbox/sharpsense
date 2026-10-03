@@ -368,15 +368,15 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
         var blockStart = block.Span.Start;
         if (blockStart >= 0)
         {
-            foreach (var inline in EnumerateIgnoredWikiLinkInlines(block))
+            foreach (var span in EnumerateIgnoredWikiLinkSpans(block))
             {
-                if (inline.Span.Start < 0 || inline.Span.End < inline.Span.Start)
+                if (span.Start < 0 || span.End < span.Start)
                 {
                     continue;
                 }
 
-                var relativeStart = Math.Clamp(inline.Span.Start - blockStart, 0, rawText.Length - 1);
-                var relativeEnd = Math.Clamp(inline.Span.End - blockStart, relativeStart, rawText.Length - 1);
+                var relativeStart = Math.Clamp(span.Start - blockStart, 0, rawText.Length - 1);
+                var relativeEnd = Math.Clamp(span.End - blockStart, relativeStart, rawText.Length - 1);
 
                 for (var index = relativeStart; index <= relativeEnd; index++)
                 {
@@ -418,27 +418,30 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
         }
     }
 
-    private static IEnumerable<Inline> EnumerateIgnoredWikiLinkInlines(Block block)
+    private static IEnumerable<SourceSpan> EnumerateIgnoredWikiLinkSpans(Block block)
     {
-        if (block is LeafBlock
-            { Inline: not null } leafBlock)
+        if (block is CodeBlock)
         {
-            foreach (var inline in EnumerateIgnoredWikiLinkInlines(leafBlock.Inline!))
-            {
-                yield return inline;
-            }
-        }
-
-        if (block is not ContainerBlock containerBlock)
-        {
+            yield return block.Span;
             yield break;
         }
 
-        foreach (var childBlock in containerBlock)
+        if (block is LeafBlock { Inline: not null } leafBlock)
         {
-            foreach (var inline in EnumerateIgnoredWikiLinkInlines(childBlock))
+            foreach (var inline in EnumerateIgnoredWikiLinkInlines(leafBlock.Inline))
             {
-                yield return inline;
+                yield return inline.Span;
+            }
+        }
+
+        if (block is ContainerBlock containerBlock)
+        {
+            foreach (var childBlock in containerBlock)
+            {
+                foreach (var span in EnumerateIgnoredWikiLinkSpans(childBlock))
+                {
+                    yield return span;
+                }
             }
         }
     }
@@ -548,12 +551,17 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
         }
 
         rawPath = Uri.UnescapeDataString(rawPath);
-        if (!MarkdownFileTypes.IsMarkdown(rawPath))
+        if (rawPath.IndexOfAny(Path.GetInvalidPathChars()) >= 0 || !MarkdownFileTypes.IsMarkdown(rawPath))
         {
             return false;
         }
 
         var normalizedPath = ResolveRelativePath(relativeFilePath, rawPath);
+        if (string.IsNullOrEmpty(normalizedPath))
+        {
+            return false;
+        }
+
         targetId = BuildDocumentNodeId(normalizedPath, NormalizeFragment(rawFragment));
 
         return true;
@@ -565,7 +573,7 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
     {
         var normalizedPath = rawPath.Replace('\\', '/')
             .Trim();
-        if (string.IsNullOrWhiteSpace(normalizedPath))
+        if (string.IsNullOrWhiteSpace(normalizedPath) || normalizedPath.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
         {
             return string.Empty;
         }
@@ -653,12 +661,19 @@ internal sealed class MarkdownIndexer : IMarkdownIndexer
                 Path.DirectorySeparatorChar));
         var currentDirectoryPath = Path.GetDirectoryName(currentAbsolutePath)
                                    ?? repositoryRoot;
-        var resolvedAbsolutePath = Path.GetFullPath(
-            normalizedTargetPath.Replace('/', Path.DirectorySeparatorChar),
-            currentDirectoryPath);
+        try
+        {
+            var resolvedAbsolutePath = Path.GetFullPath(
+                normalizedTargetPath.Replace('/', Path.DirectorySeparatorChar),
+                currentDirectoryPath);
 
-        return Path.GetRelativePath(repositoryRoot, resolvedAbsolutePath)
-            .Replace('\\', '/');
+            return Path.GetRelativePath(repositoryRoot, resolvedAbsolutePath)
+                .Replace('\\', '/');
+        }
+        catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return string.Empty;
+        }
     }
 
     private static string GetSyntheticRepositoryRoot()

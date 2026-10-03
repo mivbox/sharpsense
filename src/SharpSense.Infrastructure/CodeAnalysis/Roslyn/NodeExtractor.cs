@@ -101,6 +101,12 @@ internal sealed class NodeExtractor
             }
         }
 
+        foreach (var declarations in declaredSymbols.GroupBy(declaration => declaration.NodeId, StringComparer.Ordinal))
+        {
+            codeNodesByCanonicalId[declarations.Key].BodyHash = RoslynSymbolUtilities.ComputeBodyHash(
+                declarations.Select(declaration => GetHashSyntax(declaration.DeclarationSyntax)));
+        }
+
         var codeNodes = codeNodesByCanonicalId.Values
             .OrderBy(static codeNode => codeNode.FullyQualifiedName, StringComparer.Ordinal)
             .ThenBy(static codeNode => codeNode.CanonicalId, StringComparer.Ordinal)
@@ -108,6 +114,19 @@ internal sealed class NodeExtractor
         codeNodeActivity.AddTag("index.code_node.count", codeNodes.Length);
 
         return new NodeExtractionResult(codeNodes, declaredSymbols);
+    }
+
+    private static SyntaxNode GetHashSyntax(SyntaxNode syntax)
+    {
+        // A field shares its type, modifiers and attributes with its siblings, but
+        // another variable's initializer must not invalidate this field's memories.
+        if (syntax is VariableDeclaratorSyntax { Parent: VariableDeclarationSyntax { Parent: BaseFieldDeclarationSyntax field } declaration } variable)
+        {
+            return field.WithDeclaration(declaration.WithVariables(
+                Microsoft.CodeAnalysis.CSharp.SyntaxFactory.SingletonSeparatedList(variable)));
+        }
+
+        return syntax;
     }
 
     private static async Task ExtractSyntaxTree(
@@ -252,8 +271,7 @@ internal sealed class NodeExtractor
                 StartLine = startLine,
                 EndLine = endLine,
                 Summary = summary,
-                SearchText = RoslynSymbolUtilities.BuildSearchText(canonicalSymbol, summary),
-                BodyHash = RoslynSymbolUtilities.ComputeBodyHash(declarationSyntax)
+                SearchText = RoslynSymbolUtilities.BuildSearchText(canonicalSymbol, summary)
             };
         }
 
