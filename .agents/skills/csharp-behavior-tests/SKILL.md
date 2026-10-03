@@ -1,13 +1,13 @@
 ---
 name: csharp-behavior-tests
-description: Write, improve or review C# behavior tests in the user's ServiceKit style using xUnit, Moq and AwesomeAssertions. Use for regression coverage, meaningful assertions, readable fixtures and test cleanup; production-code layout belongs to csharp-clean-code.
+description: Apply C# testing standards when writing, improving or reviewing behavior tests using xUnit, Moq and AwesomeAssertions. Use for regression coverage, meaningful assertions, readable fixtures and test cleanup; production-code layout belongs to csharp-clean-code.
 ---
 
-# C# behavior tests
+# C# testing standards
 
 Start with the behavior and the mistake the test should catch. Read the repository's instructions, the nearest
 maintained test and the fixture for that boundary. Preserve its framework versions, project layout and supported
-test access. The examples capture the user's style without requiring a ServiceKit checkout.
+test access. The examples illustrate testing standards with generic contracts; adapt them to local APIs.
 
 ## Load examples when needed
 
@@ -35,7 +35,7 @@ Read the relevant reference; an ordinary pure-function assertion does not requir
 - Verify port interactions when they express a behavior such as no write after failed validation, an emitted
   notification, or bounded retry. Avoid blanket `VerifyAll` and internal call-order assertions.
 
-## Write tests in the user's style
+## Apply the testing standards
 
 - Name each test `WhenCondition_ThenOutcome` with one underscore. Use meaningful scenario names, not
   `Works`, `Successful` or `PropertiesAreSetCorrectly` without saying which outcome matters.
@@ -49,10 +49,10 @@ Read the relevant reference; an ordinary pure-function assertion does not requir
 
 ## Own the test's state
 
-Pass `TestContext.Current.CancellationToken` to asynchronous operations. Reuse disposable database, host and
-process fixtures, isolate temporary state and avoid the developer's real catalog. Restore process-global state
-and disable parallel peers where necessary. Synchronize races with signals or bounded observable conditions,
-not an arbitrary sleep. Keep cleanup reliable after a failed assertion or cancellation.
+Use the test framework's cancellation token for asynchronous operations (`TestContext.Current.CancellationToken`
+in xUnit v3). Reuse disposable database, host and process fixtures, isolate temporary state and avoid real user data.
+Restore process-global state and disable parallel peers where necessary. Synchronize races with signals or
+bounded observable conditions, not an arbitrary sleep. Keep cleanup reliable after a failed assertion or cancellation.
 
 For a bug fix, demonstrate failure before the fix when practical. Inspect both the returned outcome and the
 relevant effect. For a review, retain valuable existing coverage and replace weak cases only when their useful

@@ -1,13 +1,13 @@
 ---
 name: csharp-clean-code
-description: Write, refactor or review production C# for clear responsibilities, readable control flow, deliberate visibility and consistent formatting in the user's ServiceKit style. Use for ordinary C# implementation and cleanup; test design belongs to csharp-behavior-tests.
+description: Apply C# coding standards when writing, refactoring or reviewing production code for clear responsibilities, readable control flow, deliberate visibility and consistent formatting. Use for ordinary implementation and cleanup; test design belongs to csharp-behavior-tests.
 ---
 
-# Clean C# code
+# C# coding standards
 
-Read the applicable `AGENTS.md`, `.editorconfig` and the nearest maintained implementation. Apply the user's
-explicit preferences and the consuming repository's contracts. Borrow readability from reference projects;
-keep the current repository's architecture, dependencies and public API unless changing them is part of the task.
+Read the applicable `AGENTS.md`, `.editorconfig` and the nearest maintained implementation. Apply these coding
+standards within the repository's contracts and explicit task instructions. Keep its architecture, dependencies
+and public API unless changing them is part of the task.
 
 ## Load the relevant examples
 
@@ -16,8 +16,8 @@ Read only the references needed for the code being changed:
 - [Readable C#](references/readable-csharp.md) for method layout, naming, fluent calls, comments and helper decisions.
 - [Features and endpoints](references/features-and-endpoints.md) when changing handlers, registration or HTTP endpoints.
 
-These are portable, illustrative examples informed by ServiceKit and MyCrmAiChat. They do not require those
-checkouts or their packages. Match local contracts and explicit instructions where an example differs.
+The examples illustrate the standards with generic contracts. Adapt them to local APIs and explicit instructions;
+they do not require another repository or additional packages.
 
 ## Make the responsibility clear
 
@@ -51,9 +51,9 @@ Identify the invariants before moving code: result values, ordering, identities,
 ownership, scope lifetime and disposal. Inspect changed call sites. A shorter method can still change when a
 query executes, when a resource is released, or which error a caller receives.
 
-Do not introduce a mediator, generic repository, unit of work, wrapper layer or new dependency solely to make the
-code resemble a reference. Do not alter public contracts, generated clients or historical migrations as incidental
-styling. Keep unrelated cleanup out of the diff.
+Do not introduce a mediator, generic repository, unit of work, wrapper layer or new dependency solely for stylistic
+uniformity. Do not alter public contracts, generated clients or historical migrations as incidental styling.
+Keep unrelated cleanup out of the diff.
 
 Finish by reading the changed code as a maintainer would, running the existing formatter and relevant checks.
 For a behavior change, use meaningful coverage at the affected boundary. Formatting alone needs no new tests.
