@@ -4,6 +4,12 @@ SharpSense is a local knowledge graph for C#, TypeScript, and Markdown. Named wo
 projects, frontend sources, and documentation into one searchable graph. Each workspace owns its configuration,
 SQLite database, indexing history, and authored memories.
 
+## Install
+
+The CLI requires the .NET 10 SDK. Follow the [build and installation instructions](src/SharpSense.Cli/README.md#install-from-source)
+to install `sharpsense` on your `PATH`. Building from source also requires Node.js 22.13+ and pnpm 12.6.0;
+the installed CLI and UI do not require Node.js or pnpm.
+
 ## Create a workspace
 
 Run `sharpsense workspace create` for guided setup, or provide explicit sources.

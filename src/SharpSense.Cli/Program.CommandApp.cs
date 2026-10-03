@@ -133,7 +133,7 @@ internal partial class Program
 
             var memory = config
                 .AddCommand<MemoryCommand>("memory")
-                .WithDescription("Manage semantic memories: add <node-id>, remove <memory-id>, or list <node-id>.");
+                .WithDescription("Manage semantic memories: add/list --node-id, get --memory-id/--memory-ids, or remove --memory-id.");
             AttachData(memory, executionContext);
 
             var search = config

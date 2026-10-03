@@ -297,13 +297,13 @@ public sealed class TsConfigResolverTests
                 }
                 """),
             ("/repo/apps/web/src/App.tsx", "export function App() { return null; }"),
-            ("/repo/packages/ai-chat-api/package.json",
+            ("/repo/packages/graph-api/package.json",
                 """
                 {
-                  "name": "@loanmarket/ai-chat-api"
+                  "name": "@sharpsense/graph-api"
                 }
                 """),
-            ("/repo/packages/ai-chat-api/tsconfig.json",
+            ("/repo/packages/graph-api/tsconfig.json",
                 """
                 {
                   "compilerOptions": {
@@ -311,16 +311,16 @@ public sealed class TsConfigResolverTests
                   }
                 }
                 """),
-            ("/repo/packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts",
-                "export function useGetConversationById() { return null; }"));
+            ("/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts",
+                "export function useGetNodeById() { return null; }"));
         var resolver = CreateResolver(fileSystem);
 
         var resolvedPath = resolver.ResolveImport(
-            "@loanmarket/ai-chat-api/query-hooks/use-get-conversation-by-id-query.g",
+            "@sharpsense/graph-api/query-hooks/use-get-node-by-id-query.g",
             "/repo/apps/web/src/App.tsx",
             TestContext.Current.CancellationToken);
 
-        resolvedPath.Should().Be("/repo/packages/ai-chat-api/src/query-hooks/use-get-conversation-by-id-query.g.ts");
+        resolvedPath.Should().Be("/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts");
     }
 
     [Fact]
