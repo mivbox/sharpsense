@@ -1,7 +1,12 @@
 using AwesomeAssertions;
+using Microsoft.Extensions.Options;
 using Moq;
+using SharpSense.Application.Indexing;
 using SharpSense.Application.Indexing.Models;
+using SharpSense.Application.Shared.Options;
+using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Indexing.Watching;
+using SharpSense.Infrastructure.Storage;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
 
@@ -9,6 +14,160 @@ namespace SharpSense.Infrastructure.Tests.Indexing.Watching;
 
 public sealed class WorkspaceWatcherTests
 {
+    [Fact]
+    public async Task WhenGitIgnoreExcludesPaths_ThenQueuesOnlyAllowedChangesIncludingNegatedRules()
+    {
+        var fileSystem = CreateRepositoryFileSystem();
+        fileSystem.AddFile("/repo/.gitignore", new MockFileData("dist/\n*.txt\n!keep.txt"));
+        fileSystem.AddFile("/repo/dist/output.json", new MockFileData("{}"));
+        fileSystem.AddFile("/repo/ignored.txt", new MockFileData("ignored"));
+        fileSystem.AddFile("/repo/keep.txt", new MockFileData("input"));
+        var (watcher, fileWatcher, directoryWatcher) = CreateWorkspaceWatcher(fileSystem);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
+        var observed = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var watching = watcher.Watch("/repo", (changes, _) =>
+        {
+            observed.TrySetResult(changes);
+            cancellation.Cancel();
+
+            return Task.CompletedTask;
+        }, cancellation.Token);
+        await using var cleanup = new WatchCleanup(watching, cancellation);
+
+        fileWatcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/dist", "output.json"));
+        fileWatcher.Raise(
+            candidate => candidate.Created += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Created, "/repo", "ignored.txt"));
+        fileWatcher.Raise(
+            candidate => candidate.Deleted += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Deleted, "/repo", "ignored.txt"));
+        directoryWatcher.Raise(
+            candidate => candidate.Deleted += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Deleted, "/repo", "dist"));
+        fileWatcher.Raise(
+            candidate => candidate.Renamed += null,
+            new RenamedEventArgs(WatcherChangeTypes.Renamed, "/repo", "ignored.txt", "keep.txt"));
+        fileWatcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo", "keep.txt"));
+        var changes = await observed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await watching;
+
+        changes.Should().BeEquivalentTo(new[]
+        {
+            new WorkspaceFileChange(WorkspaceFileChangeAction.Deleted, OldPath: "/repo/keep.txt"),
+            new WorkspaceFileChange(WorkspaceFileChangeAction.Modified, NewPath: "/repo/keep.txt")
+        });
+    }
+
+    [Fact]
+    public async Task WhenGitIgnoreChangesDuringWatch_ThenReloadsRulesBeforeNextBatch()
+    {
+        var fileSystem = CreateRepositoryFileSystem();
+        fileSystem.AddFile("/repo/.gitignore", new MockFileData("ignored.txt"));
+        fileSystem.AddFile("/repo/input.txt", new MockFileData("input"));
+        fileSystem.AddFile("/repo/ignored.txt", new MockFileData("ignored"));
+        var (watcher, fileWatcher, _) = CreateWorkspaceWatcher(fileSystem);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(5));
+        var reloaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observed = new TaskCompletionSource<IReadOnlyList<WorkspaceFileChange>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var watching = watcher.Watch("/repo", (changes, _) =>
+        {
+            if (changes.Any(change => change.NewPath == "/repo/.gitignore"))
+            {
+                reloaded.TrySetResult();
+            }
+            else
+            {
+                observed.TrySetResult(changes);
+                cancellation.Cancel();
+            }
+
+            return Task.CompletedTask;
+        }, cancellation.Token);
+        await using var cleanup = new WatchCleanup(watching, cancellation);
+
+        fileSystem.File.WriteAllText("/repo/.gitignore", "input.txt");
+        fileWatcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo", ".gitignore"));
+        await reloaded.Task.WaitAsync(cancellation.Token);
+        fileWatcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo", "input.txt"));
+        fileWatcher.Raise(
+            candidate => candidate.Changed += null,
+            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo", "ignored.txt"));
+        var changes = await observed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        await watching;
+
+        changes.Should().ContainSingle().Which.NewPath.Should().Be("/repo/ignored.txt");
+    }
+
+    [Theory]
+    [InlineData("txt")]
+    [InlineData("proto")]
+    [InlineData("yaml")]
+    public async Task WhenDeclaredInputChangesOnDisk_ThenReachesSelectedSourceReconciliation(string extension)
+    {
+        var directory = Directory.CreateTempSubdirectory("sharpsense-watch-input-");
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.CancelAfter(TimeSpan.FromSeconds(10));
+        var ct = cancellation.Token;
+        var fileSystem = new FileSystem();
+        var workspace = new RepositoryWorkspace(
+            directory.FullName,
+            Path.Combine(directory.FullName, "index.db"),
+            fileSystem);
+        var source = new WorkspaceSource(WorkspaceSourceKind.CSharp, "App.csproj");
+        var filter = new WorkspaceChangeFilter(
+            new IndexingWorkspacePaths(workspace),
+            Options.Create(new WorkspaceExecutionOptions
+            {
+                WorkspaceSources = [source]
+            }));
+        var input = Path.Combine(directory.FullName, $"schema.{extension}");
+        await File.WriteAllTextAsync(input, "before", ct);
+        filter.TrackSource(source, new([], [], [], [], [input]));
+        var watcher = new WorkspaceWatcher(fileSystem, fileSystem.FileSystemWatcher, TimeSpan.FromMilliseconds(10));
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reconciled = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var watching = watcher.Watch(directory.FullName, async (changes, token) =>
+        {
+            if (filter.IsRelevant(changes))
+            {
+                reconciled.TrySetResult(await File.ReadAllTextAsync(input, token));
+            }
+        }, ct, onReady: () => ready.TrySetResult());
+
+        try
+        {
+            await ready.Task.WaitAsync(ct);
+            await File.WriteAllTextAsync(input, "after", ct);
+
+            (await reconciled.Task.WaitAsync(ct)).Should().Be("after");
+        }
+        finally
+        {
+            await cancellation.CancelAsync();
+            try
+            {
+                await watching;
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+            }
+            finally
+            {
+                directory.Delete(recursive: true);
+            }
+        }
+    }
+
     [Theory]
     [InlineData("md")]
     [InlineData("markdown")]
@@ -437,24 +596,7 @@ public sealed class WorkspaceWatcherTests
             NotifyFilters.FileName |
             NotifyFilters.LastWrite |
             NotifyFilters.Size);
-        fileWatcher.Object.Filters.Should().Equal(
-            "*.cs",
-            "*.csproj",
-            "*.sln",
-            "*.slnx",
-            "*.props",
-            "*.targets",
-            "global.json",
-            ".editorconfig",
-            "*.ts",
-            "*.tsx",
-            "*.json",
-            "*.md",
-            "*.markdown",
-            "*.mdown",
-            "*.mkd",
-            "*.yaml",
-            "*.yml");
+        fileWatcher.Object.Filters.Should().Equal("*");
         directoryWatcher.Object.IncludeSubdirectories.Should().BeTrue();
         directoryWatcher.Object.InternalBufferSize.Should().Be(16 * 1024);
         directoryWatcher.Object.NotifyFilter.Should().Be(NotifyFilters.DirectoryName);
@@ -514,15 +656,10 @@ public sealed class WorkspaceWatcherTests
         fileWatcher.Raise(
             candidate => candidate.Changed += null,
             new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/node_modules/package", "index.ts"));
-        fileWatcher.Raise(
-            candidate => candidate.Changed += null,
-            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/dist", "index.ts"));
+
         fileWatcher.Raise(
             candidate => candidate.Changed += null,
             new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/node_modules/package", "base.json"));
-        fileWatcher.Raise(
-            candidate => candidate.Changed += null,
-            new FileSystemEventArgs(WatcherChangeTypes.Changed, "/repo/dist", "base.json"));
 
         var batch = await observedBatch.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
         await watchTask;
@@ -908,6 +1045,7 @@ public sealed class WorkspaceWatcherTests
             await cancellation.CancelAsync();
             if (!watching.IsCompleted)
             {
+                // Cleanup must finish even when the test is cancelled.
                 await watching.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
             }
         }

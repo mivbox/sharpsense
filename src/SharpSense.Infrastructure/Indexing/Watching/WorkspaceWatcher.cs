@@ -14,19 +14,23 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
     private readonly IFileSystem _fileSystem;
     private readonly IFileSystemWatcherFactory _watcherFactory;
     private readonly TimeSpan _debounceDelay;
+    private readonly IWorkspaceChangeFilter? _changeFilter;
 
     public WorkspaceWatcher(
         IFileSystem fileSystem,
-        IFileSystemWatcherFactory watcherFactory)
-        : this(fileSystem, watcherFactory, TimeSpan.FromMilliseconds(250))
+        IFileSystemWatcherFactory watcherFactory,
+        IWorkspaceChangeFilter? changeFilter = null)
+        : this(fileSystem, watcherFactory, TimeSpan.FromMilliseconds(250), changeFilter)
     {
     }
 
     internal WorkspaceWatcher(
         IFileSystem fileSystem,
         IFileSystemWatcherFactory watcherFactory,
-        TimeSpan debounceDelay)
+        TimeSpan debounceDelay,
+        IWorkspaceChangeFilter? changeFilter = null)
     {
+        _changeFilter = changeFilter;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _watcherFactory = watcherFactory ?? throw new ArgumentNullException(nameof(watcherFactory));
 
@@ -54,8 +58,9 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
         var watchers = CreateWatchers(normalizedRepositoryRoot);
         using var fileWatcher = watchers.FileWatcher;
         using var directoryWatcher = watchers.DirectoryWatcher;
-        var knownDirectories = CreateKnownDirectories(normalizedRepositoryRoot);
-        var knownMarkdownPaths = CreateKnownMarkdownPaths(normalizedRepositoryRoot, ct);
+        var ignoreRules = new WorkspaceIgnoreRules(_fileSystem, normalizedRepositoryRoot);
+        var knownDirectories = CreateKnownDirectories(normalizedRepositoryRoot, ignoreRules);
+        var knownMarkdownPaths = CreateKnownMarkdownPaths(normalizedRepositoryRoot, ignoreRules, ct);
         var stateGate = new object();
         var ready = false;
         var pendingChanges = new ConcurrentQueue<WorkspaceFileChange>();
@@ -69,8 +74,8 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
         fileWatcher.Error += (_, args) => RequestFatalError(args.GetException());
         directoryWatcher.Changed += (_, args) => HandleChanged(args.FullPath);
         directoryWatcher.Created += (_, args) => HandleCreated(args.FullPath);
-        directoryWatcher.Deleted += (_, args) => HandleDeleted(args.FullPath);
-        directoryWatcher.Renamed += (_, args) => HandleRenamed(args.OldFullPath, args.FullPath);
+        directoryWatcher.Deleted += (_, args) => HandleDeleted(args.FullPath, isDirectory: true);
+        directoryWatcher.Renamed += (_, args) => HandleRenamed(args.OldFullPath, args.FullPath, isDirectory: true);
         directoryWatcher.Error += (_, args) => RequestFatalError(args.GetException());
         fileWatcher.EnableRaisingEvents = true;
         directoryWatcher.EnableRaisingEvents = true;
@@ -108,6 +113,7 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
                 break;
             }
 
+            RefreshIgnoreRules(bufferedChanges);
             await onBatchChanged(bufferedChanges, ct);
         }
 
@@ -141,22 +147,24 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
                 throw CreateFatalWatchException(callbackWatchException);
             }
 
+            RefreshIgnoreRules(changedFiles);
             await onBatchChanged(changedFiles, ct);
         }
 
         return;
 
-        bool IsFastPathIgnored(string path)
+        void RefreshIgnoreRules(IReadOnlyList<WorkspaceFileChange> changes)
         {
-            var sep = _fileSystem.Path.DirectorySeparatorChar;
-
-            return path.Contains(
-                $"{sep}.git{sep}",
-                StringComparison.OrdinalIgnoreCase) ||
-                path.EndsWith(
-                    $"{sep}.git",
-                    StringComparison.OrdinalIgnoreCase);
+            if (changes.SelectMany(change => change.GetAffectedPaths()).Any(path =>
+                TryGetRepositoryRelativePath(normalizedRepositoryRoot, path, out var relativePath) &&
+                string.Equals(relativePath, ".gitignore", FileSystemPaths.Comparison)))
+            {
+                ignoreRules.Reload();
+            }
         }
+
+        bool IsFastPathIgnored(string path, WorkspaceFileChangeAction action = WorkspaceFileChangeAction.Modified)
+            => !IsRelevantPath(normalizedRepositoryRoot, path, ignoreRules, action);
 
         void HandleChanged(string fullPath)
         {
@@ -175,14 +183,14 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
 
         void HandleCreated(string fullPath)
         {
-            if (IsFastPathIgnored(fullPath))
+            if (IsFastPathIgnored(fullPath, WorkspaceFileChangeAction.Added))
             {
                 return;
             }
 
             if (_fileSystem.Directory.Exists(fullPath))
             {
-                AddKnownDirectoryTree(knownDirectories, fullPath);
+                AddKnownDirectoryTree(knownDirectories, normalizedRepositoryRoot, fullPath, ignoreRules);
 
                 return;
             }
@@ -199,7 +207,8 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
         {
             if (!MarkdownFileTypes.IsMarkdown(fullPath) || !IsRelevantPath(
                 normalizedRepositoryRoot,
-                fullPath))
+                fullPath,
+                ignoreRules))
             {
                 return action;
             }
@@ -226,9 +235,9 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
             return ready ? WorkspaceFileChangeAction.Modified : action;
         }
 
-        void HandleDeleted(string fullPath)
+        void HandleDeleted(string fullPath, bool isDirectory = false)
         {
-            if (IsFastPathIgnored(fullPath))
+            if (IsFastPathIgnored(fullPath, isDirectory ? WorkspaceFileChangeAction.DirectoryDeleted : WorkspaceFileChangeAction.Deleted))
             {
                 return;
             }
@@ -236,7 +245,7 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
             lock (stateGate)
             {
                 ForgetMarkdownPaths(fullPath);
-                if (RemoveKnownDirectoryTree(knownDirectories, fullPath))
+                if (RemoveKnownDirectoryTree(knownDirectories, fullPath) || isDirectory)
                 {
                     EnqueueChange(new WorkspaceFileChange(
                         WorkspaceFileChangeAction.DirectoryDeleted,
@@ -253,10 +262,11 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
 
         void HandleRenamed(
             string oldFullPath,
-            string newFullPath)
+            string newFullPath,
+            bool isDirectory = false)
         {
-            var oldFastPathIgnored = IsFastPathIgnored(oldFullPath);
-            var newFastPathIgnored = IsFastPathIgnored(newFullPath);
+            var oldFastPathIgnored = IsFastPathIgnored(oldFullPath, isDirectory ? WorkspaceFileChangeAction.DirectoryRenamed : WorkspaceFileChangeAction.Renamed);
+            var newFastPathIgnored = IsFastPathIgnored(newFullPath, isDirectory ? WorkspaceFileChangeAction.DirectoryRenamed : WorkspaceFileChangeAction.Renamed);
 
             if (oldFastPathIgnored && newFastPathIgnored)
             {
@@ -267,10 +277,10 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
             {
                 ForgetMarkdownPaths(oldFullPath);
                 ForgetMarkdownPaths(newFullPath);
-                if (RemoveKnownDirectoryTree(knownDirectories, oldFullPath) ||
+                if (RemoveKnownDirectoryTree(knownDirectories, oldFullPath) || isDirectory ||
                     _fileSystem.Directory.Exists(newFullPath))
                 {
-                    AddKnownDirectoryTree(knownDirectories, newFullPath);
+                    AddKnownDirectoryTree(knownDirectories, normalizedRepositoryRoot, newFullPath, ignoreRules);
                     EnqueueChange(new WorkspaceFileChange(
                         WorkspaceFileChangeAction.DirectoryRenamed,
                         oldFullPath,
@@ -282,7 +292,8 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
                 EnqueueChanges(CreateRenameChanges(
                     normalizedRepositoryRoot,
                     oldFullPath,
-                    newFullPath));
+                    newFullPath,
+                    ignoreRules));
             }
         }
 
@@ -294,7 +305,7 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
 
         void EnqueueChange(WorkspaceFileChange changedFile)
         {
-            if (!IsRelevantChange(normalizedRepositoryRoot, changedFile))
+            if (!IsRelevantChange(normalizedRepositoryRoot, changedFile, ignoreRules))
             {
                 return;
             }
@@ -352,24 +363,9 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
                                    NotifyFilters.FileName |
                                    NotifyFilters.LastWrite |
                                    NotifyFilters.Size;
-        fileWatcher.Filters.Add("*.cs");
-        fileWatcher.Filters.Add("*.csproj");
-        fileWatcher.Filters.Add("*.sln");
-        fileWatcher.Filters.Add("*.slnx");
-        fileWatcher.Filters.Add("*.props");
-        fileWatcher.Filters.Add("*.targets");
-        fileWatcher.Filters.Add("global.json");
-        fileWatcher.Filters.Add(".editorconfig");
-        fileWatcher.Filters.Add("*.ts");
-        fileWatcher.Filters.Add("*.tsx");
-        // TypeScript extends/references can point to configs such as base.json.
-        fileWatcher.Filters.Add("*.json");
-        fileWatcher.Filters.Add("*.md");
-        fileWatcher.Filters.Add("*.markdown");
-        fileWatcher.Filters.Add("*.mdown");
-        fileWatcher.Filters.Add("*.mkd");
-        fileWatcher.Filters.Add("*.yaml");
-        fileWatcher.Filters.Add("*.yml");
+        // Generator inputs can use any extension. Ignore rules are applied before
+        // queuing events; source filtering then decides which batches need indexing.
+        fileWatcher.Filters.Add("*");
 
         var directoryWatcher = _watcherFactory.New(repositoryRoot);
         directoryWatcher.IncludeSubdirectories = true;
@@ -396,42 +392,33 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
 
     private bool IsRelevantChange(
         string repositoryRoot,
-        WorkspaceFileChange changedFile)
+        WorkspaceFileChange changedFile,
+        WorkspaceIgnoreRules ignoreRules)
         => changedFile.ActionType switch
         {
             WorkspaceFileChangeAction.DirectoryDeleted or WorkspaceFileChangeAction.DirectoryRenamed
                 => changedFile.GetAffectedPaths()
-                    .Any(path => IsRelevantDirectoryPath(repositoryRoot, path)),
+                    .Any(path => IsRelevantDirectoryPath(repositoryRoot, path, ignoreRules)),
             _ => changedFile.GetAffectedPaths()
-                .Any(path => IsRelevantPath(repositoryRoot, path))
+                .Any(path => IsRelevantPath(repositoryRoot, path, ignoreRules, changedFile.ActionType))
         };
 
     private bool IsRelevantPath(
         string repositoryRoot,
-        string path)
+        string path,
+        WorkspaceIgnoreRules ignoreRules,
+        WorkspaceFileChangeAction action = WorkspaceFileChangeAction.Modified,
+        bool includeCompilerInputs = true)
     {
         if (!TryGetRepositoryRelativePath(repositoryRoot, path, out var relativePath))
         {
             return false;
         }
 
-        if (IsIgnoredPath(relativePath))
-        {
-            return false;
-        }
-
-        return IsTargetPath(relativePath);
-    }
-
-    private static bool IsIgnoredPath(string relativePath)
-        => WorkspaceIndexingPathRules.IsIgnoredPath(relativePath);
-
-    private bool IsRelevantDirectoryPath(
-        string repositoryRoot,
-        string path)
-    {
-        if (!TryGetRepositoryRelativePath(repositoryRoot, path, out var relativePath) ||
-            IsIgnoredPath(relativePath))
+        if (IsIgnoredPath(relativePath) ||
+            !string.Equals(relativePath, ".gitignore", FileSystemPaths.Comparison) &&
+            ignoreRules.IsIgnored(relativePath) &&
+            (!includeCompilerInputs || _changeFilter?.IsRelevantCodeChange(new WorkspaceFileChange(action, NewPath: path)) != true))
         {
             return false;
         }
@@ -439,20 +426,34 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
         return true;
     }
 
-    private static bool IsTargetPath(string path)
+    private static bool IsIgnoredPath(string relativePath)
+        => WorkspaceIndexingPathRules.IsIgnoredPath(relativePath);
+
+    private bool IsRelevantDirectoryPath(
+        string repositoryRoot,
+        string path,
+        WorkspaceIgnoreRules ignoreRules,
+        bool includeCompilerInputs = true)
     {
-        return CSharpIndexingPathRules.IsRelevantChangePath(path) ||
-            MarkdownFileTypes.IsMarkdown(path) ||
-            TypeScriptIndexingPathRules.IsRelevantChangePath(path);
+        if (!TryGetRepositoryRelativePath(repositoryRoot, path, out var relativePath) ||
+            IsIgnoredPath(relativePath) ||
+            ignoreRules.IsIgnored(relativePath, directory: true) &&
+            (!includeCompilerInputs || _changeFilter?.IsRelevantCodeChange(new WorkspaceFileChange(WorkspaceFileChangeAction.DirectoryDeleted, OldPath: path)) != true))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private IEnumerable<WorkspaceFileChange> CreateRenameChanges(
         string repositoryRoot,
         string oldPath,
-        string newPath)
+        string newPath,
+        WorkspaceIgnoreRules ignoreRules)
     {
-        var oldRelevant = IsRelevantPath(repositoryRoot, oldPath);
-        var newRelevant = IsRelevantPath(repositoryRoot, newPath);
+        var oldRelevant = IsRelevantPath(repositoryRoot, oldPath, ignoreRules, WorkspaceFileChangeAction.Renamed);
+        var newRelevant = IsRelevantPath(repositoryRoot, newPath, ignoreRules, WorkspaceFileChangeAction.Renamed);
 
         if (oldRelevant && newRelevant)
         {
@@ -478,15 +479,15 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
         }
     }
 
-    private ConcurrentDictionary<string, byte> CreateKnownDirectories(string repositoryRoot)
+    private ConcurrentDictionary<string, byte> CreateKnownDirectories(string repositoryRoot, WorkspaceIgnoreRules ignoreRules)
     {
         var knownDirectories = new ConcurrentDictionary<string, byte>(FileSystemPaths.Comparer);
-        AddKnownDirectoryTree(knownDirectories, repositoryRoot);
+        AddKnownDirectoryTree(knownDirectories, repositoryRoot, repositoryRoot, ignoreRules);
 
         return knownDirectories;
     }
 
-    private HashSet<string> CreateKnownMarkdownPaths(string repositoryRoot, CancellationToken ct)
+    private HashSet<string> CreateKnownMarkdownPaths(string repositoryRoot, WorkspaceIgnoreRules ignoreRules, CancellationToken ct)
     {
         var paths = new HashSet<string>(FileSystemPaths.Comparer);
         var pending = new Stack<string>();
@@ -497,7 +498,7 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
             foreach (var file in _fileSystem.Directory.EnumerateFiles(directory))
             {
                 ct.ThrowIfCancellationRequested();
-                if (MarkdownFileTypes.IsMarkdown(file) && IsRelevantPath(repositoryRoot, file) &&
+                if (MarkdownFileTypes.IsMarkdown(file) && IsRelevantPath(repositoryRoot, file, ignoreRules, includeCompilerInputs: false) &&
                     (_fileSystem.FileInfo.New(file).Attributes & FileAttributes.ReparsePoint) == 0)
                 {
                     paths.Add(NormalizeDirectoryPath(file));
@@ -507,7 +508,7 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
             foreach (var child in _fileSystem.Directory.EnumerateDirectories(directory))
             {
                 ct.ThrowIfCancellationRequested();
-                if (IsRelevantDirectoryPath(repositoryRoot, child) &&
+                if (IsRelevantDirectoryPath(repositoryRoot, child, ignoreRules, includeCompilerInputs: false) &&
                     (_fileSystem.DirectoryInfo.New(child).Attributes & FileAttributes.ReparsePoint) == 0)
                 {
                     pending.Push(child);
@@ -520,21 +521,26 @@ internal sealed class WorkspaceWatcher : IWorkspaceWatcher
 
     private void AddKnownDirectoryTree(
         ConcurrentDictionary<string, byte> knownDirectories,
-        string directoryPath)
+        string repositoryRoot,
+        string directoryPath,
+        WorkspaceIgnoreRules ignoreRules)
     {
-        if (!_fileSystem.Directory.Exists(directoryPath))
+        var pending = new Stack<string>();
+        pending.Push(directoryPath);
+        while (pending.TryPop(out var directory))
         {
-            return;
-        }
+            if (!_fileSystem.Directory.Exists(directory) ||
+                !IsRelevantDirectoryPath(repositoryRoot, directory, ignoreRules, includeCompilerInputs: false) ||
+                (_fileSystem.DirectoryInfo.New(directory).Attributes & FileAttributes.ReparsePoint) != 0)
+            {
+                continue;
+            }
 
-        knownDirectories.TryAdd(NormalizeDirectoryPath(directoryPath), 0);
-
-        foreach (var childDirectory in _fileSystem.Directory.EnumerateDirectories(
-            directoryPath,
-            "*",
-            SearchOption.AllDirectories))
-        {
-            knownDirectories.TryAdd(NormalizeDirectoryPath(childDirectory), 0);
+            knownDirectories.TryAdd(NormalizeDirectoryPath(directory), 0);
+            foreach (var child in _fileSystem.Directory.EnumerateDirectories(directory))
+            {
+                pending.Push(child);
+            }
         }
     }
 

@@ -4,7 +4,7 @@ Watch mode maintains the graph for the selected workspace. Every successful upda
 
 ## Processing a change
 
-1. Repository watchers batch file and directory events.
+1. Repository watchers accept all file extensions, discard standard excluded directories, then apply root `.gitignore` rules before batching. Selected compiler inputs bypass Git ignore rules because MSBuild membership determines the C# graph. Discovery and watching use the same `Ignore` library rules, including negation. Root `.gitignore` edits reload those rules and trigger reconciliation.
 2. `WorkspaceChangeFilter` checks the workspace's sources and relevant dependency/config inputs.
 3. Ignored batches return without claiming an index commit.
 4. Relevant batches invoke the named source plan, carrying changed-file information for adapters that can reuse state. Documentation-only file changes may reuse previously committed C# and TypeScript contributions while extracting the selected Markdown set again.
@@ -17,7 +17,7 @@ A failed extraction leaves the last committed graph available. Failure or cancel
 
 | Language | Relevant inputs and reconciliation |
 | --- | --- |
-| C# | Selected project/solution inputs, source membership, linked source files, and compilation/generator inputs. Existing Markdown file modifications or deletions reuse the committed C# contribution only when those paths are absent from Roslyn source, additional, and analyzer-config documents. Added or renamed documentation refreshes C# conservatively because new files can match `AdditionalFiles` globs. Suitable C# source edits can update a warm Roslyn workspace; structural and configuration changes require reloading. |
+| C# | Selected project/solution inputs, source membership, linked source files, and compilation/generator inputs, including declared `.txt`, `.proto`, and YAML files. Existing Markdown file modifications or deletions reuse the committed C# contribution only when those paths are absent from Roslyn source, additional, and analyzer-config documents. Added or renamed files of any extension refresh C# conservatively because new files can match previously empty `AdditionalFiles` globs. Suitable C# source edits can update a warm Roslyn workspace; structural and configuration changes require reloading. |
 | TypeScript | Selected files, imports, aliases, extended configurations, and project references. Documentation-only file changes can reuse the committed contribution. Code/configuration changes rebuild the selected dependency graph because consumers outside the edited file may be affected. |
 | Markdown | Selected documentation paths and directory changes. Rebuilding the selected document set restores links when targets appear, disappear, or change headings. Supported documentation-only extensions are `.md`, `.markdown`, `.mdown`, and `.mkd`. |
 

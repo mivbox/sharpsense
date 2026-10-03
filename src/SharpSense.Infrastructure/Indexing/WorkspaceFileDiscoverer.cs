@@ -3,7 +3,6 @@ using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Storage;
 using System.IO.Abstractions;
-using GitIgnore = Ignore.Ignore;
 
 namespace SharpSense.Infrastructure.Indexing;
 
@@ -21,7 +20,7 @@ internal sealed class WorkspaceFileDiscoverer(
 
         ct.ThrowIfCancellationRequested();
 
-        var absoluteTargetDirectory = fileSystem.Path.GetFullPath(targetDirectory);
+        var absoluteTargetDirectory = RepositoryWorkspace.NormalizeRootPath(targetDirectory, fileSystem);
         if (!repositoryWorkspace.IsSameOrSubPath(absoluteTargetDirectory))
         {
             throw new InvalidOperationException(
@@ -48,12 +47,10 @@ internal sealed class WorkspaceFileDiscoverer(
             matcher.AddInclude(includeGlob);
         }
 
-        var ignoreEngine = CreateIgnoreEngine();
+        var ignoreEngine = new WorkspaceIgnoreRules(fileSystem, repositoryWorkspace.RootPath);
         var discoveredFilesByRelativePath = new Dictionary<string, DiscoveredFile>(FileSystemPaths.Comparer);
 
-        foreach (var absolutePath in fileSystem.Directory
-            .EnumerateFiles(absoluteTargetDirectory, "*", SearchOption.AllDirectories)
-            .OrderBy(static path => path, FileSystemPaths.Comparer))
+        foreach (var absolutePath in EnumerateFiles(absoluteTargetDirectory, ignoreEngine, ct))
         {
             ct.ThrowIfCancellationRequested();
 
@@ -88,15 +85,32 @@ internal sealed class WorkspaceFileDiscoverer(
             ]);
     }
 
-    private GitIgnore CreateIgnoreEngine()
+    private IEnumerable<string> EnumerateFiles(string root, WorkspaceIgnoreRules ignoreRules, CancellationToken ct)
     {
-        var ignoreEngine = new GitIgnore();
-        var gitIgnorePath = fileSystem.Path.Combine(repositoryWorkspace.RootPath, ".gitignore");
-        if (!fileSystem.File.Exists(gitIgnorePath))
+        var pending = new Stack<string>();
+        pending.Push(root);
+        while (pending.TryPop(out var directory))
         {
-            return ignoreEngine;
-        }
+            ct.ThrowIfCancellationRequested();
+            foreach (var file in fileSystem.Directory.EnumerateFiles(directory))
+            {
+                ct.ThrowIfCancellationRequested();
+                if ((fileSystem.FileInfo.New(file).Attributes & FileAttributes.ReparsePoint) == 0)
+                {
+                    yield return file;
+                }
+            }
 
-        return ignoreEngine.Add(fileSystem.File.ReadAllLines(gitIgnorePath));
+            foreach (var child in fileSystem.Directory.EnumerateDirectories(directory))
+            {
+                ct.ThrowIfCancellationRequested();
+                var relativePath = fileSystem.Path.GetRelativePath(repositoryWorkspace.RootPath, child);
+                if (!ignoreRules.IsIgnored(relativePath, directory: true) &&
+                    (fileSystem.DirectoryInfo.New(child).Attributes & FileAttributes.ReparsePoint) == 0)
+                {
+                    pending.Push(child);
+                }
+            }
+        }
     }
 }

@@ -16,6 +16,7 @@ internal sealed class WorkspaceChangeFilter(
     IIndexingWorkspacePaths workspacePaths,
     IOptions<WorkspaceExecutionOptions> options) : IWorkspaceChangeFilter
 {
+    private readonly object _gate = new();
     private readonly StringComparer _pathComparer = FileSystemPaths.Comparer;
     private readonly Dictionary<WorkspaceSourceKind, HashSet<string>> _trackedFiles = [];
     private readonly Dictionary<WorkspaceSourceKind, HashSet<string>> _trackedDirectories = [];
@@ -23,7 +24,34 @@ internal sealed class WorkspaceChangeFilter(
 
     public bool IsRelevant(IReadOnlyList<WorkspaceFileChange> changes)
     {
-        var sources = options.Value.WorkspaceSources;
+        lock (_gate)
+        {
+            return IsRelevant(changes, options.Value.WorkspaceSources);
+        }
+    }
+
+    public bool IsRelevantCodeChange(WorkspaceFileChange change)
+    {
+        lock (_gate)
+        {
+            var sources = options.Value.WorkspaceSources
+                .Where(source => source.Kind != WorkspaceSourceKind.Markdown)
+                .ToArray();
+
+            // The watcher subscribes before extraction discovers linked inputs.
+            // Retain ignored startup events, then filter the batch after that scan.
+            if (sources.Any(source => source.Kind == WorkspaceSourceKind.CSharp) &&
+                (!_trackedFiles.TryGetValue(WorkspaceSourceKind.CSharp, out var files) || files.Count == 0))
+            {
+                return true;
+            }
+
+            return sources.Length > 0 && IsRelevant([change], sources);
+        }
+    }
+
+    private bool IsRelevant(IReadOnlyList<WorkspaceFileChange> changes, IReadOnlyList<WorkspaceSource> sources)
+    {
         if (sources.Count == 0)
         {
             return true;
@@ -42,6 +70,11 @@ internal sealed class WorkspaceChangeFilter(
                     WorkspaceIndexingPathRules.IsIgnoredPath(relativePath))
                 {
                     continue;
+                }
+
+                if (string.Equals(relativePath, ".gitignore", FileSystemPaths.Comparison))
+                {
+                    return true;
                 }
 
                 var directoryChange = change.ActionType is WorkspaceFileChangeAction.DirectoryDeleted
@@ -72,6 +105,14 @@ internal sealed class WorkspaceChangeFilter(
     }
 
     public void TrackSource(WorkspaceSource source, ExtractedNodes extractedNodes)
+    {
+        lock (_gate)
+        {
+            TrackSourcePaths(source, extractedNodes);
+        }
+    }
+
+    private void TrackSourcePaths(WorkspaceSource source, ExtractedNodes extractedNodes)
     {
         var files = GetPaths(_trackedFiles, source.Kind);
         var directories = GetPaths(_trackedDirectories, source.Kind);
@@ -125,17 +166,20 @@ internal sealed class WorkspaceChangeFilter(
             return true;
         }
 
+        if (source.Kind == WorkspaceSourceKind.TypeScript && TypeScriptIndexingPathRules.IsIgnoredPath(path))
+        {
+            return false;
+        }
+
         if (files.Contains(path) || directoryChange && files.Any(file => IsWithin(file, path)))
         {
             return true;
         }
 
-        // A newly added/renamed Markdown file may match a previously empty AdditionalFiles
-        // glob. Its membership is unknown until MSBuild evaluates the C# source again.
+        // New files of any extension can match an empty AdditionalFiles glob.
+        // Membership is unknown until MSBuild evaluates the selected source again.
         if (source.Kind == WorkspaceSourceKind.CSharp &&
-            action is WorkspaceFileChangeAction.Added or WorkspaceFileChangeAction.Renamed &&
-            Path.GetExtension(path)
-                .ToLowerInvariant() is ".md" or ".markdown" or ".mdown" or ".mkd")
+            action is WorkspaceFileChangeAction.Added or WorkspaceFileChangeAction.Renamed)
         {
             return true;
         }

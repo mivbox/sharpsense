@@ -16,6 +16,7 @@ using SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Indexing.CSharp;
 using SharpSense.Infrastructure.Indexing.Markdown;
+using SharpSense.Infrastructure.Indexing.Watching;
 using SharpSense.Infrastructure.Storage;
 using System.Diagnostics;
 using System.IO.Abstractions;
@@ -25,8 +26,16 @@ namespace SharpSense.Infrastructure.Tests.Indexing.CSharp;
 
 public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
 {
-    [Fact]
-    public async Task WhenDocumentationFastPath_ThenSkipsRealSdkProjectButRefreshesDeclaredAndNewGeneratorInputs()
+    [Theory]
+    [InlineData("md", true)]
+    [InlineData("md", false)]
+    [InlineData("txt", true)]
+    [InlineData("txt", false)]
+    [InlineData("proto", true)]
+    [InlineData("proto", false)]
+    [InlineData("yaml", true)]
+    [InlineData("yaml", false)]
+    public async Task WhenGeneratorInputChanges_ThenNativeWatchRefreshesIgnoredExistingAndInitiallyEmptyInputs(string extension, bool existingInput)
     {
         var ct = TestContext.Current.CancellationToken;
         var root = Path.Combine(
@@ -40,13 +49,17 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
             CreateGenerator(Path.Combine(root, "FixtureGenerator.dll"));
             await File.WriteAllTextAsync(
                 Path.Combine(root, "App.csproj"),
-                Project("<Analyzer Include=\"FixtureGenerator.dll\" /><AdditionalFiles Include=\"inputs/*.md\" />"),
+                Project($"<Analyzer Include=\"FixtureGenerator.dll\" /><AdditionalFiles Include=\"inputs/*.{extension}\" />"),
                 ct);
             await File.WriteAllTextAsync(Path.Combine(root, "Api.cs"), Source("int", 0), ct);
             var guide = Path.Combine(root, "docs/guide.md");
-            var schema = Path.Combine(root, "inputs/schema.md");
+            var schema = Path.Combine(root, $"inputs/schema.{extension}");
             await File.WriteAllTextAsync(guide, "# Guide\nOriginal documentation.", ct);
-            await File.WriteAllTextAsync(schema, "0", ct);
+            await File.WriteAllTextAsync(Path.Combine(root, ".gitignore"), "inputs/\nbin/\nobj/\n", ct);
+            if (existingInput)
+            {
+                await File.WriteAllTextAsync(schema, "0", ct);
+            }
 
             var fileSystem = new FileSystem();
             var workspace = new RepositoryWorkspace(root, Path.Combine(root, "unused.db"), fileSystem);
@@ -64,11 +77,6 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
                 fileSystem));
             ILanguageExtractor[] extractors = [csharp, markdown];
             var paths = new IndexingWorkspacePaths(workspace);
-            using var coordinator = new WorkspaceExtractionCoordinator(
-                extractors,
-                paths,
-                Mock.Of<IWorkspaceChangeFilter>(),
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance);
             var options = Options.Create(new WorkspaceExecutionOptions
             {
                 WorkspaceId = "fixture",
@@ -76,6 +84,12 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
                 SkipEmbeddings = true,
                 DisableEmbeddingCache = true
             });
+            var filter = new WorkspaceChangeFilter(paths, options);
+            using var coordinator = new WorkspaceExtractionCoordinator(
+                extractors,
+                paths,
+                filter,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkspaceExtractionCoordinator>.Instance);
             ExtractedNodes? persisted = null;
             var repository = new Mock<IKnowledgeGraphRepository>(MockBehavior.Strict);
             repository
@@ -86,7 +100,7 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
             var watch = Stopwatch.StartNew();
             await Index();
             var initialMilliseconds = watch.Elapsed.TotalMilliseconds;
-            persisted!.CodeNodes.Should().Contain(node => node.FullyQualifiedName == "Generated.AdditionalVersion0");
+            persisted!.CodeNodes.Any(node => node.FullyQualifiedName == "Generated.AdditionalVersion0").Should().Be(existingInput);
             factory.CreateCount.Should().Be(1);
 
             await File.WriteAllTextAsync(guide, "# Guide\nUpdated documentation.", ct);
@@ -94,14 +108,41 @@ public sealed class CSharpWorkspaceReuseTests(ITestOutputHelper output)
             await Index(new(WorkspaceFileChangeAction.Modified, NewPath: guide));
             var docsMilliseconds = watch.Elapsed.TotalMilliseconds;
             factory.CreateCount.Should().Be(1);
-            persisted!.CodeNodes.Should().Contain(node => node.FullyQualifiedName == "Generated.AdditionalVersion0");
+            persisted!.CodeNodes.Any(node => node.FullyQualifiedName == "Generated.AdditionalVersion0").Should().Be(existingInput);
             persisted.CodeNodes.Should().Contain(node => node.Summary.Contains(
                 "Updated documentation.",
                 StringComparison.Ordinal));
 
-            // Declared Markdown generator inputs refresh even though they aren't selected docs.
-            await File.WriteAllTextAsync(schema, "1", ct);
-            await Index(new(WorkspaceFileChangeAction.Modified, NewPath: schema));
+            var watcher = new WorkspaceWatcher(fileSystem, fileSystem.FileSystemWatcher, TimeSpan.FromMilliseconds(10), filter);
+            using var shutdown = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var indexed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var watching = watcher.Watch(root, async (changes, _) =>
+            {
+                if (filter.IsRelevant(changes))
+                {
+                    await Index(changes.First(change => change.GetAffectedPaths().Contains(schema)));
+                    indexed.TrySetResult();
+                }
+            }, shutdown.Token, onReady: () => ready.TrySetResult());
+            try
+            {
+                await ready.Task.WaitAsync(TimeSpan.FromSeconds(10), ct);
+                await File.WriteAllTextAsync(schema, "1", ct);
+                await indexed.Task.WaitAsync(TimeSpan.FromSeconds(20), ct);
+            }
+            finally
+            {
+                await shutdown.CancelAsync();
+                try
+                {
+                    await watching;
+                }
+                catch (OperationCanceledException) when (shutdown.IsCancellationRequested)
+                {
+                }
+            }
+
             factory.CreateCount.Should().Be(2);
             persisted!.CodeNodes.Should().Contain(node => node.FullyQualifiedName == "Generated.AdditionalVersion1");
             persisted.CodeNodes.Should().NotContain(node => node.FullyQualifiedName == "Generated.AdditionalVersion0");
