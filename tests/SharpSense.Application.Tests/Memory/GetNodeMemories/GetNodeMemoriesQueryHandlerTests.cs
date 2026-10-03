@@ -40,7 +40,6 @@ public sealed class GetNodeMemoriesQueryHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().ContainSingle().Which.Should().Be(expectedMemory);
-        memoryRepository.VerifyAll();
     }
 
     [Fact]
@@ -76,6 +75,7 @@ public sealed class GetNodeMemoriesQueryHandlerTests
         result.Errors.Should().ContainSingle().Which.Message.Should().Be("NodeId must be greater than zero.");
         memoryRepository.VerifyNoOtherCalls();
     }
+
     [Fact]
     public async Task WhenExistingNodeHasNoMemories_ThenReturnsSuccessfulEmptyResult()
     {
@@ -86,7 +86,10 @@ public sealed class GetNodeMemoriesQueryHandlerTests
                 It.Is<IReadOnlyCollection<int>>(ids => ids.SequenceEqual(new[] { 42 })),
                 null,
                 ct))
-            .ReturnsAsync(new Dictionary<int, MemoryNode[]> { [42] = [] });
+            .ReturnsAsync(new Dictionary<int, MemoryNode[]>
+            {
+                [42] = []
+            });
         var handler = new GetNodeMemoriesQueryHandler(repository.Object);
 
         var result = await handler.Handle(new GetNodeMemoriesQuery(42), ct);
@@ -94,5 +97,4 @@ public sealed class GetNodeMemoriesQueryHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().BeEmpty();
     }
-
 }

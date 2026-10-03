@@ -8,9 +8,13 @@ using Moq;
 using SharpSense.Application.CommandExecution.Abstractions;
 using SharpSense.Application.CommandExecution.ExecuteProcess.Models;
 using SharpSense.Application.CommandExecution.Models;
+using SharpSense.Application.Memory.Abstractions;
+using SharpSense.Application.Memory.AttachMemory;
+using SharpSense.Application.Memory.AttachMemory.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
+using SharpSense.Domain.KnowledgeGraph.Nodes;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Testkit;
@@ -31,7 +35,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenExecutingCommandIsCancelled_ThenReturnsCancellationExitCode()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var handler = new Mock<ICommandHandler<ExecuteProcessCommand, Result<CommandExecutionResult>>>(MockBehavior.Strict);
@@ -66,7 +70,7 @@ public sealed class CliCommandTests
     [InlineData("MessageProvider(*")]
     public async Task WhenSearchContainsPunctuation_ThenReturnsJsonResults(string expression)
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
 
@@ -93,7 +97,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenTraceCallerDirectionRuns_ThenOutputsUpstreamNodesAsJson()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
 
@@ -133,7 +137,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenTraceCalleeDirectionRunsWithToon_ThenOutputsDownstreamNodesInToonFormat()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
 
@@ -158,7 +162,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenTraceRunsWithoutDirection_ThenItUsesCalleeTraversalByDefault()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
 
@@ -175,7 +179,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenTraceCallerDirectionRunsWithToon_ThenOutputsUpstreamChainToTarget()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
 
@@ -200,7 +204,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenSearchRunsWithToon_ThenOutputsMatchingNodesInHierarchicalToonFormat()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
 
@@ -218,7 +222,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenSearchRunsWithToonForDocumentNode_ThenOutputsDocumentNodesInHierarchicalToonFormat()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
 
@@ -236,7 +240,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenContextNodeIsMissing_ThenItWritesToStderrAndReturnsANonzeroExitCode()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         using var errors = new StringWriter();
         var previousConsole = AnsiConsole.Console;
@@ -268,7 +272,7 @@ public sealed class CliCommandTests
     [InlineData(true)]
     public async Task WhenContextRunsWithoutToon_ThenItOutputsNodeRelationshipsAsJson(bool includeMemories)
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
         var memoryOptions = includeMemories ? new[] { "--include-memories" } : [];
@@ -318,7 +322,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenContextRunsForMethodNode_ThenItOutputsImmediateCallersAndCalleesAsToon()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
 
@@ -357,7 +361,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenContextRunsForInterfaceNode_ThenItOutputsIncomingImplementersAsToon()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
 
@@ -396,7 +400,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenContextRunsForDerivedClassNode_ThenItOutputsOutgoingInheritanceAsToon()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
 
@@ -435,7 +439,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenTraceCalleeDirectionRunsForDocumentRoot_ThenOutputsDownstreamDocumentNodesInToonFormat()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
 
@@ -504,7 +508,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenInheritorsRunsForClassNodeWithToon_ThenOutputsDerivedClassesInToonFormat()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
 
@@ -525,7 +529,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenInheritorsRunsForInterfaceNodeWithToon_ThenOutputsImplementingClassesInToonFormat()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
 
@@ -549,7 +553,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenExecuteRunsWithToon_ThenItFormatsCondensedCommandOutput()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var ct = TestContext.Current.CancellationToken;
         CancellationToken executionToken = default;
@@ -635,7 +639,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenExecuteFails_ThenItOutputsErrorJsonAndReturnsExitCodeOne()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var ct = TestContext.Current.CancellationToken;
         CancellationToken executionToken = default;
@@ -710,9 +714,83 @@ public sealed class CliCommandTests
     }
 
     [Fact]
+    public async Task WhenAnotherWriterAttachesBeforeCommandReturns_ThenPrintsItsOwnSavedMemory()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await CliCommandTestDatabase.Create(ct);
+        using var console = new TestConsole();
+        MemoryNode? saved = null;
+        MemoryNode? other = null;
+        var app = CreateCommandApp(console, database, configureServices: services =>
+            services.AddScoped<ICommandHandler<AttachMemoryCommand, Result<MemoryNode>>>(provider =>
+            {
+                var store = provider.GetRequiredService<IMemoryRepository>();
+                var handler = new Mock<ICommandHandler<AttachMemoryCommand, Result<MemoryNode>>>();
+                handler.Setup(candidate => candidate.Handle(It.IsAny<AttachMemoryCommand>(), It.IsAny<CancellationToken>()))
+                    .Returns(async (AttachMemoryCommand command, CancellationToken token) =>
+                    {
+                        var result = await new AttachMemoryCommandHandler(store).Handle(command, token);
+                        result.IsSuccess.Should().BeTrue();
+                        saved = result.Value;
+                        var competing = await store.AttachMemory(command.NodeId, "Another writer's note", [], MemoryIntent.Warning, token);
+                        competing.IsSuccess.Should().BeTrue();
+                        other = competing.Value;
+
+                        return result;
+                    });
+
+                return handler.Object;
+            }));
+
+        var exitCode = await app.RunAsync(
+            ["memory", "add", "--node-id", CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+             "--content", "My note", "--repo-root", RepositoryRoot], ct);
+
+        exitCode.Should().Be(0, console.Output);
+        saved.Should().NotBeNull();
+        other.Should().NotBeNull();
+        console.Output.Should().Contain($"memory_id: {saved!.Id}");
+        console.Output.Should().Contain("My note");
+        console.Output.Should().NotContain(other!.Id.ToString());
+        console.Output.Should().NotContain(other.Content);
+    }
+
+    [Theory]
+    [InlineData("add", "--intent")]
+    [InlineData("list", "--intent-filter")]
+    public async Task WhenMemoryIntentIsUndefined_ThenRejectsCommandWithoutPersisting(string action, string option)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await CliCommandTestDatabase.Create(ct);
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+
+        var exitCode = await app.RunAsync(
+            [
+                "memory",
+                action,
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--content",
+                "Keep the intended classification",
+                option,
+                "99",
+                "--repo-root",
+                RepositoryRoot
+            ],
+            ct);
+
+        exitCode.Should().NotBe(0);
+        console.Output.Should().Contain(option);
+        console.Output.Should().Contain("must be one of:");
+        await using var verification = await database.GetDbContext(ct);
+        (await verification.MemoryNodes.CountAsync(ct)).Should().Be(0);
+    }
+
+    [Fact]
     public async Task WhenMemoryAddRuns_ThenItAttachesAndReturnsTheNewMemory()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
         var ct = TestContext.Current.CancellationToken;
@@ -738,7 +816,7 @@ public sealed class CliCommandTests
         actualOutput.Should().Contain("memory_id: ");
         actualOutput.Should().Contain("content: \"Always greet politely\"");
 
-        await using var verification = await database.GetDbContext();
+        await using var verification = await database.GetDbContext(ct);
         var persistedMemory = await verification.MemoryNodes.SingleAsync(ct);
 
         actualOutput.Should().Contain($"memory_id: {persistedMemory.Id}");
@@ -751,7 +829,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenMemoryListRuns_ThenItPrintsAttachedMemories()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var seedConsole = new TestConsole();
         var seedApp = CreateCommandApp(seedConsole, database);
         var ct = TestContext.Current.CancellationToken;
@@ -792,7 +870,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenMemoryRemoveRuns_ThenItDeletesTheMemory()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var seedConsole = new TestConsole();
         var seedApp = CreateCommandApp(seedConsole, database);
         var ct = TestContext.Current.CancellationToken;
@@ -822,7 +900,7 @@ public sealed class CliCommandTests
         exitCode.Should().Be(0);
         removeConsole.Output.Should().Contain($"removed_memory: {memoryId}");
 
-        await using var verification = await database.GetDbContext();
+        await using var verification = await database.GetDbContext(ct);
         var memoryCount = await verification.MemoryNodes.CountAsync(ct);
         memoryCount.Should().Be(0, "the memory must be removed by the CLI command");
     }
@@ -830,7 +908,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenMemoryRemoveRunsWithUnknownId_ThenItReturnsExitCodeOne()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var console = new TestConsole();
         var app = CreateCommandApp(console, database);
         var unknownId = Guid.NewGuid();
@@ -847,7 +925,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenMemoryGetRuns_ThenItPrintsFullMemoryContent()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var seedConsole = new TestConsole();
         var seedApp = CreateCommandApp(seedConsole, database);
         var ct = TestContext.Current.CancellationToken;
@@ -888,7 +966,7 @@ public sealed class CliCommandTests
     [InlineData(true)]
     public async Task WhenContextRunsWithIncludeMemories_ThenItPrintsOnlyMemoryMetadata(bool useToon)
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var seedConsole = new TestConsole();
         var seedApp = CreateCommandApp(seedConsole, database);
         var ct = TestContext.Current.CancellationToken;
@@ -956,7 +1034,7 @@ public sealed class CliCommandTests
     [Fact]
     public async Task WhenMemoryCommandsUseProductionRegistrations_ThenCompleteMemoryLifecycle()
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         var ct = TestContext.Current.CancellationToken;
 
         async Task<string> Run(params string[] arguments)
@@ -984,7 +1062,7 @@ public sealed class CliCommandTests
         (await Run("trace", nodeId, "--include-memories", "--toon")).Should().Contain(memoryId.ToString());
         await Run("memory", "remove", "--memory-id", memoryId.ToString());
 
-        await using var context = await database.GetDbContext();
+        await using var context = await database.GetDbContext(ct);
         (await context.MemoryNodes.CountAsync(ct)).Should().Be(0);
     }
 
@@ -995,7 +1073,7 @@ public sealed class CliCommandTests
     [InlineData("callee", true)]
     public async Task WhenTraceIncludesMemories_ThenReturnsMetadataInEitherFormat(string direction, bool useToon)
     {
-        await using var database = await CliCommandTestDatabase.Create();
+        await using var database = await CliCommandTestDatabase.Create(TestContext.Current.CancellationToken);
         using var seedConsole = new TestConsole();
         var seedApp = CreateCommandApp(seedConsole, database);
         var ct = TestContext.Current.CancellationToken;
@@ -1044,7 +1122,7 @@ public sealed class CliCommandTests
 
     private static async Task<Guid> GetSingleMemoryId(CliCommandTestDatabase database, CancellationToken ct)
     {
-        await using var context = await database.GetDbContext();
+        await using var context = await database.GetDbContext(ct);
 
         return await context.MemoryNodes
             .Select(static memory => memory.Id)
@@ -1092,15 +1170,23 @@ public sealed class CliCommandTests
         public const string BaseClassCanonicalId = "code:project-app:Fixture.App.BaseRenderer";
         public const string DerivedClassCanonicalId = "code:project-app:Fixture.App.FancyRenderer";
 
-        public static async Task<CliCommandTestDatabase> Create()
+        public static async Task<CliCommandTestDatabase> Create(CancellationToken ct)
         {
             var contextFactory = new InMemoryContextFactory<SharpSenseDbContext>(
                 options => new SharpSenseDbContext(options),
                 new InMemoryContextFactoryOptions(UseMigrations: true, LoadVectorExtension: true));
             var database = new CliCommandTestDatabase(contextFactory);
-            await database.Initialize();
+            try
+            {
+                await database.Initialize(ct);
 
-            return database;
+                return database;
+            }
+            catch
+            {
+                await database.DisposeAsync();
+                throw;
+            }
         }
 
         public void ConfigureServices(IServiceCollection services, bool useRealEmbeddings = false)
@@ -1113,17 +1199,17 @@ public sealed class CliCommandTests
             }
         }
 
-        public async Task<SharpSenseDbContext> GetDbContext()
-            => await contextFactory.GetContext(ct: TestContext.Current.CancellationToken);
+        public async Task<SharpSenseDbContext> GetDbContext(CancellationToken ct)
+            => await contextFactory.GetContext(ct: ct);
 
         public async ValueTask DisposeAsync()
         {
             await contextFactory.DisposeAsync();
         }
 
-        private async Task Initialize()
+        private async Task Initialize(CancellationToken ct)
         {
-            await using var dbContext = await contextFactory.GetContext(ct: TestContext.Current.CancellationToken);
+            await using var dbContext = await contextFactory.GetContext(ct: ct);
 
             dbContext.Directories.AddRange(
                 new DirectoryRecord
@@ -1575,7 +1661,7 @@ public sealed class CliCommandTests
                     EdgeType = EdgeType.Implements
                 });
 
-            await dbContext.SaveChangesAsync(TestContext.Current.CancellationToken);
+            await dbContext.SaveChangesAsync(ct);
             await dbContext.Database.ExecuteSqlRawAsync(
                 """
                 DELETE FROM CodeNodeSearch;
@@ -1585,7 +1671,7 @@ public sealed class CliCommandTests
                 INNER JOIN GraphNodes AS graphNode ON graphNode.Id = codeNode.Id
                 INNER JOIN Documents AS document ON document.Id = codeNode.DocumentId;
                 """,
-                TestContext.Current.CancellationToken);
+                ct);
         }
     }
 }

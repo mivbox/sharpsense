@@ -98,7 +98,7 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
         }
 
         private static bool TryParseIntent(string raw, out Domain.KnowledgeGraph.Enums.MemoryIntent intent)
-            => Enum.TryParse(raw, ignoreCase: true, out intent);
+            => Enum.TryParse(raw, ignoreCase: true, out intent) && Enum.IsDefined(intent);
     }
 
     protected override void Configure(Settings settings, IServiceCollection services)
@@ -137,7 +137,7 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
         IServiceProvider services,
         CancellationToken ct)
     {
-        var handler = services.GetRequiredService<ICommandHandler<AttachMemoryCommand, Result>>();
+        var handler = services.GetRequiredService<ICommandHandler<AttachMemoryCommand, Result<MemoryNode>>>();
         var intent = string.IsNullOrWhiteSpace(settings.IntentRaw)
             ? Domain.KnowledgeGraph.Enums.MemoryIntent.Convention
             : Enum.Parse<Domain.KnowledgeGraph.Enums.MemoryIntent>(settings.IntentRaw, ignoreCase: true);
@@ -154,34 +154,26 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
             return 1;
         }
 
-        var memories = await services
-            .GetRequiredService<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>>()
-            .Handle(new GetNodeMemoriesQuery(settings.NodeId.Value), ct);
-        var memory = memories.IsSuccess && memories.Value!.Length > 0 ? memories.Value[^1] : null;
-
+        var memory = result.Value;
         var output = new StringBuilder()
             .Append("added_memory: true")
             .AppendLine()
             .Append("node_id: ")
             .Append(settings.NodeId.Value)
+            .AppendLine()
+            .Append("memory_id: ")
+            .Append(memory.Id)
+            .AppendLine()
+            .Append("intent: ")
+            .Append(memory.Intent)
+            .AppendLine()
+            .Append("is_stale: ")
+            .Append(memory.IsStale ? "true" : "false")
+            .AppendLine()
+            .Append("content: \"")
+            .Append(SanitizeForOutput(memory.Content))
+            .Append('"')
             .AppendLine();
-        if (memory is not null)
-        {
-            output
-                .Append("memory_id: ")
-                .Append(memory.Id)
-                .AppendLine()
-                .Append("intent: ")
-                .Append(memory.Intent)
-                .AppendLine()
-                .Append("is_stale: ")
-                .Append(memory.IsStale ? "true" : "false")
-                .AppendLine()
-                .Append("content: \"")
-                .Append(SanitizeForOutput(memory.Content))
-                .Append('"')
-                .AppendLine();
-        }
 
         CommandOutput.Write(context, output.ToString());
 
@@ -283,7 +275,6 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
         IServiceProvider services,
         CancellationToken ct)
     {
-        // Batch path: --memory-ids id1,id2,id3 → one round-trip, one combined block.
         if (settings.MemoryIds is { Length: > 0 })
         {
             var batchHandler = services.GetRequiredService<IQueryHandler<GetMemoriesQuery, Result<IReadOnlyDictionary<Guid, MemoryNode>>>>();

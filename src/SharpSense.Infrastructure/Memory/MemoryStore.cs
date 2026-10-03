@@ -17,7 +17,7 @@ internal sealed class MemoryStore(
     IEmbeddingGenerator embeddingGenerator)
     : IMemoryRepository
 {
-    public async Task<Result> AttachMemory(
+    public async Task<Result<MemoryNode>> AttachMemory(
         int nodeId,
         string content,
         string[]? tags,
@@ -26,12 +26,12 @@ internal sealed class MemoryStore(
     {
         if (nodeId <= 0)
         {
-            return Result.Fail("Node id must be greater than zero.");
+            return Result.Fail<MemoryNode>("Node id must be greater than zero.");
         }
 
         if (string.IsNullOrWhiteSpace(content))
         {
-            return Result.Fail("Content must not be empty.");
+            return Result.Fail<MemoryNode>("Content must not be empty.");
         }
 
         await using var context = await dbContextFactory.CreateDbContextAsync(ct);
@@ -40,12 +40,13 @@ internal sealed class MemoryStore(
             .Where(codeNode => codeNode.Id == nodeId)
             .Select(static codeNode => new
             {
-                codeNode.BodyHash
+                codeNode.BodyHash,
+                codeNode.FullyQualifiedName
             })
             .FirstOrDefaultAsync(ct);
         if (targetNode is null)
         {
-            return Result.Fail($"No persisted node exists for id {nodeId}.");
+            return Result.Fail<MemoryNode>($"No persisted node exists for id {nodeId}.");
         }
 
         var normalizedContent = content.Trim();
@@ -58,24 +59,24 @@ internal sealed class MemoryStore(
             .FirstOrDefaultAsync(ct)
             ?? (await embeddingGenerator.Generate(normalizedContent, ct)).Vector;
 
-        context.MemoryNodes.Add(
-            new MemoryNodeRecord
-            {
-                Id = Guid.NewGuid(),
-                TargetCodeNodeId = nodeId,
-                TargetCodeHash = targetNode.BodyHash ?? string.Empty,
-                Content = normalizedContent,
-                ContentHash = contentHash,
-                TagsJson = JsonSerializer.Serialize(normalizedTags),
-                Intent = NormalizeIntent(intent)
+        var memory = new MemoryNodeRecord
+        {
+            Id = Guid.NewGuid(),
+            TargetCodeNodeId = nodeId,
+            TargetCodeHash = targetNode.BodyHash ?? string.Empty,
+            Content = normalizedContent,
+            ContentHash = contentHash,
+            TagsJson = JsonSerializer.Serialize(normalizedTags),
+            Intent = NormalizeIntent(intent)
                     .ToString(),
-                VectorEmbedding = vectorEmbedding,
-                CreatedAt = DateTimeOffset.UtcNow
-            });
+            VectorEmbedding = vectorEmbedding,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        context.MemoryNodes.Add(memory);
 
         await context.SaveChangesAsync(ct);
 
-        return Result.Ok();
+        return Result.Ok(Map(memory, targetNode.FullyQualifiedName, targetNode.BodyHash ?? string.Empty));
     }
 
     public async Task<Result> DeleteMemory(Guid memoryId, CancellationToken ct)

@@ -206,7 +206,7 @@ public sealed class SharpSenseMcpToolsTests
     {
         var ct = TestContext.Current.CancellationToken;
         var tags = new[] { "security" };
-        var handler = new Mock<ICommandHandler<AttachMemoryCommand, Result>>(MockBehavior.Strict);
+        var handler = new Mock<ICommandHandler<AttachMemoryCommand, Result<MemoryNode>>>(MockBehavior.Strict);
         handler
             .Setup(candidate => candidate.Handle(
                 new AttachMemoryCommand(
@@ -215,7 +215,16 @@ public sealed class SharpSenseMcpToolsTests
                     tags,
                     Domain.KnowledgeGraph.Enums.MemoryIntent.Convention),
                 ct))
-            .ReturnsAsync(Result.Ok());
+            .ReturnsAsync(Result.Ok(new MemoryNode(
+                Guid.NewGuid(),
+                "Sample",
+                "hash",
+                "Security review",
+                "content-hash",
+                ["security"],
+                MemoryIntent.Convention,
+                DateTimeOffset.UtcNow,
+                false)));
 
         var result = await SharpSenseMcpTools.attach_memory(
             handler.Object,
@@ -226,8 +235,15 @@ public sealed class SharpSenseMcpToolsTests
             ct);
 
         result.IsError.Should().NotBe(true);
-        result.Content.OfType<TextContentBlock>().Should().ContainSingle().Which.Text.Should().Be("attached memory to node 42 (intent=Convention)");
-        handler.VerifyAll();
+        var text = result.Content
+            .OfType<TextContentBlock>()
+            .Should().ContainSingle().Which.Text;
+        text.Should().Be("attached memory to node 42 (intent=Convention)");
+        handler.Verify(
+            candidate => candidate.Handle(
+                new AttachMemoryCommand(42, "Security review", tags, MemoryIntent.Convention),
+                ct),
+            Times.Once);
     }
 
     [Fact]
@@ -413,7 +429,7 @@ public sealed class SharpSenseMcpToolsTests
     {
         var ct = TestContext.Current.CancellationToken;
         var error = new ServiceError(ServiceErrorCode.InvalidArgument, "Invalid request.");
-        var handler = new Mock<ICommandHandler<AttachMemoryCommand, Result>>(MockBehavior.Strict);
+        var handler = new Mock<ICommandHandler<AttachMemoryCommand, Result<MemoryNode>>>(MockBehavior.Strict);
         handler
             .Setup(candidate => candidate.Handle(
                 It.Is<AttachMemoryCommand>(command =>
@@ -421,7 +437,7 @@ public sealed class SharpSenseMcpToolsTests
                     command.Content == "note" &&
                     command.Intent == MemoryIntent.Convention),
                 ct))
-            .ReturnsAsync(Result.Fail(error));
+            .ReturnsAsync(Result.Fail<MemoryNode>(error));
 
         var response = await InvokeTool(
             SharpSenseMcpTools.attach_memory,
