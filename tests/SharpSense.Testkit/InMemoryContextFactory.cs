@@ -5,10 +5,6 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace SharpSense.Testkit;
 
-public sealed record InMemoryContextFactoryOptions(
-    bool UseMigrations = false,
-    bool LoadVectorExtension = false);
-
 public sealed class InMemoryContextFactory<TContext> : IDisposable, IAsyncDisposable where TContext : DbContext
 {
     private readonly InMemoryContextFactoryOptions _options;
@@ -36,10 +32,19 @@ public sealed class InMemoryContextFactory<TContext> : IDisposable, IAsyncDispos
         CancellationToken ct,
         Action<string>? writeLine = null)
     {
+        ct.ThrowIfCancellationRequested();
         var context = CreateContext(writeLine);
-        await InitializeDatabase(context, ct);
+        try
+        {
+            await InitializeDatabase(context, ct);
 
-        return context;
+            return context;
+        }
+        catch
+        {
+            await context.DisposeAsync();
+            throw;
+        }
     }
 
     public IDbContextFactory<TContext> CreateDbContextFactory(

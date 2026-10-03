@@ -97,7 +97,7 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool, Description("Run hybrid BM25 and semantic search against the indexed workspace.")]
+    [McpServerTool(ReadOnly = true), Description("Run hybrid BM25 and semantic search against the indexed workspace.")]
     public static async Task<CallToolResult> semantic_search(
         IQueryHandler<HybridSearchQuery, Result<HybridSearchResult>> searchHandler,
         [Description("Plain-text query. Punctuation is handled safely; FTS operators and column selectors are not supported.")] string query,
@@ -135,7 +135,7 @@ internal sealed class SharpSenseMcpTools
 
     [McpServerTool, Description("Attach persistent semantic memory to a persisted code node id. The intent classifies the memory so it can be filtered at retrieval time.")]
     public static async Task<CallToolResult> attach_memory(
-        ICommandHandler<AttachMemoryCommand, Result> handler,
+        ICommandHandler<AttachMemoryCommand, Result<MemoryNode>> handler,
         [Description("The persisted integer ID of the target node.")] int nodeId,
         [Description("The markdown-formatted memory payload to attach.")] string content,
         [Description("Optional tags used for filtering and classification.")] string[]? tags = null,
@@ -196,7 +196,7 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool, Description("Fetch the full markdown content of a previously attached semantic memory by its persistent Guid. Use this after context or trace surfaces a memory id and you need the full text.")]
+    [McpServerTool(ReadOnly = true), Description("Fetch the full markdown content of a previously attached semantic memory by its persistent Guid. Use this after context or trace surfaces a memory id and you need the full text.")]
     public static async Task<CallToolResult> get_memory(
         IQueryHandler<GetMemoryQuery, Result<MemoryNode>> handler,
         [Description("The persistent Guid of the memory to fetch.")] Guid memoryId,
@@ -228,7 +228,7 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool, Description("Batch-fetch the full content of multiple memories by their persistent Guids. Returns one rendered memory block per id, in a single round-trip. Use this after a multi-step trace surfaces a list of memory ids.")]
+    [McpServerTool(ReadOnly = true), Description("Batch-fetch the full content of multiple memories by their persistent Guids. Returns one rendered memory block per id, in a single round-trip. Use this after a multi-step trace surfaces a list of memory ids.")]
     public static async Task<CallToolResult> get_memories(
         IQueryHandler<GetMemoriesQuery, Result<IReadOnlyDictionary<Guid, MemoryNode>>> handler,
         [Description("The persistent Guids of the memories to fetch.")] Guid[] memoryIds,
@@ -260,7 +260,7 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool]
+    [McpServerTool(ReadOnly = true)]
     [Description("Gets an instant 360-degree architectural snapshot of a node. Returns immediate callers, callees, and inheritance hierarchy for a persisted node ID. Use this to understand a node's immediate context and blast radius before deep tracing.")]
     public static async Task<CallToolResult> context(
         IQueryHandler<GetNodeContextQuery, Result<Context360Result>> handler,
@@ -308,7 +308,7 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool, Description("Trace dependencies for a specific Node ID. Use direction='caller' to see upstream blast radius. Use direction='callee' to see downstream dependencies. Static relationships do not establish execution order.")]
+    [McpServerTool(ReadOnly = true), Description("Trace dependencies for a specific Node ID. Use direction='caller' to see upstream blast radius. Use direction='callee' to see downstream dependencies. Static relationships do not establish execution order.")]
     public static async Task<string> trace_node(
         IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult> impactHandler,
         IQueryHandler<TraceQuery, CodeNodeResult[]> traceHandler,
@@ -385,7 +385,7 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool, Description("Find direct derived classes or interface implementers for a persisted node ID.")]
+    [McpServerTool(ReadOnly = true), Description("Find direct derived classes or interface implementers for a persisted node ID.")]
     public static async Task<string> get_inheritors(
         IQueryHandler<GetInheritorsQuery, CodeNodeResult[]> inheritorsHandler,
         [Description("The integer ID of the target base class, abstract class, or interface.")] int nodeId,

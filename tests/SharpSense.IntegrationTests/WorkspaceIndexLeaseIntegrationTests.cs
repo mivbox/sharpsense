@@ -62,7 +62,9 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
             if (!process.HasExited)
             {
                 process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync(CancellationToken.None);
+                // Reap the child even when the test is cancelled, with a bounded cleanup wait.
+                using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await process.WaitForExitAsync(cleanup.Token);
             }
         }
     }
@@ -73,16 +75,16 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
         using var fixture = new Fixture();
         using (fixture.Catalog.AcquireIndexLease(fixture.Selection))
         {
-            var result = await RunAnalyze(fixture.Catalog, fixture.Selection);
+            var result = await RunAnalyze(fixture.Catalog, fixture.Selection, TestContext.Current.CancellationToken);
 
             result.ExitCode.Should().Be(1);
             result.Output.Should().Contain("already being indexed or watched");
             File.Exists(fixture.Selection.Workspace.DatabasePath).Should().BeFalse();
         }
 
-        var retry = await RunAnalyze(fixture.Catalog, fixture.Selection);
+        var retry = await RunAnalyze(fixture.Catalog, fixture.Selection, TestContext.Current.CancellationToken);
         retry.ExitCode.Should().Be(0);
-        (await DocumentPaths(fixture.Selection)).Should().Equal(["docs/first.md"]);
+        (await DocumentPaths(fixture.Selection, TestContext.Current.CancellationToken)).Should().Equal(["docs/first.md"]);
     }
 
     [Fact]
@@ -95,15 +97,15 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
         var first = firstProvider.GetRequiredService<WorkspaceIndexingCoordinator>();
         var second = secondProvider.GetRequiredService<WorkspaceIndexingCoordinator>();
         first.Start(fixture.Selection, new StartWorkspaceIndexingRequest(Watch: true, SkipEmbeddings: true));
-        await WaitForState(first, fixture.Selection, "watching");
+        await WaitForState(first, fixture.Selection, "watching", TestContext.Current.CancellationToken);
 
         second.Start(
             otherCatalog.Resolve(fixture.Selection.Definition.Id.ToString()),
             new StartWorkspaceIndexingRequest(SkipEmbeddings: true));
-        var rejected = await WaitForState(second, fixture.Selection, "failed");
+        var rejected = await WaitForState(second, fixture.Selection, "failed", TestContext.Current.CancellationToken);
         rejected.Diagnostics.Should().Contain(message => message.Contains("already being indexed or watched"));
         rejected.Revision.Should().Be(0);
-        (await DocumentPaths(fixture.Selection)).Should().Equal(["docs/first.md"]);
+        (await DocumentPaths(fixture.Selection, TestContext.Current.CancellationToken)).Should().Equal(["docs/first.md"]);
         ((Action)(() => otherCatalog.Update(
             fixture.Selection.Definition.Id.ToString(),
             "changed",
@@ -113,15 +115,15 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
         second.Start(
             otherCatalog.Resolve(fixture.Selection.Definition.Id.ToString()),
             new StartWorkspaceIndexingRequest(SkipEmbeddings: true));
-        await WaitForState(second, fixture.Selection, "completed");
-        (await DocumentPaths(fixture.Selection)).Should().Equal(["docs/first.md"]);
+        await WaitForState(second, fixture.Selection, "completed", TestContext.Current.CancellationToken);
+        (await DocumentPaths(fixture.Selection, TestContext.Current.CancellationToken)).Should().Equal(["docs/first.md"]);
     }
 
     [Fact]
     public async Task WhenStaleSelections_ThenCannotReplaceExistingGraphFromCliOrUi()
     {
         using var fixture = new Fixture();
-        (await RunAnalyze(fixture.Catalog, fixture.Selection)).ExitCode.Should().Be(0);
+        (await RunAnalyze(fixture.Catalog, fixture.Selection, TestContext.Current.CancellationToken)).ExitCode.Should().Be(0);
         fixture.Catalog.Update(
             fixture.Selection.Definition.Id.ToString(),
             "workspace",
@@ -144,19 +146,20 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
                     },
                     TestContext.Current.CancellationToken))).Should().ThrowExactlyAsync<WorkspaceDefinitionChangedException>()).Which;
         staleCli.Message.Should().Contain("changed after this command selected it");
-        (await DocumentPaths(fixture.Selection)).Should().Equal(["docs/first.md"]);
+        (await DocumentPaths(fixture.Selection, TestContext.Current.CancellationToken)).Should().Equal(["docs/first.md"]);
 
         await using var provider = CreateUiServices(fixture.Catalog, fixture.RepositoryRoot);
         var coordinator = provider.GetRequiredService<WorkspaceIndexingCoordinator>();
         coordinator.Start(fixture.Selection, new StartWorkspaceIndexingRequest(SkipEmbeddings: true));
-        var staleUi = await WaitForState(coordinator, fixture.Selection, "failed");
+        var staleUi = await WaitForState(coordinator, fixture.Selection, "failed", TestContext.Current.CancellationToken);
         staleUi.Diagnostics.Should().Contain(message => message.Contains("changed after this command selected it"));
-        (await DocumentPaths(fixture.Selection)).Should().Equal(["docs/first.md"]);
+        (await DocumentPaths(fixture.Selection, TestContext.Current.CancellationToken)).Should().Equal(["docs/first.md"]);
     }
 
     private static async Task<(int ExitCode, string Output)> RunAnalyze(
         WorkspaceCatalog catalog,
-        WorkspaceSelection selection)
+        WorkspaceSelection selection,
+        CancellationToken ct)
     {
         using var console = new TestConsole();
         var previous = AnsiConsole.Console;
@@ -174,7 +177,7 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
                 enableFileLogging: false);
             var exit = await app.RunAsync(
                 ["analyze", "--workspace", selection.Definition.Name, "--repo-root", selection.Workspace.RootPath, "--no-embeddings"],
-                TestContext.Current.CancellationToken);
+                ct);
 
             return (exit, console.Output);
         }
@@ -207,9 +210,10 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
     private static async Task<WorkspaceIndexingStatus> WaitForState(
         WorkspaceIndexingCoordinator coordinator,
         WorkspaceSelection selection,
-        string expectedState)
+        string expectedState,
+        CancellationToken ct)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(15));
         while (true)
         {
@@ -224,15 +228,15 @@ public sealed class WorkspaceIndexLeaseIntegrationTests
         }
     }
 
-    private static async Task<string[]> DocumentPaths(WorkspaceSelection selection)
+    private static async Task<string[]> DocumentPaths(WorkspaceSelection selection, CancellationToken ct)
     {
         await using var connection = new SqliteConnection($"Data Source={selection.Workspace.DatabasePath};Mode=ReadOnly");
-        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await connection.OpenAsync(ct);
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT RelativePath FROM Documents ORDER BY RelativePath";
-        await using var reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(ct);
         var paths = new List<string>();
-        while (await reader.ReadAsync(TestContext.Current.CancellationToken))
+        while (await reader.ReadAsync(ct))
         {
             paths.Add(reader.GetString(0));
         }

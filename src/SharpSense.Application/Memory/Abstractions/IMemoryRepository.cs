@@ -18,7 +18,7 @@ public interface IMemoryRepository
     /// current fully-qualified name and body hash. The <paramref name="intent"/> classifies the memory so it
     /// can be filtered at retrieval time.
     /// </summary>
-    Task<Result> AttachMemory(
+    Task<Result<MemoryNode>> AttachMemory(
         int nodeId,
         string content,
         string[]? tags,

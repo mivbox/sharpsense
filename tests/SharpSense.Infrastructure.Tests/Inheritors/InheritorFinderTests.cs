@@ -29,7 +29,7 @@ public sealed class InheritorFinderTests
         var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
         await using var context = await inMemoryFactory.GetContext(ct);
-        await Seed(context);
+        await Seed(context, ct);
         var finder = new InheritorFinder(inMemoryFactory.CreateDbContextFactory());
 
         var result = await finder.GetInheritors(
@@ -52,7 +52,7 @@ public sealed class InheritorFinderTests
         var ct = TestContext.Current.CancellationToken;
         await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(options => new SharpSenseDbContext(options));
         await using var context = await inMemoryFactory.GetContext(ct);
-        await Seed(context);
+        await Seed(context, ct);
         var finder = new InheritorFinder(inMemoryFactory.CreateDbContextFactory());
 
         var result = await finder.GetInheritors(
@@ -64,7 +64,7 @@ public sealed class InheritorFinderTests
         result[0].DisplayName.Should().Be("InterfaceWidget");
     }
 
-    private static async Task Seed(SharpSenseDbContext context)
+    private static async Task Seed(SharpSenseDbContext context, CancellationToken ct)
     {
         context.Directories.AddRange(
             new DirectoryRecord
@@ -208,7 +208,7 @@ public sealed class InheritorFinderTests
                 EdgeType = EdgeType.Implements
             });
 
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await context.SaveChangesAsync(ct);
     }
 
     private static GraphNodeRecord CreateGraphNode(int id, string canonicalId)

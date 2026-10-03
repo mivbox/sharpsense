@@ -45,6 +45,9 @@ public sealed class MemoryStoreTests
             Domain.KnowledgeGraph.Enums.MemoryIntent.Invariant,
             ct);
 
+        attachResult.IsSuccess.Should().BeTrue();
+        attachResult.Value.IsStale.Should().BeFalse();
+
         await using (var updateContext = await inMemoryFactory.GetContext(ct))
         {
             var targetNode = await updateContext.CodeNodes
@@ -60,14 +63,12 @@ public sealed class MemoryStoreTests
             intents: null,
             ct);
 
-        attachResult.IsSuccess.Should().BeTrue();
         memoriesByNodeId.Should().ContainKey(KnowledgeGraphFixture.TargetNodeId);
         var memory = memoriesByNodeId[KnowledgeGraphFixture.TargetNodeId].Should().ContainSingle().Subject;
         memory.TargetFullyQualifiedName.Should().Be(KnowledgeGraphFixture.TargetFullyQualifiedName);
         memory.Tags.Should().Equal("security", "tech-debt");
         memory.Content.Should().Be("Needs authentication review");
         memory.IsStale.Should().BeTrue();
-        embeddings.VerifyAll();
     }
 
     [Fact]

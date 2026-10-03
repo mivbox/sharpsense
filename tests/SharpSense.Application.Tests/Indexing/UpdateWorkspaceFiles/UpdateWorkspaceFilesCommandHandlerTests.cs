@@ -448,8 +448,13 @@ public sealed class UpdateWorkspaceFilesCommandHandlerTests : IDisposable
 
         result.IsSuccess.Should().BeTrue();
         persistedGraph.Should().NotBeNull();
-        persistedGraph.CodeNodes.Single().VectorEmbedding.Should().Equal(vector);
-        repository.VerifyAll();
+        var persistedSibling = persistedGraph.CodeNodes.Should().ContainSingle().Which;
+        persistedSibling.CanonicalId.Should().Be(sibling.CanonicalId);
+        persistedSibling.RelativeFilePath.Should().Be(sibling.RelativeFilePath);
+        persistedSibling.VectorEmbedding.Should().Equal(vector);
+        repository.Verify(
+            candidate => candidate.ReplaceWorkspace(It.IsAny<ExtractedNodes>(), ct),
+            Times.Once);
     }
 
     [Theory]

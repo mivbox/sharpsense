@@ -25,13 +25,13 @@ public sealed class WorkspaceExtractionCoordinatorTests
             Edges = [new("csharp", "typescript", EdgeType.MethodCall)],
             Diagnostics = ["C# warning retained"]
         };
-        (await fixture.Run()).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken)).IsSuccess.Should().BeTrue();
 
         fixture.Markdown.Value = Graph("updated-guide", "docs/guide.md") with
         {
             Edges = [new("updated-guide", "typescript", EdgeType.DocumentLink)]
         };
-        (await fixture.Run(Change("docs/guide.md"))).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken, Change("docs/guide.md"))).IsSuccess.Should().BeTrue();
 
         fixture.CSharp.Calls.Should().Be(1);
         fixture.TypeScript.Calls.Should().Be(1);
@@ -43,7 +43,9 @@ public sealed class WorkspaceExtractionCoordinatorTests
         fixture.Persisted.Edges.Count.Should().Be(2);
 
         fixture.Markdown.Value = new([], [], [], []);
-        (await fixture.Run(Change("docs/guide.md", WorkspaceFileChangeAction.Deleted))).IsSuccess.Should().BeTrue();
+        (await fixture.Run(
+            TestContext.Current.CancellationToken,
+            Change("docs/guide.md", WorkspaceFileChangeAction.Deleted))).IsSuccess.Should().BeTrue();
         fixture.Persisted!.CodeNodes
             .Select(node => node.CanonicalId)
             .Order().Should().Equal(["csharp", "typescript"]);
@@ -51,7 +53,7 @@ public sealed class WorkspaceExtractionCoordinatorTests
         fixture.CSharp.Calls.Should().Be(1);
 
         fixture.CSharp.Value = Graph("changed-class", "Backend/Api.cs");
-        (await fixture.Run(Change("Backend/Api.cs"))).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken, Change("Backend/Api.cs"))).IsSuccess.Should().BeTrue();
         fixture.CSharp.Calls.Should().Be(2);
         fixture.TypeScript.Calls.Should().Be(2);
         fixture.Persisted!.CodeNodes.Should().Contain(node => node.CanonicalId == "changed-class");
@@ -65,12 +67,14 @@ public sealed class WorkspaceExtractionCoordinatorTests
     public async Task WhenNewMarkdownMembership_ThenRefreshesCSharpButReusesTypeScript(WorkspaceFileChangeAction action)
     {
         using var fixture = new Fixture();
-        (await fixture.Run()).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken)).IsSuccess.Should().BeTrue();
 
-        (await fixture.Run(new WorkspaceFileChange(
-            action,
-            OldPath: action == WorkspaceFileChangeAction.Renamed ? "docs/old.md" : null,
-            NewPath: "docs/new.md"))).IsSuccess.Should().BeTrue();
+        (await fixture.Run(
+            TestContext.Current.CancellationToken,
+            new WorkspaceFileChange(
+                action,
+                OldPath: action == WorkspaceFileChangeAction.Renamed ? "docs/old.md" : null,
+                NewPath: "docs/new.md"))).IsSuccess.Should().BeTrue();
 
         fixture.CSharp.Calls.Should().Be(2);
         fixture.TypeScript.Calls.Should().Be(1);
@@ -88,9 +92,9 @@ public sealed class WorkspaceExtractionCoordinatorTests
         WorkspaceFileChangeAction action)
     {
         using var fixture = new Fixture();
-        (await fixture.Run()).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken)).IsSuccess.Should().BeTrue();
 
-        (await fixture.Run(Change(path, action))).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken, Change(path, action))).IsSuccess.Should().BeTrue();
 
         fixture.CSharp.Calls.Should().Be(2);
         fixture.TypeScript.Calls.Should().Be(2);
@@ -109,9 +113,9 @@ public sealed class WorkspaceExtractionCoordinatorTests
         {
             CanReuseForDocumentationChanges = false
         };
-        (await fixture.Run()).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken)).IsSuccess.Should().BeTrue();
 
-        (await fixture.Run(Change("docs/schema.md"))).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken, Change("docs/schema.md"))).IsSuccess.Should().BeTrue();
 
         fixture.CSharp.Calls.Should().Be(2);
         fixture.TypeScript.Calls.Should().Be(2);
@@ -121,10 +125,10 @@ public sealed class WorkspaceExtractionCoordinatorTests
     public async Task WhenFullRunsChangedSelectionsAndColdSessions_ThenNeverReusePriorContributions()
     {
         using var fixture = new Fixture();
-        (await fixture.Run(Change("docs/guide.md"))).IsSuccess.Should().BeTrue();
-        (await fixture.Run()).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken, Change("docs/guide.md"))).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken)).IsSuccess.Should().BeTrue();
         fixture.Options.WorkspaceSources = [new(WorkspaceSourceKind.TypeScript, "other-frontend"), new(WorkspaceSourceKind.Markdown, "docs/**/*.md")];
-        (await fixture.Run(Change("docs/guide.md"))).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken, Change("docs/guide.md"))).IsSuccess.Should().BeTrue();
 
         fixture.CSharp.Calls.Should().Be(2);
         fixture.TypeScript.Calls.Should().Be(3);
@@ -142,13 +146,13 @@ public sealed class WorkspaceExtractionCoordinatorTests
         {
             InputPaths = ["/repo/docs/schema.md"]
         };
-        (await fixture.Run()).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken)).IsSuccess.Should().BeTrue();
         fixture.CSharp.Value = Graph("updated-csharp", "Backend/Api.cs");
 
         var change = action == WorkspaceFileChangeAction.Deleted
             ? new WorkspaceFileChange(action, OldPath: "/repo/Docs/SCHEMA.md")
             : new WorkspaceFileChange(action, NewPath: "/repo/Docs/SCHEMA.md");
-        (await fixture.Run(change)).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken, change)).IsSuccess.Should().BeTrue();
 
         fixture.CSharp.Calls.Should().Be(2);
         fixture.TypeScript.Calls.Should().Be(1);
@@ -161,7 +165,7 @@ public sealed class WorkspaceExtractionCoordinatorTests
     public async Task WhenExtractionOrCommitFails_ThenPreservesPreviousGraphAndInvalidatesReuse(bool persistenceFailure)
     {
         using var fixture = new Fixture();
-        (await fixture.Run()).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken)).IsSuccess.Should().BeTrue();
         var previous = fixture.Persisted;
         fixture.CSharp.Value = Graph("changed-class", "Backend/Api.cs");
         if (persistenceFailure)
@@ -173,13 +177,13 @@ public sealed class WorkspaceExtractionCoordinatorTests
             fixture.CSharp.Error = "C# extraction failed";
         }
 
-        (await fixture.Run(Change("Backend/Api.cs"))).IsFailed.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken, Change("Backend/Api.cs"))).IsFailed.Should().BeTrue();
         fixture.Persisted.Should().BeSameAs(previous);
         var callsBeforeRecovery = fixture.CSharp.Calls;
         fixture.FailCommit = false;
         fixture.CSharp.Error = null;
 
-        (await fixture.Run(Change("docs/guide.md"))).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken, Change("docs/guide.md"))).IsSuccess.Should().BeTrue();
         fixture.CSharp.Calls.Should().Be(callsBeforeRecovery + 1);
         fixture.Persisted!.CodeNodes.Should().Contain(node => node.CanonicalId == "changed-class");
         fixture.Commits.Should().Be(2);
@@ -288,7 +292,7 @@ public sealed class WorkspaceExtractionCoordinatorTests
     public async Task WhenCancelledCodeRefresh_ThenPreservesGraphAndRequiresFreshContributionsBeforeNextDocsCommit()
     {
         using var fixture = new Fixture();
-        (await fixture.Run()).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken)).IsSuccess.Should().BeTrue();
         var previous = fixture.Persisted;
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         fixture.CSharp.OnExtract = async (_, token) =>
@@ -305,7 +309,7 @@ public sealed class WorkspaceExtractionCoordinatorTests
         fixture.CSharp.OnExtract = null;
         fixture.CSharp.Value = Graph("changed-class", "Backend/Api.cs");
 
-        (await fixture.Run(Change("docs/guide.md"))).IsSuccess.Should().BeTrue();
+        (await fixture.Run(TestContext.Current.CancellationToken, Change("docs/guide.md"))).IsSuccess.Should().BeTrue();
         fixture.CSharp.Calls.Should().Be(callsBeforeRecovery + 1);
         fixture.Persisted!.CodeNodes.Should().Contain(node => node.CanonicalId == "changed-class");
     }
@@ -396,11 +400,11 @@ public sealed class WorkspaceExtractionCoordinatorTests
                 Mock.Of<GraphStats.Abstractions.IIndexRunStore>(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<IndexWorkspaceCommandHandler>.Instance);
 
-        public Task<Result<IndexWorkspaceOutcome>> Run(params WorkspaceFileChange[] changes)
+        public Task<Result<IndexWorkspaceOutcome>> Run(CancellationToken ct, params WorkspaceFileChange[] changes)
             => Handler()
                 .Handle(
                     new IndexWorkspaceCommand(ChangedFiles: changes.Length == 0 ? null : changes),
-                    TestContext.Current.CancellationToken);
+                    ct);
 
         public void Dispose() => _coordinator.Dispose();
     }

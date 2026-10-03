@@ -161,7 +161,7 @@ public sealed class GraphNodeConnectionsTests
         isolated.NextCursor.Should().BeNull();
         await writer.ReplaceWorkspace(Snapshot(3), ct);
         await ((Func<Task>)(() => repository.GetNodeConnections(next, ct))).Should().ThrowExactlyAsync<GraphRevisionChangedException>();
-        using var cancelled = new CancellationTokenSource();
+        using var cancelled = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         cancelled.Cancel();
         await ((Func<Task>)(() => repository.GetNodeConnections(request, cancelled.Token))).Should().ThrowAsync<OperationCanceledException>();
     }
