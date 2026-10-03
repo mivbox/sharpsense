@@ -39,3 +39,20 @@ dotnet tool run kiota generate \
   --output "$ui_root/src/shared/api/generated" \
   --clean-output \
   --exclude-backward-compatible
+
+# Kiota emits whitespace-only lines; normalize them as part of generation.
+node --input-type=module - "$ui_root/src/shared/api/generated" <<'JS'
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+function normalize(directory) {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) normalize(path);
+    else if (entry.name.endsWith(".ts")) {
+      const source = readFileSync(path, "utf8");
+      writeFileSync(path, source.replace(/[ \t]+$/gm, ""));
+    }
+  }
+}
+normalize(process.argv[2]);
+JS

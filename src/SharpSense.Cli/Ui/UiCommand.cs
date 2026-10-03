@@ -2,6 +2,7 @@ using JetBrains.Annotations;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
@@ -45,6 +46,10 @@ internal sealed class UiCommand : AbstractWebAsyncCommand<UiCommand.Settings>
         {
             throw new ArgumentException("The workspace UI must use a loopback HTTP or HTTPS address, such as http://localhost:50069.");
         }
+
+        // The selected loopback URL owns the listener. Ambient Kestrel endpoints
+        // must not override it at startup or through configuration reloads.
+        services.PostConfigure<KestrelServerOptions>(options => options.ConfigurationLoader = null);
 
         services.AddWorkspaceUi(new WorkspaceUiOptions(
             settings.Workspace,

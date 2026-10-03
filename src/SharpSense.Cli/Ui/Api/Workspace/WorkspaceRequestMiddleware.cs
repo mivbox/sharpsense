@@ -66,7 +66,7 @@ internal static class WorkspaceRequestMiddleware
                 .Bind(selection);
 
             // Graph statistics remain usable for missing or incompatible databases.
-            if (!request.Path.Equals(new PathString("/api/tools/graph-stats")))
+            if (!WorkspaceApiContract.MatchesRoute(request.Path, "/api/tools/graph-stats"))
             {
                 await context.RequestServices.GetRequiredService<IWorkspaceDatabaseInitializer>()
                     .Initialize(context.RequestAborted);

@@ -61,6 +61,7 @@
         ]
       },
       "AnalysisSnapshot": {
+        "description": "An immutable view for terminal and browser presenters, independent of either transport.",
         "properties": {
           "completedAt": {
             "format": "date-time",
@@ -216,6 +217,7 @@
         "type": "object"
       },
       "AnalysisSummary": {
+        "description": "Counts describe the complete committed workspace graph and the sources processed or reused for that operation.",
         "properties": {
           "diagnosticCount": {
             "format": "int32",
@@ -1251,6 +1253,7 @@
         "type": "object"
       },
       "MemoryIntent": {
+        "description": "Classifies the human or AI intent of a persistent semantic memory. The agent can filter retrievals by intent\nso a MemoryIntent.Warning survives an unrelated MemoryIntent.Todo sweep, and a MemoryIntent.Decision\ncan be queried separately from a MemoryIntent.Convention.",
         "enum": [
           "Convention",
           "Invariant",
@@ -1712,6 +1715,7 @@
         "type": "object"
       },
       "WorkspaceSource": {
+        "description": "Selects repository-relative project, TypeScript configuration/directory, or Markdown glob input.",
         "properties": {
           "kind": {
             "$ref": "#/components/schemas/WorkspaceSourceKind"
@@ -3133,6 +3137,46 @@
               }
             },
             "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Internal Server Error"
           }
         },
         "tags": [
@@ -3162,6 +3206,46 @@
               }
             },
             "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Internal Server Error"
           }
         },
         "tags": [
@@ -3201,6 +3285,46 @@
               }
             },
             "description": "Accepted"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Internal Server Error"
           }
         },
         "tags": [
@@ -3232,6 +3356,46 @@
               }
             },
             "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Internal Server Error"
           }
         },
         "summary": "Stream current workspace indexing status; reconnects start with a complete snapshot.",
@@ -3248,7 +3412,13 @@
   ],
   "tags": [
     {
+      "name": "Tools"
+    },
+    {
       "name": "Workspaces"
+    },
+    {
+      "name": "Workspace indexing"
     },
     {
       "name": "Workspace"
@@ -3257,7 +3427,7 @@
       "name": "Graph"
     },
     {
-      "name": "Tools"
+      "name": "Memory"
     },
     {
       "name": "Search"
@@ -3269,16 +3439,10 @@
       "name": "Trace"
     },
     {
-      "name": "Inheritors"
-    },
-    {
       "name": "Impact"
     },
     {
-      "name": "Workspace indexing"
-    },
-    {
-      "name": "Memory"
+      "name": "Inheritors"
     }
   ]
 }

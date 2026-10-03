@@ -10,7 +10,7 @@ export interface AddMemoryRequest extends AdditionalDataHolder, Parsable {
      */
     content?: string | null;
     /**
-     * The intent property
+     * Classifies the human or AI intent of a persistent semantic memory. The agent can filter retrievals by intentso a MemoryIntent.Warning survives an unrelated MemoryIntent.Todo sweep, and a MemoryIntent.Decisioncan be queried separately from a MemoryIntent.Convention.
      */
     intent?: MemoryIntent | null;
     /**
@@ -20,7 +20,7 @@ export interface AddMemoryRequest extends AdditionalDataHolder, Parsable {
 }
 export interface AddMemoryResponse extends AdditionalDataHolder, Parsable {
     /**
-     * The intent property
+     * Classifies the human or AI intent of a persistent semantic memory. The agent can filter retrievals by intentso a MemoryIntent.Warning survives an unrelated MemoryIntent.Todo sweep, and a MemoryIntent.Decisioncan be queried separately from a MemoryIntent.Convention.
      */
     intent?: MemoryIntent | null;
     /**
@@ -34,6 +34,9 @@ export interface AddMemoryResponse extends AdditionalDataHolder, Parsable {
 }
 export type AnalysisOperationKind = (typeof AnalysisOperationKindObject)[keyof typeof AnalysisOperationKindObject];
 export type AnalysisPhase = (typeof AnalysisPhaseObject)[keyof typeof AnalysisPhaseObject];
+/**
+ * An immutable view for terminal and browser presenters, independent of either transport.
+ */
 export interface AnalysisSnapshot extends AdditionalDataHolder, Parsable {
     /**
      * The completedAt property
@@ -122,6 +125,9 @@ export interface AnalysisSourceStatus extends AdditionalDataHolder, Parsable {
      */
     totalItems?: number | null;
 }
+/**
+ * Counts describe the complete committed workspace graph and the sources processed or reused for that operation.
+ */
 export interface AnalysisSummary extends AdditionalDataHolder, Parsable {
     /**
      * The diagnosticCount property
@@ -2065,7 +2071,7 @@ export interface MemoryNode extends AdditionalDataHolder, Parsable {
      */
     id?: Guid | null;
     /**
-     * The intent property
+     * Classifies the human or AI intent of a persistent semantic memory. The agent can filter retrievals by intentso a MemoryIntent.Warning survives an unrelated MemoryIntent.Todo sweep, and a MemoryIntent.Decisioncan be queried separately from a MemoryIntent.Convention.
      */
     intent?: MemoryIntent | null;
     /**
@@ -3165,6 +3171,9 @@ export interface WorkspaceOverview extends AdditionalDataHolder, Parsable {
      */
     workspaceId?: Guid | null;
 }
+/**
+ * Selects repository-relative project, TypeScript configuration/directory, or Markdown glob input.
+ */
 export interface WorkspaceSource extends AdditionalDataHolder, Parsable {
     /**
      * The kind property
@@ -3275,6 +3284,9 @@ export const EdgeTypeObject = {
     ImportEscaped: "Import",
     HttpRequest: "HttpRequest",
 } as const;
+/**
+ * Classifies the human or AI intent of a persistent semantic memory. The agent can filter retrievals by intentso a MemoryIntent.Warning survives an unrelated MemoryIntent.Todo sweep, and a MemoryIntent.Decisioncan be queried separately from a MemoryIntent.Convention.
+ */
 export const MemoryIntentObject = {
     Convention: "Convention",
     Invariant: "Invariant",

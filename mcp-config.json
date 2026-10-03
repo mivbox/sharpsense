@@ -1,26 +1,8 @@
 {
   "mcpServers": {
     "sharpsense": {
-      "command": "dotnet",
-      "args": [
-        "run",
-        "--verbosity", "quiet",
-        "--project", "/Users/mitch.box/sources/7Twenty/sharp-sense/src/SharpSense.Cli/SharpSense.Cli.csproj",
-        "--",
-        "mcp",
-        "--repo-root", "/Users/mitch.box/sources/7Twenty/sharp-sense"
-      ],
-      "tools": [
-        "semantic_search",
-        "trace_node",
-        "refactor_symbol",
-        "context",
-        "get_inheritors",
-        "ctx_execute",
-        "attach_memory",
-        "delete_memory",
-        "get_memory"
-      ],
+      "command": "sharpsense",
+      "args": ["mcp"],
       "type": "stdio"
     }
   }

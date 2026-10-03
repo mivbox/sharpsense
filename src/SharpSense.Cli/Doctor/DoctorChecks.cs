@@ -4,8 +4,6 @@ using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.Storage;
 using System.Runtime.InteropServices;
 using TreeSitter;
-using YamlDotNet.Serialization;
-using YamlDotNet.Serialization.NamingConventions;
 
 namespace SharpSense.Cli.Doctor;
 
@@ -13,6 +11,7 @@ internal static class DoctorChecks
 {
     public static IReadOnlyList<IndexDiagnostic> Run(
         WorkspaceSelection workspace,
+        IWorkspaceCatalog catalog,
         LocalEmbeddingsOptions embeddings,
         CancellationToken ct)
     {
@@ -38,12 +37,7 @@ internal static class DoctorChecks
         {
             try
             {
-                using var reader = File.OpenText(configPath);
-                new DeserializerBuilder()
-                    .WithNamingConvention(CamelCaseNamingConvention.Instance)
-                    .WithEnumNamingConvention(CamelCaseNamingConvention.Instance)
-                    .Build()
-                    .Deserialize<WorkspaceDefinition>(reader);
+                _ = catalog.ResolveById(workspace.Definition.Id);
                 checks.Add(new(
                     "configuration",
                     "info",

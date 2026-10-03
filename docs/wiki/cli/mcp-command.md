@@ -11,6 +11,10 @@ Configure your MCP client to launch executable `sharpsense` with arguments `["mc
 
 Without `--workspace`, MCP selects the single registered root containing its launch directory. No match or multiple matches produce a startup error with explicit-selection guidance; overlapping roots are not resolved by picking the nearest. `--workspace-root` (alias `--repo-root`) can supply the discovery directory. MCP never reads the `workspace use` CLI default, including when that default is invalid. Explicit `--workspace` bypasses discovery. Changing the default does not affect running servers. The host keeps one workspace for its lifetime. Run a separate server process to expose a different workspace. Standard output is reserved for MCP transport; diagnostic logging does not replace protocol responses.
 
+Startup and `graph_stats` preserve missing or incompatible databases. Graph and memory tools initialize compatible storage on demand; initialization failures do not prevent later diagnostic calls. Read tools consistently advertise their read-only intent.
+
+The checked-in `mcp-config.json` is a portable discovery example. `copilot.sh` uses it without selecting a provider or model; configure those in your client.
+
 ## Tools
 
 | Tool | Purpose |

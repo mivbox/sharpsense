@@ -8,13 +8,13 @@ sharpsense ui --workspace product
 sharpsense ui --url http://localhost:50100
 ```
 
-The optional workspace selects the initial view; the server remains a global catalog. The listen URL must be a loopback HTTP(S) address.
+The optional workspace selects the initial view; the server remains a global catalog. The listen URL must be a loopback HTTP(S) address. It owns the listener; ambient Kestrel endpoints from appsettings or environment variables cannot override it.
 
 ## Workspace workflow
 
 Use Workspaces to create or edit a source selection, discover available sources, or merge existing definitions. Open a workspace to run analysis, start/stop watch, inspect index diagnostics, browse the graph, search, try tools, and manage memories.
 
-The explorer loads persisted directories and documents on demand. Graph nodes and optional relationships load progressively without a total-result cap. Progress counts and Pause/Resume controls stay available while loading. Projects, classes, interfaces, components, documents, and external dependencies are visible by default; the type menu can also show methods, properties, and fields. Choose a smaller folder or use Search to focus on a symbol. The UI uses Material UI, TanStack Router and React Query, and a Kiota-generated API client. Query state and clients are isolated by workspace.
+The explorer loads persisted directories and documents on demand. Graph nodes and optional relationships load progressively without a total-result cap. A deleted selected symbol clears its inspector actions; a server restart refreshes cached graph data even before its first index. Progress counts and Pause/Resume controls stay available while loading. Projects, classes, interfaces, components, documents, and external dependencies are visible by default; the type menu can also show methods, properties, and fields. Choose a smaller folder or use Search to focus on a symbol. The UI uses Material UI, TanStack Router and React Query, and a Kiota-generated API client. Query state and clients are isolated by workspace.
 
 An active indexing/watch job blocks source edits for that workspace. Stop the job, edit, and analyze again. Jobs belong to the running UI server; stopping the server cancels its jobs.
 
@@ -43,6 +43,6 @@ The CLI and UI host consume the same application notification contract. SSE expo
 
 The indexing stream and ordinary status response share an OpenAPI model. A host stream ID and monotonically increasing status sequence order progress updates independently from the committed graph revision. Generated Kiota models deserialize stream snapshots into the workspace's React Query cache.
 
-The required workspace header is declared in OpenAPI and generated into the client contract. Each request or job binds a fixed workspace scope; there is no mutable server-wide current workspace. The server validates Host and Origin against its loopback binding.
+The required workspace header is declared in OpenAPI and generated into the client contract. Each request or job binds a fixed workspace scope; there is no mutable server-wide current workspace. The server validates Host and Origin against its loopback binding. Trailing slashes retain the same workspace and database-initialization policy. Indexing failures expose ProblemDetails messages to the browser.
 
 See the [UI development guide](../../../src/SharpSense.UI/README.md) for pnpm commands and API client generation, and [workspace explorer architecture](../architecture/workspace-tree.md) for graph loading.
