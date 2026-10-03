@@ -6,6 +6,7 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  Drawer,
   FormControlLabel,
   IconButton,
   InputAdornment,
@@ -17,7 +18,10 @@ import {
   ToggleButtonGroup,
   Tooltip,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useColorScheme, type Theme } from "@mui/material/styles";
+import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import HubOutlinedIcon from "@mui/icons-material/HubOutlined";
 import CenterFocusStrongRoundedIcon from "@mui/icons-material/CenterFocusStrongRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
@@ -44,7 +48,7 @@ import { GraphTypeFilter } from "./GraphTypeFilter";
 import { GraphLoadingStatus } from "./GraphLoadingStatus";
 import { useGraphProjection } from "./useGraphProjection";
 import { ancestorPaths } from "./workspacePaths";
-import { nodeColors } from "./graphLabels";
+import { graphPalettes } from "./graphPalette";
 
 const GraphCanvas = lazy(() => import("./GraphCanvas"));
 
@@ -59,6 +63,11 @@ export default function ExplorerPage({
   overview: UseQueryResult<WorkspaceOverview, Error>;
   onOpenTool: (selection: ToolSelection) => void;
 }) {
+  const { mode: colorMode, systemMode } = useColorScheme();
+  const palette =
+    graphPalettes[(colorMode === "system" ? systemMode : colorMode) ?? "dark"];
+  const narrow = useMediaQuery((theme: Theme) => theme.breakpoints.down("lg"));
+  const [scopesOpen, setScopesOpen] = useState(false);
   const [expanded, setExpanded] = useState(
     () => new Set(["/", ...state.scopes.flatMap(ancestorPaths)]),
   );
@@ -122,6 +131,26 @@ export default function ExplorerPage({
       filter: "",
     });
   };
+  const workspaceTree = (
+    <WorkspaceTree
+      tree={tree}
+      selectedPaths={selectedPaths}
+      onToggleExpanded={toggleExpanded}
+      onToggleSelected={toggleSelected}
+      onClose={narrow ? () => setScopesOpen(false) : undefined}
+    />
+  );
+  const inspector = (
+    <NodeInspector
+      key={state.selected ?? "empty"}
+      nodeId={state.selected}
+      node={currentSelection}
+      onSelect={setSelected}
+      onOpenTool={onOpenTool}
+      onExploreProject={exploreProject}
+      onClose={narrow ? () => setSelected(null) : undefined}
+    />
+  );
   return (
     <Stack spacing={2}>
       {overview.error && (
@@ -138,30 +167,54 @@ export default function ExplorerPage({
           above to build its graph.
         </Alert>
       )}
+      {narrow && (
+        <Button
+          variant="outlined"
+          startIcon={<FolderOutlinedIcon />}
+          onClick={() => setScopesOpen(true)}
+          data-testid="workspace-scopes-trigger"
+          sx={{ alignSelf: "flex-start" }}
+        >
+          {selectedPaths.length
+            ? "Scopes (" + selectedPaths.length + ")"
+            : "Choose scopes"}
+        </Button>
+      )}
       <Box
         sx={{
           display: "grid",
           gridTemplateColumns: { xs: "1fr", lg: "230px minmax(0, 1fr) 300px" },
           gap: 2,
           alignItems: "stretch",
-          minHeight: 580,
+          minHeight: { lg: 580 },
         }}
       >
-        <Paper
-          variant="outlined"
-          sx={{
-            overflow: "hidden",
-            height: { xs: 270, lg: "calc(100dvh - 250px)" },
-            minHeight: { lg: 580 },
-          }}
-        >
-          <WorkspaceTree
-            tree={tree}
-            selectedPaths={selectedPaths}
-            onToggleExpanded={toggleExpanded}
-            onToggleSelected={toggleSelected}
-          />
-        </Paper>
+        {narrow ? (
+          <Drawer
+            open={scopesOpen}
+            onClose={() => setScopesOpen(false)}
+            slotProps={{
+              paper: {
+                role: "dialog",
+                "aria-label": "Workspace scopes",
+                sx: { width: "min(90vw, 360px)" },
+              },
+            }}
+          >
+            {workspaceTree}
+          </Drawer>
+        ) : (
+          <Paper
+            variant="outlined"
+            sx={{
+              overflow: "hidden",
+              height: { xs: 270, lg: "calc(100dvh - 250px)" },
+              minHeight: { lg: 580 },
+            }}
+          >
+            {workspaceTree}
+          </Paper>
+        )}
         <Paper
           variant="outlined"
           sx={{
@@ -232,14 +285,19 @@ export default function ExplorerPage({
                 htmlInput: { "aria-label": "Filter graph nodes" },
               }}
             />
-            <Stack direction="row" sx={{ alignItems: "center", flexShrink: 0 }}>
+            <Stack
+              direction="row"
+              spacing={1}
+              useFlexGap
+              sx={{ alignItems: "center", flexShrink: 0 }}
+            >
               <GraphTypeFilter
                 counts={typeCounts}
                 selected={state.types}
                 onChange={(value) => onStateChange({ types: value }, true)}
               />
               <FormControlLabel
-                sx={{ mr: 0 }}
+                sx={{ m: 0 }}
                 control={
                   <Switch
                     size="small"
@@ -340,6 +398,7 @@ export default function ExplorerPage({
             ) : mode === "graph" ? (
               <Suspense fallback={<LoadingRows />}>
                 <GraphCanvas
+                  palette={palette}
                   data={visibleGraph}
                   stream={projected.stream}
                   selected={currentSelection}
@@ -391,7 +450,7 @@ export default function ExplorerPage({
                       width: 6,
                       height: 6,
                       borderRadius: "50%",
-                      bgcolor: nodeColors[type] ?? "#b0bec5",
+                      bgcolor: palette.nodes[type] ?? palette.fallback,
                     }}
                   />
                   <Typography variant="caption" color="text.secondary">
@@ -402,23 +461,33 @@ export default function ExplorerPage({
             </Stack>
           </Stack>
         </Paper>
-        <Paper
-          variant="outlined"
-          sx={{
-            overflow: "auto",
-            height: { lg: "calc(100dvh - 250px)" },
-            minHeight: { lg: 580 },
-          }}
-        >
-          <NodeInspector
-            key={state.selected ?? "empty"}
-            nodeId={state.selected}
-            node={currentSelection}
-            onSelect={setSelected}
-            onOpenTool={onOpenTool}
-            onExploreProject={exploreProject}
-          />
-        </Paper>
+        {narrow ? (
+          <Drawer
+            anchor="bottom"
+            open={Boolean(state.selected)}
+            onClose={() => setSelected(null)}
+            slotProps={{
+              paper: {
+                role: "dialog",
+                "aria-label": "Symbol inspector",
+                sx: { maxHeight: "85dvh", borderRadius: "12px 12px 0 0" },
+              },
+            }}
+          >
+            {inspector}
+          </Drawer>
+        ) : (
+          <Paper
+            variant="outlined"
+            sx={{
+              overflow: "auto",
+              height: { lg: "calc(100dvh - 250px)" },
+              minHeight: { lg: 580 },
+            }}
+          >
+            {inspector}
+          </Paper>
+        )}
       </Box>
     </Stack>
   );

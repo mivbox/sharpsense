@@ -78,10 +78,69 @@ try {
   page.setDefaultTimeout(30_000);
   await page.setViewport({ width: 1440, height: 1000 });
   page.on("pageerror", (error) => pageErrors.push(String(error)));
+  await page.emulateMediaFeatures([
+    { name: "prefers-color-scheme", value: "light" },
+  ]);
   await page.goto(baseUrl);
   await page.locator("::-p-text(Create your first workspace)").wait();
 
+  await waitForTheme(page, "dark");
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="sharpsense-mark"]')!
+        .getAnimations({ subtree: true }).length > 0,
+  );
+  await page.emulateMediaFeatures([
+    { name: "prefers-reduced-motion", value: "reduce" },
+  ]);
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="sharpsense-mark"]')!
+        .getAnimations({ subtree: true }).length === 0,
+  );
+  await page.emulateMediaFeatures([
+    { name: "prefers-reduced-motion", value: "no-preference" },
+  ]);
+  await page.locator('[aria-label="Use light theme"]').click();
+  await waitForTheme(page, "light");
+  await page.reload();
+  await waitForTheme(page, "light");
+
+  const secondTab = await browser.newPage();
+  await secondTab.goto(baseUrl);
+  await waitForTheme(secondTab, "light");
+  await page.bringToFront();
+  await page.locator('[aria-label="Use dark theme"]').click();
+  await waitForTheme(secondTab, "dark");
+  await secondTab.close();
+  await page.locator('[aria-label="Use light theme"]').click();
+  await waitForTheme(page, "light");
+
+  const storageUnavailable = await browser.newPage();
+  storageUnavailable.on("pageerror", (error) => pageErrors.push(String(error)));
+  await storageUnavailable.evaluateOnNewDocument(() => {
+    Object.defineProperty(window, "localStorage", {
+      get() {
+        throw new DOMException("Storage unavailable", "SecurityError");
+      },
+    });
+  });
+  await storageUnavailable.goto(baseUrl);
+  await waitForTheme(storageUnavailable, "dark");
+  await storageUnavailable.locator('[aria-label="Use light theme"]').click();
+  await waitForTheme(storageUnavailable, "light");
+  await storageUnavailable.close();
+  await page.bringToFront();
+
   await createWorkspace(page, "alpha", "docs/alpha/**/*.md");
+  await waitForTheme(page, "light");
+  await page.locator('[aria-label="Use dark theme"]').click();
+  await waitForTheme(page, "dark");
+  console.log(
+    "Theme preference passed: dark default, toggle, reload, tabs, navigation, unavailable storage and reduced-motion branding.",
+  );
   const alpha = (await catalog()).workspaces.find(
     (workspace) => workspace.name === "alpha",
   )!;
@@ -383,5 +442,14 @@ async function waitUntil(predicate: () => Promise<boolean>) {
   }
   throw new Error(
     `Timed out waiting for workspace state. ${serverOutput.slice(-4000)}`,
+  );
+}
+
+async function waitForTheme(page: Page, mode: "light" | "dark") {
+  await page.waitForFunction(
+    (expected) =>
+      getComputedStyle(document.documentElement).colorScheme === expected,
+    { polling: 100 },
+    mode,
   );
 }

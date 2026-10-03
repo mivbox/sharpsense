@@ -17,7 +17,8 @@ import {
   Typography,
 } from "@mui/material";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
-import BoltRoundedIcon from "@mui/icons-material/BoltRounded";
+import { SharpSenseMark } from "../../shared/ui/SharpSenseMark";
+import { ThemeToggle } from "../../shared/ui/ThemeToggle";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import MergeRoundedIcon from "@mui/icons-material/MergeRounded";
 import { ErrorState, LoadingRows } from "../../shared/ui/States";
@@ -40,9 +41,11 @@ export function WorkspacesPage({
     <Box sx={{ minHeight: "100dvh", bgcolor: "background.default" }}>
       <AppBar position="static" color="transparent" elevation={0}>
         <Toolbar>
-          <BoltRoundedIcon color="primary" sx={{ mr: 1 }} />
+          <SharpSenseMark color="primary" sx={{ mr: 1 }} />
           <Typography variant="h6">SharpSense</Typography>
           <Chip label="1.0" size="small" sx={{ ml: 1.5 }} />
+          <Box sx={{ flex: 1 }} />
+          <ThemeToggle />
         </Toolbar>
         <Divider />
       </AppBar>

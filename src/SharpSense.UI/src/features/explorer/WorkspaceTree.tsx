@@ -15,6 +15,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import ChevronRightRoundedIcon from "@mui/icons-material/ChevronRightRounded";
 import ExpandMoreRoundedIcon from "@mui/icons-material/ExpandMoreRounded";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
@@ -31,11 +32,13 @@ export function WorkspaceTree({
   selectedPaths,
   onToggleExpanded,
   onToggleSelected,
+  onClose,
 }: {
   tree: TreeState;
   selectedPaths: string[];
   onToggleExpanded: (path: string) => void;
   onToggleSelected: (path: string) => void;
+  onClose?: () => void;
 }) {
   const [filter, setFilter] = useState("");
   const queryClient = useQueryClient();
@@ -62,7 +65,9 @@ export function WorkspaceTree({
           pb: 1,
         }}
       >
-        <Typography variant="subtitle2">Workspace</Typography>
+        <Typography variant="subtitle2" sx={{ flex: 1 }}>
+          Workspace
+        </Typography>
         <Tooltip title="Refresh workspace tree">
           <IconButton
             size="small"
@@ -74,6 +79,11 @@ export function WorkspaceTree({
             <RefreshRoundedIcon fontSize="small" />
           </IconButton>
         </Tooltip>
+        {onClose && (
+          <IconButton aria-label="Close workspace scopes" onClick={onClose}>
+            <CloseRoundedIcon />
+          </IconButton>
+        )}
       </Stack>
       <Box sx={{ px: 2, pb: 2 }}>
         <TextField

@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import type { Browser, HTTPRequest, Page } from "puppeteer";
 import type { GraphNode, GraphPage } from "../src/shared/api/models";
 import { stopChildProcess } from "./stopChildProcess";
+import { clickButton } from "./browserActions";
 import { availablePort } from "./availablePort";
 import { launchBrowser } from "./browserFixture";
 
@@ -100,6 +101,13 @@ try {
     serverError = error;
   });
   await ready(baseUrl, server);
+  const faviconResponse = await fetch(baseUrl + "/favicon.svg");
+  assert.equal(faviconResponse.status, 200);
+  assert.match(
+    faviconResponse.headers.get("content-type") ?? "",
+    /image\/svg\+xml/,
+  );
+  assert.match(await faviconResponse.text(), /<svg/);
   const catalogResponse = await fetch(baseUrl + "/api/workspaces");
   assert.equal(catalogResponse.status, 200);
   const catalog = (await catalogResponse.json()) as {
@@ -211,6 +219,28 @@ try {
     false,
     "Inspecting a symbol must not request whole graph edges.",
   );
+  const typeFilter = await page.$('[data-testid="graph-type-filter"]');
+  assert.ok(typeFilter);
+  const filterBounds = await typeFilter.boundingBox();
+  assert.ok(filterBounds);
+  await page.mouse.click(
+    filterBounds.x + filterBounds.width - 4,
+    filterBounds.y + filterBounds.height / 2,
+  );
+  assert.equal(
+    await page.$eval(
+      '[data-testid="toggle-edges-checkbox"] input',
+      (input) => (input as HTMLInputElement).checked,
+    ),
+    false,
+    "Clicking the type filter's right edge must not toggle relationships.",
+  );
+  await page.waitForSelector('[role="menu"][aria-label="Visible node types"]');
+  await page.keyboard.press("Escape");
+  await page.waitForSelector('[role="menu"][aria-label="Visible node types"]', {
+    hidden: true,
+  });
+
   const edgeResponse = page.waitForResponse(
     (response) =>
       response.url().includes("/api/graph/edges/page") && response.ok(),
@@ -649,23 +679,111 @@ try {
     "Invalid node IDs must not submit.",
   );
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
-  await page.click('[data-testid="mobile-nav-explorer"]');
-  await page.waitForSelector('[data-testid="workspace-explorer-panel"]');
+  await page.locator('[data-testid="mobile-nav-explorer"]').click();
+  await page.waitForSelector('[data-testid="workspace-scopes-trigger"]');
   await page.goto(explorerUrl, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector('[data-testid="selected-node-id"]');
-  assert.ok(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth + 1,
-    ),
-    "Mobile workspace must not overflow horizontally.",
+  await page.waitForFunction(
+    (nodeId) => {
+      const selected = document.querySelector(
+        '[data-testid="selected-node-id"]',
+      );
+      const bounds = selected?.getBoundingClientRect();
+      return (
+        selected?.textContent?.includes(String(nodeId)) &&
+        bounds &&
+        bounds.top >= 0 &&
+        bounds.bottom <= window.innerHeight
+      );
+    },
+    {},
+    selectedNode.codeNodeId,
   );
-  if (screenshotDir)
+  await page.waitForFunction(() => {
+    const bounds = document
+      .querySelector('[role="dialog"][aria-label="Symbol inspector"]')
+      ?.getBoundingClientRect();
+    return bounds && bounds.bottom <= window.innerHeight + 0.1;
+  });
+  await page.screenshot({
+    path: path.join(screenshotDir, "workspace-mobile-inspector.png"),
+  });
+  await page.locator('[aria-label="Close symbol inspector"]').click();
+  await page.waitForSelector('[role="dialog"][aria-label="Symbol inspector"]', {
+    hidden: true,
+  });
+  assert.equal(new URL(page.url()).searchParams.has("selected"), false);
+  await page.locator('[data-testid="workspace-scopes-trigger"]').click();
+  await page.waitForSelector(
+    '[data-tree-checkbox-trigger="src/Fixture"] input',
+  );
+  assert.equal(
+    await page.$eval(
+      '[data-tree-checkbox-trigger="src/Fixture"] input',
+      (input) => (input as HTMLInputElement).checked,
+    ),
+    true,
+    "The mobile scopes drawer must preserve the selected scope.",
+  );
+  await page.locator('[data-tree-checkbox-trigger="src/Fixture"]').click();
+  await page.waitForFunction(
+    () => !new URL(window.location.href).searchParams.has("scopes"),
+  );
+  await page.locator('[aria-label="Close workspace scopes"]').click();
+  await page.waitForSelector('[role="dialog"][aria-label="Workspace scopes"]', {
+    hidden: true,
+  });
+  await page.waitForSelector('[data-testid="graph-empty-state"]');
+  await page.locator('[data-testid="workspace-scopes-trigger"]').click();
+  await page.waitForSelector('[data-tree-checkbox-trigger="src/Fixture"]');
+  await page.locator('[data-tree-checkbox-trigger="src/Fixture"]').click();
+  await page.locator('[aria-label="Close workspace scopes"]').click();
+  await page.waitForSelector('[role="dialog"][aria-label="Workspace scopes"]', {
+    hidden: true,
+  });
+  await page.locator('[aria-label="3D graph view"]').click();
+  await page.waitForSelector('[data-testid="graph-canvas"][aria-busy="false"]');
+  assert.deepEqual(
+    JSON.parse(new URL(page.url()).searchParams.get("scopes") ?? "[]"),
+    ["src/Fixture"],
+  );
+  await clickButton(page, "Analysis options");
+  await page.waitForFunction(() =>
+    Array.from(document.querySelectorAll("button")).some(
+      (button) => button.textContent?.trim() === "Analyze",
+    ),
+  );
+  await clickButton(page, "Hide analysis options");
+  await page.waitForFunction(
+    () =>
+      !Array.from(document.querySelectorAll("button")).some(
+        (button) => button.textContent?.trim() === "Analyze",
+      ),
+  );
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 320, height: 740 },
+    { width: 1024, height: 768 },
+  ]) {
+    await page.setViewport(viewport);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForFunction(() => {
+      const graph = document.querySelector('[data-testid="graph-canvas"]');
+      const bounds = graph?.getBoundingClientRect();
+      return bounds && bounds.top < window.innerHeight && bounds.bottom > 0;
+    });
+    assert.ok(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+      ),
+      "Workspace must not overflow horizontally at " + viewport.width + "px.",
+    );
     await page.screenshot({
-      path: path.join(screenshotDir, "workspace-mobile.png"),
+      path: path.join(screenshotDir, "workspace-" + viewport.width + ".png"),
       fullPage: true,
     });
+  }
   console.log(
-    "Search, five tools, URL history/deep links and populated mobile layout passed: " +
+    "Search, five tools, deep links, mobile drawers and responsive graph passed: " +
       screenshotDir,
   );
   await page.setViewport({ width: 1600, height: 1000, deviceScaleFactor: 1 });
@@ -681,6 +799,34 @@ try {
     new URL(window.location.href).searchParams.has("selected"),
   );
   await delay(700);
+  const selectedGraphUrl = page.url();
+  const canvasBeforeTheme = await page.$('[data-testid="graph-canvas"] canvas');
+  assert.ok(canvasBeforeTheme);
+  await page.locator('[aria-label="Use light theme"]').click();
+  await page.waitForFunction(
+    () => getComputedStyle(document.documentElement).colorScheme === "light",
+  );
+  assert.equal(
+    page.url(),
+    selectedGraphUrl,
+    "Theme changes must preserve graph scope and selection.",
+  );
+  assert.ok(
+    await canvasBeforeTheme.evaluate(
+      (canvas) =>
+        canvas ===
+        document.querySelector('[data-testid="graph-canvas"] canvas'),
+    ),
+    "Theme changes must preserve the canvas and its current camera view.",
+  );
+  await page.screenshot({
+    path: path.join(screenshotDir, "workspace-light.png"),
+    fullPage: true,
+  });
+  await page.locator('[aria-label="Use dark theme"]').click();
+  await page.waitForFunction(
+    () => getComputedStyle(document.documentElement).colorScheme === "dark",
+  );
   await page.screenshot({
     path: path.join(screenshotDir, "workspace-node-focus.png"),
     fullPage: true,

@@ -12,7 +12,13 @@ const root = document.getElementById("root");
 if (!root) throw new Error("Workspace root element is missing.");
 createRoot(root).render(
   <StrictMode>
-    <ThemeProvider theme={theme}>
+    <ThemeProvider
+      theme={theme}
+      defaultMode="dark"
+      modeStorageKey="sharpsense-theme"
+      noSsr
+      disableTransitionOnChange
+    >
       <CssBaseline />
       <AppErrorBoundary>
         <QueryClientProvider client={queryClient}>

@@ -6,9 +6,16 @@ SQLite database, indexing history, and authored memories.
 
 ## Install
 
-The CLI requires the .NET 10 SDK. Follow the [build and installation instructions](src/SharpSense.Cli/README.md#install-from-source)
-to install `sharpsense` on your `PATH`. Building from source also requires Node.js 22.13+ and pnpm 12.6.0;
-the installed CLI and UI do not require Node.js or pnpm.
+Install the .NET 10 SDK, then install SharpSense from NuGet:
+
+```bash
+dotnet tool install --global SharpSense.Cli
+sharpsense --help
+```
+
+To update an existing installation, run `dotnet tool update --global SharpSense.Cli`.
+[Building from source](https://github.com/mivbox/sharpsense/blob/main/src/SharpSense.Cli/README.md#install-from-source)
+also requires Node.js 22.13+ and pnpm 12.6.0. The installed CLI and UI do not require Node.js or pnpm.
 
 ## Create a workspace
 
@@ -74,7 +81,8 @@ Stop an active analyser or watcher before changing sources. Reindex after changi
 to bind the updated definition. A workspace writer lock prevents concurrent CLI/UI indexing and source edits.
 Removing sources from the next index also removes symbols and memories attached to those symbols.
 
-Configuration and data live outside the repository:
+Configuration and data live outside the repository, under `~/.sharpsense` by default. Set `SHARPSENSE_HOME` to an
+absolute directory to use another storage location:
 
 ```text
 ~/.sharpsense/workspaces/<workspace-id>/
@@ -133,7 +141,7 @@ counts.
 ## Install the agent plugin
 
 The `sharpsense` plugin includes exploration, impact-analysis, memory-maintenance and command-output skills, plus a stdio MCP connection
-for Codex and Copilot. Install the SharpSense CLI on the client's `PATH`, then create, and analyse a workspace before
+for Codex and Copilot. Install the SharpSense CLI on the client's `PATH`, then create and analyse a workspace before
 starting the client from a directory within that workspace.
 
 For Copilot CLI:
@@ -233,4 +241,4 @@ notes; rebuilding an empty database creates a new set of IDs and does not recrea
 
 ## License
 
-SharpSense is available under the [MIT license](LICENSE).
+SharpSense is available under the [MIT license](https://github.com/mivbox/sharpsense/blob/main/LICENSE).

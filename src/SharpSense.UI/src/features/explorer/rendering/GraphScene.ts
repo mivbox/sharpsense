@@ -16,7 +16,7 @@ import {
 } from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { GraphData, GraphNode } from "../../../shared/api/models";
-import { nodeColors } from "../graphLabels";
+import { graphPalettes, type GraphPalette } from "../graphPalette";
 import { pickGraphNode, writeEdgePositions } from "./graphBuffers";
 import { GraphBufferStore } from "./GraphBufferStore";
 import type { LayoutRequest, LayoutResponse } from "./layoutProtocol";
@@ -32,6 +32,7 @@ type Callbacks = {
 
 /** Two draw calls for any graph size; layout and picking stay independent. */
 export class GraphScene {
+  private palette = graphPalettes.dark;
   private readonly renderer: WebGLRenderer;
   private readonly scene = new Scene();
   private readonly camera = new PerspectiveCamera(50, 1, 0.1, 10000000);
@@ -129,7 +130,7 @@ export class GraphScene {
         this.renderer.forceContextLoss();
       });
       this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-      this.renderer.setClearColor("#10151e");
+      this.renderer.setClearColor(this.palette.background);
       this.renderer.domElement.setAttribute(
         "aria-label",
         "Interactive dependency graph",
@@ -298,6 +299,14 @@ export class GraphScene {
     );
   }
 
+  setPalette(palette: GraphPalette) {
+    this.palette = palette;
+    this.renderer.setClearColor(palette.background);
+    this.colorCache.clear();
+    this.updateColors();
+    this.dirty = true;
+  }
+
   setSelection(selectedId: string | undefined, search: string) {
     if (this.selectedId === selectedId && this.search === search) return;
     this.selectedId = selectedId;
@@ -346,10 +355,10 @@ export class GraphScene {
       : undefined;
     const related = new Set<number>();
     if (selected !== undefined) related.add(selected);
-    const normalEdge = new Color("#8b9bc6"),
-      dimEdge = new Color("#283041");
-    const outgoing = new Color("#90caf9"),
-      incoming = new Color("#ce93d8");
+    const normalEdge = new Color(this.palette.edge),
+      dimEdge = new Color(this.palette.dimEdge);
+    const outgoing = new Color(this.palette.outgoing),
+      incoming = new Color(this.palette.incoming);
     for (let index = start; index < this.buffers.links.length; index += 2) {
       const source = this.buffers.links[index],
         target = this.buffers.links[index + 1];
@@ -367,7 +376,9 @@ export class GraphScene {
         const node = this.buffers.nodes[index];
         let color = this.colorCache.get(node.type);
         if (!color) {
-          color = new Color(nodeColors[node.type] ?? "#b0bec5");
+          color = new Color(
+            this.palette.nodes[node.type] ?? this.palette.fallback,
+          );
           this.colorCache.set(node.type, color);
         }
         colors.setXYZ(index, color.r, color.g, color.b);
