@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   Box,
   Divider,
@@ -27,6 +27,7 @@ export function ToolResultView({
   onInspect: (nodeId: number) => void;
 }) {
   const [tab, setTab] = useState(0);
+  const tabId = useId();
 
   return (
     <Paper
@@ -75,31 +76,46 @@ export function ToolResultView({
             aria-label="Result format"
             sx={{ px: 1 }}
           >
-            <Tab label="Overview" />
-            <Tab label="JSON" />
+            <Tab
+              label="Overview"
+              id={`${tabId}-tab-0`}
+              aria-controls={`${tabId}-panel-0`}
+            />
+            <Tab
+              label="JSON"
+              id={`${tabId}-tab-1`}
+              aria-controls={`${tabId}-panel-1`}
+            />
           </Tabs>
           <Divider />
-          {tab === 1 ? (
-            <Box
-              component="pre"
-              sx={{
-                p: 2.5,
-                m: 0,
-                maxHeight: 550,
-                overflow: "auto",
-                fontSize: 12,
-                lineHeight: 1.7,
-                whiteSpace: "pre-wrap",
-                overflowWrap: "anywhere",
-              }}
-            >
-              {JSON.stringify(result.data, null, 2)}
-            </Box>
-          ) : (
-            <Box sx={{ p: 2.5 }}>
-              <ToolResultOverview result={result} onInspect={onInspect} />
-            </Box>
-          )}
+          <Box
+            role="tabpanel"
+            id={`${tabId}-panel-1`}
+            aria-labelledby={`${tabId}-tab-1`}
+            hidden={tab !== 1}
+            component="pre"
+            sx={{
+              p: 2.5,
+              m: 0,
+              maxHeight: 550,
+              overflow: "auto",
+              fontSize: 12,
+              lineHeight: 1.7,
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {JSON.stringify(result.data, null, 2)}
+          </Box>
+          <Box
+            role="tabpanel"
+            id={`${tabId}-panel-0`}
+            aria-labelledby={`${tabId}-tab-0`}
+            hidden={tab !== 0}
+            sx={{ p: 2.5 }}
+          >
+            <ToolResultOverview result={result} onInspect={onInspect} />
+          </Box>
         </>
       )}
     </Paper>

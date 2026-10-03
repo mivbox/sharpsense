@@ -47,6 +47,7 @@ const overviewReads = new Map<string, number>();
 let holdFirstPoll = true;
 let releaseFirstPoll: (() => void) | undefined;
 let allowStreams = true;
+let failStop = false;
 const errors: string[] = [];
 const api = createServer((request, response) => {
   void respond(request, response).catch((error: unknown) => {
@@ -151,9 +152,9 @@ try {
     ...beforeRestart,
     streamId: "330b234e-ff52-421d-ab74-dfdb9c6926ee",
     sequence: 0,
-    revision: 1,
+    revision: 0,
     updatedAt: new Date(),
-    message: "Restarted server with committed graph",
+    message: "Restarted server before its first index",
   };
   snapshots.set(alpha.id, restarted);
   for (const response of subscribers.get(alpha.id) ?? [])
@@ -171,6 +172,19 @@ try {
   await delay(150);
   assert.equal(await hasText(page, "Retired server event"), false);
   assert.equal(overviewReads.get(alpha.id), readsBeforeRestart + 1);
+
+  failStop = true;
+  await clickButton(page, "Stop");
+  await visibleText(page, "Workspace configuration is unavailable.");
+  update(alpha.id, { state: "idle", message: "Ready to retry" });
+  await clickButton(page, "Analyze & watch");
+  await visibleText(page, "Preparing workspace");
+  assert.equal(
+    await hasText(page, "Workspace configuration is unavailable."),
+    false,
+  );
+  update(alpha.id, { state: "watching", message: "Recovered successfully" });
+  await visibleText(page, "Recovered successfully");
 
   await clickButton(page, "Stop");
   await visibleText(page, "Stopping analysis safely");
@@ -261,6 +275,18 @@ async function respond(request: IncomingMessage, response: ServerResponse) {
       });
       json(response, snapshots.get(id));
     } else if (request.method === "DELETE") {
+      if (failStop) {
+        failStop = false;
+        response.writeHead(404, { "Content-Type": "application/problem+json" });
+        response.end(
+          JSON.stringify({
+            status: 404,
+            title: "Request failed",
+            detail: "Workspace configuration is unavailable.",
+          }),
+        );
+        return;
+      }
       update(id, { state: "stopping", message: "Stopping analysis safely" });
       json(response, snapshots.get(id));
       setTimeout(

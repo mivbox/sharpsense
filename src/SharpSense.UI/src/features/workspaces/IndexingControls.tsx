@@ -25,15 +25,22 @@ export function IndexingControls({ onIndexed }: { onIndexed: () => void }) {
   const { workspace } = useWorkspace();
   const client = useQueryClient();
   const [embeddings, setEmbeddings] = useState(true);
-  const lastRevision = useRef("");
+  const lastRevision = useRef<{ streamId?: string; revision: number } | null>(
+    null,
+  );
   const { status, connected, updateStatus } = useIndexingStatus(workspace.id);
   const revision = status.data?.revision ?? 0;
-  const streamId = status.data?.streamId;
+  const streamId = status.data?.streamId ?? undefined;
   useEffect(() => {
-    const identity = `${streamId ?? ""}:${revision}`;
-    if (identity === lastRevision.current) return;
-    lastRevision.current = identity;
-    if (revision === 0) return;
+    const previous = lastRevision.current;
+    if (previous?.streamId === streamId && previous?.revision === revision)
+      return;
+    const restarted =
+      previous?.streamId !== undefined &&
+      streamId !== undefined &&
+      previous.streamId !== streamId;
+    lastRevision.current = { streamId, revision };
+    if (revision === 0 && !restarted) return;
     void client.invalidateQueries({
       predicate: (query) => query.queryKey[0] !== "indexing",
     });
@@ -42,10 +49,16 @@ export function IndexingControls({ onIndexed }: { onIndexed: () => void }) {
   const start = useMutation({
     mutationFn: (watch: boolean) =>
       startIndexing(workspace.id, watch, !embeddings),
+    onMutate: (): void => {
+      stop.reset();
+    },
     onSuccess: updateStatus,
   });
   const stop = useMutation({
     mutationFn: () => stopIndexing(workspace.id),
+    onMutate: (): void => {
+      start.reset();
+    },
     onSuccess: updateStatus,
   });
   const state = status.data?.state ?? "idle";

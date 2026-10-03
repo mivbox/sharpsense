@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { WorkspaceApiError } from "../../shared/api/transport";
 import { useWorkspaceApi } from "../../shared/workspace/context";
 
 type ConnectionCursor = { cursor?: string; revision?: string };
@@ -30,9 +31,14 @@ export function useNodeConnections(nodeId: string | undefined) {
     [query.data?.pages],
   );
 
+  const missing =
+    query.error instanceof WorkspaceApiError &&
+    query.error.responseStatusCode === 404;
+
   return {
-    node: query.data?.pages[0]?.node ?? null,
-    connections,
+    missing,
+    node: missing ? null : (query.data?.pages[0]?.node ?? null),
+    connections: missing ? [] : connections,
     totalCount: query.data?.pages[0]?.totalCount ?? null,
     complete: query.isSuccess && !query.hasNextPage,
     pending: Boolean(nodeId) && query.isPending,

@@ -1,3 +1,4 @@
+import { clickButton } from "./browserActions";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -26,7 +27,13 @@ const workspaces = [
   },
 ];
 type Scenario =
-  "normal" | "conflict" | "fresh" | "cancel" | "isolation" | "missing";
+  | "normal"
+  | "conflict"
+  | "fresh"
+  | "cancel"
+  | "isolation"
+  | "missing"
+  | "deleted";
 let scenario: Scenario = "normal";
 let held: HTTPRequest | undefined;
 let releaseHeld: (() => void) | undefined;
@@ -233,6 +240,48 @@ try {
     "Repeated numeric IDs must not reuse another workspace's inspector cache.",
   );
 
+  scenario = "normal";
+  await page.goto(route());
+  await waitForConnections(page, 20, false);
+  const associations = await page.$eval(
+    '[data-testid="node-inspector"]',
+    (element) =>
+      [...element.querySelectorAll('[role="tab"]')].map((tab) => {
+        const panel = document.getElementById(
+          tab.getAttribute("aria-controls") ?? "",
+        );
+        return {
+          linked: Boolean(
+            tab.id && panel?.getAttribute("aria-labelledby") === tab.id,
+          ),
+          role: panel?.getAttribute("role"),
+        };
+      }),
+  );
+  assert.deepEqual(associations, [
+    { linked: true, role: "tabpanel" },
+    { linked: true, role: "tabpanel" },
+  ]);
+  scenario = "deleted";
+  await clickButton(page, "Analyze");
+  await page.waitForFunction(() =>
+    document
+      .querySelector('[data-testid="node-inspector"]')
+      ?.textContent?.includes("No graph node exists for id 42"),
+  );
+  assert.equal(await page.$('[data-testid="selected-node-id"]'), null);
+  assert.equal(await page.$('[data-testid="memories-tab"]'), null);
+  assert.equal(
+    await page.$eval('[data-testid="node-inspector"]', (element) =>
+      [...element.querySelectorAll("button")].some((button) =>
+        /Inspect context|Trace calls|Assess impact|Find inheritors/.test(
+          button.textContent ?? "",
+        ),
+      ),
+    ),
+    false,
+  );
+
   scenario = "missing";
   await page.goto(route(999));
   await page.waitForFunction(() =>
@@ -317,7 +366,11 @@ async function respond(request: HTTPRequest) {
   if (url.pathname === "/api/workspaces")
     body = { workspaces, initialWorkspaceId: null };
   else if (/^\/api\/workspaces\/[^/]+\/indexing$/.test(url.pathname))
-    body = idleIndexingStatus(url.pathname.split("/")[3]!);
+    body = {
+      ...idleIndexingStatus(url.pathname.split("/")[3]!),
+      revision: scenario === "deleted" ? 1 : 0,
+      sequence: scenario === "deleted" ? 1 : 0,
+    };
   else {
     assert.ok(
       workspaces.some((item) => item.id === workspace),
@@ -356,8 +409,8 @@ async function respond(request: HTTPRequest) {
       const revision = `${beta ? "beta" : "alpha"}-${scenario}`;
       assert.equal(url.searchParams.get("pageSize"), "20");
       if (cursor) assert.equal(url.searchParams.get("revision"), revision);
-      if (id === 999) {
-        await problem(request, 404, "No graph node exists for id 999.");
+      if (id === 999 || scenario === "deleted") {
+        await problem(request, 404, `No graph node exists for id ${id}.`);
         return;
       }
       if (cursor && scenario === "conflict") {

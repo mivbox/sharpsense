@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   Box,
   Button,
@@ -41,9 +41,10 @@ export function NodeInspector({
   onExploreProject: (node: GraphNodeSummary) => void;
 }) {
   const [tab, setTab] = useState(0);
+  const tabId = useId();
   const [notice, setNotice] = useState("");
   const connections = useNodeConnections(nodeId);
-  const node = connections.node ?? graphNode;
+  const node = connections.missing ? null : (connections.node ?? graphNode);
   return (
     <Box data-testid="node-inspector" sx={{ height: "100%", minHeight: 340 }}>
       <Stack
@@ -151,9 +152,15 @@ export function NodeInspector({
             variant="fullWidth"
             aria-label="Symbol details"
           >
-            <Tab label="Overview" />
+            <Tab
+              label="Overview"
+              id={`${tabId}-tab-0`}
+              aria-controls={`${tabId}-panel-0`}
+            />
             <Tab
               label="Memories"
+              id={`${tabId}-tab-1`}
+              aria-controls={`${tabId}-panel-1`}
               icon={<StickyNote2OutlinedIcon fontSize="small" />}
               iconPosition="start"
               data-testid="memories-tab"
@@ -161,9 +168,22 @@ export function NodeInspector({
             />
           </Tabs>
           <Divider />
-          {tab === 1 && node.codeNodeId ? (
-            <MemoryPanel nodeId={node.codeNodeId} />
-          ) : (
+          <Box
+            role="tabpanel"
+            id={`${tabId}-panel-1`}
+            aria-labelledby={`${tabId}-tab-1`}
+            hidden={tab !== 1}
+          >
+            {tab === 1 && node.codeNodeId && (
+              <MemoryPanel nodeId={node.codeNodeId} />
+            )}
+          </Box>
+          <Box
+            role="tabpanel"
+            id={`${tabId}-panel-0`}
+            aria-labelledby={`${tabId}-tab-0`}
+            hidden={tab !== 0}
+          >
             <Stack spacing={2.5} sx={{ p: 2 }}>
               {node.codeNodeId ? (
                 <Box>
@@ -251,7 +271,7 @@ export function NodeInspector({
               <Divider />
               <NodeConnections query={connections} onSelect={onSelect} />
             </Stack>
-          )}
+          </Box>
         </>
       )}
       <Snackbar
