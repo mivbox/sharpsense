@@ -16,6 +16,11 @@ Use Workspaces to create or edit a source selection, discover available sources,
 
 The explorer loads persisted directories and documents on demand. Graph nodes and optional relationships load progressively without a total-result cap. A deleted selected symbol clears its inspector actions; a server restart refreshes cached graph data even before its first index. Progress counts and Pause/Resume controls stay available while loading. Projects, classes, interfaces, components, documents, and external dependencies are visible by default; the type menu can also show methods, properties, and fields. Choose a smaller folder or use Search to focus on a symbol. The UI uses Material UI, TanStack Router and React Query, and a Kiota-generated API client. Query state and clients are isolated by workspace.
 
+The header’s sun/moon button switches between dark and light themes. Dark is the default; your browser remembers
+your choice across workspaces and reloads. Both themes use neutral surfaces with muted green accents.
+
+On smaller screens, Choose scopes opens the workspace tree in a side drawer. Selected symbols and search results open in a bottom drawer with their inspection actions. Idle analysis controls collapse under Analysis options; active progress, errors and warnings remain visible.
+
 An active indexing/watch job blocks source edits for that workspace. Stop the job, edit, and analyze again. Jobs belong to the running UI server; stopping the server cancels its jobs.
 
 ## Live analysis progress

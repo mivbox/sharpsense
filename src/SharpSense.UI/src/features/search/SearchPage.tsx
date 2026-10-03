@@ -5,6 +5,7 @@ import {
   Button,
   Chip,
   Divider,
+  Drawer,
   InputAdornment,
   List,
   ListItemButton,
@@ -13,9 +14,11 @@ import {
   Stack,
   TextField,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
-import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
+import type { Theme } from "@mui/material/styles";
+import { SearchResultDetails } from "./SearchResultDetails";
 import DataObjectRoundedIcon from "@mui/icons-material/DataObjectRounded";
 import { useWorkspaceApi } from "../../shared/workspace/context";
 import type { ToolSelection } from "../../shared/api/models";
@@ -32,6 +35,7 @@ export default function SearchPage({
   onOpenTool: (selection: ToolSelection) => void;
 }) {
   const { searchWorkspace } = useWorkspaceApi();
+  const narrow = useMediaQuery((theme: Theme) => theme.breakpoints.down("lg"));
   const [query, setQuery] = useState(state.q);
   const [limit, setLimit] = useState(state.limit);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
@@ -266,105 +270,38 @@ export default function SearchPage({
             />
           )}
         </Paper>
-        {selected && (
-          <Paper variant="outlined" sx={{ p: 2.5, alignSelf: "start" }}>
-            <Stack spacing={2}>
-              <Stack direction="row" spacing={1}>
-                <Chip
-                  label={selected.kind}
-                  size="small"
-                  color="primary"
-                  variant="outlined"
-                />
-                <Chip
-                  label={"#" + selected.nodeId}
-                  size="small"
-                  variant="outlined"
-                />
-              </Stack>
-              <Typography variant="subtitle1" sx={{ overflowWrap: "anywhere" }}>
-                {selected.label}
-              </Typography>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ overflowWrap: "anywhere" }}
-              >
-                {selected.path}
-                {selected.startLine ? ":" + selected.startLine : ""}
-              </Typography>
-              <Divider />
-              <Typography variant="overline" color="text.secondary">
-                Explore this result
-              </Typography>
-              <Button
-                variant="contained"
-                endIcon={<ArrowForwardRoundedIcon />}
-                onClick={() =>
-                  onOpenTool({
-                    tool: "context",
-                    nodeId: selected.nodeId,
-                    label: selected.label,
-                  })
-                }
-                data-testid="search-inspect-context"
-              >
-                Inspect context
-              </Button>
-              <Stack direction="row" spacing={1}>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  onClick={() =>
-                    onOpenTool({
-                      tool: "trace",
-                      nodeId: selected.nodeId,
-                      label: selected.label,
-                    })
-                  }
-                >
-                  Trace calls
-                </Button>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  onClick={() =>
-                    onOpenTool({
-                      tool: "impact",
-                      nodeId: selected.nodeId,
-                      label: selected.label,
-                    })
-                  }
-                >
-                  Assess impact
-                </Button>
-              </Stack>
-              {selected.summary && (
-                <>
-                  <Divider />
-                  <Typography variant="overline" color="text.secondary">
-                    Indexed excerpt
-                  </Typography>
-                  <Box
-                    component="pre"
-                    sx={{
-                      m: 0,
-                      whiteSpace: "pre-wrap",
-                      overflowWrap: "anywhere",
-                      fontFamily: "monospace",
-                      fontSize: 12,
-                      lineHeight: 1.7,
-                      maxHeight: 350,
-                      overflow: "auto",
-                    }}
-                  >
-                    {selected.summary}
-                  </Box>
-                </>
-              )}
-            </Stack>
-          </Paper>
-        )}
+        {selected &&
+          (narrow ? (
+            <Drawer
+              anchor="bottom"
+              open
+              onClose={() => setSelectedNodeId(null)}
+              slotProps={{
+                paper: {
+                  role: "dialog",
+                  "aria-label": "Selected search result",
+                  sx: {
+                    maxHeight: "85dvh",
+                    borderRadius: "12px 12px 0 0",
+                    p: 2.5,
+                  },
+                },
+              }}
+            >
+              <SearchResultDetails
+                selected={selected}
+                onOpenTool={onOpenTool}
+                onClose={() => setSelectedNodeId(null)}
+              />
+            </Drawer>
+          ) : (
+            <Paper variant="outlined" sx={{ p: 2.5, alignSelf: "start" }}>
+              <SearchResultDetails
+                selected={selected}
+                onOpenTool={onOpenTool}
+              />
+            </Paper>
+          ))}
       </Box>
     </Stack>
   );

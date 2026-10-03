@@ -76,6 +76,7 @@ try {
       (subscribers.get(alpha.id)?.size ?? 0) === 1 && Boolean(releaseFirstPoll),
   );
   await clickButton(page, "Analyze & watch");
+  await page.setViewport({ width: 390, height: 844 });
   await visibleText(page, "Reading source relationships");
   const progress = snapshots.get(alpha.id)!;
   update(alpha.id, {
@@ -185,6 +186,7 @@ try {
   );
   update(alpha.id, { state: "watching", message: "Recovered successfully" });
   await visibleText(page, "Recovered successfully");
+  await page.setViewport({ width: 1440, height: 1000 });
 
   await clickButton(page, "Stop");
   await visibleText(page, "Stopping analysis safely");

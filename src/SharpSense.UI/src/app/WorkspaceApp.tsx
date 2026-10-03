@@ -28,7 +28,8 @@ import AccountTreeOutlinedIcon from "@mui/icons-material/AccountTreeOutlined";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import RefreshRoundedIcon from "@mui/icons-material/RefreshRounded";
-import BoltRoundedIcon from "@mui/icons-material/BoltRounded";
+import { SharpSenseMark } from "../shared/ui/SharpSenseMark";
+import { ThemeToggle } from "../shared/ui/ThemeToggle";
 import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import { useQueryClient } from "@tanstack/react-query";
@@ -123,7 +124,7 @@ export default function WorkspaceApp({
         }}
       >
         <Toolbar>
-          <BoltRoundedIcon color="primary" sx={{ mr: 1 }} />
+          <SharpSenseMark color="primary" sx={{ mr: 1 }} />
           <Typography variant="h6">SharpSense</Typography>
         </Toolbar>
         <Divider />
@@ -216,22 +217,40 @@ export default function WorkspaceApp({
             <Stack
               direction="row"
               spacing={1.5}
+              useFlexGap
               sx={{ alignItems: "center", minWidth: 0 }}
             >
+              <SharpSenseMark
+                color="primary"
+                sx={{ display: { xs: "block", md: "none" } }}
+              />
               <Typography
                 variant="body2"
                 color="text.secondary"
                 noWrap
-                sx={{ maxWidth: 180 }}
+                sx={{ maxWidth: 180, display: { xs: "none", sm: "block" } }}
               >
                 {overview.data?.name ?? "Workspace"}
               </Typography>
-              <Typography color="text.secondary">/</Typography>
-              <Typography variant="body2" noWrap>
+              <Typography
+                color="text.secondary"
+                sx={{ display: { xs: "none", sm: "block" } }}
+              >
+                /
+              </Typography>
+              <Typography
+                variant="body2"
+                noWrap
+                sx={{ display: { xs: "none", sm: "block" } }}
+              >
                 {current.label}
               </Typography>
             </Stack>
-            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+            <Stack
+              direction="row"
+              spacing={{ xs: 0.5, sm: 1 }}
+              sx={{ alignItems: "center", flexShrink: 0 }}
+            >
               <Button
                 size="small"
                 onClick={onManage}
@@ -239,6 +258,7 @@ export default function WorkspaceApp({
               >
                 Workspaces
               </Button>
+              <ThemeToggle />
               <Chip
                 size="small"
                 label={`${workspace.sources.length} ${workspace.sources.length === 1 ? "source" : "sources"}`}
@@ -256,6 +276,7 @@ export default function WorkspaceApp({
               <Tooltip title="Search workspace (⌘/Ctrl K)">
                 <IconButton
                   aria-label="Search workspace"
+                  sx={{ display: { xs: "none", sm: "inline-flex" } }}
                   onClick={() => navigate("search")}
                 >
                   <SearchRoundedIcon />

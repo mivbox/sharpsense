@@ -7,7 +7,10 @@ import {
   type LayoutStatus,
 } from "./rendering/GraphScene";
 
+import type { GraphPalette } from "./graphPalette";
+
 export default function GraphCanvas({
+  palette,
   data,
   stream,
   selected,
@@ -15,6 +18,7 @@ export default function GraphCanvas({
   fitToken,
   onSelect,
 }: {
+  palette: GraphPalette;
   data: GraphData;
   stream?: object;
   selected: GraphNode | null;
@@ -63,6 +67,9 @@ export default function GraphCanvas({
       scene.current = null;
     };
   }, []);
+  useEffect(() => {
+    scene.current?.setPalette(palette);
+  }, [palette]);
   useEffect(() => {
     scene.current?.setData({ nodes, edges }, stream);
   }, [nodes, edges, stream]);
@@ -131,7 +138,7 @@ export default function GraphCanvas({
         }}
       >
         Drag to orbit · Scroll to zoom · Click to inspect
-        {selected && " · Outgoing blue · Incoming purple"}
+        {selected && " · Outgoing blue · Incoming amber"}
       </Typography>
     </Box>
   );

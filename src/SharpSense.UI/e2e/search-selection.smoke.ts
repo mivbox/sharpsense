@@ -68,6 +68,53 @@ try {
   });
   assert.equal(page.url(), searchUrl, "Refresh must preserve search URL.");
 
+  hits = [
+    hits[0]!,
+    ...Array.from({ length: 19 }, (_, index) => ({
+      ...original,
+      id: 100 + index,
+      fullyQualifiedName: "Fixture.OtherSymbol" + index,
+    })),
+  ];
+  await page.click('[aria-label="Refresh workspace"]');
+  await page.waitForSelector('[data-search-node-id="118"]');
+  await page.setViewport({ width: 390, height: 844 });
+  await page.waitForFunction(
+    () => {
+      const action = document.querySelector(
+        '[data-testid="search-inspect-context"]',
+      );
+      const bounds = action?.getBoundingClientRect();
+      return bounds && bounds.top >= 0 && bounds.bottom <= window.innerHeight;
+    },
+    { timeout: 3000 },
+  );
+  await page.keyboard.press("Escape");
+  await page.waitForSelector('[data-testid="search-inspect-context"]', {
+    hidden: true,
+  });
+  await page.click('[data-search-node-id="42"]');
+  await page.waitForFunction(() => {
+    const action = document.querySelector(
+      '[data-testid="search-inspect-context"]',
+    );
+    const bounds = action?.getBoundingClientRect();
+    return bounds && bounds.top >= 0 && bounds.bottom <= window.innerHeight;
+  });
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(
+    () => document.activeElement?.getAttribute("data-search-node-id") === "42",
+  );
+  assert.equal(
+    page.url(),
+    searchUrl,
+    "Closing details must preserve the search.",
+  );
+  await page.click('[data-search-node-id="42"]');
+  await page.waitForSelector('[data-testid="search-inspect-context"]');
+  await page.setViewport({ width: 1440, height: 1000 });
+  await page.waitForSelector('[role="dialog"]', { hidden: true });
+
   // Removed result must not retain actions that target missing symbol ID.
   hits = [];
   await page.click('[aria-label="Refresh workspace"]');

@@ -12,6 +12,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
 import DataObjectRoundedIcon from "@mui/icons-material/DataObjectRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded";
@@ -33,12 +34,14 @@ export function NodeInspector({
   onSelect,
   onOpenTool,
   onExploreProject,
+  onClose,
 }: {
   nodeId?: string;
   node: GraphNode | null;
   onSelect: (node: GraphNodeSummary) => void;
   onOpenTool: (selection: ToolSelection) => void;
   onExploreProject: (node: GraphNodeSummary) => void;
+  onClose?: () => void;
 }) {
   const [tab, setTab] = useState(0);
   const tabId = useId();
@@ -53,7 +56,14 @@ export function NodeInspector({
         sx={{ alignItems: "center", px: 2, py: 2 }}
       >
         <DataObjectRoundedIcon fontSize="small" color="primary" />
-        <Typography variant="subtitle2">Symbol inspector</Typography>
+        <Typography variant="subtitle2" sx={{ flex: 1 }}>
+          Symbol inspector
+        </Typography>
+        {onClose && (
+          <IconButton aria-label="Close symbol inspector" onClick={onClose}>
+            <CloseRoundedIcon />
+          </IconButton>
+        )}
       </Stack>
       <Divider />
       {!nodeId ? (

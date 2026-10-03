@@ -237,7 +237,7 @@ export default function ToolsPage({
                     setDirection(event.target.value as "caller" | "callee");
                     run.reset();
                   }}
-                  sx={{ minWidth: 170 }}
+                  sx={{ minWidth: 210, flexShrink: 0 }}
                   disabled={run.isPending}
                 >
                   <MenuItem value="callee">Callees · outgoing</MenuItem>

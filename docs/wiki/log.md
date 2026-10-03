@@ -4,6 +4,10 @@ Historical implementation notes follow. Each dated entry describes behavior at t
 
 ## Version 1
 
+- `2026-10-04` — Added neutral dark/light themes with muted green accents with a saved browser preference and an animated robot-brain mark that respects reduced motion. Graph theme changes preserve the current view. See [browser UI](cli/ui-command.md).
+
+- `2026-10-04` — Improved smaller-screen navigation with scope and detail drawers and compact idle analysis controls; separated graph controls, widened trace direction labels and added the UI favicon. See [browser UI](cli/ui-command.md).
+
 - `2026-10-03` — Bounded SQLite collection parameters in impact, callee, inheritor and batch-memory reads; added regression coverage for large neighborhoods. See [trace](cli/trace-command.md).
 
 - `2026-10-03` — Restricted serialized releases to `main` and pinned tags to the tested commit. See [build conventions](architecture/dotnet-conventions.md).
