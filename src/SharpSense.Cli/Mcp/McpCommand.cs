@@ -48,7 +48,7 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
 
         services.AddSelectedWorkspace(settings, discoverFromDirectory: true);
         services.AddCommandExecution()
-            .AddCommandExecutionInfrastructure();
+            .AddCommandExecutionInfrastructure(new CommandProcessHost("dotnet", [typeof(Program).Assembly.Location]));
         services.AddContext360();
         services.AddContext360Infrastructure();
         services.AddGraphStats()

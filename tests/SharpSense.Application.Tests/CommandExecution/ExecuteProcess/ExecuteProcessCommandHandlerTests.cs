@@ -166,8 +166,10 @@ public sealed class ExecuteProcessCommandHandlerTests
             Times.Never);
     }
 
-    [Fact]
-    public async Task WhenReducedOutputExceedsMaxCharacters_ThenItTruncatesReturnedBlocks()
+    [Theory]
+    [InlineData("VeryLongFailureLine", "1| VeryLo...")]
+    [InlineData("12345😀67890", "1| 12345...")]
+    public async Task WhenReducedOutputExceedsMaxCharacters_ThenItTruncatesReturnedBlocks(string line, string expected)
     {
         var ct = TestContext.Current.CancellationToken;
         var processRunner = new Mock<ICommandProcessRunner>(MockBehavior.Strict);
@@ -178,10 +180,10 @@ public sealed class ExecuteProcessCommandHandlerTests
             .Setup(candidate => candidate.Create(ct))
             .ReturnsAsync(executeLogIndex.Object);
         executeLogIndex
-            .Setup(candidate => candidate.AppendLine("VeryLongFailureLine", ct))
+            .Setup(candidate => candidate.AppendLine(line, ct))
             .ReturnsAsync(Result.Ok(1));
         executeLogIndex
-            .Setup(candidate => candidate.FindMatches("VeryLongFailureLine", ct))
+            .Setup(candidate => candidate.FindMatches(line, ct))
             .ReturnsAsync(Result.Ok<int[]>([1]));
         executeLogIndex
             .Setup(candidate => candidate.ReadRange(
@@ -189,7 +191,7 @@ public sealed class ExecuteProcessCommandHandlerTests
                 ct))
             .ReturnsAsync(Result.Ok<ExecutionLogLine[]>(
                 [
-                    new ExecutionLogLine(1, "VeryLongFailureLine")
+                    new ExecutionLogLine(1, line)
                 ]));
         executeLogIndex
             .Setup(candidate => candidate.DisposeAsync())
@@ -204,7 +206,7 @@ public sealed class ExecuteProcessCommandHandlerTests
                 Func<string, CancellationToken, Task> onOutput,
                 CancellationToken innerCt) =>
             {
-                await onOutput("VeryLongFailureLine", innerCt);
+                await onOutput(line, innerCt);
 
                 return Result.Ok(new CommandProcessResult(1, 1));
             });
@@ -218,13 +220,13 @@ public sealed class ExecuteProcessCommandHandlerTests
             }));
 
         var result = await handler.Handle(
-            new ExecuteProcessCommand("dotnet build SharpSense.sln", "VeryLongFailureLine", MaxCharacters: 12),
+            new ExecuteProcessCommand("dotnet build SharpSense.sln", line, MaxCharacters: 12),
             ct);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Truncated.Should().BeTrue();
         result.Value.Blocks.Should().ContainSingle();
-        result.Value.Blocks[0].Text.Should().Be("1| VeryLo...");
+        result.Value.Blocks[0].Text.Should().Be(expected);
         result.Value.Summary.Should().Contain("truncated at 12 characters");
     }
 

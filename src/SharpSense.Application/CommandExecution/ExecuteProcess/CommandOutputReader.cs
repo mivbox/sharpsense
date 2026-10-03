@@ -343,12 +343,14 @@ internal sealed class CommandOutputReader(IExecuteLogIndex executeLogIndex)
             return line;
         }
 
-        if (maxCharacters <= 3)
+        var suffix = maxCharacters > 3 ? "..." : string.Empty;
+        var length = maxCharacters - suffix.Length;
+        if (length > 0 && char.IsHighSurrogate(line[length - 1]) && char.IsLowSurrogate(line[length]))
         {
-            return line[..maxCharacters];
+            length--;
         }
 
-        return line[..(maxCharacters - 3)] + "...";
+        return line[..length] + suffix;
     }
 
 }
