@@ -14,6 +14,7 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>SharpSense.Cli</PackageId>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
     <Version>1.0.0</Version>
     <Authors>Mitchel Box</Authors>
     <Description>Polyglot knowledge graph indexer and AI architecture tool.</Description>
@@ -27,6 +28,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="icon.png" Pack="true" PackagePath="/"/>
     <None Include="../../README.md" Pack="true" PackagePath="\"/>
     <None Include="../../LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" Pack="true" PackagePath="\" />
   </ItemGroup>
