@@ -1,7 +1,7 @@
 # SharpSense plugin
 
-The `sharpsense` plugin provides code navigation, change assessment, memory maintenance and command-output summaries for Codex,
-Copilot CLI, and Copilot in VS Code. It also registers a local stdio MCP connection.
+The `sharpsense` plugin provides code navigation, change assessment, memory maintenance and command-output summaries for Claude Code,
+Codex, Copilot CLI, and Copilot in VS Code. It also registers a local stdio MCP connection.
 
 | Skill | Purpose |
 | --- | --- |
@@ -21,7 +21,7 @@ They follow the consuming repository's conventions and can move with their refer
 | `ef-query-work` | Preserve query shape, persistence semantics and transaction ownership. |
 | `async-workflows` | Preserve operation identity, cancellation, bounded work and disposal. |
 
-Skill descriptions identify when each workflow applies. Codex loads the matching `SKILL.md` on demand; the
+Skill descriptions identify when each workflow applies. Claude Code and Codex load the matching `SKILL.md` on demand; the
 development skills link references only for the relevant work. Examples use portable standards and require no
 external reference repository. The four plugin skills include Codex UI metadata and allow implicit selection.
 Refresh the client's catalog if updated skills are not visible.
@@ -38,8 +38,8 @@ Use a client version with plugin support. Install the [SharpSense CLI](../../../
 [workspace](workspace-command.md), then launch the client within that workspace. The CLI must be on the client's
 `PATH`; a custom `SHARPSENSE_HOME` must be inherited by the client.
 
-The plugin starts `sharpsense mcp` without a workspace argument. MCP discovers exactly one registered workspace
-whose root contains the launch directory, ignoring the saved CLI default. It binds once, until the process restarts.
+The plugin starts `sharpsense mcp` without an explicit workspace selection. MCP discovers exactly one registered
+workspace containing the client project directory, ignoring the saved CLI default. It binds once, until the process restarts.
 It does not install the CLI, create or index workspaces, or add hooks.
 
 If no workspace matches, create and analyse one or launch the client from the correct directory. If multiple roots
@@ -52,6 +52,14 @@ its root need not be a Git checkout.
 Use this route to try an unpublished branch. Check out the branch containing the plugin, then replace
 `/absolute/path/to/sharpsense` with that checkout's root. Register the root containing the marketplace files,
 not the plugin subdirectory.
+
+For Claude Code:
+
+```bash
+claude plugin marketplace add /absolute/path/to/sharpsense
+claude plugin install sharpsense@sharpsense-marketplace
+claude plugin details sharpsense
+```
 
 For Codex:
 
@@ -79,6 +87,13 @@ Copilot commands are documented in the [Copilot CLI plugin reference](https://do
 These commands require the marketplace files and plugin directory to be present on the repository's default branch.
 Until that branch contains them, use a local checkout.
 
+For Claude Code:
+
+```bash
+claude plugin marketplace add mivbox/sharpsense
+claude plugin install sharpsense@sharpsense-marketplace
+```
+
 For Codex:
 
 ```bash
@@ -94,6 +109,16 @@ For Copilot CLI:
 copilot plugin marketplace add mivbox/sharpsense
 copilot plugin install sharpsense@sharpsense-marketplace
 ```
+
+## Claude Code skill discovery
+
+Run `claude plugin details sharpsense` to see the four skills and MCP server. Start a new session in the indexed
+workspace, or run `/reload-plugins` in an existing session. Skills load when relevant; you can also invoke one
+explicitly, for example `/sharpsense:sharpsense-exploring Explain this code path`. Check the server with `/mcp`
+and verify the workspace with `graph_stats`.
+
+See the [Claude Code marketplace guide](https://code.claude.com/docs/en/plugin-marketplaces) for installation
+and the [plugin manifest reference](https://code.claude.com/docs/en/plugins-reference) for discovery and MCP configuration.
 
 ## Copilot in VS Code
 
@@ -154,9 +179,10 @@ Update saved prompts that explicitly invoke the previous names when adopting thi
 
 ## Package layout and versions
 
-The canonical skill files live under `plugins/sharpsense/skills/`. Both marketplace catalogs reference the
+The canonical skill files live under `plugins/sharpsense/skills/`. All three marketplace catalogs reference the
 `plugins/sharpsense/` package:
 
+- `.claude-plugin/marketplace.json` supplies the Claude Code marketplace.
 - `.agents/plugins/marketplace.json` supplies the Codex marketplace.
 - `.github/plugin/marketplace.json` supplies the Copilot marketplace.
 
@@ -164,13 +190,16 @@ The package uses native client manifests so MCP can start in the client's workin
 
 - `plugin.json` references `.mcp.json` for Copilot, with stdio type, `cwd: "."` and tool access.
 - `.codex-plugin/plugin.json` declares its MCP server inline, omitting `cwd` so local Codex inherits the session directory.
-- Both configurations start the installed `sharpsense` executable with the `mcp` argument.
+- `.claude-plugin/plugin.json` declares its MCP server inline with `--workspace-root ${CLAUDE_PROJECT_DIR}`.
+- All configurations start the installed `sharpsense` executable with the `mcp` argument.
 
 These client declarations are deliberately separate. Copilot discovers `.mcp.json` before a custom manifest path and otherwise
 defaults to the plugin directory. Codex resolves a configured relative `cwd` against the plugin directory, so copying
 Copilot's `cwd: "."` into its configuration would prevent workspace discovery. See the
 [Codex plugin parser](https://github.com/openai/codex/blob/main/codex-rs/codex-mcp/src/plugin_config.rs) and
 [Copilot plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference).
+Claude Code loads `.mcp.json` first, then replaces its `sharpsense` entry with the inline declaration. The native
+project variable keeps discovery tied to the client project instead of the plugin cache; the server is registered once.
 Clients that run plugins in a separate execution environment need an explicit client MCP configuration pointing at
 the intended workspace; verify the binding with `graph_stats`.
 
@@ -178,5 +207,5 @@ The root manifest deliberately omits the portable `$schema`: portable plugin MCP
 working directory from the installed plugin root, which would defeat workspace discovery from the project directory.
 No executable wrappers or hooks are required.
 
-Plugin version `1.2.0` is independent of the CLI/NuGet version. When releasing a plugin update, keep its identity and
-version consistent across both manifests and marketplace metadata.
+Plugin version `1.3.0` is independent of the CLI/NuGet version. When releasing a plugin update, keep its identity and
+version consistent across all three manifests and marketplace metadata.

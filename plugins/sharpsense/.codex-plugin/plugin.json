@@ -1,6 +1,6 @@
 {
   "name": "sharpsense",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Explore code, assess change impact, maintain code memories and reduce command output with SharpSense skills and MCP tools.",
   "author": {
     "name": "Mitchel Box"
