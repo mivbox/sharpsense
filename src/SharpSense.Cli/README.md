@@ -1,7 +1,8 @@
 # SharpSense CLI development
 
 For installation, workspace setup, queries and agent integrations, see the [SharpSense README](../../README.md).
-The NuGet package uses that same README.
+The NuGet package uses that same README. Its [icon](icon.png) is a 128×128 PNG export of the
+[UI favicon](../SharpSense.UI/public/favicon.svg); update both when changing the artwork.
 
 ## Install from source
 
