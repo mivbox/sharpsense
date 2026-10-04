@@ -4,6 +4,8 @@ Historical implementation notes follow. Each dated entry describes behavior at t
 
 ## Version 1
 
+- `2026-10-05` — Added the Claude Code marketplace and plugin manifest, sharing the four SharpSense skills and binding MCP discovery to the client project directory. See [plugin installation](cli/skills-command.md).
+
 - `2026-10-04` — Added neutral dark/light themes with muted green accents with a saved browser preference and an animated robot-brain mark that respects reduced motion. Graph theme changes preserve the current view. See [browser UI](cli/ui-command.md).
 
 - `2026-10-04` — Improved smaller-screen navigation with scope and detail drawers and compact idle analysis controls; separated graph controls, widened trace direction labels and added the UI favicon. See [browser UI](cli/ui-command.md).

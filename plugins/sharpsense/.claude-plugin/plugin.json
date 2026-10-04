@@ -16,5 +16,15 @@
   "skills": [
     "./skills/"
   ],
-  "mcpServers": "./.mcp.json"
+  "mcpServers": {
+    "sharpsense": {
+      "type": "stdio",
+      "command": "sharpsense",
+      "args": [
+        "mcp",
+        "--workspace-root",
+        "${CLAUDE_PROJECT_DIR}"
+      ]
+    }
+  }
 }

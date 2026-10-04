@@ -40,4 +40,4 @@ Verify the workspace identity and language coverage with `graph_stats` before di
 
 Semantic search treats input as plain text. Symbol/path punctuation is safe, FTS operators and column selectors have no special meaning, and punctuation-only input returns no hits. The separate `ctx_execute` output query still accepts FTS syntax.
 
-Install the [SharpSense plugin](skills-command.md) through Codex or Copilot for skills and an automatic MCP connection. The CLI must already be on the client's `PATH`, with a registered and analysed workspace. The client must inherit the same custom `SHARPSENSE_HOME` if used.
+Install the [SharpSense plugin](skills-command.md) through Claude Code, Codex or Copilot for skills and an automatic MCP connection. The CLI must already be on the client's `PATH`, with a registered and analysed workspace. The client must inherit the same custom `SHARPSENSE_HOME` if used.
