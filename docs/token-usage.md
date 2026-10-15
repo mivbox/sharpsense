@@ -2,7 +2,7 @@
 
 SharpSense returns bounded graph context and reduced command output so an agent can request relevant information in smaller steps. Actual token usage depends on the model, repository, task, tool calls, and output limits.
 
-There is currently no controlled benchmark for the version 1 workspace workflow. Earlier ad hoc transcripts mixed cached input, output, different traversal depths, and different model runs; they do not establish a reproducible percentage saving.
+The [README benchmarks](../README.md#benchmarks) report provider-measured tokens, elapsed time, and answer correctness for C#, TypeScript, and documentation questions. The C# task used fewer tokens with SharpSense; the other two used more. This is a small pilot on one repository and model.
 
 ## What to measure
 
