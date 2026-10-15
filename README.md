@@ -52,30 +52,20 @@ Your AI client controls where the context it retrieves is sent. SharpSense does 
 
 ## Benchmarks
 
-**The same question, with and without SharpSense.** These read-only investigations use SharpSense's source,
-Codex with `gpt-6-astra` at `xhigh`, and three fresh sessions per question per condition. Both conditions have access to the
-same skills, file search, and reading; the SharpSense condition also has its MCP graph tools. Values below are
-medians, measured 16 October 2026.
-
 | Source | Tokens without | Tokens with | Token change | Time without | Time with | Time change |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | C# | 220,279 | 147,614 | **33.0% fewer** | 74.4 s | 63.1 s | **15.2% less** |
-| TypeScript / TSX | 203,525 | 220,656 | 8.4% more | 67.5 s | 79.4 s | 17.6% more |
 | Markdown | 101,194 | 124,917 | 23.4% more | 43.0 s | 52.2 s | 21.4% more |
 
-**All 18 answers passed source review.** This small pilot shows savings for the C# investigation and additional
-overhead for the TypeScript and documentation questions; results depend on the task and model.
-
-<details>
-<summary><strong>The exact questions used in both conditions</strong></summary>
+Example queries used for both runs:
 
 | Source | Question for both runs |
 | --- | --- |
 | C# | If source extraction fails during indexing, what happens to the previous graph? Show the failure path and its tests. |
-| TypeScript / TSX | How does the Analyze button start indexing and display progress? Show the components, API request, and update handling. |
 | Markdown | How do the CLI and MCP choose a workspace when no explicit workspace is supplied? Cite the relevant documentation. |
 
-</details>
+Results are medians of three runs per question and condition. All 12 answers passed source review.
+This is a small pilot; results depend on the task and model.
 
 Tokens are provider-reported input plus output across the whole task, including cached input once. Time includes
 agent and MCP startup; the **24.5-second index build** is separate.
@@ -91,16 +81,6 @@ exploration, impact analysis, memory maintenance, and reducing command output.
 ```bash
 claude plugin marketplace add mivbox/sharpsense
 claude plugin install sharpsense@sharpsense-marketplace
-```
-
-</details>
-
-<details>
-<summary><strong>Codex</strong></summary>
-
-```bash
-codex plugin marketplace add mivbox/sharpsense
-codex plugin add sharpsense@sharpsense-marketplace
 ```
 
 </details>
