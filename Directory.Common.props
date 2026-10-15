@@ -36,6 +36,9 @@
     <InternalsVisibleTo Include="SharpSense.Cli.Tests" />
     <InternalsVisibleTo Include="SharpSense.IntegrationTests" />
   </ItemGroup>
+  <ItemGroup Condition="'$(MSBuildProjectName)' == 'SharpSense.TypeScript'">
+    <InternalsVisibleTo Include="SharpSense.TypeScript.Tests" />
+  </ItemGroup>
   <ItemGroup Condition="'$(MSBuildProjectName)' == 'SharpSense.Application' Or '$(MSBuildProjectName)' == 'SharpSense.Infrastructure' Or '$(MSBuildProjectName)' == 'SharpSense.Cli'">
     <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
