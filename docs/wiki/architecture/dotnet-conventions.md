@@ -3,7 +3,7 @@ title: ".NET Build and Code Conventions"
 type: architecture
 tags: [csharp, build, testing]
 created: 2026-09-27
-updated: 2026-10-03
+updated: 2026-10-15
 confidence: high
 ---
 
@@ -44,7 +44,9 @@ Application tests mirror feature folders. CLI unit tests cover parsing, command 
 
 ## Validation
 
-[CI](../../../.github/workflows/ci.yaml) runs the .NET build and tests, formatting, TypeScript checks, frontend unit tests and browser workflows in one `build-and-test` job. It runs for pull requests and pushes to main; the job remains the required branch check.
+[CI](../../../.github/workflows/ci.yaml) runs the .NET build and tests, formatting, TypeScript checks, frontend unit tests and browser workflows in `build-and-test`. It runs for pull requests and pushes to main; `build-and-test` remains the required branch check.
+
+The managed TypeScript parser builds as part of the solution without native artifact preparation.
 
 ```bash
 dotnet restore SharpSense.sln
@@ -66,10 +68,9 @@ dotnet ef dbcontext info --project src/SharpSense.Infrastructure --startup-proje
 
 ## Distribution assets
 
-The tool packages the Tree-sitter core library and TypeScript/TSX grammars for its supported runtimes.
-Other grammars and the ONNX GenAI native libraries are excluded during asset resolution. The BERT embedder
-uses base ONNX Runtime; keep its native libraries and the connector's managed dependencies. Verify actual
-embedding generation and both TypeScript parsers from an installed package after changing these filters.
+The TypeScript parser is delivered as a managed assembly. There are no TypeScript native grammar assets, platform-specific preparation steps or host-only package overrides. `TypeScriptPackageTests` creates and installs an isolated tool package to verify compatibility, actual embeddings and failure recovery.
+
+The BERT embedder uses base ONNX Runtime; keep its native libraries and the connector's managed dependencies. Unused ONNX GenAI native assets remain excluded. Verify actual embedding generation and TypeScript analysis from an installed package after changing distribution filters.
 
 The MIT project license is included in the tool package.
 

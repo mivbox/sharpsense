@@ -1,4 +1,5 @@
 using SharpSense.Application.Indexing.Models;
+using SharpSense.TypeScript.Parsing.Abstractions;
 
 namespace SharpSense.Infrastructure.Indexing.TypeScript;
 
@@ -11,6 +12,7 @@ internal sealed class TypeScriptPassContext
         ArgumentNullException.ThrowIfNull(parsedFiles);
 
         ParsedFiles = parsedFiles;
+        FilesByPath = parsedFiles.ToDictionary(static file => file.DiscoveredFile.RelativeFilePath, StringComparer.Ordinal);
         CancellationToken = cancellationToken;
     }
 
@@ -28,5 +30,11 @@ internal sealed class TypeScriptPassContext
 
     internal List<TypeScriptReExport> ReExports { get; } = [];
 
-    internal Dictionary<string, TreeSitter.Node> DeclarationNodes { get; } = new(StringComparer.Ordinal);
+    internal Dictionary<string, INode> DeclarationNodes { get; } = new(StringComparer.Ordinal);
+
+    internal IReadOnlyDictionary<string, TypeScriptParsedFile> FilesByPath { get; }
+
+    internal Dictionary<string, int> CodeNodeIndexes { get; } = new(StringComparer.Ordinal);
+
+    internal HashSet<(string ParentId, string MemberId)> ParentEdges { get; } = [];
 }

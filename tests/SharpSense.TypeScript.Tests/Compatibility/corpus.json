@@ -1,0 +1,4059 @@
+{
+  "compilerVersion": "6.0.3",
+  "sourceRevision": "050880ce59e30b356b686bd3144efe24f875ebc8",
+  "cases": [
+    {
+      "id": "compiler/decoratorMetadataConditionalType.ts::decoratorMetadataConditionalType.ts",
+      "fileName": "decoratorMetadataConditionalType.ts",
+      "sourceText": "\n\n\n\ndeclare function d(): PropertyDecorator;\nabstract class BaseEntity<T> {\n    @d()\n    public attributes: T extends { attributes: infer A } ? A : undefined;\n}\nclass C {\n    @d()\n    x: number extends string ? false : true;\n}",
+      "upstreamFileSha256": "bb2b70b0607687f28f22f9f5857f1f0bb18050b3f12bdd06639ae0ac7c7795f3",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4,
+          "end": 44
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 45,
+          "end": 160
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 161,
+          "end": 226
+        }
+      ]
+    },
+    {
+      "id": "compiler/decoratorMetadataElidedImport.ts::observable.d.ts",
+      "fileName": "observable.d.ts",
+      "sourceText": "export declare class Observable<T> {}\n",
+      "upstreamFileSha256": "3d5e7f8c464cfadfdb60ea23dfd3f0ddc605693aa6fc696d56c0d3d2f2140bf5",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ClassDeclaration",
+          "start": 0,
+          "end": 37
+        }
+      ]
+    },
+    {
+      "id": "compiler/decoratorMetadataElidedImport.ts::index.ts",
+      "fileName": "index.ts",
+      "sourceText": "import { Observable } from './observable';\n\nfunction whatever(a: any, b: any, c: any) {}\n\nclass Test {\n    foo(\n        @whatever arg1: string,\n        @whatever arg2: number\n    ): Observable<string> {\n        return null!;\n    }\n}\n",
+      "upstreamFileSha256": "3d5e7f8c464cfadfdb60ea23dfd3f0ddc605693aa6fc696d56c0d3d2f2140bf5",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ImportDeclaration",
+          "start": 0,
+          "end": 42
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 44,
+          "end": 88
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 90,
+          "end": 232
+        }
+      ]
+    },
+    {
+      "id": "compiler/importTypeGenericArrowTypeParenthesized.ts::module.d.ts",
+      "fileName": "module.d.ts",
+      "sourceText": "declare module \"module\" {\n    export interface Modifier<T> { }\n\n    export function fn<T>(x: T): Modifier<T>;\n}",
+      "upstreamFileSha256": "83054015fd3c2f25e690c3f1de9ed6d5c9324893b85e1ce7ea5d6c9f6db5f522",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ModuleDeclaration",
+          "start": 0,
+          "end": 111
+        }
+      ]
+    },
+    {
+      "id": "compiler/importTypeGenericArrowTypeParenthesized.ts::index.ts",
+      "fileName": "index.ts",
+      "sourceText": "import { fn } from \"module\";\n\nexport const fail1 = fn(<T>(x: T): T => x);\nexport const fail2 = fn(function<T>(x: T): T {\n  return x;\n});\n\nexport const works1 = fn((x: number) => x);\ntype MakeItWork = <T>(x: T) => T;\nexport const works2 = fn<MakeItWork>(x => x);\n",
+      "upstreamFileSha256": "83054015fd3c2f25e690c3f1de9ed6d5c9324893b85e1ce7ea5d6c9f6db5f522",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ImportDeclaration",
+          "start": 0,
+          "end": 28
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 30,
+          "end": 73
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 74,
+          "end": 136
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 138,
+          "end": 181
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 182,
+          "end": 215
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 216,
+          "end": 261
+        }
+      ]
+    },
+    {
+      "id": "compiler/importTypeWithUnparenthesizedGenericFunctionParsed.ts::importTypeWithUnparenthesizedGenericFunctionParsed.ts",
+      "fileName": "importTypeWithUnparenthesizedGenericFunctionParsed.ts",
+      "sourceText": "\nexport declare const fail1: import(\"module\").Modifier<<T>(x: T) => T>; // shouldn't be a parse error",
+      "upstreamFileSha256": "663b66fff579a1b359c79e4d28b3163424522094ac68ee3cb1f1f9b38e6d6e1d",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 1,
+          "end": 71
+        }
+      ]
+    },
+    {
+      "id": "compiler/jsxAttributeMissingInitializer.tsx::jsxAttributeMissingInitializer.tsx",
+      "fileName": "jsxAttributeMissingInitializer.tsx",
+      "sourceText": "\n\nconst x = <div foo= ></div>;\nconst y = 0;\n",
+      "upstreamFileSha256": "5725b37b0a509c0f0897c97a1531d155e7c66a02c6c724e5027059d3f2b5f488",
+      "diagnostics": [
+        {
+          "code": 1145,
+          "start": 22,
+          "length": 1
+        }
+      ],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 2,
+          "end": 30
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 31,
+          "end": 43
+        }
+      ]
+    },
+    {
+      "id": "compiler/jsxFactoryAndJsxFragmentFactory.tsx::jsxFactoryAndJsxFragmentFactory.tsx",
+      "fileName": "jsxFactoryAndJsxFragmentFactory.tsx",
+      "sourceText": "\n\n\n\n\ndeclare var h: any;\ndeclare var Frag: any;\n\n<></>;\n<><span>1</span><><span>2.1</span><span>2.2</span></></>;",
+      "upstreamFileSha256": "d0a40d972e6c87967e34bbc03868329c0e04f77009e282b393aba19d9af5b194",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 5,
+          "end": 24
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 25,
+          "end": 47
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 49,
+          "end": 55
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 56,
+          "end": 113
+        }
+      ]
+    },
+    {
+      "id": "compiler/jsxFactoryAndJsxFragmentFactoryErrorNotIdentifier.tsx::jsxFactoryAndJsxFragmentFactoryErrorNotIdentifier.tsx",
+      "fileName": "jsxFactoryAndJsxFragmentFactoryErrorNotIdentifier.tsx",
+      "sourceText": "\n\n\n\n\ndeclare var h: any;\n\n<></>;\n<><span>1</span><><span>2.1</span><span>2.2</span></></>;",
+      "upstreamFileSha256": "56ad8654f54c890a99e62e700a5944a20621c143d2ae38a828be0c1f2ca9360f",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 5,
+          "end": 24
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 26,
+          "end": 32
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 33,
+          "end": 90
+        }
+      ]
+    },
+    {
+      "id": "compiler/jsxFactoryAndJsxFragmentFactoryNull.tsx::jsxFactoryAndJsxFragmentFactoryNull.tsx",
+      "fileName": "jsxFactoryAndJsxFragmentFactoryNull.tsx",
+      "sourceText": "\n\n\n\n\ndeclare var h: any;\n\n<></>;\n<><span>1</span><><span>2.1</span><span>2.2</span></></>;",
+      "upstreamFileSha256": "3db7698e7428435f16996ae23f6757969b4dc47b08f6781c679481dfb694a773",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 5,
+          "end": 24
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 26,
+          "end": 32
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 33,
+          "end": 90
+        }
+      ]
+    },
+    {
+      "id": "compiler/jsxFragmentWrongType.tsx::a.tsx",
+      "fileName": "a.tsx",
+      "sourceText": "/// <reference path=\"/.lib/react18/react18.d.ts\" />\n/// <reference path=\"/.lib/react18/global.d.ts\" />\n\nconst test = () => \"asd\";\n\nconst jsxWithJsxFragment = <>{test}</>;\nconst jsxWithReactFragment = <React.Fragment>{test}</React.Fragment>;\n",
+      "upstreamFileSha256": "d3305e4693474364f72426f08c0b1e2ce99cb71f2e9a907188a852521656497e",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 104,
+          "end": 129
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 131,
+          "end": 170
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 171,
+          "end": 240
+        }
+      ]
+    },
+    {
+      "id": "compiler/jsxNamespacedNameNotComparedToNonMatchingIndexSignature.tsx::jsxNamespacedNameNotComparedToNonMatchingIndexSignature.tsx",
+      "fileName": "jsxNamespacedNameNotComparedToNonMatchingIndexSignature.tsx",
+      "sourceText": "\n\n/// <reference path=\"/.lib/react16.d.ts\" />\n\ndeclare module \"react\" {\n    interface Attributes {\n        [key: `do-${string}`]: Function;\n        \"ns:thing\"?: string;\n    }\n}\n\nexport const tag = <div ns:thing=\"a\"/>",
+      "upstreamFileSha256": "c1305dc6d1323ed498ff44a0a68758cb95c860937441efc2860ba077eb583341",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ModuleDeclaration",
+          "start": 47,
+          "end": 176
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 178,
+          "end": 216
+        }
+      ]
+    },
+    {
+      "id": "compiler/parenthesizedSatisfiesExpressionWithComments.ts::parenthesizedSatisfiesExpressionWithComments.ts",
+      "fileName": "parenthesizedSatisfiesExpressionWithComments.ts",
+      "sourceText": "\n\"use strict\";\n\nconst a = (/*comm*/ 10 satisfies number);\nconst b = ((/*comm*/ 10 satisfies number));",
+      "upstreamFileSha256": "de8fea0c698eaca3293d4db1f104e0514cbb18a4f8883e2b649094ae7ed507c5",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ExpressionStatement",
+          "start": 1,
+          "end": 14
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 16,
+          "end": 57
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 58,
+          "end": 101
+        }
+      ]
+    },
+    {
+      "id": "compiler/referenceSatisfiesExpression.ts::referenceSatisfiesExpression.ts",
+      "fileName": "referenceSatisfiesExpression.ts",
+      "sourceText": "\nlet a = 10;\n--(a satisfies number);\n++(a satisfies number);\n\n(a satisfies number)++;\n(a satisfies number)--;\n\nlet b: number;\n(b satisfies number) = 10;\n\nlet c: number;\n[(c satisfies number)] = [10];\n\nlet d: number, e = 1;\n({ d: (e satisfies number) } = { d: 10 });\n\nlet g = 1\nfor ((g satisfies number) of [10]) {\n  console.log(g)\n}\n\nlet x: string = \"hello\"\nfor ((x satisfies string) in { a: 10 }) {\n  console.log(x)\n}\n",
+      "upstreamFileSha256": "b64d23f5d312daaceb7f8113bd95b0555c4cf0ead1bc8707391df66d02ee2a0e",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 1,
+          "end": 12
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 13,
+          "end": 36
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 37,
+          "end": 60
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 62,
+          "end": 85
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 86,
+          "end": 109
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 111,
+          "end": 125
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 126,
+          "end": 152
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 154,
+          "end": 168
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 169,
+          "end": 199
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 201,
+          "end": 222
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 223,
+          "end": 265
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 267,
+          "end": 276
+        },
+        {
+          "kind": "ForOfStatement",
+          "start": 277,
+          "end": 332
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 334,
+          "end": 357
+        },
+        {
+          "kind": "ForInStatement",
+          "start": 358,
+          "end": 418
+        }
+      ]
+    },
+    {
+      "id": "compiler/regularExpressionAnnexB.ts::regularExpressionAnnexB.ts",
+      "fileName": "regularExpressionAnnexB.ts",
+      "sourceText": "\n\nconst regexes: RegExp[] = [\n  /\\q\\u\\i\\c\\k\\_\\f\\o\\x\\-\\j\\u\\m\\p\\s/,\n  /[\\q\\u\\i\\c\\k\\_\\f\\o\\x\\-\\j\\u\\m\\p\\s]/,\n  /\\P[\\P\\w-_]/,\n\n  // Compare to\n  /\\q\\u\\i\\c\\k\\_\\f\\o\\x\\-\\j\\u\\m\\p\\s/u,\n  /[\\q\\u\\i\\c\\k\\_\\f\\o\\x\\-\\j\\u\\m\\p\\s]/u,\n  /\\P[\\P\\w-_]/u,\n];\n\nconst regexesWithBraces: RegExp[] = [\n  /{??/,\n  /{,??/,\n  /{,1??/,\n  /{1??/,\n  /{1,??/,\n  /{1,2??/,\n  /{2,1??/,\n  /{}??/,\n  /{,}??/,\n  /{,1}??/,\n  /{1}??/,\n  /{1,}??/,\n  /{1,2}??/,\n  /{2,1}??/,\n\n  // Compare to\n  /{??/u,\n  /{,??/u,\n  /{,1??/u,\n  /{1??/u,\n  /{1,??/u,\n  /{1,2??/u,\n  /{2,1??/u,\n  /{}??/u,\n  /{,}??/u,\n  /{,1}??/u,\n  /{1}??/u,\n  /{1,}??/u,\n  /{1,2}??/u,\n  /{2,1}??/u,\n];\n",
+      "upstreamFileSha256": "a2cb6b030b991d1fab891515e696495f6d1e61b149ec3fe4f8b0762cf86d4f4f",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 2,
+          "end": 232
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 234,
+          "end": 619
+        }
+      ]
+    },
+    {
+      "id": "compiler/regularExpressionCharacterClassRangeOrder.ts::regularExpressionCharacterClassRangeOrder.ts",
+      "fileName": "regularExpressionCharacterClassRangeOrder.ts",
+      "sourceText": "\n\n// The characters in the following regular expressions are ASCII-lookalike characters found in Unicode, including:\n// - \uD835\uDE08 (U+1D608 Mathematical Sans-Serif Italic Capital A)\n// - \uD835\uDE21 (U+1D621 Mathematical Sans-Serif Italic Capital Z)\n//\n// See https://en.wikipedia.org/wiki/Mathematical_Alphanumeric_Symbols\nconst regexes: RegExp[] = [\n\t/[\uD835\uDE08-\uD835\uDE21][\uD835\uDE21-\uD835\uDE08]/,\n\t/[\uD835\uDE08-\uD835\uDE21][\uD835\uDE21-\uD835\uDE08]/u,\n\t/[\uD835\uDE08-\uD835\uDE21][\uD835\uDE21-\uD835\uDE08]/v,\n\n\t/[\\u{1D608}-\\u{1D621}][\\u{1D621}-\\u{1D608}]/,\n\t/[\\u{1D608}-\\u{1D621}][\\u{1D621}-\\u{1D608}]/u,\n\t/[\\u{1D608}-\\u{1D621}][\\u{1D621}-\\u{1D608}]/v,\n\n\t/[\\uD835\\uDE08-\\uD835\\uDE21][\\uD835\\uDE21-\\uD835\\uDE08]/,\n\t/[\\uD835\\uDE08-\\uD835\\uDE21][\\uD835\\uDE21-\\uD835\\uDE08]/u,\n\t/[\\uD835\\uDE08-\\uD835\\uDE21][\\uD835\\uDE21-\\uD835\\uDE08]/v,\n];\n",
+      "upstreamFileSha256": "69994dc84ecfdc288d87642b2c478eba25e0c27144823d5ae0d9524a5af6d1aa",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 309,
+          "end": 722
+        }
+      ]
+    },
+    {
+      "id": "compiler/regularExpressionExtendedUnicodeEscapes.ts::regularExpressionExtendedUnicodeEscapes.ts",
+      "fileName": "regularExpressionExtendedUnicodeEscapes.ts",
+      "sourceText": "\nconst regexes: RegExp[] = [\n\t/\\u{10000}[\\u{10000}]/,\n\t/\\u{10000}[\\u{10000}]/u,\n\t/\\u{10000}[\\u{10000}]/v,\n];\n",
+      "upstreamFileSha256": "30eabe9a0e8e1fbf8b41e3db4bd7dc494e6b0f684eaf494d02b3d20242954cd5",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 1,
+          "end": 108
+        }
+      ]
+    },
+    {
+      "id": "compiler/regularExpressionGroupNameSuggestions.ts::regularExpressionGroupNameSuggestions.ts",
+      "fileName": "regularExpressionGroupNameSuggestions.ts",
+      "sourceText": "\nconst regex = /(?<foo>)\\k<Foo>/;\n",
+      "upstreamFileSha256": "373b8f6b064a3fc3031d87cecfe5531a7d3ceb52ef19cf2242cadc415be299bc",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 1,
+          "end": 33
+        }
+      ]
+    },
+    {
+      "id": "compiler/satisfiesEmit.ts::satisfiesEmit.ts",
+      "fileName": "satisfiesEmit.ts",
+      "sourceText": "\n\n// This import should not be elided in the emitted JS\nimport a = require(\"foo\");\nconst p = a satisfies bleh;\n",
+      "upstreamFileSha256": "492164df4df5e5107c2cbeb4af69cd591c7f4613a45a5c006f4adc88f12100e8",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ImportEqualsDeclaration",
+          "start": 56,
+          "end": 82
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 83,
+          "end": 110
+        }
+      ]
+    },
+    {
+      "id": "conformance/classes/propertyMemberDeclarations/autoAccessor1.ts::autoAccessor1.ts",
+      "fileName": "autoAccessor1.ts",
+      "sourceText": "\n\n\nclass C1 {\n    accessor a: any;\n    accessor b = 1;\n    static accessor c: any;\n    static accessor d = 2;\n}\n",
+      "upstreamFileSha256": "e54829373c9dbc98492d9ebaa942024931d11f9474cdf81b336d8bd87ddb2a8c",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ClassDeclaration",
+          "start": 3,
+          "end": 111
+        }
+      ]
+    },
+    {
+      "id": "conformance/classes/propertyMemberDeclarations/autoAccessor10.ts::autoAccessor10.ts",
+      "fileName": "autoAccessor10.ts",
+      "sourceText": "\n\nclass C1 {\n    accessor a0 = 1;\n}\n\nclass C2 {\n    #a1_accessor_storage = 1;\n    accessor a1 = 2;\n}\n\nclass C3 {\n    static #a2_accessor_storage = 1;\n    static {\n        class C3_Inner {\n            accessor a2 = 2;\n            static {\n                #a2_accessor_storage in C3;\n            }\n        }\n    }\n}\n\nclass C4_1 {\n    static accessor a3 = 1;\n}\n\nclass C4_2 {\n    static accessor a3 = 1;\n}",
+      "upstreamFileSha256": "978987b6b52a22d575c0333fb8bee1d58202adfd903269135de01977e9dc0ea0",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ClassDeclaration",
+          "start": 2,
+          "end": 35
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 37,
+          "end": 100
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 102,
+          "end": 313
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 315,
+          "end": 357
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 359,
+          "end": 401
+        }
+      ]
+    },
+    {
+      "id": "conformance/classes/propertyMemberDeclarations/autoAccessor11.ts::autoAccessor11.ts",
+      "fileName": "autoAccessor11.ts",
+      "sourceText": "\n\n\nclass C {\n    accessor\n    a\n\n    static accessor\n    b\n\n    static\n    accessor\n    c\n\n    accessor accessor\n    d;\n}\n",
+      "upstreamFileSha256": "6b2d05dc236073ce1e57fc5f26f30f0582a352c4d634452bc81e562e75beaa2b",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ClassDeclaration",
+          "start": 3,
+          "end": 121
+        }
+      ]
+    },
+    {
+      "id": "conformance/classes/propertyMemberDeclarations/autoAccessor2.ts::autoAccessor2.ts",
+      "fileName": "autoAccessor2.ts",
+      "sourceText": "\n\nclass C1 {\n    accessor #a: any;\n    accessor #b = 1;\n    static accessor #c: any;\n    static accessor #d = 2;\n\n    constructor() {\n        this.#a = 3;\n        this.#b = 4;\n    }\n\n    static {\n        this.#c = 5;\n        this.#d = 6;\n    }\n}\n",
+      "upstreamFileSha256": "27a8ea879658c709ea4b11e7bcd574a4d7fb2576cdb149400032acc7450d123b",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ClassDeclaration",
+          "start": 2,
+          "end": 245
+        }
+      ]
+    },
+    {
+      "id": "conformance/expressions/optionalChaining/callChain/callChain.2.ts::callChain.2.ts",
+      "fileName": "callChain.2.ts",
+      "sourceText": "\n\n\ndeclare const o1: undefined | (() => number);\no1?.();\n\ndeclare const o2: undefined | { b: () => number };\no2?.b();\n\ndeclare const o3: { b: (() => { c: string }) | undefined };\no3.b?.().c;\n",
+      "upstreamFileSha256": "0a4182c6466ece249f89be1078653362bcffca5afa98f9218acaa95622fc53c4",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 3,
+          "end": 48
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 49,
+          "end": 56
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 58,
+          "end": 108
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 109,
+          "end": 117
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 119,
+          "end": 178
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 179,
+          "end": 190
+        }
+      ]
+    },
+    {
+      "id": "conformance/expressions/optionalChaining/callChain/callChain.3.ts::callChain.3.ts",
+      "fileName": "callChain.3.ts",
+      "sourceText": "\n\n\ndeclare function absorb<T>(): T;\ndeclare const a: { m?<T>(obj: {x: T}): T } | undefined;\nconst n1: number = a?.m?.({x: 12 }); // should be an error (`undefined` is not assignable to `number`)\nconst n2: number = a?.m?.({x: absorb()}); // likewise\nconst n3: number | undefined = a?.m?.({x: 12}); // should be ok\nconst n4: number | undefined = a?.m?.({x: absorb()}); // likewise\n\n// Also a test showing `!` vs `?` for good measure\nlet t1 = a?.m?.({x: 12});\nt1 = a!.m!({x: 12});",
+      "upstreamFileSha256": "fc83d88538c09f5040913232490873fe8780a1907df576dddd3efab69fa8e675",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "FunctionDeclaration",
+          "start": 3,
+          "end": 35
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 36,
+          "end": 91
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 92,
+          "end": 128
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 195,
+          "end": 236
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 249,
+          "end": 296
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 313,
+          "end": 366
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 431,
+          "end": 456
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 457,
+          "end": 477
+        }
+      ]
+    },
+    {
+      "id": "conformance/expressions/optionalChaining/callChain/callChain.ts::callChain.ts",
+      "fileName": "callChain.ts",
+      "sourceText": "\n\n\ndeclare const o1: undefined | ((...args: any[]) => number);\no1?.();\no1?.(1);\no1?.(...[1, 2]);\no1?.(1, ...[2, 3], 4);\n\ndeclare const o2: undefined | { b: (...args: any[]) => number };\no2?.b();\no2?.b(1);\no2?.b(...[1, 2]);\no2?.b(1, ...[2, 3], 4);\no2?.[\"b\"]();\no2?.[\"b\"](1);\no2?.[\"b\"](...[1, 2]);\no2?.[\"b\"](1, ...[2, 3], 4);\n\ndeclare const o3: { b: ((...args: any[]) => { c: string }) | undefined };\no3.b?.().c;\no3.b?.(1).c;\no3.b?.(...[1, 2]).c;\no3.b?.(1, ...[2, 3], 4).c;\no3.b?.()[\"c\"];\no3.b?.(1)[\"c\"];\no3.b?.(...[1, 2])[\"c\"];\no3.b?.(1, ...[2, 3], 4)[\"c\"];\no3[\"b\"]?.().c;\no3[\"b\"]?.(1).c;\no3[\"b\"]?.(...[1, 2]).c;\no3[\"b\"]?.(1, ...[2, 3], 4).c;\n\ndeclare const o4: undefined | (<T>(f: (a: T) => T) => T);\ndeclare function incr(x: number): number;\nconst v: number | undefined = o4?.(incr);\n\n// GH#33744\ndeclare const o5: <T>() => undefined | (() => void);\no5<number>()?.();\n\n// GH#36031\no2?.b()!.toString;\no2?.b()!.toString!;",
+      "upstreamFileSha256": "32ed29571cb00c918efdff1cbf03f00b2ab56861d27970a5573816dd74b66553",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 3,
+          "end": 62
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 63,
+          "end": 70
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 71,
+          "end": 79
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 80,
+          "end": 96
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 97,
+          "end": 119
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 121,
+          "end": 185
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 186,
+          "end": 194
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 195,
+          "end": 204
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 205,
+          "end": 222
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 223,
+          "end": 246
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 247,
+          "end": 259
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 260,
+          "end": 273
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 274,
+          "end": 295
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 296,
+          "end": 323
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 325,
+          "end": 398
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 399,
+          "end": 410
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 411,
+          "end": 423
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 424,
+          "end": 444
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 445,
+          "end": 471
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 472,
+          "end": 486
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 487,
+          "end": 502
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 503,
+          "end": 526
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 527,
+          "end": 556
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 557,
+          "end": 571
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 572,
+          "end": 587
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 588,
+          "end": 611
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 612,
+          "end": 641
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 643,
+          "end": 700
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 701,
+          "end": 742
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 743,
+          "end": 784
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 798,
+          "end": 850
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 851,
+          "end": 868
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 882,
+          "end": 900
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 901,
+          "end": 920
+        }
+      ]
+    },
+    {
+      "id": "conformance/expressions/optionalChaining/callChain/callChainInference.ts::callChainInference.ts",
+      "fileName": "callChainInference.ts",
+      "sourceText": "\n\n\n// Repro from #42404\n\ninterface Y {\n    foo<T>(this: T, arg: keyof T): void;\n    a: number;\n    b: string;\n}\n\ndeclare const value: Y | undefined;\n\nif (value) {\n    value?.foo(\"a\");\n}\n\nvalue?.foo(\"a\");\n",
+      "upstreamFileSha256": "d0651bbe4ce215ac12a6366787dff3df3a468ff1628443c737bfd3f19997e0da",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "InterfaceDeclaration",
+          "start": 25,
+          "end": 111
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 113,
+          "end": 148
+        },
+        {
+          "kind": "IfStatement",
+          "start": 150,
+          "end": 185
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 187,
+          "end": 203
+        }
+      ]
+    },
+    {
+      "id": "conformance/externalModules/exportTypeMergedWithExportStarAsNamespace.ts::usage.ts",
+      "fileName": "usage.ts",
+      "sourceText": "import { Something } from \"./prelude\"\nexport const myValue: Something<string> = Something.of(\"abc\")\nexport type MyType = Something.SubType<string>\n",
+      "upstreamFileSha256": "4fdd4de7bbb09203f6c65ec189fb3fb2ad03dee8b7127f097e6e2b1111836550",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ImportDeclaration",
+          "start": 0,
+          "end": 37
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 38,
+          "end": 99
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 100,
+          "end": 146
+        }
+      ]
+    },
+    {
+      "id": "conformance/externalModules/exportTypeMergedWithExportStarAsNamespace.ts::Something.ts",
+      "fileName": "Something.ts",
+      "sourceText": "export type Something<A> = { value: A }\nexport type SubType<A> = { value: A }\nexport declare function of<A>(value: A): Something<A>\n",
+      "upstreamFileSha256": "4fdd4de7bbb09203f6c65ec189fb3fb2ad03dee8b7127f097e6e2b1111836550",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 0,
+          "end": 39
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 40,
+          "end": 77
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 78,
+          "end": 131
+        }
+      ]
+    },
+    {
+      "id": "conformance/externalModules/exportTypeMergedWithExportStarAsNamespace.ts::prelude.ts",
+      "fileName": "prelude.ts",
+      "sourceText": "import * as S from \"./Something\"\nexport * as Something from \"./Something\"\nexport type Something<A> = S.Something<A>\n",
+      "upstreamFileSha256": "4fdd4de7bbb09203f6c65ec189fb3fb2ad03dee8b7127f097e6e2b1111836550",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ImportDeclaration",
+          "start": 0,
+          "end": 32
+        },
+        {
+          "kind": "ExportDeclaration",
+          "start": 33,
+          "end": 73
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 74,
+          "end": 115
+        }
+      ]
+    },
+    {
+      "id": "conformance/importAttributes/importAttributes1.ts::0.ts",
+      "fileName": "0.ts",
+      "sourceText": "export const a = 1;\nexport const b = 2;\n",
+      "upstreamFileSha256": "89b10a0ff9719d29c65d8a200ea98e09ab53d2729fea94deaccfd510bcbc732f",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 0,
+          "end": 19
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 20,
+          "end": 39
+        }
+      ]
+    },
+    {
+      "id": "conformance/importAttributes/importAttributes1.ts::1.ts",
+      "fileName": "1.ts",
+      "sourceText": "import './0' with { type: \"json\" }\nimport { a, b } from './0' with { \"type\": \"json\" }\nimport * as foo from './0' with { type: \"json\" }\na;\nb;\nfoo.a;\nfoo.b;",
+      "upstreamFileSha256": "89b10a0ff9719d29c65d8a200ea98e09ab53d2729fea94deaccfd510bcbc732f",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ImportDeclaration",
+          "start": 0,
+          "end": 34
+        },
+        {
+          "kind": "ImportDeclaration",
+          "start": 35,
+          "end": 85
+        },
+        {
+          "kind": "ImportDeclaration",
+          "start": 86,
+          "end": 134
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 135,
+          "end": 137
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 138,
+          "end": 140
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 141,
+          "end": 147
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 148,
+          "end": 154
+        }
+      ]
+    },
+    {
+      "id": "conformance/importAttributes/importAttributes1.ts::2.ts",
+      "fileName": "2.ts",
+      "sourceText": "import { a, b } from './0' with {}\nimport { a as c, b as d } from './0' with { a: \"a\", b: \"b\", c: \"c\" }\na;\nb;\nc;\nd;",
+      "upstreamFileSha256": "89b10a0ff9719d29c65d8a200ea98e09ab53d2729fea94deaccfd510bcbc732f",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ImportDeclaration",
+          "start": 0,
+          "end": 34
+        },
+        {
+          "kind": "ImportDeclaration",
+          "start": 35,
+          "end": 103
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 104,
+          "end": 106
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 107,
+          "end": 109
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 110,
+          "end": 112
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 113,
+          "end": 115
+        }
+      ]
+    },
+    {
+      "id": "conformance/importAttributes/importAttributes1.ts::3.ts",
+      "fileName": "3.ts",
+      "sourceText": "const a = import('./0')\nconst b = import('./0', { with: { type: \"json\" } })\nconst c = import('./0', { with: { type: \"json\", ttype: \"typo\" } })\nconst d = import('./0', { with: {} })\nconst dd = import('./0', {})\ndeclare function foo(): any;\nconst e = import('./0', foo())\nconst f = import()\nconst g = import('./0', {}, {})\nconst h = import('./0', { with: { type: \"json\" }},)\n",
+      "upstreamFileSha256": "89b10a0ff9719d29c65d8a200ea98e09ab53d2729fea94deaccfd510bcbc732f",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 0,
+          "end": 23
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 24,
+          "end": 75
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 76,
+          "end": 142
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 143,
+          "end": 180
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 181,
+          "end": 209
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 210,
+          "end": 238
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 239,
+          "end": 269
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 270,
+          "end": 288
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 289,
+          "end": 320
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 321,
+          "end": 372
+        }
+      ]
+    },
+    {
+      "id": "conformance/importAttributes/importAttributes10.ts::./b.ts",
+      "fileName": "./b.ts",
+      "sourceText": "declare global {\n    interface ImportAttributes {\n        type: \"json\"\n    }\n}\n\nexport type Test1 = typeof import(\"./a.json\", {\n  with: {\n    type: \"json\"\n  },\n});\n\nexport type Test2 = typeof import(\"./a.json\", {\n  with: {\n    type: \"json\",\n  }\n});\n\nexport type Test3 = typeof import(\"./a.json\", {\n  with: {\n    type: \"json\"\n  },,\n});\n\nexport type Test4 = typeof import(\"./a.json\", {\n  with: {\n    type: \"json\",,\n  }\n});\n",
+      "upstreamFileSha256": "d7a496a8b93344497a7326d0440397c5588bf5eb5aa207868b8526b3c4db9c3a",
+      "diagnostics": [
+        {
+          "code": 1005,
+          "start": 329,
+          "length": 1
+        },
+        {
+          "code": 1128,
+          "start": 331,
+          "length": 1
+        },
+        {
+          "code": 1128,
+          "start": 332,
+          "length": 1
+        },
+        {
+          "code": 1478,
+          "start": 411,
+          "length": 1
+        }
+      ],
+      "statements": [
+        {
+          "kind": "ModuleDeclaration",
+          "start": 0,
+          "end": 78
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 80,
+          "end": 163
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 165,
+          "end": 248
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 250,
+          "end": 329
+        },
+        {
+          "kind": "EmptyStatement",
+          "start": 333,
+          "end": 334
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 336,
+          "end": 420
+        }
+      ]
+    },
+    {
+      "id": "conformance/importAttributes/importAttributes11.ts::importAttributes11.ts",
+      "fileName": "importAttributes11.ts",
+      "sourceText": "\n\n\n\n\n\n// https://github.com/microsoft/TypeScript/issues/62590\n",
+      "upstreamFileSha256": "7f14f64002c687d85214ba5ebd079813fbaca3c98479d23c9b2b459f7a53fa0a",
+      "diagnostics": [],
+      "statements": []
+    },
+    {
+      "id": "conformance/importAttributes/importAttributes2.ts::0.ts",
+      "fileName": "0.ts",
+      "sourceText": "export const a = 1;\nexport const b = 2;\n",
+      "upstreamFileSha256": "c4a05254128b0195622525d95d94d5ce77978b9dfebad3ee766e44f6f1c4ee7e",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 0,
+          "end": 19
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 20,
+          "end": 39
+        }
+      ]
+    },
+    {
+      "id": "conformance/importAttributes/importAttributes2.ts::1.ts",
+      "fileName": "1.ts",
+      "sourceText": "export {} from './0' with { type: \"json\" }\nexport { a, b } from './0' with { type: \"json\" }\nexport * from './0' with { type: \"json\" }\nexport * as ns from './0' with { type: \"json\" }\n",
+      "upstreamFileSha256": "c4a05254128b0195622525d95d94d5ce77978b9dfebad3ee766e44f6f1c4ee7e",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ExportDeclaration",
+          "start": 0,
+          "end": 42
+        },
+        {
+          "kind": "ExportDeclaration",
+          "start": 43,
+          "end": 91
+        },
+        {
+          "kind": "ExportDeclaration",
+          "start": 92,
+          "end": 133
+        },
+        {
+          "kind": "ExportDeclaration",
+          "start": 134,
+          "end": 181
+        }
+      ]
+    },
+    {
+      "id": "conformance/importAttributes/importAttributes2.ts::2.ts",
+      "fileName": "2.ts",
+      "sourceText": "export { a, b } from './0' with {}\nexport { a as c, b as d } from './0' with { a: \"a\", b: \"b\", c: \"c\" }\n",
+      "upstreamFileSha256": "c4a05254128b0195622525d95d94d5ce77978b9dfebad3ee766e44f6f1c4ee7e",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ExportDeclaration",
+          "start": 0,
+          "end": 34
+        },
+        {
+          "kind": "ExportDeclaration",
+          "start": 35,
+          "end": 103
+        }
+      ]
+    },
+    {
+      "id": "conformance/importDefer/dynamicImportDefer.ts::a.ts",
+      "fileName": "a.ts",
+      "sourceText": "export function foo() {\n  console.log(\"foo from a\");\n}\n",
+      "upstreamFileSha256": "344bd9d793c600cfc5e29f5d1f1f4ebf79c972f1c5c2f35b68469df930994ace",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "FunctionDeclaration",
+          "start": 0,
+          "end": 54
+        }
+      ]
+    },
+    {
+      "id": "conformance/importDefer/dynamicImportDefer.ts::b.ts",
+      "fileName": "b.ts",
+      "sourceText": "import.defer(\"./a.js\").then(ns => {\n  ns.foo();\n});\n",
+      "upstreamFileSha256": "344bd9d793c600cfc5e29f5d1f1f4ebf79c972f1c5c2f35b68469df930994ace",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ExpressionStatement",
+          "start": 0,
+          "end": 51
+        }
+      ]
+    },
+    {
+      "id": "conformance/importDefer/dynamicImportDeferInvalidStandalone.ts::b.ts",
+      "fileName": "b.ts",
+      "sourceText": "import.defer;\n\n(import.defer)(\"a\");\n\nFunction(import.defer);\n\nimport.defer",
+      "upstreamFileSha256": "fdf755591d8eba6bef6cb7acf76efda60a19ac041e29b6032c36820f9e27aceb",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ExpressionStatement",
+          "start": 0,
+          "end": 13
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 15,
+          "end": 35
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 37,
+          "end": 60
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 62,
+          "end": 74
+        }
+      ]
+    },
+    {
+      "id": "conformance/importDefer/exportDeferInvalid.ts::a.ts",
+      "fileName": "a.ts",
+      "sourceText": "export function foo() {\n  console.log(\"foo from a\");\n}\n",
+      "upstreamFileSha256": "1ac7b17de39428118045fbfaa0c935e6dde230fed97819e189670209f03eb5dd",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "FunctionDeclaration",
+          "start": 0,
+          "end": 54
+        }
+      ]
+    },
+    {
+      "id": "conformance/importDefer/exportDeferInvalid.ts::b.ts",
+      "fileName": "b.ts",
+      "sourceText": "export defer * as ns from \"a\";\n",
+      "upstreamFileSha256": "1ac7b17de39428118045fbfaa0c935e6dde230fed97819e189670209f03eb5dd",
+      "diagnostics": [
+        {
+          "code": 1128,
+          "start": 0,
+          "length": 6
+        },
+        {
+          "code": 1005,
+          "start": 18,
+          "length": 2
+        },
+        {
+          "code": 1434,
+          "start": 21,
+          "length": 4
+        }
+      ],
+      "statements": [
+        {
+          "kind": "ExpressionStatement",
+          "start": 7,
+          "end": 17
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 18,
+          "end": 20
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 21,
+          "end": 25
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 26,
+          "end": 30
+        }
+      ]
+    },
+    {
+      "id": "conformance/importDefer/importBindingDefer.ts::a.ts",
+      "fileName": "a.ts",
+      "sourceText": "export default 2;\n",
+      "upstreamFileSha256": "0867b5131da970c5645b66879bd162a30b2bef21a6bceefe0c2773ae0e323cdb",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ExportAssignment",
+          "start": 0,
+          "end": 17
+        }
+      ]
+    },
+    {
+      "id": "conformance/importDefer/importBindingDefer.ts::b.ts",
+      "fileName": "b.ts",
+      "sourceText": "import defer from \"./a.js\";\n",
+      "upstreamFileSha256": "0867b5131da970c5645b66879bd162a30b2bef21a6bceefe0c2773ae0e323cdb",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ImportDeclaration",
+          "start": 0,
+          "end": 27
+        }
+      ]
+    },
+    {
+      "id": "conformance/statements/VariableStatements/usingDeclarations/awaitUsingDeclarations.1.ts::awaitUsingDeclarations.1.ts",
+      "fileName": "awaitUsingDeclarations.1.ts",
+      "sourceText": "\n\n\n\n\n\nawait using d1 = { async [Symbol.asyncDispose]() {} };\n\nasync function af() {\n    await using d3 = { async [Symbol.asyncDispose]() {} };\n    await null;\n}\n\nasync function * ag() {\n    await using d5 = { async [Symbol.asyncDispose]() {} };\n    yield;\n    await null;\n}\n\nconst a = async () => {\n    await using d6 = { async [Symbol.asyncDispose]() {} };\n};\n\nclass C1 {\n    a = async () => {\n        await using d7 = { async [Symbol.asyncDispose]() {} };\n    };\n\n    async am() {\n        await using d13 = { async [Symbol.asyncDispose]() {} };\n        await null;\n    }\n\n    async * ag() {\n        await using d15 = { async [Symbol.asyncDispose]() {} };\n        yield;\n        await null;\n    }\n}\n\n{\n    await using d19 = { async [Symbol.asyncDispose]() {} };\n}\n\nswitch (Math.random()) {\n    case 0: {\n        await using d20 = { async [Symbol.asyncDispose]() {} };\n        break;\n    }\n\n    case 1: {\n        await using d21 = { async [Symbol.asyncDispose]() {} };\n        break;\n    }\n\n    default: {\n        await using d22 = { async [Symbol.asyncDispose]() {} };\n    }\n}\n\nif (true)\n    switch (0) {\n        case 0: {\n            await using d23 = { async [Symbol.asyncDispose]() {} };\n            break;\n        }\n\n        default: {\n            await using d24 = { async [Symbol.asyncDispose]() {} };\n        }\n    }\n\ntry {\n    await using d25 = { async [Symbol.asyncDispose]() {} };\n}\ncatch {\n    await using d26 = { async [Symbol.asyncDispose]() {} };\n}\nfinally {\n    await using d27 = { async [Symbol.asyncDispose]() {} };\n}\n\nif (true) {\n    await using d28 = { async [Symbol.asyncDispose]() {} };\n}\nelse {\n    await using d29 = { async [Symbol.asyncDispose]() {} };\n}\n\nwhile (true) {\n    await using d30 = { async [Symbol.asyncDispose]() {} };\n    break;\n}\n\ndo {\n    await using d31 = { async [Symbol.asyncDispose]() {} };\n    break;\n}\nwhile (true);\n\nfor (;;) {\n    await using d32 = { async [Symbol.asyncDispose]() {} };\n    break;\n}\n\nfor (const x in {}) {\n    await using d33 = { async [Symbol.asyncDispose]() {} };\n}\n\nfor (const x of []) {\n    await using d34 = { async [Symbol.asyncDispose]() {} };\n}\n\nexport {};",
+      "upstreamFileSha256": "3d31dceb8b2800249945dec70a1bf81afeb3b9474294adf2ed688d1e2864cfd6",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 6,
+          "end": 60
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 62,
+          "end": 160
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 162,
+          "end": 273
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 275,
+          "end": 360
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 362,
+          "end": 699
+        },
+        {
+          "kind": "Block",
+          "start": 701,
+          "end": 764
+        },
+        {
+          "kind": "SwitchStatement",
+          "start": 766,
+          "end": 1077
+        },
+        {
+          "kind": "IfStatement",
+          "start": 1079,
+          "end": 1324
+        },
+        {
+          "kind": "TryStatement",
+          "start": 1326,
+          "end": 1535
+        },
+        {
+          "kind": "IfStatement",
+          "start": 1537,
+          "end": 1679
+        },
+        {
+          "kind": "WhileStatement",
+          "start": 1681,
+          "end": 1768
+        },
+        {
+          "kind": "DoStatement",
+          "start": 1770,
+          "end": 1861
+        },
+        {
+          "kind": "ForStatement",
+          "start": 1863,
+          "end": 1946
+        },
+        {
+          "kind": "ForInStatement",
+          "start": 1948,
+          "end": 2031
+        },
+        {
+          "kind": "ForOfStatement",
+          "start": 2033,
+          "end": 2116
+        },
+        {
+          "kind": "ExportDeclaration",
+          "start": 2118,
+          "end": 2128
+        }
+      ]
+    },
+    {
+      "id": "conformance/statements/VariableStatements/usingDeclarations/awaitUsingDeclarations.10.ts::awaitUsingDeclarations.10.ts",
+      "fileName": "awaitUsingDeclarations.10.ts",
+      "sourceText": "\n\n\n\n\n\nexport {};\n\ndeclare var x: any;\nasync function f() {\n    if (x) await using a = null;\n}",
+      "upstreamFileSha256": "17b6021b134662bca5499673620db8cbfba91f49a27f8969c14d5a403fbba1b0",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "ExportDeclaration",
+          "start": 6,
+          "end": 16
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 18,
+          "end": 37
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 38,
+          "end": 93
+        }
+      ]
+    },
+    {
+      "id": "conformance/statements/VariableStatements/usingDeclarations/awaitUsingDeclarations.11.ts::awaitUsingDeclarations.11.ts",
+      "fileName": "awaitUsingDeclarations.11.ts",
+      "sourceText": "\n\n\n\n\n\nexport await using x = null;\ndeclare await using y: null;\n",
+      "upstreamFileSha256": "7c625d63686ceed28df501241e822103f1a45036eda4b051e2750c2e2a7f13d3",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 6,
+          "end": 34
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 35,
+          "end": 63
+        }
+      ]
+    },
+    {
+      "id": "conformance/statements/VariableStatements/usingDeclarations/awaitUsingDeclarations.12.ts::awaitUsingDeclarations.12.ts",
+      "fileName": "awaitUsingDeclarations.12.ts",
+      "sourceText": "\n\n\n\n\n\nasync function f() {\n    await using x = {};\n}",
+      "upstreamFileSha256": "eb2c52f5681a09c8dbb09dac244bb47c4721850c174eb87f5fe66007d70a061c",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "FunctionDeclaration",
+          "start": 6,
+          "end": 52
+        }
+      ]
+    },
+    {
+      "id": "conformance/statements/VariableStatements/usingDeclarations/usingDeclarations.1.ts::usingDeclarations.1.ts",
+      "fileName": "usingDeclarations.1.ts",
+      "sourceText": "\n\n\n\n\n\nusing d1 = { [Symbol.dispose]() {} };\n\nfunction f() {\n    using d2 = { [Symbol.dispose]() {} };\n}\n\nasync function af() {\n    using d3 = { [Symbol.dispose]() {} };\n    await null;\n}\n\nfunction * g() {\n    using d4 = { [Symbol.dispose]() {} };\n    yield;\n}\n\nasync function * ag() {\n    using d5 = { [Symbol.dispose]() {} };\n    yield;\n    await null;\n}\n\nconst a = () => {\n    using d6 = { [Symbol.dispose]() {} };\n}\n\nclass C1 {\n    a = () => {\n        using d7 = { [Symbol.dispose]() {} };\n    }\n\n    constructor() {\n        using d8 = { [Symbol.dispose]() {} };\n    }\n\n    static {\n        using d9 = { [Symbol.dispose]() {} };\n    }\n\n    m() {\n        using d10 = { [Symbol.dispose]() {} };\n    }\n\n    get x() {\n        using d11 = { [Symbol.dispose]() {} };\n        return 0;\n    }\n\n    set x(v) {\n        using d12 = { [Symbol.dispose]() {} };\n    }\n\n    async am() {\n        using d13 = { [Symbol.dispose]() {} };\n        await null;\n    }\n\n    * g() {\n        using d14 = { [Symbol.dispose]() {} };\n        yield;\n    }\n\n    async * ag() {\n        using d15 = { [Symbol.dispose]() {} };\n        yield;\n        await null;\n    }\n}\n\nclass C2 extends C1 {\n    constructor() {\n        using d16 = { [Symbol.dispose]() {} };\n        super();\n    }\n}\n\nclass C3 extends C1 {\n    y = 1;\n    constructor() {\n        using d17 = { [Symbol.dispose]() {} };\n        super();\n    }\n}\n\nnamespace N {\n    using d18 = { [Symbol.dispose]() {} };\n}\n\n{\n    using d19 = { [Symbol.dispose]() {} };\n}\n\nswitch (Math.random()) {\n    case 0: {\n        using d20 = { [Symbol.dispose]() {} };\n        break;\n    }\n\n    case 1: {\n        using d21 = { [Symbol.dispose]() {} };\n        break;\n    }\n\n    default: {\n        using d22 = { [Symbol.dispose]() {} };\n    }\n}\n\nif (true)\n    switch (0) {\n        case 0: {\n            using d23 = { [Symbol.dispose]() {} };\n            break;\n        }\n\n        default: {\n            using d24 = { [Symbol.dispose]() {} };\n        }\n    }\n\ntry {\n    using d25 = { [Symbol.dispose]() {} };\n}\ncatch {\n    using d26 = { [Symbol.dispose]() {} };\n}\nfinally {\n    using d27 = { [Symbol.dispose]() {} };\n}\n\nif (true) {\n    using d28 = { [Symbol.dispose]() {} };\n}\nelse {\n    using d29 = { [Symbol.dispose]() {} };\n}\n\nwhile (true) {\n    using d30 = { [Symbol.dispose]() {} };\n    break;\n}\n\ndo {\n    using d31 = { [Symbol.dispose]() {} };\n    break;\n}\nwhile (true);\n\nfor (;;) {\n    using d32 = { [Symbol.dispose]() {} };\n    break;\n}\n\nfor (const x in {}) {\n    using d33 = { [Symbol.dispose]() {} };\n}\n\nfor (const x of []) {\n    using d34 = { [Symbol.dispose]() {} };\n}\n\nexport {};",
+      "upstreamFileSha256": "bfdd3cf7cf40df0fe50ec1c42034c2e0778937963d3ca06f61bd098ca2832a6b",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 6,
+          "end": 43
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 45,
+          "end": 103
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 105,
+          "end": 186
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 188,
+          "end": 259
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 261,
+          "end": 355
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 357,
+          "end": 418
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 420,
+          "end": 1138
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 1140,
+          "end": 1253
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 1255,
+          "end": 1379
+        },
+        {
+          "kind": "ModuleDeclaration",
+          "start": 1381,
+          "end": 1439
+        },
+        {
+          "kind": "Block",
+          "start": 1441,
+          "end": 1487
+        },
+        {
+          "kind": "SwitchStatement",
+          "start": 1489,
+          "end": 1749
+        },
+        {
+          "kind": "IfStatement",
+          "start": 1751,
+          "end": 1962
+        },
+        {
+          "kind": "TryStatement",
+          "start": 1964,
+          "end": 2122
+        },
+        {
+          "kind": "IfStatement",
+          "start": 2124,
+          "end": 2232
+        },
+        {
+          "kind": "WhileStatement",
+          "start": 2234,
+          "end": 2304
+        },
+        {
+          "kind": "DoStatement",
+          "start": 2306,
+          "end": 2380
+        },
+        {
+          "kind": "ForStatement",
+          "start": 2382,
+          "end": 2448
+        },
+        {
+          "kind": "ForInStatement",
+          "start": 2450,
+          "end": 2516
+        },
+        {
+          "kind": "ForOfStatement",
+          "start": 2518,
+          "end": 2584
+        },
+        {
+          "kind": "ExportDeclaration",
+          "start": 2586,
+          "end": 2596
+        }
+      ]
+    },
+    {
+      "id": "conformance/statements/VariableStatements/usingDeclarations/usingDeclarations.2.ts::usingDeclarations.2.ts",
+      "fileName": "usingDeclarations.2.ts",
+      "sourceText": "\n\n\n\n\n{\n    using d1 = { [Symbol.dispose]() {} },\n          d2 = { [Symbol.dispose]() {} };\n}\n",
+      "upstreamFileSha256": "8aebf8a84b7203e3a0066ec123e306dceb7f7c0de65744b278244747fd8d0fdc",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "Block",
+          "start": 5,
+          "end": 92
+        }
+      ]
+    },
+    {
+      "id": "conformance/statements/VariableStatements/usingDeclarations/usingDeclarations.3.ts::usingDeclarations.3.ts",
+      "fileName": "usingDeclarations.3.ts",
+      "sourceText": "\n\n\n\n\n\n{\n    using d1 = { [Symbol.dispose]() {} },\n          d2 = null,\n          d3 = undefined,\n          d4 = { [Symbol.dispose]() {} };\n}\n",
+      "upstreamFileSha256": "88b52383e96729ee3eb3e30a61097ff36a261419b0cb0b6dd62f83561b494c2e",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "Block",
+          "start": 6,
+          "end": 140
+        }
+      ]
+    },
+    {
+      "id": "conformance/statements/VariableStatements/usingDeclarations/usingDeclarations.4.ts::usingDeclarations.4.ts",
+      "fileName": "usingDeclarations.4.ts",
+      "sourceText": "\n\n\n\n\n{\n    using [a] = null;\n}",
+      "upstreamFileSha256": "8704a98dbf59eb5f8e97a1433ea44c02ef1edad8bd53798561470b4619bebe55",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "Block",
+          "start": 5,
+          "end": 30
+        }
+      ]
+    },
+    {
+      "id": "conformance/types/literal/templateLiteralTypes1.ts::templateLiteralTypes1.ts",
+      "fileName": "templateLiteralTypes1.ts",
+      "sourceText": "\n\n\n\n// Template types example from #12754\n\nconst createScopedActionType = <S extends string>(scope: S) => <T extends string>(type: T) => `${scope}/${type}` as `${S}/${T}`;\nconst createActionInMyScope = createScopedActionType(\"MyScope\");  // <T extends string>(type: T) => `MyScope/${T}`\nconst MY_ACTION = createActionInMyScope(\"MY_ACTION\");  // 'MyScope/MY_ACTION'\n\n// Union types are distributed over template types\n\ntype EventName<S extends string> = `${S}Changed`;\ntype EN1 = EventName<'Foo' | 'Bar' | 'Baz'>;\ntype Loc = `${'top' | 'middle' | 'bottom'}-${'left' | 'center' | 'right'}`;\n\n// Primitive literal types can be spread into templates\n\ntype ToString<T extends string | number | boolean | bigint> = `${T}`;\ntype TS1 = ToString<'abc' | 42 | true | -1234n>;\n\n// Nested template literal type normalization\n\ntype TL1<T extends string> = `a${T}b${T}c`;\ntype TL2<U extends string> = TL1<`x${U}y`>;  // `ax${U}ybx{$U}yc`\ntype TL3 = TL2<'o'>;  // 'axoybxoyc'\n\n// Casing intrinsics\n\ntype Cases<T extends string> = `${Uppercase<T>} ${Lowercase<T>} ${Capitalize<T>} ${Uncapitalize<T>}`;\n\ntype TCA1 = Cases<'bar'>;  // 'BAR bar Bar bar'\ntype TCA2 = Cases<'BAR'>;  // 'BAR bar BAR bAR'\n\n// Assignability\n\nfunction test<T extends 'foo' | 'bar'>(name: `get${Capitalize<T>}`) {\n    let s1: string = name;\n    let s2: 'getFoo' | 'getBar' = name;\n}\n\nfunction fa1<T>(x: T, y: { [P in keyof T]: T[P] }, z: { [P in keyof T & string as `p_${P}`]: T[P] }) {\n    y = x;\n    z = x;  // Error\n}\n\nfunction fa2<T, U extends T, A extends string, B extends A>(x: { [P in B as `p_${P}`]: T }, y: { [Q in A as `p_${Q}`]: U }) {\n    x = y;\n    y = x;  // Error\n}\n\n// String transformations using recursive conditional types\n\ntype Join<T extends unknown[], D extends string> =\n    T extends [] ? '' :\n    T extends [string | number | boolean | bigint] ? `${T[0]}` :\n    T extends [string | number | boolean | bigint, ...infer U] ? `${T[0]}${D}${Join<U, D>}` :\n    string;\n\ntype TJ1 = Join<[1, 2, 3, 4], '.'>\ntype TJ2 = Join<['foo', 'bar', 'baz'], '-'>;\ntype TJ3 = Join<[], '.'>\n\n// Inference based on delimiters\n\ntype MatchPair<S extends string> = S extends `[${infer A},${infer B}]` ? [A, B] : unknown;\n\ntype T20 = MatchPair<'[1,2]'>;  // ['1', '2']\ntype T21 = MatchPair<'[foo,bar]'>;  // ['foo', 'bar']\ntype T22 = MatchPair<' [1,2]'>;  // unknown\ntype T23 = MatchPair<'[123]'>;  // unknown\ntype T24 = MatchPair<'[1,2,3,4]'>;  // ['1', '2,3,4']\n\ntype SnakeToCamelCase<S extends string> =\n    S extends `${infer T}_${infer U}` ? `${Lowercase<T>}${SnakeToPascalCase<U>}` :\n    S extends `${infer T}` ? `${Lowercase<T>}` :\n    SnakeToPascalCase<S>;\n\ntype SnakeToPascalCase<S extends string> =\n    string extends S ? string :\n    S extends `${infer T}_${infer U}` ? `${Capitalize<Lowercase<T>>}${SnakeToPascalCase<U>}` :\n    S extends `${infer T}` ? `${Capitalize<Lowercase<T>>}` :\n    never;\n\ntype RR0 = SnakeToPascalCase<'hello_world_foo'>;  // 'HelloWorldFoo'\ntype RR1 = SnakeToPascalCase<'FOO_BAR_BAZ'>;  // 'FooBarBaz'\ntype RR2 = SnakeToCamelCase<'hello_world_foo'>;  // 'helloWorldFoo'\ntype RR3 = SnakeToCamelCase<'FOO_BAR_BAZ'>;  // 'fooBarBaz'\n\n// Single character inference\n\ntype FirstTwoAndRest<S extends string> = S extends `${infer A}${infer B}${infer R}` ? [`${A}${B}`, R] : unknown;\n\ntype T25 = FirstTwoAndRest<'abcde'>;  // ['ab', 'cde']\ntype T26 = FirstTwoAndRest<'ab'>;  // ['ab', '']\ntype T27 = FirstTwoAndRest<'a'>;  // unknown\n\ntype HexDigit = '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' |'8' | '9' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'a' | 'b' | 'c' | 'd' | 'e' | 'f';\n\ntype HexColor<S extends string> =\n    S extends `#${infer R1}${infer R2}${infer G1}${infer G2}${infer B1}${infer B2}` ?\n        [R1, R2, G1, G2, B1, B2] extends [HexDigit, HexDigit, HexDigit, HexDigit, HexDigit, HexDigit] ?\n            S :\n            never :\n        never;\n\ntype TH1 = HexColor<'#8080FF'>;  // '#8080FF'\ntype TH2 = HexColor<'#80c0ff'>;  // '#80c0ff'\ntype TH3 = HexColor<'#8080F'>;  // never\ntype TH4 = HexColor<'#8080FFF'>;  // never\n\n// Recursive inference\n\ntype Trim<S extends string> =\n    S extends ` ${infer T}` ? Trim<T> :\n    S extends `${infer T} ` ? Trim<T> :\n    S;\n\ntype TR1 = Trim<'xx   '>;  // 'xx'\ntype TR2 = Trim<'   xx'>;  // 'xx'\ntype TR3 = Trim<'   xx   '>;  // 'xx'\n\ntype Split<S extends string, D extends string> =\n    string extends S ? string[] :\n    S extends '' ? [] :\n    S extends `${infer T}${D}${infer U}` ? [T, ...Split<U, D>] :\n    [S];\n\ntype T40 = Split<'foo', '.'>;  // ['foo']\ntype T41 = Split<'foo.bar.baz', '.'>;  // ['foo', 'bar', 'baz']\ntype T42 = Split<'foo.bar', ''>;  // ['f', 'o', 'o', '.', 'b', 'a', 'r']\ntype T43 = Split<any, '.'>;  // string[]\n\n// Inference and property name paths\n\ndeclare function getProp<T, P0 extends keyof T & string, P1 extends keyof T[P0] & string, P2 extends keyof T[P0][P1] & string>(obj: T, path: `${P0}.${P1}.${P2}`): T[P0][P1][P2];\ndeclare function getProp<T, P0 extends keyof T & string, P1 extends keyof T[P0] & string>(obj: T, path: `${P0}.${P1}`): T[P0][P1];\ndeclare function getProp<T, P0 extends keyof T & string>(obj: T, path: P0): T[P0];\ndeclare function getProp(obj: object, path: string): unknown;\n\nlet p1 = getProp({ a: { b: {c: 42, d: 'hello' }}} as const, 'a');\nlet p2 = getProp({ a: { b: {c: 42, d: 'hello' }}} as const, 'a.b');\nlet p3 = getProp({ a: { b: {c: 42, d: 'hello' }}} as const, 'a.b.d');\n\ntype PropType<T, Path extends string> =\n    string extends Path ? unknown :\n    Path extends keyof T ? T[Path] :\n    Path extends `${infer K}.${infer R}` ? K extends keyof T ? PropType<T[K], R> : unknown :\n    unknown;\n\ndeclare function getPropValue<T, P extends string>(obj: T, path: P): PropType<T, P>;\ndeclare const s: string;\n\nconst obj = { a: { b: {c: 42, d: 'hello' }}};\n\ngetPropValue(obj, 'a');  // { b: {c: number, d: string } }\ngetPropValue(obj, 'a.b');  // {c: number, d: string }\ngetPropValue(obj, 'a.b.d');  // string\ngetPropValue(obj, 'a.b.x');  // unknown\ngetPropValue(obj, s);  // unknown\n\n// Infer type variables in template literals have string constraint\n\ntype S1<T> = T extends `foo${infer U}bar` ? S2<U> : never;\ntype S2<S extends string> = S;\n\n// Check that infer T declarations are validated\n\ntype TV1 = `${infer X}`;\n\n// Batched single character inferences for lower recursion depth\n\ntype Chars<S extends string> =\n    string extends S ? string[] :\n    S extends `${infer C0}${infer C1}${infer C2}${infer C3}${infer C4}${infer C5}${infer C6}${infer C7}${infer C8}${infer C9}${infer R}` ? [C0, C1, C2, C3, C4, C5, C6, C7, C8, C9, ...Chars<R>] :\n    S extends `${infer C}${infer R}` ? [C, ...Chars<R>] :\n    S extends '' ? [] :\n    never;\n\ntype L1 = Chars<'FooBarBazThisIsALongerString'>;  // ['F', 'o', 'o', 'B', 'a', 'r', ...]\n\n// Infer never when source isn't a literal type that matches the pattern\n\ntype Foo<T> = T extends `*${infer S}*` ? S : never;\n\ntype TF1 = Foo<any>;      // never\ntype TF2 = Foo<string>;   // never\ntype TF3 = Foo<'abc'>;    // never\ntype TF4 = Foo<'*abc*'>;  // 'abc'\n\n// Cross product unions limited to 100,000 constituents\n\ntype A = any;\n\ntype U1 = {a1:A} | {b1:A} | {c1:A} | {d1:A} | {e1:A} | {f1:A} | {g1:A} | {h1:A} | {i1:A} | {j1:A};\ntype U2 = {a2:A} | {b2:A} | {c2:A} | {d2:A} | {e2:A} | {f2:A} | {g2:A} | {h2:A} | {i2:A} | {j2:A};\ntype U3 = {a3:A} | {b3:A} | {c3:A} | {d3:A} | {e3:A} | {f3:A} | {g3:A} | {h3:A} | {i3:A} | {j3:A};\ntype U4 = {a4:A} | {b4:A} | {c4:A} | {d4:A} | {e4:A} | {f4:A} | {g4:A} | {h4:A} | {i4:A} | {j4:A};\ntype U5 = {a5:A} | {b5:A} | {c5:A} | {d5:A} | {e5:A} | {f5:A} | {g5:A} | {h5:A} | {i5:A} | {j5:A};\n\ntype U100000 = U1 & U2 & U3 & U4 & U5;  // Error\n\ntype Digits = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;\n\ntype D100000 = `${Digits}${Digits}${Digits}${Digits}${Digits}`;  // Error\n\ntype TDigits = [0] | [1] | [2] | [3] | [4] | [5] | [6] | [7] | [8] | [9];\n\ntype T100000 = [...TDigits, ...TDigits, ...TDigits, ...TDigits, ...TDigits];  // Error\n\n// Repro from #40863\n\ntype IsNegative<T extends number> = `${T}` extends `-${string}` ? true : false;\n\ntype AA<T extends number, Q extends number> =\n    [true, true] extends [IsNegative<T>, IsNegative<Q>] ? 'Every thing is ok!' : ['strange', IsNegative<T>, IsNegative<Q>];\n\ntype BB = AA<-2, -2>;\n\n// Repro from #40970\n\ntype PathKeys<T> =\n    unknown extends T ? never :\n    T extends readonly any[] ? Extract<keyof T, `${number}`> | SubKeys<T, Extract<keyof T, `${number}`>> :\n    T extends object ? Extract<keyof T, string> | SubKeys<T, Extract<keyof T, string>> :\n    never;\n\ntype SubKeys<T, K extends string> = K extends keyof T ? `${K}.${PathKeys<T[K]>}` : never;\n\ndeclare function getProp2<T, P extends PathKeys<T>>(obj: T, path: P): PropType<T, P>;\n\nconst obj2 = {\n    name: 'John',\n    age: 42,\n    cars: [\n        { make: 'Ford', age: 10 },\n        { make: 'Trabant', age: 35 }\n    ]\n} as const;\n\nlet make = getProp2(obj2, 'cars.1.make');  // 'Trabant'\n\n// Repro from #46480\n\nexport type Spacing =\n    | `0`\n    | `${number}px`\n    | `${number}rem`\n    | `s${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20}`;\n\nconst spacing: Spacing = \"s12\"\n\nexport type SpacingShorthand =\n    | `${Spacing} ${Spacing}`\n    | `${Spacing} ${Spacing} ${Spacing}`\n    | `${Spacing} ${Spacing} ${Spacing} ${Spacing}`;\n\nconst test1: SpacingShorthand = \"0 0 0\";\n",
+      "upstreamFileSha256": "a578a02b10654578b725c1999e2ea23b20b0ac7c79cd6b9db7c6b21e1689e586",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "VariableStatement",
+          "start": 43,
+          "end": 171
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 172,
+          "end": 236
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 287,
+          "end": 340
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 418,
+          "end": 467
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 468,
+          "end": 512
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 513,
+          "end": 588
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 647,
+          "end": 716
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 717,
+          "end": 765
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 814,
+          "end": 857
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 858,
+          "end": 901
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 924,
+          "end": 944
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 984,
+          "end": 1085
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1087,
+          "end": 1112
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1135,
+          "end": 1160
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 1202,
+          "end": 1340
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 1342,
+          "end": 1478
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 1480,
+          "end": 1639
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1702,
+          "end": 1947
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1949,
+          "end": 1983
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1984,
+          "end": 2028
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2029,
+          "end": 2053
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2089,
+          "end": 2179
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2181,
+          "end": 2211
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2227,
+          "end": 2261
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2281,
+          "end": 2312
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2325,
+          "end": 2355
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2368,
+          "end": 2402
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2423,
+          "end": 2622
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2624,
+          "end": 2865
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2867,
+          "end": 2915
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2936,
+          "end": 2980
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2997,
+          "end": 3044
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3065,
+          "end": 3108
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3157,
+          "end": 3269
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3271,
+          "end": 3307
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3326,
+          "end": 3359
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3375,
+          "end": 3407
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3421,
+          "end": 3566
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3568,
+          "end": 3842
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3844,
+          "end": 3875
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3890,
+          "end": 3921
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3936,
+          "end": 3966
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3977,
+          "end": 4009
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4045,
+          "end": 4161
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4163,
+          "end": 4188
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4198,
+          "end": 4223
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4233,
+          "end": 4261
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4272,
+          "end": 4452
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4454,
+          "end": 4483
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4496,
+          "end": 4533
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4560,
+          "end": 4592
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4633,
+          "end": 4660
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4713,
+          "end": 4890
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4891,
+          "end": 5021
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 5022,
+          "end": 5104
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 5105,
+          "end": 5166
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 5168,
+          "end": 5233
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 5234,
+          "end": 5301
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 5302,
+          "end": 5371
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 5373,
+          "end": 5591
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 5593,
+          "end": 5677
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 5678,
+          "end": 5702
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 5704,
+          "end": 5749
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 5751,
+          "end": 5774
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 5810,
+          "end": 5835
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 5864,
+          "end": 5891
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 5903,
+          "end": 5930
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 5943,
+          "end": 5964
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6047,
+          "end": 6105
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6106,
+          "end": 6136
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6188,
+          "end": 6212
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6280,
+          "end": 6632
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6634,
+          "end": 6682
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6798,
+          "end": 6849
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6851,
+          "end": 6871
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6886,
+          "end": 6909
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6921,
+          "end": 6943
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6956,
+          "end": 6980
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7049,
+          "end": 7062
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7064,
+          "end": 7162
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7163,
+          "end": 7261
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7262,
+          "end": 7360
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7361,
+          "end": 7459
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7460,
+          "end": 7558
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7560,
+          "end": 7598
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7610,
+          "end": 7662
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7664,
+          "end": 7727
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7739,
+          "end": 7812
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7814,
+          "end": 7890
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7924,
+          "end": 8003
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 8005,
+          "end": 8174
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 8176,
+          "end": 8197
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 8221,
+          "end": 8478
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 8480,
+          "end": 8569
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 8571,
+          "end": 8656
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 8658,
+          "end": 8805
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 8807,
+          "end": 8848
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 8886,
+          "end": 9060
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 9062,
+          "end": 9092
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 9094,
+          "end": 9248
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 9250,
+          "end": 9290
+        }
+      ]
+    },
+    {
+      "id": "conformance/types/literal/templateLiteralTypes2.ts::templateLiteralTypes2.ts",
+      "fileName": "templateLiteralTypes2.ts",
+      "sourceText": "\n\n\n\nfunction ft1<T extends string>(s: string, n: number, u: 'foo' | 'bar' | 'baz', t: T) {\n    const c1 = `abc${s}`;\n    const c2 = `abc${n}`;\n    const c3 = `abc${u}`;\n    const c4 = `abc${t}`;\n    const d1: `abc${string}` = `abc${s}`;\n    const d2: `abc${number}` = `abc${n}`;\n    const d3: `abc${'foo' | 'bar' | 'baz'}` = `abc${u}`;\n    const d4: `abc${T}` = `abc${t}`;\n}\n\nfunction ft2(s: string) {\n    return `abc${s}`;\n}\n\nfunction ft10(s: string) {\n    const c1 = `abc${s}`;  // Type string\n    let v1 = c1;  // Type string\n    const c2 = c1;  // Type string\n    let v2 = c2;  // Type string\n    const c3: `abc${string}` = `abc${s}`;\n    let v3 = c3;  // Type `abc${string}`\n    const c4: `abc${string}` = c1;  // Type `abc${string}`\n    let v4 = c4;  // Type `abc${string}`\n}\n\nfunction ft11(s: string, cond: boolean) {\n    const c1 = cond ? `foo${s}` : `bar${s}`;  // string\n    const c2: `foo${string}` | `bar${string}` = c1;  // `foo${string}` | `bar${string}`\n    const c3 = cond ? c1 : c2;  // string\n    const c4 = cond ? c3 : `baz${s}`;  // string\n    const c5: `foo${string}` | `bar${string}` | `baz${string}` = c4; // `foo${string}` | `bar${string}` | `baz${string}`\n    let v1 = c1;  // string\n    let v2 = c2;  // `foo${string}` | `bar${string}`\n    let v3 = c3;  // string\n    let v4 = c4;  // string\n    let v5 = c5;  // `foo${string}` | `bar${string}` | `baz${string}`\n}\n\nfunction ft12(s: string) {\n    const c1 = `foo${s}`;\n    let v1 = c1;\n    const c2: `foo${string}` = `foo${s}`;\n    let v2 = c2;\n    const c3 = `foo${s}` as `foo${string}`;\n    let v3 = c3;\n    const c4 = <`foo${string}`>`foo${s}`;\n    let v4 = c4;\n    const c5 = `foo${s}` as const;\n    let v5 = c5;\n}\n\ndeclare function widening<T>(x: T): T;\ndeclare function nonWidening<T extends string | number | symbol>(x: T): T;\n\nfunction ft13(s: string, cond: boolean) {\n    let x1 = widening(`foo${s}`);\n    let x2 = widening(cond ? 'a' : `foo${s}`);\n    let y1 = nonWidening(`foo${s}`);\n    let y2 = nonWidening(cond ? 'a' : `foo${s}`);\n}\n\ntype T0 = string | `${number}px`;\n\nfunction ft14(t: `foo${number}`) {\n    let x1: string = t;\n    let x2: String = t;\n    let x3: Object = t;\n    let x4: {} = t;\n    let x6: { length: number } = t;\n}\n\ndeclare function g1<T>(x: T): T;\ndeclare function g2<T extends string>(x: T): T;\n\nfunction ft20(s: string) {\n    let x1 = g1(`xyz-${s}`);  // string\n    let x2 = g2(`xyz-${s}`);  // `xyz-${string}`\n}\n\n// Repro from #41631\n\ndeclare function takesLiteral<T extends string>(literal: T): T extends `foo.bar.${infer R}` ? R : unknown;\n\nconst t1 = takesLiteral(\"foo.bar.baz\"); // \"baz\"\nconst id2 = \"foo.bar.baz\";\nconst t2 = takesLiteral(id2); // \"baz\"\n\ndeclare const someString: string;\nconst t3 = takesLiteral(`foo.bar.${someString}`);  // string\n\nconst id4 = `foo.bar.${someString}`;\nconst t4 = takesLiteral(id4);  // unknown\n\ndeclare const someUnion: 'abc' | 'def' | 'ghi';\nconst t5 = takesLiteral(`foo.bar.${someUnion}`);  // \"abc\" | \"def\" | \"ghi\"\n\n// Repro from #41732\n\nconst pixelValue: number = 22;\n\ntype PixelValueType = `${number}px`;\n\nconst pixelString: PixelValueType = `22px`;\n\nconst pixelStringWithTemplate: PixelValueType = `${pixelValue}px`;\n\n// Repro from #43143\n\nfunction getCardTitle(title: string): `test-${string}` {\n    return `test-${title}`;\n}\n\n// Repro from #43424\n\nconst interpolatedStyle = { rotate: 12 };\nfunction C2(transform: \"-moz-initial\" | (string & {})) { return 12; }\nC2(`rotate(${interpolatedStyle.rotate}dig)`);\n",
+      "upstreamFileSha256": "889e6c8c1b83e0e9723586ff4f920a20ad6ff784b408187c8bcd93489553cf5c",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4,
+          "end": 374
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 376,
+          "end": 425
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 427,
+          "end": 781
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 783,
+          "end": 1389
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 1391,
+          "end": 1693
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 1695,
+          "end": 1733
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 1734,
+          "end": 1808
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 1810,
+          "end": 2021
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2023,
+          "end": 2056
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 2058,
+          "end": 2222
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 2224,
+          "end": 2256
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 2257,
+          "end": 2304
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 2306,
+          "end": 2423
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 2447,
+          "end": 2553
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2555,
+          "end": 2594
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2604,
+          "end": 2630
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2631,
+          "end": 2660
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2671,
+          "end": 2704
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2705,
+          "end": 2754
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2767,
+          "end": 2803
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2804,
+          "end": 2833
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2847,
+          "end": 2894
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2895,
+          "end": 2943
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2993,
+          "end": 3023
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3025,
+          "end": 3061
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3063,
+          "end": 3106
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3108,
+          "end": 3174
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 3198,
+          "end": 3284
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3308,
+          "end": 3349
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 3350,
+          "end": 3419
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 3420,
+          "end": 3465
+        }
+      ]
+    },
+    {
+      "id": "conformance/types/literal/templateLiteralTypes3.ts::templateLiteralTypes3.ts",
+      "fileName": "templateLiteralTypes3.ts",
+      "sourceText": "\n\n\n\n// Inference from template literal type to template literal type\n\ntype Foo1<T> = T extends `*${infer U}*` ? U : never;\n\ntype T01 = Foo1<'hello'>;\ntype T02 = Foo1<'*hello*'>;\ntype T03 = Foo1<'**hello**'>;\ntype T04 = Foo1<`*${string}*`>;\ntype T05 = Foo1<`*${number}*`>;\ntype T06 = Foo1<`*${bigint}*`>;\ntype T07 = Foo1<`*${any}*`>;\ntype T08 = Foo1<`**${string}**`>;\ntype T09 = Foo1<`**${string}**${string}**`>;\ntype T10 = Foo1<`**${'a' | 'b' | 'c'}**`>;\ntype T11 = Foo1<`**${boolean}**${boolean}**`>;\n\ndeclare function foo1<V extends string>(arg: `*${V}*`): V;\n\nfunction f1<T extends string>(s: string, n: number, b: boolean, t: T) {\n    let x1 = foo1('hello');  // Error\n    let x2 = foo1('*hello*');\n    let x3 = foo1('**hello**');\n    let x4 = foo1(`*${s}*` as const);\n    let x5 = foo1(`*${n}*` as const);\n    let x6 = foo1(`*${b}*` as const);\n    let x7 = foo1(`*${t}*` as const);\n    let x8 = foo1(`**${s}**` as const);\n}\n\n// Inference to a placeholder immediately followed by another placeholder infers a single\n// character or placeholder from the source.\n\ntype Parts<T> =\n    T extends '' ? [] :\n    T extends `${infer Head}${infer Tail}` ? [Head, ...Parts<Tail>] :\n    never;\n\ntype T20 = Parts<`abc`>;\ntype T21 = Parts<`*${string}*`>;\ntype T22 = Parts<`*${number}*`>;\ntype T23 = Parts<`*${number}*${string}*${bigint}*`>;\n\nfunction f2() {\n    let x: `${number}.${number}.${number}`;\n    x = '1.1.1';\n    x = '1.1.1' as `1.1.${number}`;\n    x = '1.1.1' as `1.${number}.1`;\n    x = '1.1.1' as `1.${number}.${number}`;\n    x = '1.1.1' as `${number}.1.1`;\n    x = '1.1.1' as `${number}.1.${number}`;\n    x = '1.1.1' as `${number}.${number}.1`;\n    x = '1.1.1' as `${number}.${number}.${number}`;\n}\n\nfunction f3<T extends string>(s: string, n: number, b: boolean, t: T) {\n    let x: `*${string}*`;\n    x = 'hello';  // Error\n    x = '*hello*';\n    x = '**hello**';\n    x = `*${s}*` as const;\n    x = `*${n}*` as const;\n    x = `*${b}*` as const;\n    x = `*${t}*` as const;\n    x = `**${s}**` as const;\n}\n\nfunction f4<T extends number>(s: string, n: number, b: boolean, t: T) {\n    let x: `*${number}*`;\n    x = '123';  // Error\n    x = '*123*';\n    x = '**123**';  // Error\n    x = `*${s}*` as const;  // Error\n    x = `*${n}*` as const;\n    x = `*${b}*` as const;  // Error\n    x = `*${t}*` as const;\n}\n\n// Repro from #43060\n\ntype A<T> = T extends `${infer U}.${infer V}` ? U | V : never\ntype B = A<`test.1024`>;  // \"test\" | \"1024\"\ntype C = A<`test.${number}`>;  // \"test\" | `${number}`\n\ntype D<T> = T extends `${infer U}.${number}` ? U : never\ntype E = D<`test.1024`>;  // \"test\"\ntype F = D<`test.${number}`>;  // \"test\"\n\ntype G<T> = T extends `${infer U}.${infer V}` ? U | V : never\ntype H = G<`test.hoge`>;  // \"test\" | \"hoge\"\ntype I = G<`test.${string}`>;  // string (\"test\" | string reduces to string)\n\ntype J<T> = T extends `${infer U}.${string}` ? U : never\ntype K = J<`test.hoge`>;  // \"test\"\ntype L = J<`test.${string}`>;  // \"test\"\"\n\n// Repro from #43243\n\ntype Templated = `${string} ${string}`;\n\nconst value1: string = \"abc\";\nconst templated1: Templated = `${value1} abc` as const;\n// Type '`${string} abc`' is not assignable to type '`${string} ${string}`'.\n\nconst value2 = \"abc\";\nconst templated2: Templated = `${value2} abc` as const;\n\n// Repro from #43620\n\ntype Prefixes = \"foo\" | \"bar\";\n\ntype AllPrefixData = \"foo:baz\" | \"bar:baz\";\n\ntype PrefixData<P extends Prefixes> = `${P}:baz`;\n\ninterface ITest<P extends Prefixes, E extends AllPrefixData = PrefixData<P>> {\n    blah: string;\n}\n\n// Repro from #45906\n\ntype Schema = { a: { b: { c: number } } };\n\ndeclare function chain<F extends keyof Schema>(field: F | `${F}.${F}`): void;\n\nchain(\"a\");\n\n// Repro from #46125\n\nfunction ff1(x: `foo-${string}`, y: `${string}-bar`, z: `baz-${string}`) {\n    if (x === y) {\n        x;  // `foo-${string}`\n    }\n    if (x === z) {  // Error\n    }\n}\n\nfunction ff2<T extends string>(x: `foo-${T}`, y: `${T}-bar`, z: `baz-${T}`) {\n    if (x === y) {\n        x;  // `foo-${T}`\n    }\n    if (x === z) {  // Error\n    }\n}\n\nfunction ff3(x: string, y: `foo-${string}` | 'bar') {\n    if (x === y) {\n        x;  // `foo-${string}` | 'bar'\n    }\n}\n\nfunction ff4(x: string, y: `foo-${string}`) {\n    if (x === 'foo-test') {\n        x;  // 'foo-test'\n    }\n    if (y === 'foo-test') {\n        y;  // 'foo-test'\n    }\n}\n\n// Repro from #46045\n\ntype Action =\n    | { type: `${string}_REQUEST` }\n    | { type: `${string}_SUCCESS`, response: string };\n\nfunction reducer(action: Action) {\n    if (action.type === 'FOO_SUCCESS') {\n        action.type;\n        action.response;\n    }\n}\n\n// Repro from #46768\n\ntype DotString = `${string}.${string}.${string}`;\n\ndeclare function noSpread<P extends DotString>(args: P[]): P;\ndeclare function spread<P extends DotString>(...args: P[]): P;\n\nnoSpread([`1.${'2'}.3`, `1.${'2'}.4`]);\nnoSpread([`1.${'2' as string}.3`, `1.${'2' as string}.4`]);\n\nspread(`1.${'2'}.3`, `1.${'2'}.4`);\nspread(`1.${'2' as string}.3`, `1.${'2' as string}.4`);\n\nfunction ft1<T extends string>(t: T, u: Uppercase<T>, u1: Uppercase<`1.${T}.3`>, u2: Uppercase<`1.${T}.4`>) {\n    spread(`1.${t}.3`, `1.${t}.4`);\n    spread(`1.${u}.3`, `1.${u}.4`);\n    spread(u1, u2);\n}\n\n// Repro from #52685\n\ntype Boom = 'abc' | 'def' | `a${string}` | Lowercase<string>;\n\n// Repro from #56582\n\nfunction a<T extends {id: string}>() {\n    let x: keyof T & string | `-${keyof T & string}`;\n    x = \"id\";\n    x = \"-id\";\n}\n",
+      "upstreamFileSha256": "57d38a016694c50abb7012b817b9c4f70b213850ef0e08c9143f11a642f89bfb",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 70,
+          "end": 122
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 124,
+          "end": 149
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 150,
+          "end": 177
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 178,
+          "end": 207
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 208,
+          "end": 239
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 240,
+          "end": 271
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 272,
+          "end": 303
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 304,
+          "end": 332
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 333,
+          "end": 366
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 367,
+          "end": 411
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 412,
+          "end": 454
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 455,
+          "end": 501
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 503,
+          "end": 561
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 563,
+          "end": 928
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1066,
+          "end": 1186
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1188,
+          "end": 1212
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1213,
+          "end": 1245
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1246,
+          "end": 1278
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1279,
+          "end": 1331
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 1333,
+          "end": 1703
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 1705,
+          "end": 2008
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 2010,
+          "end": 2308
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2332,
+          "end": 2393
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2394,
+          "end": 2418
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2439,
+          "end": 2468
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2495,
+          "end": 2551
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2552,
+          "end": 2576
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2588,
+          "end": 2617
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2630,
+          "end": 2691
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2692,
+          "end": 2716
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2737,
+          "end": 2766
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2815,
+          "end": 2871
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2872,
+          "end": 2896
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2908,
+          "end": 2937
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2973,
+          "end": 3012
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3014,
+          "end": 3043
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3044,
+          "end": 3099
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3178,
+          "end": 3199
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3200,
+          "end": 3255
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3279,
+          "end": 3309
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3311,
+          "end": 3354
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3356,
+          "end": 3405
+        },
+        {
+          "kind": "InterfaceDeclaration",
+          "start": 3407,
+          "end": 3505
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3529,
+          "end": 3571
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 3573,
+          "end": 3650
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 3652,
+          "end": 3663
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 3687,
+          "end": 3854
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 3856,
+          "end": 4021
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4023,
+          "end": 4142
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4144,
+          "end": 4311
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4335,
+          "end": 4439
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4441,
+          "end": 4570
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4594,
+          "end": 4643
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4645,
+          "end": 4706
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4707,
+          "end": 4769
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 4771,
+          "end": 4810
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 4811,
+          "end": 4870
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 4872,
+          "end": 4907
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 4908,
+          "end": 4963
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4965,
+          "end": 5168
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 5192,
+          "end": 5253
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 5277,
+          "end": 5400
+        }
+      ]
+    },
+    {
+      "id": "conformance/types/literal/templateLiteralTypes4.ts::templateLiteralTypes4.ts",
+      "fileName": "templateLiteralTypes4.ts",
+      "sourceText": "\n\n\n\n// infer from number\ntype TNumber0 = \"100\" extends `${infer N extends number}` ? N : never; // 100\ntype TNumber1 = \"-100\" extends `${infer N extends number}` ? N : never; // -100\ntype TNumber2 = \"1.1\" extends `${infer N extends number}` ? N : never; // 1.1\ntype TNumber3 = \"8e-11\" extends `${infer N extends number}` ? N : never; // 8e-11 (0.00000000008)\ntype TNumber4 = \"0x10\" extends `${infer N extends number}` ? N : never; // number (not round-trippable)\ntype TNumber5 = \"0o10\" extends `${infer N extends number}` ? N : never; // number (not round-trippable)\ntype TNumber6 = \"0b10\" extends `${infer N extends number}` ? N : never; // number (not round-trippable)\ntype TNumber7 = \"10e2\" extends `${infer N extends number}` ? N : never; // number (not round-trippable)\ntype TNumber8 = \"abcd\" extends `${infer N extends number}` ? N : never; // never\n\n// infer from bigint\ntype TBigInt0 = \"100\" extends `${infer N extends bigint}` ? N : never; // 100n\ntype TBigInt1 = \"-100\" extends `${infer N extends bigint}` ? N : never; // -100n\ntype TBigInt2 = \"0x10\" extends `${infer N extends bigint}` ? N : never; // bigint (not round-trippable)\ntype TBigInt3 = \"0o10\" extends `${infer N extends bigint}` ? N : never; // bigint (not round-trippable)\ntype TBigInt4 = \"0b10\" extends `${infer N extends bigint}` ? N : never; // bigint (not round-trippable)\ntype TBigInt5 = \"1.1\" extends `${infer N extends bigint}` ? N : never; // never\ntype TBigInt6 = \"10e2\" extends `${infer N extends bigint}` ? N : never; // never\ntype TBigInt7 = \"abcd\" extends `${infer N extends bigint}` ? N : never; // never\n\n// infer from boolean\ntype TBoolean0 = \"true\" extends `${infer T extends boolean}` ? T : never; // true\ntype TBoolean1 = \"false\" extends `${infer T extends boolean}` ? T : never; // false\ntype TBoolean2 = \"abcd\" extends `${infer T extends boolean}` ? T : never; // never\n\n// infer from null\ntype TNull0 = \"null\" extends `${infer T extends null}` ? T : never; // null\ntype TNull1 = \"abcd\" extends `${infer T extends null}` ? T : never; // never\n\n// infer from undefined\ntype TUndefined0 = \"undefined\" extends `${infer T extends undefined}` ? T : never; // undefined\ntype TUndefined1 = \"abcd\" extends `${infer T extends undefined}` ? T : never; // never\n\n// infer from literal enums\nconst enum StringLiteralEnum { Zero = \"0\", True = \"true\", False = \"false\", Undefined = \"undefined\", Null = \"null\" }\ntype TStringLiteralEnum0 = \"0\" extends `${infer T extends StringLiteralEnum}` ? T : never; // StringLiteralEnum.Zero\n\nconst enum NumberLiteralEnum { Zero, One }\ntype TNumberLiteralEnum0 = \"0\" extends `${infer T extends NumberLiteralEnum}` ? T : never; // NumberLiteralEnum.Zero\n\n// infer from non-literal enums\nconst enum NonLiteralEnum { Zero = NumberLiteralEnum.Zero, One = NumberLiteralEnum.One }\ntype TNonLiteralEnum0 = \"0\" extends `${infer T extends NonLiteralEnum}` ? T : never; // 0\n\n// infer using priority:\n//     string > template-literal > (string-literal | string-literal-enum) >\n//     number > enum > (number-literal | number-literal-enum) >\n//     bigint > bigint-literal > \n//     boolean > (boolean-literal | undefined | null)\n\n// #region string\n// string > string-literal-enum\ntype PString00 = \"0\" extends `${infer T extends string | StringLiteralEnum}` ? T : never; // \"0\"\n\n// string > number\ntype PString01 = \"0\" extends `${infer T extends string | number}` ? T : never; // \"0\"\n\n// string > enum\ntype PString02 = \"0\" extends `${infer T extends string | NonLiteralEnum}` ? T : never; // \"0\"\n\n// string > (number-literal | number-literal-enum)\ntype PString03 = \"0\" extends `${infer T extends string | 0}` ? T : never; // \"0\"\ntype PString04 = \"0\" extends `${infer T extends string | NumberLiteralEnum}` ? T : never; // \"0\"\n\n// string > bigint\ntype PString05 = \"0\" extends `${infer T extends string | bigint}` ? T : never; // \"0\"\n\n// string > bigint-literal\ntype PString06 = \"0\" extends `${infer T extends string | 0n}` ? T : never; // \"0\"\n\n// string > boolean\ntype PString07 = \"true\" extends `${infer T extends string | boolean}` ? T : never; // \"true\"\ntype PString08 = \"false\" extends `${infer T extends string | boolean}` ? T : never; // \"false\"\n\n// string > (boolean-literal | undefined | null)\ntype PString09 = \"true\" extends `${infer T extends string | true}` ? T : never; // \"true\"\ntype PString10 = \"false\" extends `${infer T extends string | false}` ? T : never; // \"false\"\ntype PString11 = \"undefined\" extends `${infer T extends string | undefined}` ? T : never; // \"undefined\"\ntype PString12 = \"null\" extends `${infer T extends string | null}` ? T : never; // \"null\"\n// #endregion string\n\n// #region template-literal\n// template-literal > number\ntype PTemplate00 = \"10\" extends `${infer T extends `1${string}` | number}` ? T : never; // \"10\"\n\n// template-literal > enum\ntype PTemplate01 = \"10\" extends `${infer T extends `1${string}` | NonLiteralEnum}` ? T : never; // \"10\"\n\n// template-literal > (number-literal | number-literal-enum)\ntype PTemplate02 = \"10\" extends `${infer T extends `1${string}` | 10}` ? T : never; // \"10\"\ntype PTemplate03 = \"10\" extends `${infer T extends `1${string}` | NumberLiteralEnum}` ? T : never; // \"10\"\n\n// template-literal > bigint\ntype PTemplate04 = \"10\" extends `${infer T extends `1${string}` | bigint}` ? T : never; // \"10\"\n\n// template-literal > bigint-literal\ntype PTemplate05 = \"10\" extends `${infer T extends `1${string}` | 10n}` ? T : never; // \"10\"\n\n// template-literal > boolean\ntype PTemplate06 = \"true\" extends `${infer T extends `${string}e` | boolean}` ? T : never; // \"true\"\ntype PTemplate07 = \"false\" extends `${infer T extends `${string}e` | boolean}` ? T : never; // \"false\"\n\n// template-literal > (boolean-literal | undefined | null)\ntype PTemplate08 = \"true\" extends `${infer T extends `${\"t\"}${string}` | true}` ? T : never; // \"true\"\ntype PTemplate09 = \"false\" extends `${infer T extends `${\"f\"}${string}` | false}` ? T : never; // \"false\"\ntype PTemplate10 = \"undefined\" extends `${infer T extends `${\"u\"}${string}` | undefined}` ? T : never; // \"undefined\"\ntype PTemplate11 = \"null\" extends `${infer T extends `${\"n\"}${string}` | null}` ? T : never; // \"null\"\n// #endregion template-literal\n\n// #region string-literal\n// string-literal > number\ntype PStringLiteral00 = \"0\" extends `${infer T extends \"0\" | number}` ? T : never; // \"0\"\n\n// string-literal > enum\ntype PStringLiteral01 = \"0\" extends `${infer T extends \"0\" | NonLiteralEnum}` ? T : never; // \"0\"\n\n// string-literal > (number-literal | number-literal-enum)\ntype PStringLiteral02 = \"0\" extends `${infer T extends \"0\" | 0}` ? T : never; // \"0\"\ntype PStringLiteral03 = \"0\" extends `${infer T extends \"0\" | NumberLiteralEnum}` ? T : never; // \"0\"\n\n// string-literal > bigint\ntype PStringLiteral04 = \"0\" extends `${infer T extends \"0\" | bigint}` ? T : never; // \"0\"\n\n// string-literal > bigint-literal\ntype PStringLiteral05 = \"0\" extends `${infer T extends \"0\" | 0n}` ? T : never; // \"0\"\n\n// string-literal > boolean\ntype PStringLiteral06 = \"true\" extends `${infer T extends \"true\" | \"false\" | boolean}` ? T : never; // \"true\"\ntype PStringLiteral07 = \"false\" extends `${infer T extends \"true\" | \"false\" | boolean}` ? T : never; // \"false\"\n\n// string-literal > (boolean-literal | undefined | null)\ntype PStringLiteral08 = \"true\" extends `${infer T extends \"true\" | true}` ? T : never; // \"true\"\ntype PStringLiteral09 = \"false\" extends `${infer T extends \"false\" | false}` ? T : never; // \"false\"\ntype PStringLiteral10 = \"undefined\" extends `${infer T extends \"undefined\" | undefined}` ? T : never; // \"undefined\"\ntype PStringLiteral11 = \"null\" extends `${infer T extends \"null\" | null}` ? T : never; // \"null\"\n// #endregion string-literal\n\n// #region string-literal-enum\n// string-literal-enum > number\ntype PStringLiteralEnum00 = \"0\" extends `${infer T extends StringLiteralEnum | number}` ? T : never; // StringLiteralEnum.Zero\n\n// string-literal-enum > enum\ntype PStringLiteralEnum01 = \"0\" extends `${infer T extends StringLiteralEnum | NonLiteralEnum}` ? T : never; // StringLiteralEnum.Zero\n\n// string-literal-enum > (number-literal | number-literal-enum)\ntype PStringLiteralEnum02 = \"0\" extends `${infer T extends StringLiteralEnum | 0}` ? T : never; // StringLiteralEnum.Zero\ntype PStringLiteralEnum03 = \"0\" extends `${infer T extends StringLiteralEnum | NumberLiteralEnum}` ? T : never; // StringLiteralEnum.Zero\n\n// string-literal-enum > bigint\ntype PStringLiteralEnum04 = \"0\" extends `${infer T extends StringLiteralEnum | bigint}` ? T : never; // StringLiteralEnum.Zero\n\n// string-literal-enum > bigint-literal\ntype PStringLiteralEnum05 = \"0\" extends `${infer T extends StringLiteralEnum | 0n}` ? T : never; // StringLiteralEnum.Zero\n\n// string-literal-enum > boolean\ntype PStringLiteralEnum06 = \"true\" extends `${infer T extends StringLiteralEnum | boolean}` ? T : never; // StringLiteralEnum.True\ntype PStringLiteralEnum07 = \"false\" extends `${infer T extends StringLiteralEnum | boolean}` ? T : never; // StringLiteralEnum.False\n\n// string-literal-enum > (boolean-literal | undefined | null)\ntype PStringLiteralEnum08 = \"true\" extends `${infer T extends StringLiteralEnum | true}` ? T : never; // StringLiteralEnum.True\ntype PStringLiteralEnum09 = \"false\" extends `${infer T extends StringLiteralEnum | false}` ? T : never; // StringLiteralEnum.False\ntype PStringLiteralEnum10 = \"undefined\" extends `${infer T extends StringLiteralEnum | undefined}` ? T : never; // StringLiteralEnum.Undefined\ntype PStringLiteralEnum11 = \"null\" extends `${infer T extends StringLiteralEnum | null}` ? T : never; // StringLiteralEnum.Null\n// #endregion string-literal-enum\n\n// #region number\n// number > enum\ntype PNumber0 = \"0\" extends `${infer T extends number | NonLiteralEnum}` ? T : never; // 0\n\n// number > number-literal-enum\ntype PNumber1 = \"0\" extends `${infer T extends number | NumberLiteralEnum}` ? T : never; // 0\n\n// number > bigint\ntype PNumber2 = \"0\" extends `${infer T extends number | bigint}` ? T : never; // 0\n\n// number > bigint-literal\ntype PNumber3 = \"0\" extends `${infer T extends number | 0n}` ? T : never; // 0\n// #endregion number\n\n// #region enum\n// enum > number-literal-enum\ntype PEnum0 = \"0\" extends `${infer T extends NonLiteralEnum | NumberLiteralEnum}` ? T : never; // 0\n\n// enum > bigint\ntype PEnum1 = \"0\" extends `${infer T extends NonLiteralEnum | bigint}` ? T : never; // 0\n\n// enum > bigint-literal\ntype PEnum2 = \"0\" extends `${infer T extends NonLiteralEnum | 0n}` ? T : never; // 0\n// #endregion enum\n\n// #region number-literal\n// number-literal > bigint\ntype PNumberLiteral0 = \"0\" extends `${infer T extends 0 | bigint}` ? T : never; // 0\n\n// number-literal > bigint-literal\ntype PNumberLiteral1 = \"0\" extends `${infer T extends 0 | 0n}` ? T : never; // 0\n// #endregion number-literal\n\n// #region number-literal-enum\n// number-literal-enum > bigint\ntype PNumberLiteralEnum0 = \"0\" extends `${infer T extends NumberLiteralEnum | bigint}` ? T : never; // NumberLiteralEnum.Zero\n\n// number-literal-enum > bigint-literal\ntype PNumberLiteralEnum1 = \"0\" extends `${infer T extends NumberLiteralEnum | 0n}` ? T : never; // NumberLiteralEnum.Zero\n// #endregion number-literal-enum\n\n// non-matchable constituents are excluded\ntype PExclude0 = \"0\" extends `${infer T extends \"1\" | number}` ? T : never; // 0\ntype PExclude1 = \"0\" extends `${infer T extends `1${string}` | number}` ? T : never; // 0\ntype PExclude2 = \"0\" extends `${infer T extends 1 | bigint}` ? T : never; // 0n\ntype PExclude3 = \"0\" extends `${infer T extends NumberLiteralEnum.One | bigint}` ? T : never; // 0n\ntype PExclude4 = \"100000000000000000000000\" extends `${infer T extends number | bigint}` ? T : never; // 100000000000000000000000n\n\n// infer to prefix from string\ntype TPrefix0 = \"100\" extends `${infer T extends number}${string}` ? T : never; // 1\ntype TPrefix1 = \"trueabc\" extends `${infer T extends boolean}${string}` ? T : never; // boolean (T only receives 't', not the whole string)\ntype TPrefix2 = `100:${string}` extends `${infer T extends number}:${string}` ? T : never; // 100 (T receives '100' because it scans until ':')\n\n// can use union w/multiple branches to extract each possibility\ntype ExtractPrimitives<T extends string> =\n    | T\n    | (T extends `${infer U extends number}` ? U : never)\n    | (T extends `${infer U extends bigint}` ? U : never)\n    | (T extends `${infer U extends boolean | null | undefined}` ? U : never)\n    ;\n\ntype TExtract0 = ExtractPrimitives<\"100\">; // \"100\" | 100 | 100n\ntype TExtract1 = ExtractPrimitives<\"1.1\">; // \"1.1\" | 1.1\ntype TExtract2 = ExtractPrimitives<\"true\">; // \"true\" | true\n\n\n\n// example use case (based on old TypedObjects proposal):\n\n// Use constrained `infer` in template literal to get ordinal indices as numbers:\ntype IndexFor<S extends string> = S extends `${infer N extends number}` ? N : never;\ntype IndicesOf<T> = IndexFor<Extract<keyof T, string>>; // ordinal indices as number literals\n\ninterface FieldDefinition {\n    readonly name: string;\n    readonly type: \"i8\" | \"i16\" | \"i32\" | \"i64\" | \"u8\" | \"u16\" | \"u32\" | \"u64\" | \"f32\" | \"f64\";\n}\n\ntype FieldType<T extends FieldDefinition[\"type\"]> =\n    T extends \"i8\" | \"i16\" | \"i32\" | \"u8\" | \"u16\" | \"u32\" | \"f32\" | \"f64\" ? number :\n    T extends \"f32\" | \"f64\" ? bigint :\n    never;\n\n// Generates named members like `{ x: number, y: bigint }` from `[{ name: \"x\", type: \"i32\" }, { name: \"y\", type: \"i64\" }]`\ntype TypedObjectNamedMembers<TDef extends readonly FieldDefinition[]> = {\n    [P in TDef[number][\"name\"]]: FieldType<Extract<TDef[number], { readonly name: P }>[\"type\"]>;\n};\n\n// Generates ordinal members like `{ 0: number, 1: bigint }` from `[{ name: \"x\", type: \"i32\" }, { name: \"y\", type: \"i64\" }]`\ntype TypedObjectOrdinalMembers<TDef extends readonly FieldDefinition[]> = {\n    [I in Extract<keyof TDef, `${number}`>]: FieldType<Extract<TDef[I], FieldDefinition>[\"type\"]>;\n};\n\n// Default members\ninterface TypedObjectMembers<TDef extends readonly FieldDefinition[]> {\n    // get/set a field by name\n    get<K extends TDef[number][\"name\"]>(key: K): FieldType<Extract<TDef[number], { readonly name: K }>[\"type\"]>;\n    set<K extends TDef[number][\"name\"]>(key: K, value: FieldType<Extract<TDef[number], { readonly name: K }>[\"type\"]>): void;\n\n    // get/set a field by index\n    getIndex<I extends IndicesOf<TDef>>(index: I): FieldType<Extract<TDef[I], FieldDefinition>[\"type\"]>;\n    setIndex<I extends IndicesOf<TDef>>(index: I, value: FieldType<Extract<TDef[I], FieldDefinition>[\"type\"]>): void;\n}\n\ntype TypedObject<TDef extends readonly FieldDefinition[]> =\n    & TypedObjectMembers<TDef>\n    & TypedObjectNamedMembers<TDef>\n    & TypedObjectOrdinalMembers<TDef>;\n\n// NOTE: type would normally be created from something like `const Point = TypedObject([...])` from which we would infer the type\ntype Point = TypedObject<[\n    { name: \"x\", type: \"f64\" },\n    { name: \"y\", type: \"f64\" },\n]>;\n\ndeclare const p: Point;\np.getIndex(0); // ok, 0 is a valid index\np.getIndex(1); // ok, 1 is a valid index\np.getIndex(2); // error, 2 is not a valid index\n\np.setIndex(0, 0); // ok, 0 is a valid index\np.setIndex(1, 0); // ok, 1 is a valid index\np.setIndex(2, 3); // error, 2 is not a valid index\n\n// function inference\ndeclare function f1<T extends string | number>(s: `**${T}**`): T;\nf1(\"**123**\"); // \"123\"\n\ndeclare function f2<T extends number>(s: `**${T}**`): T;\nf2(\"**123**\"); // 123\n\ndeclare function f3<T extends bigint>(s: `**${T}**`): T;\nf3(\"**123**\"); // 123n\n\ndeclare function f4<T extends boolean>(s: `**${T}**`): T;\nf4(\"**true**\"); // true | \"true\"\nf4(\"**false**\"); // false | \"false\"\n",
+      "upstreamFileSha256": "7b294562e0cbc7d2e8c4ab3462ce4550a00ac83a30b55fc8c8d21fb2c3dea61a",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 25,
+          "end": 95
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 103,
+          "end": 174
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 183,
+          "end": 253
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 261,
+          "end": 333
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 359,
+          "end": 430
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 463,
+          "end": 534
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 567,
+          "end": 638
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 671,
+          "end": 742
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 775,
+          "end": 846
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 878,
+          "end": 948
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 957,
+          "end": 1028
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1038,
+          "end": 1109
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1142,
+          "end": 1213
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1246,
+          "end": 1317
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1350,
+          "end": 1420
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1430,
+          "end": 1501
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1511,
+          "end": 1582
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1615,
+          "end": 1688
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1697,
+          "end": 1771
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1781,
+          "end": 1854
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1884,
+          "end": 1951
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1960,
+          "end": 2027
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2062,
+          "end": 2144
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2158,
+          "end": 2235
+        },
+        {
+          "kind": "EnumDeclaration",
+          "start": 2274,
+          "end": 2389
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2390,
+          "end": 2480
+        },
+        {
+          "kind": "EnumDeclaration",
+          "start": 2508,
+          "end": 2550
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2551,
+          "end": 2641
+        },
+        {
+          "kind": "EnumDeclaration",
+          "start": 2701,
+          "end": 2789
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2790,
+          "end": 2874
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3185,
+          "end": 3274
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3302,
+          "end": 3380
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3406,
+          "end": 3492
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3552,
+          "end": 3625
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3633,
+          "end": 3722
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3750,
+          "end": 3828
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3864,
+          "end": 3938
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 3967,
+          "end": 4049
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4060,
+          "end": 4143
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4205,
+          "end": 4284
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4295,
+          "end": 4376
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4388,
+          "end": 4477
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4493,
+          "end": 4572
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4662,
+          "end": 4749
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4786,
+          "end": 4881
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4952,
+          "end": 5035
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 5044,
+          "end": 5142
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 5181,
+          "end": 5268
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 5315,
+          "end": 5399
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 5439,
+          "end": 5529
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 5540,
+          "end": 5631
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 5703,
+          "end": 5795
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 5806,
+          "end": 5900
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 5912,
+          "end": 6014
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6030,
+          "end": 6122
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6218,
+          "end": 6300
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6334,
+          "end": 6424
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6492,
+          "end": 6569
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6577,
+          "end": 6670
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6706,
+          "end": 6788
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6832,
+          "end": 6910
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 6947,
+          "end": 7046
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7057,
+          "end": 7157
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7227,
+          "end": 7313
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7324,
+          "end": 7413
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7425,
+          "end": 7526
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7542,
+          "end": 7628
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7732,
+          "end": 7832
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 7890,
+          "end": 7998
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 8090,
+          "end": 8185
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 8212,
+          "end": 8323
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 8383,
+          "end": 8483
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 8551,
+          "end": 8647
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 8708,
+          "end": 8812
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 8839,
+          "end": 8944
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 9035,
+          "end": 9136
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 9163,
+          "end": 9266
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 9294,
+          "end": 9405
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 9437,
+          "end": 9538
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 9635,
+          "end": 9720
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 9759,
+          "end": 9847
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 9873,
+          "end": 9950
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 9984,
+          "end": 10057
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 10131,
+          "end": 10225
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 10249,
+          "end": 10332
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 10364,
+          "end": 10443
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 10522,
+          "end": 10601
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 10643,
+          "end": 10718
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 10817,
+          "end": 10916
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 10984,
+          "end": 11079
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 11184,
+          "end": 11259
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 11265,
+          "end": 11349
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 11355,
+          "end": 11428
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 11435,
+          "end": 11528
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 11535,
+          "end": 11636
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 11698,
+          "end": 11777
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 11783,
+          "end": 11867
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 11923,
+          "end": 12013
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 12133,
+          "end": 12383
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 12385,
+          "end": 12427
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 12450,
+          "end": 12492
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 12508,
+          "end": 12551
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 12713,
+          "end": 12797
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 12798,
+          "end": 12853
+        },
+        {
+          "kind": "InterfaceDeclaration",
+          "start": 12893,
+          "end": 13045
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 13047,
+          "end": 13233
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 13358,
+          "end": 13531
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 13658,
+          "end": 13835
+        },
+        {
+          "kind": "InterfaceDeclaration",
+          "start": 13856,
+          "end": 14455
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 14457,
+          "end": 14622
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 14754,
+          "end": 14848
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 14850,
+          "end": 14873
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 14874,
+          "end": 14888
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 14915,
+          "end": 14929
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 14956,
+          "end": 14970
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 15005,
+          "end": 15022
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 15049,
+          "end": 15066
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 15093,
+          "end": 15110
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 15167,
+          "end": 15232
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 15233,
+          "end": 15247
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 15258,
+          "end": 15314
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 15315,
+          "end": 15329
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 15338,
+          "end": 15394
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 15395,
+          "end": 15409
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 15419,
+          "end": 15476
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 15477,
+          "end": 15492
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 15510,
+          "end": 15526
+        }
+      ]
+    },
+    {
+      "id": "conformance/types/typeParameters/typeParameterLists/typeParameterConstModifiers.ts::typeParameterConstModifiers.ts",
+      "fileName": "typeParameterConstModifiers.ts",
+      "sourceText": "\n\n\ndeclare function f1<const T>(x: T): T;\n\nconst x11 = f1('a');\nconst x12 = f1(['a', ['b', 'c']]);\nconst x13 = f1({ a: 1, b: \"c\", d: [\"e\", 2, true, { f: \"g\" }] });\n\ndeclare function f2<const T, U>(x: T | undefined): T;\n\nconst x21 = f2('a');\nconst x22 = f2(['a', ['b', 'c']]);\nconst x23 = f2({ a: 1, b: \"c\", d: [\"e\", 2, true, { f: \"g\" }] });\n\ndeclare function f3<const T>(x: T): T[];\n\nconst x31 = f3(\"hello\");\nconst x32 = f3(\"hello\");\n\ndeclare function f4<const T>(obj: [T, T]): T;\n\nconst x41 = f4([[1, 'x'], [2, 'y']]);\nconst x42 = f4([{ a: 1, b: 'x' }, { a: 2, b: 'y' }]);\n\ndeclare function f5<const T>(obj: { x: T, y: T }): T;\n\nconst x51 = f5({ x: [1, 'x'], y: [2, 'y'] });\nconst x52 = f5({ x: { a: 1, b: 'x' }, y: { a: 2, b: 'y' } });\n\ndeclare function f6<const T extends readonly unknown[]>(...args: T): T;\n\nconst x61 = f6(1, 'b', { a: 1, b: 'x' });\nconst x62 = f6(...[1, 'b']);\nconst x63 = f6(true, ...[1, 'b']);\nconst x64 = f6(...([1, 'b']));\nconst x65 = f6(true, ...([1, 'b']));\n\nclass C1<const T> {\n    constructor(x: T) {}\n    foo<const U>(x: U) { return x; }\n}\n\nconst c71 = new C1({ a: 1, b: \"c\", d: [\"e\", 2, true, { f: \"g\" }] });\nconst c72 = c71.foo(['a', ['b', 'c']]);\n\nconst C2 = class <const T> {}\n\nconst fx1 = <const T>(x: T) => x;\nconst fx2 = <const T,>(x: T) => x;\n\ninterface I1<const T> { x: T }  // Error\n\ninterface I2 {\n    f<const T>(x: T): T;\n}\n\ntype T1<const T> = T;  // Error\n\ntype T2 = <const T>(x: T) => T;\ntype T3 = { <const T>(x: T): T };\ntype T4 = new <const T>(x: T) => T;\ntype T5 = { new <const T>(x: T): T };\n\n// Corrected repro from #51745\n\ntype Obj = { a: { b: { c: \"123\" } } };\n\ntype GetPath<T, P> =\n    P extends readonly [] ? T :\n    P extends readonly [infer A extends keyof T, ...infer Rest] ? GetPath<T[A], Rest> :\n    never;\n\nfunction set<T, const P extends readonly string[]>(obj: T, path: P, value: GetPath<T, P>) {}\n\ndeclare let obj: Obj;\ndeclare let value: \"123\";\n\nset(obj, ['a', 'b', 'c'], value);\n\n// Repro from #52007\n\ndeclare function inners<const T extends readonly any[]>(...args: readonly [unknown, ...T, unknown]): T;\n\nconst test = inners(1,2,3,4,5);\n\ndeclare function inners2<const T extends readonly any[]>(args: readonly [unknown, ...T, unknown]): T;\n\nconst test2 = inners2([1,2,3,4,5]);\n\n// Repro from #53307\n\ntype NotEmpty<T extends Record<string, any>> = keyof T extends never ? never : T;\n\nconst thing = <const O extends Record<string, any>>(o: NotEmpty<O>) => o;\n\nconst t = thing({ foo: '' });  // readonly { foo: \"\" }\n\ntype NotEmptyMapped<T extends Record<string, any>> = keyof T extends never ? never : { [K in keyof T]: T[K] };\n\nconst thingMapped = <const O extends Record<string, any>>(o: NotEmptyMapped<O>) => o;\n\nconst tMapped = thingMapped({ foo: '' });  // { foo: \"\" }\n\n// repro from https://github.com/microsoft/TypeScript/issues/55033\n\nfunction factory_55033_minimal<const T extends readonly unknown[]>(cb: (...args: T) => void) {\n    return {} as T\n}\n\nconst test_55033_minimal = factory_55033_minimal((b: string) => {})\n\nfunction factory_55033<const T extends readonly unknown[]>(cb: (...args: T) => void) {\n    return function call<const K extends T>(...args: K): K {\n        return {} as K;\n    };\n}\n\nconst t1_55033 = factory_55033((a: { test: number }, b: string) => {})(\n    { test: 123 },\n    \"some string\"\n);\n\nconst t2_55033 = factory_55033((a: { test: number }, b: string) => {})(\n    { test: 123 } as const,\n    \"some string\"\n);\n\n// Same with non-readonly constraint\n\nfunction factory_55033_2<const T extends unknown[]>(cb: (...args: T) => void) {\n    return function call<const K extends T>(...args: K): K {\n        return {} as K;\n    };\n}\n\nconst t1_55033_2 = factory_55033_2((a: { test: number }, b: string) => {})(\n    { test: 123 },\n    \"some string\"\n);\n\nconst t2_55033_2 = factory_55033_2((a: { test: number }, b: string) => {})(\n    { test: 123 } as const,\n    \"some string\"\n);\n\n// Repro from https://github.com/microsoft/TypeScript/issues/51931\n\ndeclare function fn<const T extends any[]>(...args: T): T;\n\nconst a = fn(\"a\", false);\n\n// More examples of non-readonly constraints\n\ndeclare function fa1<const T extends unknown[]>(args: T): T;\ndeclare function fa2<const T extends readonly unknown[]>(args: T): T;\n\nfa1([\"hello\", 42]);\nfa2([\"hello\", 42]);\n\ndeclare function fb1<const T extends unknown[]>(...args: T): T;\ndeclare function fb2<const T extends readonly unknown[]>(...args: T): T;\n\nfb1(\"hello\", 42);\nfb2(\"hello\", 42);\n\ndeclare function fc1<const T extends unknown[]>(f: (...args: T) => void, ...args: T): T;\ndeclare function fc2<const T extends readonly unknown[]>(f: (...args: T) => void, ...args: T): T;\n\nfc1((a: string, b: number) => {}, \"hello\", 42);\nfc2((a: string, b: number) => {}, \"hello\", 42);\n\ndeclare function fd1<const T extends string[] | number[]>(args: T): T;\ndeclare function fd2<const T extends string[] | readonly number[]>(args: T): T;\ndeclare function fd3<const T extends readonly string[] | readonly number[]>(args: T): T;\n\nfd1([\"hello\", \"world\"]);\nfd1([1, 2, 3]);\nfd2([\"hello\", \"world\"]);\nfd2([1, 2, 3]);\nfd3([\"hello\", \"world\"]);\nfd3([1, 2, 3]);\n\ndeclare function fn1<const T extends { foo: unknown[] }[]>(...args: T): T;\n\nfn1({ foo: [\"hello\", 123] }, { foo: [true]});\n",
+      "upstreamFileSha256": "d332f4699a5323896fcd75622605d321579fb4173794461a736f24131de24986",
+      "diagnostics": [],
+      "statements": [
+        {
+          "kind": "FunctionDeclaration",
+          "start": 3,
+          "end": 41
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 43,
+          "end": 63
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 64,
+          "end": 98
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 99,
+          "end": 163
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 165,
+          "end": 218
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 220,
+          "end": 240
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 241,
+          "end": 275
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 276,
+          "end": 340
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 342,
+          "end": 382
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 384,
+          "end": 408
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 409,
+          "end": 433
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 435,
+          "end": 480
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 482,
+          "end": 519
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 520,
+          "end": 573
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 575,
+          "end": 628
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 630,
+          "end": 675
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 676,
+          "end": 737
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 739,
+          "end": 810
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 812,
+          "end": 853
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 854,
+          "end": 882
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 883,
+          "end": 917
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 918,
+          "end": 948
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 949,
+          "end": 985
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 987,
+          "end": 1070
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 1072,
+          "end": 1140
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 1141,
+          "end": 1180
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 1182,
+          "end": 1211
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 1213,
+          "end": 1246
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 1247,
+          "end": 1281
+        },
+        {
+          "kind": "InterfaceDeclaration",
+          "start": 1283,
+          "end": 1313
+        },
+        {
+          "kind": "InterfaceDeclaration",
+          "start": 1325,
+          "end": 1366
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1368,
+          "end": 1389
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1401,
+          "end": 1432
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1433,
+          "end": 1466
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1467,
+          "end": 1502
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1503,
+          "end": 1540
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1574,
+          "end": 1612
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1614,
+          "end": 1765
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 1767,
+          "end": 1859
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 1861,
+          "end": 1882
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 1883,
+          "end": 1908
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 1910,
+          "end": 1943
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 1967,
+          "end": 2070
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2072,
+          "end": 2103
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 2105,
+          "end": 2206
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2208,
+          "end": 2243
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2267,
+          "end": 2348
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2350,
+          "end": 2423
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2425,
+          "end": 2454
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 2481,
+          "end": 2591
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2593,
+          "end": 2678
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2680,
+          "end": 2721
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 2807,
+          "end": 2922
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2924,
+          "end": 2991
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 2993,
+          "end": 3173
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3175,
+          "end": 3286
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3288,
+          "end": 3408
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 3448,
+          "end": 3621
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3623,
+          "end": 3738
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3740,
+          "end": 3864
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 3934,
+          "end": 3992
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3994,
+          "end": 4019
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4067,
+          "end": 4127
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4128,
+          "end": 4197
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 4199,
+          "end": 4218
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 4219,
+          "end": 4238
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4240,
+          "end": 4303
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4304,
+          "end": 4376
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 4378,
+          "end": 4395
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 4396,
+          "end": 4413
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4415,
+          "end": 4503
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4504,
+          "end": 4601
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 4603,
+          "end": 4650
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 4651,
+          "end": 4698
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4700,
+          "end": 4770
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4771,
+          "end": 4850
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 4851,
+          "end": 4939
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 4941,
+          "end": 4965
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 4966,
+          "end": 4981
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 4982,
+          "end": 5006
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 5007,
+          "end": 5022
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 5023,
+          "end": 5047
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 5048,
+          "end": 5063
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 5065,
+          "end": 5139
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 5141,
+          "end": 5186
+        }
+      ]
+    },
+    {
+      "id": "conformance/types/typeParameters/typeParameterLists/varianceAnnotations.ts::varianceAnnotations.ts",
+      "fileName": "varianceAnnotations.ts",
+      "sourceText": "\n\n\n\ntype Covariant<out T> = {\n    x: T;\n}\n\ndeclare let super_covariant: Covariant<unknown>;\ndeclare let sub_covariant: Covariant<string>;\n\nsuper_covariant = sub_covariant;\nsub_covariant = super_covariant;  // Error\n\ntype Contravariant<in T> = {\n    f: (x: T) => void;\n}\n\ndeclare let super_contravariant: Contravariant<unknown>;\ndeclare let sub_contravariant: Contravariant<string>;\n\nsuper_contravariant = sub_contravariant;  // Error\nsub_contravariant = super_contravariant;\n\ntype Invariant<in out T> = {\n    f: (x: T) => T;\n}\n\ndeclare let super_invariant: Invariant<unknown>;\ndeclare let sub_invariant: Invariant<string>;\n\nsuper_invariant = sub_invariant;  // Error\nsub_invariant = super_invariant;  // Error\n\n// Variance of various type constructors\n\ntype T10<out T> = T;\ntype T11<in T> = keyof T;\ntype T12<out T, out K extends keyof T> = T[K];\ntype T13<in out T> = T[keyof T];\n\n// Variance annotation errors\n\ntype Covariant1<in T> = {  // Error\n    x: T;\n}\n\ntype Contravariant1<out T> = keyof T;  // Error\n\ntype Contravariant2<out T> = {  // Error\n    f: (x: T) => void;\n}\n\ntype Invariant1<in T> = {  // Error\n    f: (x: T) => T;\n}\n\ntype Invariant2<out T> = {  // Error\n    f: (x: T) => T;\n}\n\n// Variance in circular types\n\ntype Foo1<in T> = {  // Error\n    x: T;\n    f: FooFn1<T>;\n}\n\ntype FooFn1<T> = (foo: Bar1<T[]>) => void;\n\ntype Bar1<T> = {\n    value: Foo1<T[]>;\n}\n\ntype Foo2<out T> = {  // Error\n    x: T;\n    f: FooFn2<T>;\n}\n\ntype FooFn2<T> = (foo: Bar2<T[]>) => void;\n\ntype Bar2<T> = {\n    value: Foo2<T[]>;\n}\n\ntype Foo3<in out T> = {\n    x: T;\n    f: FooFn3<T>;\n}\n\ntype FooFn3<T> = (foo: Bar3<T[]>) => void;\n\ntype Bar3<T> = {\n    value: Foo3<T[]>;\n}\n\n// Wrong modifier usage\n\ntype T20<public T> = T;  // Error\ntype T21<in out in T> = T;  // Error\ntype T22<in out out T> = T;  // Error\ntype T23<out in T> = T;  // Error\n\ndeclare function f1<in T>(x: T): void;  // Error\ndeclare function f2<out T>(): T;  // Error\n\nclass C {\n    in a = 0;  // Error\n    out b = 0;  // Error\n}\n\n// Interface merging\n\ninterface Baz<out T> {}\ninterface Baz<in T> {}\n\ndeclare let baz1: Baz<unknown>;\ndeclare let baz2: Baz<string>;\n\nbaz1 = baz2;  // Error\nbaz2 = baz1;  // Error\n\n// Repro from #44572\n\ninterface Parent<out A> {\n    child: Child<A> | null;\n    parent: Parent<A> | null;\n}\n\ninterface Child<A, B = unknown> extends Parent<A> {\n    readonly a: A;\n    readonly b: B;\n}\n\nfunction fn<A>(inp: Child<A>) {\n    const a: Child<unknown> = inp;\n}\n\nconst pu: Parent<unknown> = { child: { a: 0, b: 0, child: null, parent: null }, parent: null };\nconst notString: Parent<string> = pu;  // Error\n\n// Repro from comment in #44572\n\ndeclare class StateNode<TContext, in out TEvent extends { type: string }> {\n    _storedEvent: TEvent;\n    _action: ActionObject<TEvent>;\n    _state: StateNode<TContext, any>;\n}\n\ninterface ActionObject<TEvent extends { type: string }> {\n    exec: (meta: StateNode<any, TEvent>) => void;\n}\n\ndeclare function createMachine<TEvent extends { type: string }>(action: ActionObject<TEvent>): StateNode<any, any>;\n\ndeclare function interpret<TContext>(machine: StateNode<TContext, any>): void;\n\nconst machine = createMachine({} as any);\n\ninterpret(machine);\n\ndeclare const qq: ActionObject<{ type: \"PLAY\"; value: number }>;\n\ncreateMachine<{ type: \"PLAY\"; value: number } | { type: \"RESET\" }>(qq);  // Error\n\n// Repros from #48618\n\nlet Anon = class <out T> {\n    foo(): InstanceType<(typeof Anon<T>)> {\n        return this;\n    }\n}\n\nlet OuterC = class C<out T> {\n    foo(): C<T> {\n        return this;\n    }\n}\n",
+      "upstreamFileSha256": "5d880f297cb8b7143201e6537bc5fa1321acf8fb7fcf40899664cd6b70aaab46",
+      "diagnostics": [
+        {
+          "code": 1030,
+          "start": 1738,
+          "length": 2
+        },
+        {
+          "code": 1030,
+          "start": 1775,
+          "length": 3
+        },
+        {
+          "code": 1029,
+          "start": 1810,
+          "length": 2
+        }
+      ],
+      "statements": [
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 4,
+          "end": 41
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 43,
+          "end": 91
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 92,
+          "end": 137
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 139,
+          "end": 171
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 172,
+          "end": 204
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 216,
+          "end": 269
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 271,
+          "end": 327
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 328,
+          "end": 381
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 383,
+          "end": 423
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 434,
+          "end": 474
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 476,
+          "end": 526
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 528,
+          "end": 576
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 577,
+          "end": 622
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 624,
+          "end": 656
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 667,
+          "end": 699
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 753,
+          "end": 773
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 774,
+          "end": 799
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 800,
+          "end": 846
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 847,
+          "end": 879
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 912,
+          "end": 959
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 961,
+          "end": 998
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1010,
+          "end": 1075
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1077,
+          "end": 1134
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1136,
+          "end": 1194
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1227,
+          "end": 1286
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1288,
+          "end": 1330
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1332,
+          "end": 1372
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1374,
+          "end": 1434
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1436,
+          "end": 1478
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1480,
+          "end": 1520
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1522,
+          "end": 1575
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1577,
+          "end": 1619
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1621,
+          "end": 1661
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1688,
+          "end": 1711
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1722,
+          "end": 1748
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1759,
+          "end": 1786
+        },
+        {
+          "kind": "TypeAliasDeclaration",
+          "start": 1797,
+          "end": 1820
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 1832,
+          "end": 1870
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 1881,
+          "end": 1913
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 1925,
+          "end": 1985
+        },
+        {
+          "kind": "InterfaceDeclaration",
+          "start": 2009,
+          "end": 2032
+        },
+        {
+          "kind": "InterfaceDeclaration",
+          "start": 2033,
+          "end": 2055
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2057,
+          "end": 2088
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2089,
+          "end": 2119
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 2121,
+          "end": 2133
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 2144,
+          "end": 2156
+        },
+        {
+          "kind": "InterfaceDeclaration",
+          "start": 2190,
+          "end": 2275
+        },
+        {
+          "kind": "InterfaceDeclaration",
+          "start": 2277,
+          "end": 2368
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 2370,
+          "end": 2438
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2440,
+          "end": 2535
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 2536,
+          "end": 2573
+        },
+        {
+          "kind": "ClassDeclaration",
+          "start": 2618,
+          "end": 2794
+        },
+        {
+          "kind": "InterfaceDeclaration",
+          "start": 2796,
+          "end": 2905
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 2907,
+          "end": 3022
+        },
+        {
+          "kind": "FunctionDeclaration",
+          "start": 3024,
+          "end": 3102
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3104,
+          "end": 3145
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 3147,
+          "end": 3166
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3168,
+          "end": 3232
+        },
+        {
+          "kind": "ExpressionStatement",
+          "start": 3234,
+          "end": 3305
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3340,
+          "end": 3439
+        },
+        {
+          "kind": "VariableStatement",
+          "start": 3441,
+          "end": 3517
+        }
+      ]
+    }
+  ]
+}

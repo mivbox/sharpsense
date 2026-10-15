@@ -16,7 +16,8 @@ Read slices expose focused contracts for hybrid search, node context, traces, in
 
 - Domain owns graph concepts and identities.
 - Application owns use cases, source-plan contracts, and orchestration.
-- Infrastructure owns Roslyn, Tree-sitter, Markdig, filesystem integration, embeddings, and SQLite persistence.
+- Infrastructure owns Roslyn, TypeScript graph extraction, Markdig, filesystem integration, embeddings, and SQLite persistence.
+- SharpSense.TypeScript owns managed TypeScript parsing and syntax contracts.
 - CLI owns command/MCP presentation and the HTTP host.
 - UI features use generated API contracts and workspace-scoped query clients.
 

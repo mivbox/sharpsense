@@ -1,21 +1,15 @@
 using SharpSense.Application.Indexing.Models;
-using TreeSitter;
+using SharpSense.TypeScript.Parsing.Models;
 
 namespace SharpSense.Infrastructure.Indexing.TypeScript;
 
-internal sealed class TypeScriptParsedFile(
-    DiscoveredFile discoveredFile,
-    string sourceText,
-    Tree syntaxTree) : IDisposable
+internal sealed class TypeScriptParsedFile(DiscoveredFile discoveredFile, TypeScriptSyntaxTree syntaxTree)
 {
-    public DiscoveredFile DiscoveredFile { get; } = discoveredFile ?? throw new ArgumentNullException(nameof(discoveredFile));
+    public DiscoveredFile DiscoveredFile { get; } = discoveredFile;
 
-    public string SourceText { get; } = sourceText ?? throw new ArgumentNullException(nameof(sourceText));
+    public TypeScriptSyntaxTree SyntaxTree { get; } = syntaxTree;
 
-    public Tree SyntaxTree { get; } = syntaxTree ?? throw new ArgumentNullException(nameof(syntaxTree));
+    public string SourceText => SyntaxTree.SourceText;
 
-    public Node RootNode => SyntaxTree.RootNode;
-
-    public void Dispose()
-        => SyntaxTree.Dispose();
+    public SourceFile RootNode => SyntaxTree.Root;
 }

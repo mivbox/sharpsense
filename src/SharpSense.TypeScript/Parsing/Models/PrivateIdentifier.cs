@@ -1,0 +1,14 @@
+namespace SharpSense.TypeScript.Parsing.Models;
+
+public class PrivateIdentifier : Identifier
+{
+    public PrivateIdentifier(
+        string? text,
+        string? escapedText = null,
+        SyntaxKind? originalKeywordKind = null,
+        bool? hasExtendedUnicodeEscape = null)
+        : base(text, originalKeywordKind, hasExtendedUnicodeEscape, SyntaxKind.PrivateIdentifier)
+    {
+        EscapedText = escapedText;
+    }
+}

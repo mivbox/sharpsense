@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(NetCoreAppVersion)</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="SharpSense.TypeScript.Parsing" />
+    <Using Include="SharpSense.TypeScript.Parsing.Models" />
+    <Using Include="SharpSense.TypeScript.Parsing.Abstractions" />
+    <Using Include="SharpSense.TypeScript.Scanning" />
+    <Using Include="System.Globalization" />
+    <Using Include="System.Text" />
+    <Using Include="System.Text.RegularExpressions" />
+  </ItemGroup>
+</Project>

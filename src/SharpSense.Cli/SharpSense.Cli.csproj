@@ -11,7 +11,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>sharpsense</ToolCommandName>
     <PackageOutputPath>./nupkg</PackageOutputPath>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageId>SharpSense.Cli</PackageId>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
@@ -97,19 +97,19 @@
     </ItemGroup>
   </Target>
 
-  <!-- The BERT embedder uses base ONNX Runtime. GenAI serves an unused chat connector.
-       TypeScript/TSX need only their two grammars and the Tree-sitter core library. -->
+  <!-- The BERT embedder uses base ONNX Runtime. GenAI serves an unused chat connector. -->
   <Target Name="TrimUnusedNativeAssets" AfterTargets="ResolvePackageAssets">
     <ItemGroup>
-      <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)"
-          Condition="'%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'TreeSitter.DotNet' and !$([System.Text.RegularExpressions.Regex]::IsMatch('%(RuntimeTargetsCopyLocalItems.Filename)', '^(lib)?tree-sitter(-typescript|-tsx)?$'))" />
-      <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)"
-          Condition="'%(NativeCopyLocalItems.NuGetPackageId)' == 'TreeSitter.DotNet' and !$([System.Text.RegularExpressions.Regex]::IsMatch('%(NativeCopyLocalItems.Filename)', '^(lib)?tree-sitter(-typescript|-tsx)?$'))" />
       <RuntimeTargetsCopyLocalItems Remove="@(RuntimeTargetsCopyLocalItems)"
           Condition="'%(RuntimeTargetsCopyLocalItems.NuGetPackageId)' == 'Microsoft.ML.OnnxRuntimeGenAI'" />
       <NativeCopyLocalItems Remove="@(NativeCopyLocalItems)"
           Condition="'%(NativeCopyLocalItems.NuGetPackageId)' == 'Microsoft.ML.OnnxRuntimeGenAI'" />
     </ItemGroup>
   </Target>
+
+  <ItemGroup>
+    <None Include="../SharpSense.TypeScript/LICENSE.txt" Pack="true" PackagePath="notices/TypeScript/LICENSE.txt" />
+    <None Include="../SharpSense.TypeScript/UPSTREAM.md" Pack="true" PackagePath="notices/TypeScript/UPSTREAM.md" />
+  </ItemGroup>
 
 </Project>

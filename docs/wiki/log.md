@@ -4,6 +4,13 @@ Historical implementation notes follow. Each dated entry describes behavior at t
 
 ## Version 1
 
+- `2026-10-16` — Restructured the README around .NET installation, capabilities, agent integrations, and linked guides. Added a compact [benchmark table](../../README.md#benchmarks) with example queries for C# and Markdown across 12 independent AI runs, retaining improvements and regressions with source-reviewed answers. Embedded a [69-second UI walkthrough](https://github.com/mivbox/sharpsense/issues/47) recorded from an empty home with the solution, TypeScript frontend, and docs; repository and user-home paths are masked.
+- `2026-10-16` — Restricted TypeScript failure mapping to expected discovery errors. Unexpected extraction and progress-observer failures now propagate, cancellation retains its original exception, and invalid or circular tsconfig inheritance remains a recoverable configuration failure. Added failure and recovery regressions. See [TypeScript extraction](extractors/typescript.md).
+
+- `2026-10-16` — Added a pinned official TypeScript compiler corpus with a .NET maintenance tool, bounded parser resources and scanner cancellation, read-only syntax contracts and corrected nullable children. Discovery now owns one parse per file per analysis; extraction uses lookup indexes and reuses source lines. Compiler comparisons corrected scanner escape flags, import-type trailing commas and variance diagnostics. See [TypeScript extraction](extractors/typescript.md).
+
+- `2026-10-15` — Replaced TypeScript Tree-sitter integration with the managed `SharpSense.TypeScript` library and dedicated `SharpSense.TypeScript.Tests`. Parsing/scanning implementations, syntax models and contracts follow the feature layout; discovery and graph extraction remain in Infrastructure. Removed native grammar sources, CMake/MSBuild preparation and the native CI matrix. Added structured UTF-16 diagnostics, fixed imported diagnostic deduplication, retained variance-order rejection and preserved full/watch graph recovery. See [TypeScript extraction](extractors/typescript.md) for the boundary, validation and follow-up improvements.
+
 - `2026-10-05` — Added the Claude Code marketplace and plugin manifest, sharing the four SharpSense skills and binding MCP discovery to the client project directory. See [plugin installation](cli/skills-command.md).
 
 - `2026-10-04` — Added neutral dark/light themes with muted green accents with a saved browser preference and an animated robot-brain mark that respects reduced motion. Graph theme changes preserve the current view. See [browser UI](cli/ui-command.md).

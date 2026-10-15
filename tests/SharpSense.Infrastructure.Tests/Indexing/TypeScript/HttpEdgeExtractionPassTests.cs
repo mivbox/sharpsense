@@ -2,7 +2,8 @@ using AwesomeAssertions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Indexing.TypeScript;
-using TreeSitter;
+using SharpSense.TypeScript.Parsing;
+using static SharpSense.Infrastructure.Tests.Indexing.TypeScript.TypeScriptTestPaths;
 
 namespace SharpSense.Infrastructure.Tests.Indexing.TypeScript;
 
@@ -59,12 +60,10 @@ public sealed class HttpEdgeExtractionPassTests
     private static IReadOnlyList<IndexedDependency> Extract(string expression)
     {
         var source = $"export async function request(options, verb, method, headers, url, suffix) {{ return {expression}; }}";
-        using var language = new Language("TypeScript");
-        using var parser = new Parser(language);
-        using var file = new TypeScriptParsedFile(
-            new DiscoveredFile("/repo/client.ts", "client.ts"),
-            source,
-            parser.Parse(source) ?? throw new InvalidOperationException("Fixture did not parse."));
+        var file = new TypeScriptParsedFile(
+            new DiscoveredFile(Absolute("/repo/client.ts"), "client.ts"),
+            TypeScriptParser.Parse("client.ts", source, TestContext.Current.CancellationToken));
+        file.SyntaxTree.Diagnostics.Should().BeEmpty();
         var context = new TypeScriptPassContext([file], TestContext.Current.CancellationToken);
         new CodeNodeExtractionPass().Execute(context);
         new HttpEdgeExtractionPass().Execute(context);

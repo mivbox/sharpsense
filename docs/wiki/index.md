@@ -29,7 +29,7 @@ Start with the [project README](../../README.md) for installation and prerequisi
 | --- | --- |
 | Application boundaries | [Vertical slices](architecture/vertical-slice-application.md), [commands and queries](architecture/cqrs-pipeline.md), [host composition](architecture/host-composition.md) |
 | Indexing | [Source discovery](architecture/file-discovery.md), [watch reconciliation](architecture/incremental-watch.md), [filesystem boundaries](architecture/virtual-file-system.md) |
-| Languages | [C# and Roslyn](extractors/csharp.md), [TypeScript and Tree-sitter](extractors/typescript.md), [Markdown and Markdig](extractors/markdown.md) |
+| Languages | [C# and Roslyn](extractors/csharp.md), [Managed TypeScript parsing](extractors/typescript.md), [Markdown and Markdig](extractors/markdown.md) |
 | Queries and storage | [SQLite schema](persistence/sqlite-schema.md), [hybrid search](architecture/hybrid-search-pipeline.md), [workspace explorer](architecture/workspace-tree.md) |
 | Output reduction | [Windowed command execution](architecture/windowed-execution-pipeline.md), [evaluating token usage](../token-usage.md) |
 

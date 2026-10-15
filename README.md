@@ -1,251 +1,236 @@
-# SharpSense 1.0
+# SharpSense
 
-SharpSense is a local knowledge graph for C#, TypeScript, and Markdown. Named workspaces combine selected
-projects, frontend sources, and documentation into one searchable graph. Each workspace owns its configuration,
-SQLite database, indexing history, and authored memories.
+**Built in .NET, for .NET developers.**
 
-## Install
+A local code knowledge graph that gives your AI assistant the symbols, callers, dependencies, and documentation
+it needs to understand your codebase. SharpSense combines Roslyn-powered C# analysis, TypeScript frontends, and
+Markdown documentation in one workspace, accessible through MCP, the CLI, and a browser UI.
 
-Install the .NET 10 SDK, then install SharpSense from NuGet:
+[Demo](#see-it-in-action) · [Quick start](#quick-start) · [Benchmarks](#benchmarks) · [AI integrations](#connect-your-ai-assistant) ·
+[Documentation](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/index.md) · [Contributing](#development)
+
+## See it in action
+
+A 69-second walkthrough: start with an empty home, add the SharpSense solution, TypeScript frontend, and
+documentation, index the workspace, then explore search, symbol context, implementations, and graph statistics.
+Repository and user-home paths are masked in this recording.
+
+https://github.com/user-attachments/assets/3f33ba29-c914-4842-8e1d-3977bf36452d
+
+## Quick start
+
+Requires the **.NET 10 SDK**. Install the tool, select your solution, and build the graph:
 
 ```bash
 dotnet tool install --global SharpSense.Cli
-sharpsense --help
+sharpsense workspace create my-app --workspace-root . --csharp MyApp.sln
+sharpsense analyze --workspace my-app
+sharpsense ui --workspace my-app
 ```
 
-To update an existing installation, run `dotnet tool update --global SharpSense.Cli`.
-[Building from source](https://github.com/mivbox/sharpsense/blob/main/src/SharpSense.Cli/README.md#install-from-source)
-also requires Node.js 22.13+ and pnpm 12.6.0. The installed CLI and UI do not require Node.js or pnpm.
+Replace `MyApp.sln` with your solution or project. Open **http://localhost:50069** to explore the graph.
+You can also run `sharpsense ui` first and create a workspace through the browser.
 
-## Create a workspace
+Update with `dotnet tool update --global SharpSense.Cli`. The installed CLI and UI do not require Node.js or pnpm.
 
-Run `sharpsense workspace create` for guided setup, or provide explicit sources.
+## Why SharpSense?
 
-```bash
-sharpsense workspace create commerce --workspace-root /path/to/monorepo \
-  --csharp src/Api/Api.csproj \
-  --csharp src/Core/Core.csproj \
-  --csharp src/Jobs/Jobs.csproj \
-  --typescript frontend/tsconfig.json \
-  --markdown "docs/**/*.md"
+Before changing a method, find its callers. Before changing an interface, find its implementations. When a decision
+matters, attach it to the relevant symbol so the next investigation can retrieve it.
 
-sharpsense analyze --workspace commerce
-sharpsense ui
-```
+| Capability | What it gives you |
+| --- | --- |
+| **C# semantic analysis** | Roslyn-backed symbols and relationships across your selected projects. |
+| **One graph for your stack** | C#, TypeScript/TSX, and Markdown in a named workspace. |
+| **Focused agent context** | Search, immediate relationships, dependency traces, and impact analysis through MCP. |
+| **Browser exploration** | Manage workspaces, run analysis, inspect the graph, and try queries visually. |
+| **Persistent memories** | Attach decisions and conventions to symbols; source changes can mark notes stale. |
+| **Watch mode** | Refresh the graph as files change and reuse unchanged embeddings. |
+| **Local storage and embeddings** | Keep workspace configuration, the SQLite index, and authored memories on your machine. |
 
-Open `http://localhost:50069` after starting the UI. It can start before any workspace exists: create a workspace,
-discover or add its sources, then analyse it or start watching. Switch between workspaces to explore their graphs,
-search symbols, inspect indexing diagnostics, attach memories, and try the analysis tools. The dashboard also supports
-editing sources and merging workspaces with the same root. `ui --workspace commerce` provides an initial selection.
+Your AI client controls where the context it retrieves is sent. SharpSense does not require a hosted graph service.
 
-C# sources accept `.sln`, `.slnx`, or `.csproj` files. TypeScript sources accept a configuration file or source
-directory.
-Markdown sources accept a file, directory, or quoted glob. Include documentation explicitly; no repository YAML file
-is required or read. For `workspace create`, `add`, and `remove`, relative source paths resolve from the current
-directory,
-or from `--workspace-root` when supplied. Absolute paths also work. Stored paths remain relative to the registered
-workspace root. The root stays at the directory you choose;
-it does not expand to a containing Git repository. Use a common parent to include sources from several repositories.
+## Benchmarks
 
-One workspace can contain all of a product, while another indexes just its API or frontend. Names are convenient
-selectors; stable workspace IDs determine storage identity. Renaming or selecting another workspace does not redirect
-an existing MCP session to a different graph.
+| Source | Tokens without | Tokens with | Token change | Time without | Time with | Time change |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| C# | 220,279 | 147,614 | **33.0% fewer** | 74.4 s | 63.1 s | **15.2% less** |
+| Markdown | 101,194 | 124,917 | 23.4% more | 43.0 s | 52.2 s | 21.4% more |
 
-## Manage workspaces
+Example queries used for both runs:
 
-```bash
-sharpsense workspace                         # Show command help
-sharpsense workspace ls                      # Alias for list; marks the default
-sharpsense workspace use commerce            # Save the global CLI default
-sharpsense analyze                           # Analyse that default workspace
-sharpsense workspace show commerce --json
-sharpsense workspace rename old-name commerce
-sharpsense workspace add commerce --workspace-root /path/to/monorepo --markdown "design/**/*.md"
-sharpsense workspace remove commerce --workspace-root /path/to/monorepo --markdown "design/**/*.md"
+| Source | Question for both runs |
+| --- | --- |
+| C# | If source extraction fails during indexing, what happens to the previous graph? Show the failure path and its tests. |
+| Markdown | How do the CLI and MCP choose a workspace when no explicit workspace is supplied? Cite the relevant documentation. |
 
-sharpsense workspace create api --workspace-root /path/to/monorepo --csharp src/Api/Api.csproj
-sharpsense workspace create web --workspace-root /path/to/monorepo --typescript frontend/tsconfig.json
-sharpsense workspace merge product api web
-```
+Results are medians of three runs per question and condition. All 12 answers passed source review.
+This is a small pilot; results depend on the task and model.
 
-Workspace management uses explicit subcommands. Creation offers bounded source discovery, manual paths/globs, and a
-review before saving. Fully specified creation commands
-save without prompting; incomplete commands require an interactive terminal. JSON mode always requires explicit inputs.
-Running `sharpsense` or `sharpsense workspace` without a subcommand shows help.
+Tokens are provider-reported input plus output across the whole task, including cached input once. Time includes
+agent and MCP startup; the **24.5-second index build** is separate.
 
-`remove` reports each removed or unmatched source, including when zero sources matched. Its JSON output adds
-`removedSources` and `unmatchedSources` to the workspace details. Unmatched requests succeed without rewriting the
-definition. Removal does not delete the workspace or its database. `merge` creates
-a new workspace from the source sets of existing workspaces with the same root, preserving the originals.
-Stop an active analyser or watcher before changing sources. Reindex after changing sources, and restart an MCP process
-to bind the updated definition. A workspace writer lock prevents concurrent CLI/UI indexing and source edits.
-Removing sources from the next index also removes symbols and memories attached to those symbols.
+## Connect your AI assistant
 
-Configuration and data live outside the repository, under `~/.sharpsense` by default. Set `SHARPSENSE_HOME` to an
-absolute directory to use another storage location:
+Install the CLI and analyse a workspace first. The `sharpsense` plugin includes an MCP connection and skills for
+exploration, impact analysis, memory maintenance, and reducing command output.
 
-```text
-~/.sharpsense/workspaces/<workspace-id>/
-  workspace.yaml
-  index.db
-```
-
-`workspace use <name-or-id>` saves one global default in `~/.sharpsense/default-workspace`.
-It stores the workspace ID, so renaming preserves the selection. Multiple workspaces can share a repository.
-CLI analysis and query commands use explicit `--workspace` first, then the saved default. They do not infer a
-workspace from the current directory. Interactive `analyze` offers a picker or setup when no default is saved;
-redirected commands never prompt. Empty or whitespace workspace selectors are rejected. Invalid explicit or saved
-selections remain errors. `workspace ls` stays available if the saved default is invalid, with a warning on stderr
-and valid JSON on stdout when `--json` is used.
-
-MCP uses an explicit `--workspace` or, when omitted, the single registered workspace whose root contains its launch
-directory. It never uses the CLI default. Zero or multiple matches require an explicit selection, including when
-roots overlap. Each MCP process keeps its workspace until restarted. The global UI provides its own workspace
-switcher; use `ui --workspace` to choose its initial workspace.
-
-## Analyse and query
-
-```bash
-sharpsense analyze --workspace commerce --watch
-sharpsense analyze --workspace commerce --no-embeddings
-sharpsense search "payment handler" --workspace commerce
-sharpsense context --node-id 42 --workspace commerce
-sharpsense trace 42 --direction caller --workspace commerce
-sharpsense doctor --workspace commerce --json
-sharpsense mcp --workspace commerce
-```
-
-Query commands such as `search`, `context` and `trace` return JSON by default. Add `--toon` for compact TOON output.
-Search accepts plain text, including symbol names and paths containing `*` or `:`. Keyword search combines prefix
-terms with OR; FTS operators, column selectors, and quoted phrases have no special meaning. Tokens shorter than two
-characters are ignored, and punctuation-only input returns no hits.
-
-Interactive analysis shows elapsed time, phase, per-language source activity, embeddings, saving, and a committed
-summary. Watch mode distinguishes reconciliation, idle, updates, recovery, and stopping. Redirected output uses
-concise milestones. Unknown totals stay indeterminate rather than presenting an overall percentage.
-
-An analysis builds the union of the configured sources and commits it together. Failed extraction preserves the previous
-graph. Watch mode first indexes the workspace, then processes changes; failed incremental work gets one full recovery
-attempt before reporting failure.
-
-C# project loading does not promote warnings to errors for analysis. MSBuild and NuGet warnings remain visible in index
-diagnostics, including package vulnerability advisories. The repository's build settings are unchanged. Genuine project
-loading failures still stop indexing and preserve the previous graph.
-
-C# edits to existing source files reuse the loaded Roslyn workspace and compilation caches while extracting the complete
-semantic graph. Structural, project, `.props`/`.targets`, and additional-input changes use conservative reloads.
-TypeScript updates refresh the configured TypeScript scope to reconcile imports, deleted files, and configuration
-changes. Embedding reuse avoids regenerating unchanged vectors. Index status reports phase timings and generated/reused
-counts.
-
-## Install the agent plugin
-
-The `sharpsense` plugin includes exploration, impact-analysis, memory-maintenance and command-output skills, plus a stdio MCP connection
-for Claude Code, Codex and Copilot. Install the SharpSense CLI on the client's `PATH`, then create and analyse a workspace before
-starting the client from a directory within that workspace.
-
-For Claude Code:
+<details>
+<summary><strong>Claude Code</strong></summary>
 
 ```bash
 claude plugin marketplace add mivbox/sharpsense
 claude plugin install sharpsense@sharpsense-marketplace
 ```
 
-For Copilot CLI:
+</details>
+
+<details>
+<summary><strong>Copilot CLI</strong></summary>
 
 ```bash
 copilot plugin marketplace add mivbox/sharpsense
 copilot plugin install sharpsense@sharpsense-marketplace
 ```
 
-For Codex:
+</details>
 
-```bash
-codex plugin marketplace add mivbox/sharpsense
-codex plugin add sharpsense@sharpsense-marketplace
-```
+Start the client from inside your registered workspace. MCP discovers the workspace only when exactly one registered
+root contains that directory. If roots overlap, choose explicitly with `--workspace`.
 
-## MCP startup and workspace selection
+<details>
+<summary><strong>Other MCP clients or explicit workspace selection</strong></summary>
 
-Workspace selection happens once when the MCP process starts:
-
-1. If `--workspace <name-or-id>` is supplied, use that workspace regardless of the current directory.
-2. Otherwise, find registered workspaces whose root contains the process's current directory, including the root itself.
-3. Start only when exactly one workspace matches. With no matches or multiple matches, report an error and require
-   an explicit selection. Overlapping roots are ambiguous; the nearest root does not take priority.
-
-**MCP never reads the default saved by `sharpsense workspace use`.** That default is for CLI commands such as
-`analyze`, `search` and `context`. An invalid default cannot prevent MCP directory discovery, and a valid default
-cannot resolve an ambiguous directory.
-
-```bash
-cd /path/to/commerce/backend
-sharpsense mcp                         # Discover the unique containing workspace
-sharpsense mcp --workspace commerce    # Select explicitly, from any directory
-sharpsense mcp --workspace-root /path/to/commerce/backend  # Set the discovery directory
-```
-
-The discovery directory can be inside a nested Git repository; matching uses the configured workspace roots. For
-example, roots `/work/product` and `/work/product/frontend` both match a launch from `/work/product/frontend`, so use
-`--workspace` to choose between them.
-
-The selected workspace stays fixed for the process's lifetime. Restart MCP to select another workspace or pick up
-changed workspace configuration. Changing the CLI default or UI selection does not switch a running MCP server.
-The plugin's automatic connection uses this same startup behaviour.
-
-## Connect an MCP client directly
-
-If several workspaces match the launch directory, select one explicitly. Disable the plugin's automatic MCP
-connection in your client when replacing it with a manual entry to avoid a duplicate server. For clients using
-an `mcpServers` configuration:
+For clients using an `mcpServers` configuration:
 
 ```json
 {
   "mcpServers": {
-    "sharpsense-commerce": {
+    "sharpsense": {
       "command": "sharpsense",
-      "args": [
-        "mcp",
-        "--workspace",
-        "commerce"
-      ]
+      "args": ["mcp", "--workspace", "my-app"]
     }
   }
 }
 ```
 
-Replace `commerce` with your workspace name or ID. The same entry also works without the plugin. Omit the
-`--workspace` argument and value to use directory discovery. Each MCP process stays bound to its selected workspace;
-register separate entries to expose several workspaces. Changing `workspace use` or the UI selection does not
-change an MCP session.
+Replace `my-app` with your workspace name or ID. Disable the plugin's automatic MCP connection when replacing it
+with a manual entry. Each server stays bound to one workspace; restart it to select another.
 
-Tools include semantic search, symbol context, dependency tracing, impact analysis, memories and `graph_stats`.
+</details>
 
-## Index diagnostics
+### What your agent can do
 
-`doctor` checks the selected home-owned configuration, SDK discovery, native TypeScript/TSX parsers, embedding assets,
-database compatibility, and graph counts. It does not create, migrate, reset, or index a database. Errors return exit
-code 1;
-warnings alone return 0. Asset checks verify model availability rather than executing inference.
+| Tool | Purpose |
+| --- | --- |
+| `semantic_search` | Find symbols and documentation using keyword and vector search. |
+| `context` | Inspect a symbol's immediate callers, callees, and inheritance relationships. |
+| `trace_node` | Follow dependencies or inspect callers affected by a change. |
+| `get_inheritors` | Find direct derived classes and interface implementations. |
+| `graph_stats` | Check graph coverage, indexing timings, and diagnostics. |
+| `attach_memory`, `get_memory`, `get_memories`, `delete_memory` | Maintain notes attached to indexed symbols. |
+| `ctx_execute` | Run a local command and return bounded excerpts relevant to a query. |
 
-The UI and read-only `graph_stats` MCP tool report node, edge, file, project, language, embedding, and memory counts,
-plus the last successful index and latest completed attempt. Failed or cancelled attempts preserve the previous success.
-Diagnostics are bounded and indicate truncation. These timestamps describe recorded indexing work, not filesystem
-freshness.
+Try asking your assistant:
+
+> Find the handler for creating an order, inspect its dependencies, and show the callers affected by changing it.
+
+> Find the implementations of `IPaymentGateway` and the documentation that describes payment retries.
+
+> Attach our idempotency decision to the order handler so future investigations can retrieve it.
+
+See the [MCP guide](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/cli/mcp-command.md) for tool limits and workspace selection, and the
+[plugin guide](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/cli/skills-command.md) for installation details.
+
+## How it works
+
+```mermaid
+flowchart LR
+    Sources[Selected projects, frontend, and docs] --> Analysis[Roslyn, managed TypeScript parser, Markdig]
+    Analysis --> Graph[Local SQLite graph and embeddings]
+    Graph --> MCP[MCP tools for AI assistants]
+    Graph --> CLI[CLI queries]
+    Graph --> UI[Browser explorer]
+```
+
+Named workspaces let you select the parts of a repository that belong together. Analysis commits the selected sources
+as one graph; failed extraction preserves the previous graph. Watch mode refreshes it as sources change.
+
+Configuration, indexes, logs, and memories live under `~/.sharpsense`. An absolute `SHARPSENSE_HOME` selects a different
+storage directory. There is no project-local YAML configuration to maintain.
+
+## CLI at a glance
+
+| Command | Purpose |
+| --- | --- |
+| `sharpsense workspace create` | Create a workspace with guided setup. |
+| `sharpsense workspace ls` | List registered workspaces. |
+| `sharpsense workspace use my-app` | Save the default for CLI commands. |
+| `sharpsense analyze --workspace my-app` | Build or update the graph. |
+| `sharpsense analyze --workspace my-app --watch` | Keep the workspace indexed as sources change. |
+| `sharpsense search "payment handler" --workspace my-app` | Search code and documentation. |
+| `sharpsense context --node-id 42 --workspace my-app` | Inspect a symbol's immediate relationships. |
+| `sharpsense trace 42 --direction caller --workspace my-app` | Find immediate callers. |
+| `sharpsense inheritors 42 --workspace my-app` | Find direct implementations or derived classes. |
+| `sharpsense doctor --workspace my-app --json` | Check configuration, assets, and database compatibility. |
+| `sharpsense ui --workspace my-app` | Open the browser workspace explorer. |
+| `sharpsense mcp --workspace my-app` | Start a stdio MCP server. |
+
+Use the node IDs returned by search in subsequent queries. Queries return JSON by default; add `--toon` for compact
+output. `analyze --no-embeddings` skips embedding generation. Run `sharpsense --help` for the full command list.
+
+The CLI default and MCP selection are independent: **MCP never reads `workspace use`**. Explicit `--workspace`
+selection works from any directory.
+
+## Workspaces for a full stack
+
+Start with a solution, then add frontend sources and documentation:
+
+```bash
+sharpsense workspace create commerce --workspace-root . --csharp Commerce.sln
+sharpsense workspace add commerce --workspace-root . --typescript frontend/tsconfig.json --markdown "docs/**/*.md"
+sharpsense analyze --workspace commerce
+```
+
+| Source | Accepted selections |
+| --- | --- |
+| C# | `.sln`, `.slnx`, or `.csproj` files. |
+| TypeScript | A configuration file or source directory. |
+| Markdown | A file, directory, or quoted glob. |
+
+One workspace can cover a product; another can select only its API. The UI supports creating, editing, and merging
+workspaces with the same root. Reanalyse after changing source selections, and restart an existing MCP session to
+load the changed configuration.
+
+See [workspace management](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/cli/workspace-command.md) for source paths, selection rules, merges, and storage.
 
 ## Language support
 
-C# analysis uses Roslyn semantics. TypeScript/TSX analysis uses packaged native Tree-sitter grammars to extract exported
-declarations, members, components, module imports, package dependencies, and statically recognisable HTTP requests.
-The graph distinguishes same-named declarations in different files and tracks source hashes for stale memories.
+| Language | Analysis | Scope |
+| --- | --- | --- |
+| C# | Roslyn | Semantic symbols, references, calls, and inheritance from selected projects. |
+| TypeScript / TSX | Managed `SharpSense.TypeScript` parser | Declarations, members, components, imports, package dependencies, and statically recognisable HTTP requests. |
+| Markdown | Markdig | Documentation nodes and links alongside code. |
 
-TypeScript analysis is syntax-based. Import edges represent module dependencies, not compiler-resolved function calls.
-It does not provide TypeScript type checking or complete resolution of dynamic imports, computed URLs, runtime dispatch,
-namespace merging, arbitrary framework wrappers, or package export conditions.
+TypeScript relationships are syntax-based: import edges describe module dependencies, and do not imply resolved
+function calls or type checking. Dynamic imports, computed URLs, runtime dispatch, and arbitrary framework wrappers
+have limited coverage. The parser has a July 2024 grammar baseline with targeted compatibility fixes and a pinned
+compiler corpus; it does not claim complete support for every later TypeScript release.
 
-Memories belong to persisted numeric node IDs within one workspace database. Surviving node updates preserve authored
-notes; rebuilding an empty database creates a new set of IDs and does not recreate those notes.
+See [C# analysis](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/extractors/csharp.md), [TypeScript compatibility and diagnostics](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/extractors/typescript.md),
+and [Markdown analysis](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/extractors/markdown.md) for details.
+
+## Development
+
+SharpSense uses .NET 10, vertical slices, and a separate TypeScript UI. Building the CLI from source also requires
+Node.js 22.13+ and pnpm 12.6.0 to build and embed the UI.
+
+- [Build and install from source](https://github.com/mivbox/sharpsense/blob/main/src/SharpSense.Cli/README.md#install-from-source)
+- [.NET build, formatting, and tests](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/architecture/dotnet-conventions.md)
+- [Application architecture](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/architecture/vertical-slice-application.md)
+- [UI development](https://github.com/mivbox/sharpsense/blob/main/src/SharpSense.UI/README.md)
+- [Complete documentation](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/index.md)
 
 ## License
 
-SharpSense is available under the [MIT license](https://github.com/mivbox/sharpsense/blob/main/LICENSE).
+[MIT](https://github.com/mivbox/sharpsense/blob/main/LICENSE). Third-party parser notices are preserved with the [TypeScript library](https://github.com/mivbox/sharpsense/blob/main/src/SharpSense.TypeScript).
