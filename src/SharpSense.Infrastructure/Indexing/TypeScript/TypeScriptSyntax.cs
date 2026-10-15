@@ -1,57 +1,70 @@
+using SharpSense.TypeScript.Parsing.Abstractions;
+using SharpSense.TypeScript.Parsing.Models;
+
 namespace SharpSense.Infrastructure.Indexing.TypeScript;
 
 internal static class TypeScriptSyntax
 {
-    public static TypeScriptImportBinding[] ReadImports(TreeSitter.Node importNode)
+    public static IEnumerable<TypeScriptImportBinding> ReadImports(ImportDeclaration import)
     {
-        var clause = importNode.NamedChildren.FirstOrDefault(node => node.Type == "import_clause");
-        if (clause is null)
+        var clause = import.ImportClause;
+        if (clause?.Name is { Text: { } name })
         {
-            return [];
+            yield return new(null, name, false);
         }
 
-        var bindings = new List<TypeScriptImportBinding>();
-        foreach (var child in clause.NamedChildren)
+        if (clause?.NamedBindings is NamespaceImport { Name.Text: { } namespaceName })
         {
-            if (child.Type == "identifier")
+            yield return new(null, namespaceName, true);
+        }
+        else if (clause?.NamedBindings is NamedImports namedImports)
+        {
+            foreach (var specifier in namedImports.Elements)
             {
-                bindings.Add(new(null, child.Text, false));
-            }
-            else if (child.Type == "namespace_import")
-            {
-                var local = child.NamedChildren.FirstOrDefault(node => node.Type == "identifier")?.Text;
-                if (local is not null)
+                if (specifier.Name?.Text is { } local)
                 {
-                    bindings.Add(new(null, local, true));
-                }
-            }
-            else if (child.Type == "named_imports")
-            {
-                foreach (var specifier in child.NamedChildren.Where(node => node.Type == "import_specifier"))
-                {
-                    var name = specifier.GetChildForField("name")?.Text.Trim('\'', '"');
-                    var local = specifier.GetChildForField("alias")?.Text ?? name;
-                    if (name is not null && local is not null)
-                    {
-                        bindings.Add(new(name, local, false));
-                    }
+                    yield return new(GetName(specifier.PropertyName) ?? local, local, false);
                 }
             }
         }
-
-        return [.. bindings];
     }
 
-    public static IEnumerable<TreeSitter.Node> EnumerateDescendants(TreeSitter.Node node)
-    {
-        yield return node;
-
-        foreach (var childNode in node.NamedChildren)
+    public static string? GetName(INode? node)
+        => node switch
         {
-            foreach (var descendantNode in EnumerateDescendants(childNode))
+            PrivateIdentifier => null,
+            Identifier identifier => identifier.Text,
+            StringLiteral literal => literal.Text,
+            NumericLiteral literal => literal.Text,
+            _ => null
+        };
+
+    public static string? GetModuleSpecifier(INode node)
+        => node switch
+        {
+            ImportDeclaration { ModuleSpecifier: StringLiteral literal } => literal.Text,
+            ExportDeclaration { ModuleSpecifier: StringLiteral literal } => literal.Text,
+            _ => null
+        };
+
+    public static bool HasBody(INode node) => node is FunctionLikeDeclarationBase { Body: not null };
+
+    public static int GetDeclarationStart(TypeScriptSyntaxTree tree, INode node)
+    {
+        var start = tree.GetStart(node);
+        if (node is IHasModifierLike { Modifiers: { } modifiers })
+        {
+            foreach (var modifier in modifiers)
             {
-                yield return descendantNode;
+                if (modifier.Kind is not (SyntaxKind.ExportKeyword or SyntaxKind.DefaultKeyword or SyntaxKind.DeclareKeyword))
+                {
+                    break;
+                }
+
+                start = modifier.End ?? start;
             }
         }
+
+        return tree.GetTokenStart(start);
     }
 }

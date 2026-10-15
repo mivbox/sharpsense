@@ -6,6 +6,7 @@ using SharpSense.Application.Shared.Models;
 using SharpSense.Infrastructure.Indexing.TypeScript;
 using SharpSense.Infrastructure.Storage;
 using System.IO.Abstractions.TestingHelpers;
+using static SharpSense.Infrastructure.Tests.Indexing.TypeScript.TypeScriptTestPaths;
 
 namespace SharpSense.Infrastructure.Tests.Indexing.TypeScript;
 
@@ -18,26 +19,26 @@ public sealed class TypeScriptLanguageExtractorTests
         var fileSystem = new MockFileSystem(
             new Dictionary<string, MockFileData>
             {
-                ["/repo/SharpSense.sln"] = new(""),
-                ["/repo/src/App.tsx"] = new("export const App = () => <div />;")
+                [Absolute("/repo/SharpSense.sln")] = new(""),
+                [Absolute("/repo/src/App.tsx")] = new("export const App = () => <div />;")
             },
-            "/repo");
+            Absolute("/repo"));
         var repositoryWorkspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);
         repositoryWorkspace
-            .Setup(candidate => candidate.GetRequiredTargetDirectoryPath("/repo/SharpSense.sln"))
-            .Returns("/repo");
+            .Setup(candidate => candidate.GetRequiredTargetDirectoryPath(Absolute("/repo/SharpSense.sln")))
+            .Returns(Absolute("/repo"));
         repositoryWorkspace
             .SetupGet(candidate => candidate.RootPath)
-            .Returns("/repo");
+            .Returns(Absolute("/repo"));
         var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
         fileDiscoverer
             .Setup(candidate => candidate.GetAllowedFiles(
-                "/repo",
+                Absolute("/repo"),
                 It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
                 ct))
             .ReturnsAsync(
                 [
-                    new DiscoveredFile("/repo/src/App.tsx", "src/App.tsx")
+                    new DiscoveredFile(Absolute("/repo/src/App.tsx"), "src/App.tsx")
                 ]);
         var extractor = new TypeScriptLanguageExtractor(
             new TypeScriptSourceDiscoverer(
@@ -49,7 +50,7 @@ public sealed class TypeScriptLanguageExtractorTests
             [new RecordingPass()]);
 
         var result = await extractor.Extract(
-            new ExtractionContext("/repo/SharpSense.sln", null),
+            new ExtractionContext(Absolute("/repo/SharpSense.sln"), null),
             ct);
 
         result.Value.Diagnostics.Should().Equal("src/App.tsx");
@@ -62,26 +63,26 @@ public sealed class TypeScriptLanguageExtractorTests
         var fileSystem = new MockFileSystem(
             new Dictionary<string, MockFileData>
             {
-                ["/repo/SharpSense.sln"] = new(""),
-                ["/repo/src/App.tsx"] = new("export const App = () => <div />;")
+                [Absolute("/repo/SharpSense.sln")] = new(""),
+                [Absolute("/repo/src/App.tsx")] = new("export const App = () => <div />;")
             },
-            "/repo");
+            Absolute("/repo"));
         var repositoryWorkspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);
         repositoryWorkspace
-            .Setup(candidate => candidate.GetRequiredTargetDirectoryPath("/repo/SharpSense.sln"))
-            .Returns("/repo");
+            .Setup(candidate => candidate.GetRequiredTargetDirectoryPath(Absolute("/repo/SharpSense.sln")))
+            .Returns(Absolute("/repo"));
         repositoryWorkspace
             .SetupGet(candidate => candidate.RootPath)
-            .Returns("/repo");
+            .Returns(Absolute("/repo"));
         var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
         fileDiscoverer
             .Setup(candidate => candidate.GetAllowedFiles(
-                "/repo",
+                Absolute("/repo"),
                 It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
                 ct))
             .ReturnsAsync(
                 [
-                    new DiscoveredFile("/repo/src/App.tsx", "src/App.tsx")
+                    new DiscoveredFile(Absolute("/repo/src/App.tsx"), "src/App.tsx")
                 ]);
         var progressUpdates = new List<IndexingProgress>();
         var extractor = new TypeScriptLanguageExtractor(
@@ -95,7 +96,7 @@ public sealed class TypeScriptLanguageExtractorTests
 
         await extractor.Extract(
             new ExtractionContext(
-                "/repo/SharpSense.sln",
+                Absolute("/repo/SharpSense.sln"),
                 new CollectingProgress(progressUpdates)),
             ct);
 
@@ -112,9 +113,9 @@ public sealed class TypeScriptLanguageExtractorTests
     public async Task WhenIncrementalTypeScriptPathLivesUnderBuildNamedRepositoryRoot_ThenItStillRunsDiscovery()
     {
         var ct = TestContext.Current.CancellationToken;
-        const string repositoryRoot = "/repo/build/worktree";
-        const string targetPath = "/repo/build/worktree/SharpSense.sln";
-        const string changedFilePath = "/repo/build/worktree/src/App.tsx";
+        var repositoryRoot = Absolute("/repo/build/worktree");
+        var targetPath = Absolute("/repo/build/worktree/SharpSense.sln");
+        var changedFilePath = Absolute("/repo/build/worktree/src/App.tsx");
         var fileSystem = new MockFileSystem(
             new Dictionary<string, MockFileData>
             {
@@ -182,7 +183,7 @@ public sealed class TypeScriptLanguageExtractorTests
             []);
 
         var result = await extractor.Extract(
-            new ExtractionContext("/repo/missing-frontend", null),
+            new ExtractionContext(Absolute("/repo/missing-frontend"), null),
             TestContext.Current.CancellationToken);
 
         result.IsFailed.Should().BeTrue();

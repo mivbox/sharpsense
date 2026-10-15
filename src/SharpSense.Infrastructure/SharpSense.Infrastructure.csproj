@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\SharpSense.Application\SharpSense.Application.csproj" />
     <ProjectReference Include="..\SharpSense.Domain\SharpSense.Domain.csproj" />
+    <ProjectReference Include="..\SharpSense.TypeScript\SharpSense.TypeScript.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -31,7 +32,6 @@
     <PackageReference Include="sqlite-vec" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
     <PackageReference Include="System.IO.Abstractions" />
-    <PackageReference Include="TreeSitter.DotNet" />
     <PackageReference Include="YamlDotNet" />
   </ItemGroup>
 

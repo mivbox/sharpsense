@@ -1,6 +1,7 @@
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
-using TreeSitter;
+using SharpSense.TypeScript.Parsing.Abstractions;
+using SharpSense.TypeScript.Parsing.Models;
 
 namespace SharpSense.Infrastructure.Indexing.TypeScript;
 
@@ -13,86 +14,63 @@ internal sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
         var seenEdges = context.Edges
             .Select(static edge => (edge.CallerId, edge.CalleeId, edge.EdgeType))
             .ToHashSet();
+        var codeNodesByFile = context.CodeNodes.ToLookup(static node => node.RelativeFilePath, StringComparer.Ordinal);
 
         foreach (var parsedFile in context.ParsedFiles)
         {
-            var fileCodeNodes = context.CodeNodes
-                .Where(codeNode => string.Equals(
-                    codeNode.RelativeFilePath,
-                    parsedFile.DiscoveredFile.RelativeFilePath,
-                    StringComparison.Ordinal))
+            context.CancellationToken.ThrowIfCancellationRequested();
+            var fileCodeNodes = codeNodesByFile[parsedFile.DiscoveredFile.RelativeFilePath]
+                .Where(codeNode => context.DeclarationNodes.ContainsKey(codeNode.CanonicalId))
+                .OrderBy(codeNode => context.DeclarationNodes[codeNode.CanonicalId].End - context.DeclarationNodes[codeNode.CanonicalId].Pos)
+                .ThenBy(codeNode => codeNode.StartLine)
                 .ToArray();
             if (fileCodeNodes.Length == 0)
             {
                 continue;
             }
 
-            foreach (var callExpression in TypeScriptSyntax.EnumerateDescendants(parsedFile.RootNode)
-                .Where(static node => node.Type == "call_expression"))
+            foreach (var call in parsedFile.RootNode.DescendantsAndSelf(context.CancellationToken).OfType<CallExpression>())
             {
-                if (!TryBuildHttpRequest(callExpression, out var method, out var url))
+                if (!TryBuildHttpRequest(call, parsedFile.SyntaxTree, out var method, out var url))
                 {
                     continue;
                 }
 
                 var callerNode = fileCodeNodes
-                    .Where(codeNode =>
-                        context.DeclarationNodes.TryGetValue(codeNode.CanonicalId, out var declaration) &&
-                        declaration.StartIndex <= callExpression.StartIndex &&
-                        declaration.EndIndex >= callExpression.EndIndex)
-                    .OrderBy(codeNode => context.DeclarationNodes[codeNode.CanonicalId].EndIndex - context.DeclarationNodes[codeNode.CanonicalId].StartIndex)
-                    .ThenBy(codeNode => codeNode.StartLine)
-                    .FirstOrDefault();
+                    .FirstOrDefault(codeNode => context.DeclarationNodes[codeNode.CanonicalId].Pos <= call.Pos &&
+                        context.DeclarationNodes[codeNode.CanonicalId].End >= call.End);
                 if (callerNode is null)
                 {
                     continue;
                 }
 
                 var calleeId = HttpNodeIdentity.CreateCanonicalId(method, url);
-                if (!seenEdges.Add((callerNode.CanonicalId, calleeId, EdgeType.HttpRequest)))
+                if (seenEdges.Add((callerNode.CanonicalId, calleeId, EdgeType.HttpRequest)))
                 {
-                    continue;
+                    context.Edges.Add(new IndexedDependency(callerNode.CanonicalId, calleeId, EdgeType.HttpRequest, url));
                 }
-
-                context.Edges.Add(new IndexedDependency(
-                    callerNode.CanonicalId,
-                    calleeId,
-                    EdgeType.HttpRequest,
-                    url));
             }
         }
     }
 
     private static bool TryBuildHttpRequest(
-        Node callExpression,
+        CallExpression call,
+        TypeScriptSyntaxTree tree,
         out string method,
         out string url)
     {
         method = string.Empty;
         url = string.Empty;
-
-        var functionNode = callExpression.GetChildForField("function");
-        var argumentsNode = callExpression.GetChildForField("arguments");
-        if (functionNode is null ||
-            argumentsNode is null)
+        if (call.Arguments is not { Count: > 0 } arguments || !TryExtractStringLiteral(arguments[0], out url))
         {
             return false;
         }
 
-        var argumentNodes = argumentsNode.NamedChildren
-            .Where(static node => node.Type != "comment")
-            .ToArray();
-        if (functionNode.Text == "fetch")
+        if (call.Expression is Identifier { Text: "fetch" })
         {
-            if (argumentNodes.Length == 0 ||
-                !TryExtractStringLiteral(argumentNodes[0], out url))
+            if (arguments.Count > 1)
             {
-                return false;
-            }
-
-            if (argumentNodes.Length > 1)
-            {
-                return TryExtractFetchMethod(argumentNodes[1], out method);
+                return TryExtractFetchMethod(arguments[1], tree, out method);
             }
 
             method = "GET";
@@ -100,90 +78,40 @@ internal sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
             return true;
         }
 
-        if (functionNode.Type != "member_expression")
+        if (call.Expression is not PropertyAccessExpression { Expression: Identifier { Text: "axios" }, Name.Text: { } propertyName })
         {
             return false;
         }
 
-        var objectNode = functionNode.GetChildForField("object");
-        var propertyNode = functionNode.GetChildForField("property");
-        if (objectNode is null ||
-            propertyNode is null ||
-            objectNode.Text != "axios" ||
-            !TryExtractAxiosMethod(propertyNode.Text, out method) ||
-            argumentNodes.Length == 0 ||
-            !TryExtractStringLiteral(argumentNodes[0], out url))
-        {
-            return false;
-        }
+        method = propertyName.ToUpperInvariant();
 
-        return true;
+        return method is "GET" or "POST" or "PUT" or "PATCH" or "DELETE" or "HEAD" or "OPTIONS";
     }
 
-    private static bool TryExtractStringLiteral(
-        Node node,
-        out string value)
+    private static bool TryExtractStringLiteral(INode node, out string value)
     {
-        value = string.Empty;
-        if (node.Type is not ("string" or "template_string"))
-        {
-            return false;
-        }
+        value = node is ILiteralLikeNode literal && node.Kind is SyntaxKind.StringLiteral or SyntaxKind.NoSubstitutionTemplateLiteral
+            ? literal.Text ?? string.Empty
+            : string.Empty;
 
-        var text = node.Text;
-        if (string.IsNullOrWhiteSpace(text) ||
-            text.Length < 2)
-        {
-            return false;
-        }
-
-        if (text[0] is '\'' or '"' &&
-            text[^1] == text[0])
-        {
-            value = text[1..^1];
-
-            return !string.IsNullOrWhiteSpace(value);
-        }
-
-        if (text[0] == '`' &&
-            text[^1] == '`' &&
-            !text.Contains("${", StringComparison.Ordinal))
-        {
-            value = text[1..^1];
-
-            return !string.IsNullOrWhiteSpace(value);
-        }
-
-        return false;
+        return !string.IsNullOrWhiteSpace(value);
     }
 
-    private static bool TryExtractFetchMethod(
-        Node options,
-        out string method)
+    private static bool TryExtractFetchMethod(INode options, TypeScriptSyntaxTree tree, out string method)
     {
         method = "GET";
-        if (options.Type != "object")
+        if (options is not ObjectLiteralExpression literal)
         {
             return false;
         }
 
-        foreach (var property in options.NamedChildren)
+        foreach (var property in literal.Properties)
         {
-            if (property.Type == "comment")
-            {
-                continue;
-            }
-
-            var key = property.Type switch
-            {
-                "pair" => property.GetChildForField("key"),
-                "method_definition" => property.GetChildForField("name"),
-                "shorthand_property_identifier" => property,
-                _ => null
-            };
-            // Spreads, computed names and prototype setters can introduce an unknown method.
-            // Inspect only direct object properties: nested headers and comments are unrelated.
-            if (key is null || !TryExtractPropertyName(key, out var name) || name == "__proto__")
+            var key = (property as IHasNameProperty)?.Name;
+            var name = TypeScriptSyntax.GetName(key);
+            // Spreads, computed keys and prototype setters can introduce an unknown method.
+            // Inspect only direct properties: nested headers and comments are unrelated.
+            if (key is null || name is null || name == "__proto__" || tree.GetText(key).Contains('\\'))
             {
                 return false;
             }
@@ -193,44 +121,16 @@ internal sealed class HttpEdgeExtractionPass : ITypeScriptExtractionPass
                 continue;
             }
 
-            var value = property.Type == "pair" ? property.GetChildForField("value") : null;
-            if (value is null || !TryExtractStringLiteral(value, out var literal) || !literal.All(char.IsAsciiLetter))
+            if (property is not PropertyAssignment { Initializer: { } value } ||
+                !TryExtractStringLiteral(value, out var verb) || !verb.All(char.IsAsciiLetter))
             {
                 return false;
             }
 
             // JavaScript object literals retain the last explicitly declared property value.
-            method = literal.ToUpperInvariant();
+            method = verb.ToUpperInvariant();
         }
 
         return true;
-    }
-
-    private static bool TryExtractPropertyName(Node node, out string name)
-    {
-        name = node.Text;
-        if (node.Type == "string")
-        {
-            if (!TryExtractStringLiteral(node, out name))
-            {
-                return false;
-            }
-        }
-        else if (node.Type is not ("property_identifier" or "identifier" or "shorthand_property_identifier" or "number"))
-        {
-            return false;
-        }
-
-        // Escaped keys need JavaScript decoding before we could prove they are not "method".
-        return !name.Contains('\\');
-    }
-
-    private static bool TryExtractAxiosMethod(
-        string propertyName,
-        out string method)
-    {
-        method = propertyName.ToUpperInvariant();
-
-        return method is "GET" or "POST" or "PUT" or "PATCH" or "DELETE" or "HEAD" or "OPTIONS";
     }
 }

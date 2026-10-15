@@ -282,7 +282,7 @@ internal sealed class TsConfigResolver(
 
         if (!visitedConfigPaths.Add(absoluteConfigPath))
         {
-            throw new InvalidOperationException($"Detected a circular tsconfig extends chain at '{absoluteConfigPath}'.");
+            throw new InvalidDataException($"Detected a circular tsconfig extends chain at '{absoluteConfigPath}'.");
         }
 
         var configDirectoryPath = fileSystem.Path.GetDirectoryName(absoluteConfigPath)
@@ -296,9 +296,12 @@ internal sealed class TsConfigResolver(
                 configDocument.Extends.GetString()!
             },
             JsonValueKind.Array => configDocument.Extends.EnumerateArray()
-                .Select(value => value.GetString()!)
+                .Select(value => value.ValueKind == JsonValueKind.String
+                    ? value.GetString()!
+                    : throw new InvalidDataException($"The tsconfig 'extends' entries in '{absoluteConfigPath}' must be strings."))
                 .ToArray(),
-            _ => []
+            JsonValueKind.Undefined or JsonValueKind.Null => [],
+            _ => throw new InvalidDataException($"The tsconfig 'extends' value in '{absoluteConfigPath}' must be a string or an array of strings.")
         };
         foreach (var extendsPath in extendsPaths)
         {
@@ -638,7 +641,7 @@ internal sealed class TsConfigResolver(
         {
             return null;
         }
-        catch (InvalidOperationException)
+        catch (InvalidDataException)
         {
             return null;
         }

@@ -5,6 +5,7 @@ using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Indexing.TypeScript;
 using SharpSense.Infrastructure.Storage;
 using System.IO.Abstractions.TestingHelpers;
+using static SharpSense.Infrastructure.Tests.Indexing.TypeScript.TypeScriptTestPaths;
 
 namespace SharpSense.Infrastructure.Tests.Indexing.TypeScript;
 
@@ -16,43 +17,43 @@ public sealed class TypeScriptSourceDiscovererTests
         var ct = TestContext.Current.CancellationToken;
         var repositoryWorkspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);
         repositoryWorkspace
-            .Setup(candidate => candidate.GetRequiredTargetDirectoryPath("/repo/SharpSense.sln"))
-            .Returns("/repo");
+            .Setup(candidate => candidate.GetRequiredTargetDirectoryPath(Absolute("/repo/SharpSense.sln")))
+            .Returns(Absolute("/repo"));
         repositoryWorkspace
             .SetupGet(candidate => candidate.RootPath)
-            .Returns("/repo");
+            .Returns(Absolute("/repo"));
         var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
         fileDiscoverer
             .Setup(candidate => candidate.GetAllowedFiles(
-                "/repo",
+                Absolute("/repo"),
                 It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
                 ct))
             .ReturnsAsync(
                 [
-                    new DiscoveredFile("/repo/src/App.ts", "src/App.ts"),
-                    new DiscoveredFile("/repo/src/App.tsx", "src/App.tsx"),
-                    new DiscoveredFile("/repo/src/build/App.ts", "src/build/App.ts"),
-                    new DiscoveredFile("/repo/src/dist/App.tsx", "src/dist/App.tsx"),
-                    new DiscoveredFile("/repo/src/node_modules/Generated.ts", "src/node_modules/Generated.ts"),
-                    new DiscoveredFile("/repo/src/Styles.css", "src/Styles.css")
+                    new DiscoveredFile(Absolute("/repo/src/App.ts"), "src/App.ts"),
+                    new DiscoveredFile(Absolute("/repo/src/App.tsx"), "src/App.tsx"),
+                    new DiscoveredFile(Absolute("/repo/src/build/App.ts"), "src/build/App.ts"),
+                    new DiscoveredFile(Absolute("/repo/src/dist/App.tsx"), "src/dist/App.tsx"),
+                    new DiscoveredFile(Absolute("/repo/src/node_modules/Generated.ts"), "src/node_modules/Generated.ts"),
+                    new DiscoveredFile(Absolute("/repo/src/Styles.css"), "src/Styles.css")
                 ]);
         var fileSystem = new MockFileSystem(
             new Dictionary<string, MockFileData>
             {
-                ["/repo/src/App.ts"] = new("export const value = 42;"),
-                ["/repo/src/App.tsx"] = new("export function App() { return null; }")
+                [Absolute("/repo/src/App.ts")] = new("export const value = 42;"),
+                [Absolute("/repo/src/App.tsx")] = new("export function App() { return null; }")
             },
-            "/repo");
+            Absolute("/repo"));
         var discoverer = new TypeScriptSourceDiscoverer(
             repositoryWorkspace.Object,
             fileDiscoverer.Object,
             fileSystem,
             new TsConfigResolver(repositoryWorkspace.Object, fileSystem));
 
-        var result = await discoverer.Discover("/repo/SharpSense.sln", ct);
+        var result = await discoverer.Discover(Absolute("/repo/SharpSense.sln"), ct);
 
         result
-            .Select(static file => file.RelativeFilePath)
+            .Select(static file => file.DiscoveredFile.RelativeFilePath)
             .Should()
             .Equal("src/App.ts", "src/App.tsx");
     }
@@ -63,46 +64,46 @@ public sealed class TypeScriptSourceDiscovererTests
         var ct = TestContext.Current.CancellationToken;
         var repositoryWorkspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);
         repositoryWorkspace
-            .Setup(candidate => candidate.GetRequiredTargetDirectoryPath("/repo/apps/web/tsconfig.json"))
-            .Returns("/repo/apps/web");
+            .Setup(candidate => candidate.GetRequiredTargetDirectoryPath(Absolute("/repo/apps/web/tsconfig.json")))
+            .Returns(Absolute("/repo/apps/web"));
         repositoryWorkspace
             .SetupGet(candidate => candidate.RootPath)
-            .Returns("/repo");
+            .Returns(Absolute("/repo"));
         repositoryWorkspace
             .Setup(candidate => candidate.IsSameOrSubPath(It.IsAny<string>()))
-            .Returns<string>(path => path.StartsWith("/repo", StringComparison.Ordinal));
+            .Returns<string>(path => path.StartsWith(Absolute("/repo"), StringComparison.Ordinal));
         repositoryWorkspace
             .Setup(candidate => candidate.ToRepositoryRelativePath(It.IsAny<string>()))
-            .Returns<string>(path => path["/repo/".Length..]);
+            .Returns<string>(path => path[Absolute("/repo/").Length..].Replace('\\', '/'));
         var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
         fileDiscoverer
             .Setup(candidate => candidate.GetAllowedFiles(
-                "/repo/apps/web",
+                Absolute("/repo/apps/web"),
                 It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
                 ct))
             .ReturnsAsync(
                 [
-                    new DiscoveredFile("/repo/apps/web/src/App.tsx", "apps/web/src/App.tsx")
+                    new DiscoveredFile(Absolute("/repo/apps/web/src/App.tsx"), "apps/web/src/App.tsx")
                 ]);
         fileDiscoverer
             .Setup(candidate => candidate.GetAllowedFiles(
-                "/repo",
+                Absolute("/repo"),
                 It.Is<IReadOnlyList<string>>(globs => globs.SequenceEqual(TypeScriptIndexingPathRules.IncludeGlobs)),
                 ct))
             .ReturnsAsync(
                 [
-                    new DiscoveredFile("/repo/apps/web/src/App.tsx", "apps/web/src/App.tsx"),
+                    new DiscoveredFile(Absolute("/repo/apps/web/src/App.tsx"), "apps/web/src/App.tsx"),
                     new DiscoveredFile(
-                        "/repo/packages/graph-api/src/query-hooks/index.ts",
+                        Absolute("/repo/packages/graph-api/src/query-hooks/index.ts"),
                         "packages/graph-api/src/query-hooks/index.ts"),
                     new DiscoveredFile(
-                        "/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts",
+                        Absolute("/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts"),
                         "packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts")
                 ]);
         var fileSystem = new MockFileSystem(
             new Dictionary<string, MockFileData>
             {
-                ["/repo/apps/web/src/App.tsx"] = new(
+                [Absolute("/repo/apps/web/src/App.tsx")] = new(
                     """
                 import { useGetNodeById } from "@sharpsense/graph-api/query-hooks";
 
@@ -110,14 +111,14 @@ public sealed class TypeScriptSourceDiscovererTests
                     return useGetNodeById();
                 }
                 """),
-                ["/repo/apps/web/tsconfig.json"] = new("{}"),
-                ["/repo/packages/graph-api/package.json"] = new(
+                [Absolute("/repo/apps/web/tsconfig.json")] = new("{}"),
+                [Absolute("/repo/packages/graph-api/package.json")] = new(
                     """
                 {
                   "name": "@sharpsense/graph-api"
                 }
                 """),
-                ["/repo/packages/graph-api/tsconfig.json"] = new(
+                [Absolute("/repo/packages/graph-api/tsconfig.json")] = new(
                     """
                 {
                   "compilerOptions": {
@@ -125,28 +126,28 @@ public sealed class TypeScriptSourceDiscovererTests
                   }
                 }
                 """),
-                ["/repo/packages/graph-api/src/query-hooks/index.ts"] = new(
+                [Absolute("/repo/packages/graph-api/src/query-hooks/index.ts")] = new(
                     """
                 export { useGetNodeById } from "./use-get-node-by-id-query.g";
                 """),
-                ["/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts"] = new(
+                [Absolute("/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts")] = new(
                     """
                 export function useGetNodeById() {
                     return null;
                 }
                 """)
             },
-            "/repo");
+            Absolute("/repo"));
         var discoverer = new TypeScriptSourceDiscoverer(
             repositoryWorkspace.Object,
             fileDiscoverer.Object,
             fileSystem,
             new TsConfigResolver(repositoryWorkspace.Object, fileSystem));
 
-        var result = await discoverer.Discover("/repo/apps/web/tsconfig.json", ct);
+        var result = await discoverer.Discover(Absolute("/repo/apps/web/tsconfig.json"), ct);
 
         result
-            .Select(static file => file.RelativeFilePath)
+            .Select(static file => file.DiscoveredFile.RelativeFilePath)
             .Should()
             .Equal(
                 "apps/web/src/App.tsx",

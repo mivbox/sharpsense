@@ -5,6 +5,7 @@ using SharpSense.Infrastructure.Indexing.TypeScript;
 using SharpSense.Infrastructure.Storage;
 using System.IO.Abstractions;
 using System.IO.Abstractions.TestingHelpers;
+using static SharpSense.Infrastructure.Tests.Indexing.TypeScript.TypeScriptTestPaths;
 
 namespace SharpSense.Infrastructure.Tests.Indexing.TypeScript;
 
@@ -15,10 +16,10 @@ public sealed class TsConfigResolverTests
     {
         var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/tsconfig.json", "{}"),
-            ("/repo/app.ts", ""),
-            ("/repo/packages/first/package.json", """{"name":"@fixture/first"}"""),
-            ("/repo/packages/first/index.ts", "export const first = 1;"));
+            (Absolute("/repo/tsconfig.json"), "{}"),
+            (Absolute("/repo/app.ts"), ""),
+            (Absolute("/repo/packages/first/package.json"), """{"name":"@fixture/first"}"""),
+            (Absolute("/repo/packages/first/index.ts"), "export const first = 1;"));
         using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var cancelOnce = true;
         var directory = new Mock<IDirectory>();
@@ -29,7 +30,7 @@ public sealed class TsConfigResolverTests
             .Setup(value => value.EnumerateDirectories(It.IsAny<string>()))
             .Returns((string path) =>
             {
-                if (cancelOnce && path == "/repo/packages/first")
+                if (cancelOnce && path == Absolute("/repo/packages/first"))
                 {
                     cancelOnce = false;
                     cancellation.Cancel();
@@ -51,15 +52,20 @@ public sealed class TsConfigResolverTests
             .SetupGet(value => value.DirectoryInfo)
             .Returns(fileSystem.DirectoryInfo);
         var resolver = new TsConfigResolver(
-            new RepositoryWorkspace("/repo", "/test-storage/index.db", fileSystem),
+            new RepositoryWorkspace(Absolute("/repo"), Absolute("/test-storage/index.db"), fileSystem),
             wrapper.Object);
 
-        ((Action)(() => resolver.ResolveImport("@fixture/first", "/repo/app.ts", cancellation.Token))).Should().Throw<OperationCanceledException>();
+        ((Action)(() => resolver.ResolveImport("@fixture/first", Absolute("/repo/app.ts"), cancellation.Token))).Should().Throw<OperationCanceledException>();
         resolver.ResolutionInputPaths.Should().BeEmpty();
-        fileSystem.AddFile("/repo/packages/later/package.json", new MockFileData("""{"name":"@fixture/later"}"""));
-        fileSystem.AddFile("/repo/packages/later/index.ts", new MockFileData("export const later = 2;"));
+        fileSystem.AddFile(
+            Absolute("/repo/packages/later/package.json"),
+            new MockFileData("""{"name":"@fixture/later"}"""));
+        fileSystem.AddFile(Absolute("/repo/packages/later/index.ts"), new MockFileData("export const later = 2;"));
 
-        resolver.ResolveImport("@fixture/later", "/repo/app.ts", ct).Should().Be("/repo/packages/later/index.ts");
+        resolver
+            .ResolveImport("@fixture/later", Absolute("/repo/app.ts"), ct)
+            .Should()
+            .Be(Absolute("/repo/packages/later/index.ts"));
     }
 
     [Theory]
@@ -70,24 +76,32 @@ public sealed class TsConfigResolverTests
     public void WhenIgnoredDirectories_ThenCannotRegisterWorkspacePackages(string directory)
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/app.ts", ""),
-            ($"/repo/{directory}/package.json", """{"name":"@fixture/ignored"}"""),
-            ($"/repo/{directory}/index.ts", "export const ignored = 1;"));
+            (Absolute("/repo/app.ts"), ""),
+            (Absolute($"/repo/{directory}/package.json"), """{"name":"@fixture/ignored"}"""),
+            (Absolute($"/repo/{directory}/index.ts"), "export const ignored = 1;"));
 
         CreateResolver(fileSystem)
-            .ResolveImport("@fixture/ignored", "/repo/app.ts", TestContext.Current.CancellationToken).Should().BeNull();
+            .ResolveImport("@fixture/ignored", Absolute("/repo/app.ts"), TestContext.Current.CancellationToken)
+            .Should()
+            .BeNull();
     }
 
     [Fact]
     public void WhenUnresolvedImports_ThenRemainWatchInputsUntilTheirFilesAreCreated()
     {
-        var fileSystem = CreateRepositoryFileSystem(("/repo/frontend/app.ts", "import '../shared/later';"));
+        var fileSystem = CreateRepositoryFileSystem((Absolute("/repo/frontend/app.ts"), "import '../shared/later';"));
         var resolver = CreateResolver(fileSystem);
 
-        resolver.ResolveImport("../shared/later", "/repo/frontend/app.ts", TestContext.Current.CancellationToken).Should().BeNull();
+        resolver
+            .ResolveImport(
+                "../shared/later",
+                Absolute("/repo/frontend/app.ts"),
+                TestContext.Current.CancellationToken)
+            .Should()
+            .BeNull();
 
-        resolver.ResolutionInputPaths.Should().Contain("/repo/shared/later.ts");
-        resolver.ResolutionInputPaths.Should().Contain("/repo/shared/later/index.ts");
+        resolver.ResolutionInputPaths.Should().Contain(Absolute("/repo/shared/later.ts"));
+        resolver.ResolutionInputPaths.Should().Contain(Absolute("/repo/shared/later/index.ts"));
         resolver.ClearCache();
         resolver.ResolutionInputPaths.Should().BeEmpty();
     }
@@ -97,33 +111,35 @@ public sealed class TsConfigResolverTests
     {
         var fileSystem = new MockFileSystem(new Dictionary<string, MockFileData>
         {
-            ["/physical/repo/tsconfig.json"] = new("{}"),
-            ["/physical/repo/app.ts"] = new("export function app() {}")
+            [Absolute("/physical/repo/tsconfig.json")] = new("{}"),
+            [Absolute("/physical/repo/app.ts")] = new("export function app() {}")
         });
         var workspace = new Mock<IRepositoryWorkspace>(MockBehavior.Strict);
         workspace
             .SetupGet(candidate => candidate.RootPath)
-            .Returns("/physical/repo");
+            .Returns(Absolute("/physical/repo"));
         workspace
-            .Setup(candidate => candidate.ToRepositoryRelativePath("/alias/repo/tsconfig.json"))
+            .Setup(candidate => candidate.ToRepositoryRelativePath(Absolute("/alias/repo/tsconfig.json")))
             .Returns("tsconfig.json");
         var resolver = new TsConfigResolver(workspace.Object, fileSystem);
-        DiscoveredFile[] files = [new("/physical/repo/app.ts", "app.ts")];
+        DiscoveredFile[] files = [new(Absolute("/physical/repo/app.ts"), "app.ts")];
 
-        resolver.FilterRootFiles("/alias/repo/tsconfig.json", files).Should().Equal(files);
+        resolver.FilterRootFiles(Absolute("/alias/repo/tsconfig.json"), files).Should().Equal(files);
     }
 
     [Fact]
     public void WhenRelativeConfigTargets_ThenResolveFromRepositoryInsteadOfProcessDirectory()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/client/tsconfig.json", "{}"),
-            ("/repo/client/app.ts", "export function app() {}"));
-        fileSystem.Directory.SetCurrentDirectory("/repo/client");
-        DiscoveredFile[] files = [new("/repo/client/app.ts", "client/app.ts")];
+            (Absolute("/repo/client/tsconfig.json"), "{}"),
+            (Absolute("/repo/client/app.ts"), "export function app() {}"));
+        fileSystem.Directory.SetCurrentDirectory(Absolute("/repo/client"));
+        DiscoveredFile[] files = [new(Absolute("/repo/client/app.ts"), "client/app.ts")];
 
         CreateResolver(fileSystem)
-            .FilterRootFiles("client/tsconfig.json", files).Should().Equal(files);
+            .FilterRootFiles("client/tsconfig.json", files)
+            .Should()
+            .Equal(files);
     }
 
     [Theory]
@@ -132,13 +148,15 @@ public sealed class TsConfigResolverTests
     public void WhenInheritedPaths_ThenRemainOnlyWhenDerivedPropertyIsOmitted(string compilerOptions, string? expected)
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/base.json", """{ "compilerOptions": { "paths": { "@api": ["shared/api.ts"] } } }"""),
-            ("/repo/client/tsconfig.json", $$"""{ "extends": "../base.json", "compilerOptions": {{compilerOptions}} }"""),
-            ("/repo/client/app.ts", "export function app() {}"),
-            ("/repo/shared/api.ts", "export function api() {}"));
+            (Absolute("/repo/base.json"), """{ "compilerOptions": { "paths": { "@api": ["shared/api.ts"] } } }"""),
+            (Absolute("/repo/client/tsconfig.json"), $$"""{ "extends": "../base.json", "compilerOptions": {{compilerOptions}} }"""),
+            (Absolute("/repo/client/app.ts"), "export function app() {}"),
+            (Absolute("/repo/shared/api.ts"), "export function api() {}"));
 
         CreateResolver(fileSystem)
-            .ResolveImport("@api", "/repo/client/app.ts", TestContext.Current.CancellationToken).Should().Be(expected);
+            .ResolveImport("@api", Absolute("/repo/client/app.ts"), TestContext.Current.CancellationToken)
+            .Should()
+            .Be(expected is null ? null : Absolute(expected));
     }
 
     [Theory]
@@ -149,14 +167,16 @@ public sealed class TsConfigResolverTests
         string? expected)
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/base.json", """{ "compilerOptions": { "paths": { "@api": ["shared/api.ts"] } } }"""),
-            ("/repo/later.json", $$"""{ "compilerOptions": {{compilerOptions}} }"""),
-            ("/repo/client/tsconfig.json", """{ "extends": ["../base.json", "../later.json"] }"""),
-            ("/repo/client/app.ts", "export function app() {}"),
-            ("/repo/shared/api.ts", "export function api() {}"));
+            (Absolute("/repo/base.json"), """{ "compilerOptions": { "paths": { "@api": ["shared/api.ts"] } } }"""),
+            (Absolute("/repo/later.json"), $$"""{ "compilerOptions": {{compilerOptions}} }"""),
+            (Absolute("/repo/client/tsconfig.json"), """{ "extends": ["../base.json", "../later.json"] }"""),
+            (Absolute("/repo/client/app.ts"), "export function app() {}"),
+            (Absolute("/repo/shared/api.ts"), "export function api() {}"));
 
         CreateResolver(fileSystem)
-            .ResolveImport("@api", "/repo/client/app.ts", TestContext.Current.CancellationToken).Should().Be(expected);
+            .ResolveImport("@api", Absolute("/repo/client/app.ts"), TestContext.Current.CancellationToken)
+            .Should()
+            .Be(expected is null ? null : Absolute(expected));
     }
 
     [Fact]
@@ -164,7 +184,7 @@ public sealed class TsConfigResolverTests
     {
         var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/tsconfig.base.json",
+            (Absolute("/repo/tsconfig.base.json"),
                 """
                 {
                   // base config
@@ -176,7 +196,7 @@ public sealed class TsConfigResolverTests
                   },
                 }
                 """),
-            ("/repo/apps/web/tsconfig.json",
+            (Absolute("/repo/apps/web/tsconfig.json"),
                 """
                 {
                   "extends": "../../tsconfig.base",
@@ -188,17 +208,17 @@ public sealed class TsConfigResolverTests
                   }
                 }
                 """),
-            ("/repo/apps/web/src/components/App.tsx", "export function App() { return null; }"),
-            ("/repo/src/shared/api/client.ts", "export const client = {};"),
-            ("/repo/apps/web/src/lib/util.tsx", "export function util() { return null; }"));
+            (Absolute("/repo/apps/web/src/components/App.tsx"), "export function App() { return null; }"),
+            (Absolute("/repo/src/shared/api/client.ts"), "export const client = {};"),
+            (Absolute("/repo/apps/web/src/lib/util.tsx"), "export function util() { return null; }"));
         var resolver = CreateResolver(fileSystem);
-        const string sourceFilePath = "/repo/apps/web/src/components/App.tsx";
+        var sourceFilePath = Absolute("/repo/apps/web/src/components/App.tsx");
 
         var sharedPath = resolver.ResolveImport("@shared/api/client", sourceFilePath, ct);
         var webPath = resolver.ResolveImport("@web/lib/util", sourceFilePath, ct);
 
         sharedPath.Should().BeNull();
-        webPath.Should().Be("/repo/apps/web/src/lib/util.tsx");
+        webPath.Should().Be(Absolute("/repo/apps/web/src/lib/util.tsx"));
     }
 
     [Fact]
@@ -206,7 +226,7 @@ public sealed class TsConfigResolverTests
     {
         var ct = TestContext.Current.CancellationToken;
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/apps/web/tsconfig.json",
+            (Absolute("/repo/apps/web/tsconfig.json"),
                 """
                 {
                   "compilerOptions": {
@@ -214,24 +234,24 @@ public sealed class TsConfigResolverTests
                   }
                 }
                 """),
-            ("/repo/apps/web/src/components/App.tsx", "export function App() { return null; }"),
-            ("/repo/apps/web/src/lib/http.tsx", "export function http() { return null; }"),
-            ("/repo/apps/web/src/routes/index.ts", "export const route = {};"));
+            (Absolute("/repo/apps/web/src/components/App.tsx"), "export function App() { return null; }"),
+            (Absolute("/repo/apps/web/src/lib/http.tsx"), "export function http() { return null; }"),
+            (Absolute("/repo/apps/web/src/routes/index.ts"), "export const route = {};"));
         var resolver = CreateResolver(fileSystem);
-        const string sourceFilePath = "/repo/apps/web/src/components/App.tsx";
+        var sourceFilePath = Absolute("/repo/apps/web/src/components/App.tsx");
 
         var tsxPath = resolver.ResolveImport("../lib/http", sourceFilePath, ct);
         var indexPath = resolver.ResolveImport("../routes", sourceFilePath, ct);
 
-        tsxPath.Should().Be("/repo/apps/web/src/lib/http.tsx");
-        indexPath.Should().Be("/repo/apps/web/src/routes/index.ts");
+        tsxPath.Should().Be(Absolute("/repo/apps/web/src/lib/http.tsx"));
+        indexPath.Should().Be(Absolute("/repo/apps/web/src/routes/index.ts"));
     }
 
     [Fact]
     public void WhenResolveImportUsesBaseUrlWithoutAlias_ThenItResolvesFromTheEffectiveBaseUrl()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/apps/web/tsconfig.json",
+            (Absolute("/repo/apps/web/tsconfig.json"),
                 """
                 {
                   "compilerOptions": {
@@ -239,23 +259,23 @@ public sealed class TsConfigResolverTests
                   }
                 }
                 """),
-            ("/repo/apps/web/src/components/App.tsx", "export function App() { return null; }"),
-            ("/repo/apps/web/src/services/api.ts", "export const api = {};"));
+            (Absolute("/repo/apps/web/src/components/App.tsx"), "export function App() { return null; }"),
+            (Absolute("/repo/apps/web/src/services/api.ts"), "export const api = {};"));
         var resolver = CreateResolver(fileSystem);
 
         var resolvedPath = resolver.ResolveImport(
             "src/services/api",
-            "/repo/apps/web/src/components/App.tsx",
+            Absolute("/repo/apps/web/src/components/App.tsx"),
             TestContext.Current.CancellationToken);
 
-        resolvedPath.Should().Be("/repo/apps/web/src/services/api.ts");
+        resolvedPath.Should().Be(Absolute("/repo/apps/web/src/services/api.ts"));
     }
 
     [Fact]
     public void WhenResolveImportUsesPackageExtends_ThenItLoadsConfigFromNodeModules()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/node_modules/@tsconfig/strict/tsconfig.json",
+            (Absolute("/repo/node_modules/@tsconfig/strict/tsconfig.json"),
                 """
                 {
                   "compilerOptions": {
@@ -266,29 +286,29 @@ public sealed class TsConfigResolverTests
                   }
                 }
                 """),
-            ("/repo/apps/web/tsconfig.json",
+            (Absolute("/repo/apps/web/tsconfig.json"),
                 """
                 {
                   "extends": "@tsconfig/strict/tsconfig"
                 }
                 """),
-            ("/repo/apps/web/src/components/App.tsx", "export function App() { return null; }"),
-            ("/repo/src/shared/api.ts", "export const api = {};"));
+            (Absolute("/repo/apps/web/src/components/App.tsx"), "export function App() { return null; }"),
+            (Absolute("/repo/src/shared/api.ts"), "export const api = {};"));
         var resolver = CreateResolver(fileSystem);
 
         var resolvedPath = resolver.ResolveImport(
             "@shared/api",
-            "/repo/apps/web/src/components/App.tsx",
+            Absolute("/repo/apps/web/src/components/App.tsx"),
             TestContext.Current.CancellationToken);
 
-        resolvedPath.Should().Be("/repo/src/shared/api.ts");
+        resolvedPath.Should().Be(Absolute("/repo/src/shared/api.ts"));
     }
 
     [Fact]
     public void WhenResolveImportUsesWorkspacePackageName_ThenItResolvesPackageSubpathsInsideTheRepository()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/apps/web/tsconfig.json",
+            (Absolute("/repo/apps/web/tsconfig.json"),
                 """
                 {
                   "compilerOptions": {
@@ -296,14 +316,14 @@ public sealed class TsConfigResolverTests
                   }
                 }
                 """),
-            ("/repo/apps/web/src/App.tsx", "export function App() { return null; }"),
-            ("/repo/packages/graph-api/package.json",
+            (Absolute("/repo/apps/web/src/App.tsx"), "export function App() { return null; }"),
+            (Absolute("/repo/packages/graph-api/package.json"),
                 """
                 {
                   "name": "@sharpsense/graph-api"
                 }
                 """),
-            ("/repo/packages/graph-api/tsconfig.json",
+            (Absolute("/repo/packages/graph-api/tsconfig.json"),
                 """
                 {
                   "compilerOptions": {
@@ -311,32 +331,33 @@ public sealed class TsConfigResolverTests
                   }
                 }
                 """),
-            ("/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts",
+            (Absolute("/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts"),
                 "export function useGetNodeById() { return null; }"));
         var resolver = CreateResolver(fileSystem);
 
         var resolvedPath = resolver.ResolveImport(
             "@sharpsense/graph-api/query-hooks/use-get-node-by-id-query.g",
-            "/repo/apps/web/src/App.tsx",
+            Absolute("/repo/apps/web/src/App.tsx"),
             TestContext.Current.CancellationToken);
 
-        resolvedPath.Should().Be("/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts");
+        resolvedPath.Should().Be(Absolute("/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts"));
     }
 
     [Fact]
     public void WhenPathPatternsMatch_ThenLongestPrefixWinsBeforeWildcard()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/tsconfig.json", """
+            (Absolute("/repo/tsconfig.json"), """
                 { "compilerOptions": { "paths": { "@long/*": ["long/*"], "@*/suffix": ["short/*"] } } }
                 """),
-            ("/repo/app.ts", ""),
-            ("/repo/long/name/suffix.ts", ""),
-            ("/repo/short/long/name.ts", ""));
+            (Absolute("/repo/app.ts"), ""),
+            (Absolute("/repo/long/name/suffix.ts"), ""),
+            (Absolute("/repo/short/long/name.ts"), ""));
 
         CreateResolver(fileSystem)
-            .ResolveImport("@long/name/suffix", "/repo/app.ts", TestContext.Current.CancellationToken)
-            .Should().Be("/repo/long/name/suffix.ts");
+            .ResolveImport("@long/name/suffix", Absolute("/repo/app.ts"), TestContext.Current.CancellationToken)
+            .Should()
+            .Be(Absolute("/repo/long/name/suffix.ts"));
     }
 
     [Theory]
@@ -345,33 +366,35 @@ public sealed class TsConfigResolverTests
     public void WhenMissingBestPathMapping_ThenDoesNotFallThroughToLessSpecificKey(string preferred, string fallback)
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/tsconfig.json", $$"""
+            (Absolute("/repo/tsconfig.json"), $$"""
                 { "compilerOptions": { "paths": { "{{preferred}}": ["missing.ts"], "{{fallback}}": ["wrong.ts"] } } }
                 """),
-            ("/repo/app.ts", ""),
-            ("/repo/wrong.ts", ""));
+            (Absolute("/repo/app.ts"), ""),
+            (Absolute("/repo/wrong.ts"), ""));
 
         CreateResolver(fileSystem)
             .ResolveImport(
                 preferred.Replace("*", "value", StringComparison.Ordinal),
-                "/repo/app.ts",
+                Absolute("/repo/app.ts"),
                 TestContext.Current.CancellationToken)
-            .Should().BeNull();
+            .Should()
+            .BeNull();
     }
 
     [Fact]
     public void WhenInheritedPathTargets_ThenUseDerivedBaseUrl()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/base.json", """{ "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["src/*"] } } }"""),
-            ("/repo/app/tsconfig.json", """{ "extends": "../base.json", "compilerOptions": { "baseUrl": "." } }"""),
-            ("/repo/app/main.ts", ""),
-            ("/repo/src/dep.ts", ""),
-            ("/repo/app/src/dep.ts", ""));
+            (Absolute("/repo/base.json"), """{ "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["src/*"] } } }"""),
+            (Absolute("/repo/app/tsconfig.json"), """{ "extends": "../base.json", "compilerOptions": { "baseUrl": "." } }"""),
+            (Absolute("/repo/app/main.ts"), ""),
+            (Absolute("/repo/src/dep.ts"), ""),
+            (Absolute("/repo/app/src/dep.ts"), ""));
 
         CreateResolver(fileSystem)
-            .ResolveImport("@/dep", "/repo/app/main.ts", TestContext.Current.CancellationToken)
-            .Should().Be("/repo/app/src/dep.ts");
+            .ResolveImport("@/dep", Absolute("/repo/app/main.ts"), TestContext.Current.CancellationToken)
+            .Should()
+            .Be(Absolute("/repo/app/src/dep.ts"));
     }
 
     [Theory]
@@ -381,13 +404,15 @@ public sealed class TsConfigResolverTests
     public void WhenDeclarationFiles_ThenResolveAsModules(string import, string expected)
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/tsconfig.json", "{}"),
-            ("/repo/app.ts", ""),
-            ("/repo/api.d.ts", "export declare function load(): void;"),
-            ("/repo/types/index.d.ts", "export interface Options {}"));
+            (Absolute("/repo/tsconfig.json"), "{}"),
+            (Absolute("/repo/app.ts"), ""),
+            (Absolute("/repo/api.d.ts"), "export declare function load(): void;"),
+            (Absolute("/repo/types/index.d.ts"), "export interface Options {}"));
 
         CreateResolver(fileSystem)
-            .ResolveImport(import, "/repo/app.ts", TestContext.Current.CancellationToken).Should().Be(expected);
+            .ResolveImport(import, Absolute("/repo/app.ts"), TestContext.Current.CancellationToken)
+            .Should()
+            .Be(expected is null ? null : Absolute(expected));
     }
 
     [Theory]
@@ -396,25 +421,27 @@ public sealed class TsConfigResolverTests
     public void WhenSourceModules_ThenRemainPreferredOverDeclarationFiles(string extension)
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/tsconfig.json", "{}"),
-            ("/repo/app.ts", ""),
-            ($"/repo/api{extension}", "export function load() {}"),
-            ("/repo/api.d.ts", "export declare function load(): void;"));
+            (Absolute("/repo/tsconfig.json"), "{}"),
+            (Absolute("/repo/app.ts"), ""),
+            (Absolute($"/repo/api{extension}"), "export function load() {}"),
+            (Absolute("/repo/api.d.ts"), "export declare function load(): void;"));
 
         CreateResolver(fileSystem)
-            .ResolveImport("./api", "/repo/app.ts", TestContext.Current.CancellationToken).Should().Be($"/repo/api{extension}");
+            .ResolveImport("./api", Absolute("/repo/app.ts"), TestContext.Current.CancellationToken)
+            .Should()
+            .Be(Absolute($"/repo/api{extension}"));
     }
 
     private static TsConfigResolver CreateResolver(MockFileSystem fileSystem)
         => new(
-            new RepositoryWorkspace("/repo", "/test-storage/index.db", fileSystem),
+            new RepositoryWorkspace(Absolute("/repo"), Absolute("/test-storage/index.db"), fileSystem),
             fileSystem);
 
     private static MockFileSystem CreateRepositoryFileSystem(params (string Path, string Content)[] files)
     {
         var fileData = new Dictionary<string, MockFileData>
         {
-            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+            [Absolute("/repo/.git/HEAD")] = new("ref: refs/heads/main")
         };
 
         foreach (var (path, content) in files)
@@ -422,6 +449,6 @@ public sealed class TsConfigResolverTests
             fileData[path] = new MockFileData(content);
         }
 
-        return new MockFileSystem(fileData, "/repo");
+        return new MockFileSystem(fileData, Absolute("/repo"));
     }
 }

@@ -1,8 +1,9 @@
 using SharpSense.Application.Indexing.Abstractions;
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Infrastructure.Storage;
+using SharpSense.TypeScript.Parsing;
+using SharpSense.TypeScript.Parsing.Models;
 using System.IO.Abstractions;
-using TreeSitter;
 
 namespace SharpSense.Infrastructure.Indexing.TypeScript;
 
@@ -22,7 +23,7 @@ internal sealed class TypeScriptSourceDiscoverer(
         tsConfigResolver.ClearCache();
     }
 
-    public async Task<IReadOnlyList<DiscoveredFile>> Discover(
+    public async Task<IReadOnlyList<TypeScriptParsedFile>> Discover(
         string targetPath,
         CancellationToken ct)
     {
@@ -64,8 +65,8 @@ internal sealed class TypeScriptSourceDiscoverer(
         CancellationToken ct)
     {
         var discoveredFiles = new List<DiscoveredFile>();
-        foreach (var scope in new[]
-        { targetPath }.Concat(tsConfigResolver.GetReferencedConfigPaths(targetPath)))
+        foreach (var scope in new[] { targetPath }
+            .Concat(tsConfigResolver.GetReferencedConfigPaths(targetPath)))
         {
             var targetDirectoryPath = repositoryWorkspace.GetRequiredTargetDirectoryPath(scope);
             // Configured files/includes can point above the configuration directory. Start from
@@ -82,7 +83,7 @@ internal sealed class TypeScriptSourceDiscoverer(
         return FilterIndexedFiles(discoveredFiles);
     }
 
-    private async Task<IReadOnlyList<DiscoveredFile>> ExpandReachableFiles(
+    private async Task<IReadOnlyList<TypeScriptParsedFile>> ExpandReachableFiles(
         IReadOnlyList<DiscoveredFile> seedFiles,
         CancellationToken ct)
     {
@@ -94,19 +95,42 @@ internal sealed class TypeScriptSourceDiscoverer(
         var discoveredFilesByAbsolutePath = seedFiles
             .ToDictionary(static file => file.AbsolutePath, FileSystemPaths.Comparer);
         var pendingFiles = new Queue<DiscoveredFile>(seedFiles);
+        var parsedFiles = new List<TypeScriptParsedFile>(seedFiles.Count);
 
         while (pendingFiles.Count > 0)
         {
             ct.ThrowIfCancellationRequested();
 
             var discoveredFile = pendingFiles.Dequeue();
-            var sourceText = await fileSystem.File.ReadAllTextAsync(discoveredFile.AbsolutePath, ct);
-            foreach (var importPath in ExtractImportPaths(
-                sourceText,
-                discoveredFile.RelativeFilePath.EndsWith(
-                    ".tsx",
-                    StringComparison.OrdinalIgnoreCase)))
+            string sourceText;
+            try
             {
+                sourceText = await fileSystem.File.ReadAllTextAsync(discoveredFile.AbsolutePath, ct);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                throw new TypeScriptSourceException(discoveredFile.RelativeFilePath, exception.Message, exception);
+            }
+
+            TypeScriptSyntaxTree tree;
+            try
+            {
+                tree = TypeScriptParser.Parse(discoveredFile.RelativeFilePath, sourceText, ct);
+            }
+            catch (TypeScriptParseLimitException exception)
+            {
+                throw new TypeScriptSourceException(discoveredFile.RelativeFilePath, exception.Message, exception);
+            }
+
+            parsedFiles.Add(new TypeScriptParsedFile(discoveredFile, tree));
+            foreach (var node in tree.Root.Statements ?? [])
+            {
+                var importPath = TypeScriptSyntax.GetModuleSpecifier(node);
+                if (string.IsNullOrWhiteSpace(importPath))
+                {
+                    continue;
+                }
+
                 var resolvedImportPath = tsConfigResolver.ResolveImport(importPath, discoveredFile.AbsolutePath, ct);
                 if (string.IsNullOrWhiteSpace(resolvedImportPath))
                 {
@@ -136,8 +160,8 @@ internal sealed class TypeScriptSourceDiscoverer(
 
         return
         [
-            .. discoveredFilesByAbsolutePath.Values
-                .OrderBy(static file => file.RelativeFilePath, FileSystemPaths.Comparer)
+            .. parsedFiles
+                .OrderBy(static file => file.DiscoveredFile.RelativeFilePath, FileSystemPaths.Comparer)
         ];
     }
 
@@ -157,27 +181,5 @@ internal sealed class TypeScriptSourceDiscoverer(
             .ToDictionary(static file => file.AbsolutePath, FileSystemPaths.Comparer);
 
         return _repositoryFilesByAbsolutePath;
-    }
-
-    private static IEnumerable<string> ExtractImportPaths(string sourceText, bool isTsx)
-    {
-        ArgumentNullException.ThrowIfNull(sourceText);
-
-        using var language = new Language(isTsx ? "TSX" : "TypeScript");
-        using var parser = new Parser(language);
-        using var tree = parser.Parse(sourceText);
-        if (tree is null)
-        {
-            yield break;
-        }
-        foreach (var node in tree.RootNode.NamedChildren
-            .Where(node => node.Type is "import_statement" or "export_statement"))
-        {
-            var path = node.GetChildForField("source")?.Text.Trim('\'', '"');
-            if (!string.IsNullOrWhiteSpace(path))
-            {
-                yield return path;
-            }
-        }
     }
 }

@@ -1,6 +1,8 @@
 using SharpSense.Application.Indexing.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Storage;
+using SharpSense.TypeScript.Parsing.Abstractions;
+using SharpSense.TypeScript.Parsing.Models;
 
 namespace SharpSense.Infrastructure.Indexing.TypeScript;
 
@@ -36,11 +38,11 @@ internal sealed class ImportDependencyPass(
                 continue;
             }
 
-            var jsxTagNames = ExtractJsxTagNames(parsedFile);
-            foreach (var importNode in parsedFile.RootNode.NamedChildren
-                .Where(static node => node.Type == "import_statement"))
+            var jsxTagNames = ExtractJsxTagNames(parsedFile, context.CancellationToken);
+            foreach (var importNode in (parsedFile.RootNode.Statements ?? [])
+                .OfType<ImportDeclaration>())
             {
-                var importPath = importNode.GetChildForField("source")?.Text.Trim('\'', '"');
+                var importPath = TypeScriptSyntax.GetModuleSpecifier(importNode);
                 if (string.IsNullOrWhiteSpace(importPath))
                 {
                     continue;
@@ -99,7 +101,7 @@ internal sealed class ImportDependencyPass(
     }
 
     private IReadOnlyList<ResolvedImportTarget> BuildResolvedImportTargets(
-        TreeSitter.Node importNode,
+        ImportDeclaration importNode,
         string targetRelativePath,
         TypeScriptPassContext context)
     {
@@ -124,6 +126,7 @@ internal sealed class ImportDependencyPass(
                 {
                     AddTarget(targetsByCalleeId, new(id, null));
                 }
+
                 continue;
             }
 
@@ -137,6 +140,7 @@ internal sealed class ImportDependencyPass(
                 {
                     AddTarget(targetsByCalleeId, new(id, null));
                 }
+
                 continue;
             }
 
@@ -168,6 +172,7 @@ internal sealed class ImportDependencyPass(
                     yield return id;
                 }
             }
+
             yield break;
         }
 
@@ -176,6 +181,7 @@ internal sealed class ImportDependencyPass(
         {
             yield break;
         }
+
         try
         {
             if (context.ExportsByFile.TryGetValue(path, out var exports))
@@ -187,11 +193,11 @@ internal sealed class ImportDependencyPass(
                 }
             }
 
-            var source = context.ParsedFiles.FirstOrDefault(file => file.DiscoveredFile.RelativeFilePath == path);
-            if (source is null)
+            if (!context.FilesByPath.TryGetValue(path, out var source))
             {
                 yield break;
             }
+
             var reExports = context.ReExports
                 .Where(binding => binding.FilePath == path)
                 .ToArray();
@@ -203,10 +209,12 @@ internal sealed class ImportDependencyPass(
                 {
                     continue;
                 }
+
                 if (name == "default" && binding.ExportedName is null)
                 {
                     continue;
                 }
+
                 var resolved = tsConfigResolver.ResolveImport(
                     binding.Source,
                     source.DiscoveredFile.AbsolutePath,
@@ -217,6 +225,7 @@ internal sealed class ImportDependencyPass(
                     {
                         yield return PackageNodeIdentity.CreateCanonicalId(binding.Source, binding.ImportedName);
                     }
+
                     continue;
                 }
 
@@ -234,12 +243,16 @@ internal sealed class ImportDependencyPass(
         }
     }
 
-    private IEnumerable<string> GetExportNames(TypeScriptPassContext context, string path, HashSet<string> visiting)
+    private IEnumerable<string> GetExportNames(
+        TypeScriptPassContext context,
+        string path,
+        HashSet<string> visiting)
     {
         if (!visiting.Add(path))
         {
             yield break;
         }
+
         try
         {
             if (context.ExportsByFile.TryGetValue(path, out var exports))
@@ -249,11 +262,12 @@ internal sealed class ImportDependencyPass(
                     yield return name;
                 }
             }
-            var source = context.ParsedFiles.FirstOrDefault(file => file.DiscoveredFile.RelativeFilePath == path);
-            if (source is null)
+
+            if (!context.FilesByPath.TryGetValue(path, out var source))
             {
                 yield break;
             }
+
             foreach (var binding in context.ReExports.Where(binding => binding.FilePath == path))
             {
                 if (binding.ExportedName is not null)
@@ -261,6 +275,7 @@ internal sealed class ImportDependencyPass(
                     yield return binding.ExportedName;
                     continue;
                 }
+
                 var resolved = tsConfigResolver.ResolveImport(
                     binding.Source,
                     source.DiscoveredFile.AbsolutePath,
@@ -269,6 +284,7 @@ internal sealed class ImportDependencyPass(
                 {
                     continue;
                 }
+
                 foreach (var name in GetExportNames(
                     context,
                     repositoryWorkspace.ToRepositoryRelativePath(resolved),
@@ -288,7 +304,7 @@ internal sealed class ImportDependencyPass(
     }
 
     private static IReadOnlyList<ResolvedImportTarget> BuildExternalImportTargets(
-        TreeSitter.Node importNode,
+        ImportDeclaration importNode,
         string importPath,
         IReadOnlySet<string> jsxTagNames)
     {
@@ -356,34 +372,22 @@ internal sealed class ImportDependencyPass(
         => importPath.StartsWith("./", StringComparison.Ordinal) ||
            importPath.StartsWith("../", StringComparison.Ordinal);
 
-    private static IReadOnlySet<string> ExtractJsxTagNames(TypeScriptParsedFile parsedFile)
+    private static IReadOnlySet<string> ExtractJsxTagNames(TypeScriptParsedFile parsedFile, CancellationToken ct)
     {
         var jsxTagNames = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var node in TypeScriptSyntax.EnumerateDescendants(parsedFile.RootNode))
+        foreach (var node in parsedFile.RootNode.DescendantsAndSelf(ct))
         {
-            if (node.Type is not "jsx_opening_element" and not "jsx_self_closing_element")
+            if (node is not IJsxOpeningLikeElement || node is not IJsxHasTagName { TagName: { } tag })
             {
                 continue;
             }
 
-            var nameNode = node.GetChildForField("name");
-            if (nameNode is null)
+            var tagName = parsedFile.SyntaxTree.GetText(tag).Trim();
+            if (!string.IsNullOrWhiteSpace(tagName))
             {
-                foreach (var childNode in node.NamedChildren)
-                {
-                    nameNode = childNode;
-                    break;
-                }
+                jsxTagNames.Add(tagName);
             }
-
-            var tagName = nameNode?.Text?.Trim();
-            if (string.IsNullOrWhiteSpace(tagName))
-            {
-                continue;
-            }
-
-            jsxTagNames.Add(tagName);
         }
 
         return jsxTagNames;

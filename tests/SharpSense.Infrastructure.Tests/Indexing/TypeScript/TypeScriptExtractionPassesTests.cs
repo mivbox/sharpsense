@@ -5,6 +5,7 @@ using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Indexing.TypeScript;
 using SharpSense.Infrastructure.Storage;
 using System.IO.Abstractions.TestingHelpers;
+using static SharpSense.Infrastructure.Tests.Indexing.TypeScript.TypeScriptTestPaths;
 
 namespace SharpSense.Infrastructure.Tests.Indexing.TypeScript;
 
@@ -14,9 +15,9 @@ public sealed class TypeScriptExtractionPassesTests
     public async Task WhenExtractingExportedTypeScriptDeclarations_ThenReturnsFunctionsClassesAndComponents()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/SharpSense.sln", string.Empty),
-            ("/repo/tsconfig.json", "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
-            ("/repo/src/Feature.tsx",
+            (Absolute("/repo/SharpSense.sln"), string.Empty),
+            (Absolute("/repo/tsconfig.json"), "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
+            (Absolute("/repo/src/Feature.tsx"),
                 """
                 export function Toolbar() {
                     return <section />;
@@ -35,7 +36,7 @@ public sealed class TypeScriptExtractionPassesTests
         var extractor = CreateExtractor(fileSystem);
 
         var result = await extractor.Extract(
-            new ExtractionContext("/repo/SharpSense.sln", null),
+            new ExtractionContext(Absolute("/repo/SharpSense.sln"), null),
             TestContext.Current.CancellationToken);
 
         result.Value.CodeNodes.Should().HaveCount(4);
@@ -69,8 +70,8 @@ public sealed class TypeScriptExtractionPassesTests
     public async Task WhenExtractingAliasImports_ThenCreatesImportEdgesToResolvedExports()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/SharpSense.sln", string.Empty),
-            ("/repo/tsconfig.json",
+            (Absolute("/repo/SharpSense.sln"), string.Empty),
+            (Absolute("/repo/tsconfig.json"),
                 """
                 {
                   "compilerOptions": {
@@ -81,13 +82,13 @@ public sealed class TypeScriptExtractionPassesTests
                   }
                 }
                 """),
-            ("/repo/src/shared/api.ts",
+            (Absolute("/repo/src/shared/api.ts"),
                 """
                 export function api() {
                     return 1;
                 }
                 """),
-            ("/repo/src/App.ts",
+            (Absolute("/repo/src/App.ts"),
                 """
                 import { api } from '@shared/api';
 
@@ -98,7 +99,7 @@ public sealed class TypeScriptExtractionPassesTests
         var extractor = CreateExtractor(fileSystem);
 
         var result = await extractor.Extract(
-            new ExtractionContext("/repo/SharpSense.sln", null),
+            new ExtractionContext(Absolute("/repo/SharpSense.sln"), null),
             TestContext.Current.CancellationToken);
 
         result.Value.Edges.Should().ContainSingle(edge =>
@@ -111,9 +112,9 @@ public sealed class TypeScriptExtractionPassesTests
     public async Task WhenExtractingExportedConstHooks_ThenReturnsMethodNodesAndImportEdges()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/SharpSense.sln", string.Empty),
-            ("/repo/tsconfig.json", "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
-            ("/repo/src/state.tsx",
+            (Absolute("/repo/SharpSense.sln"), string.Empty),
+            (Absolute("/repo/tsconfig.json"), "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
+            (Absolute("/repo/src/state.tsx"),
                 """
                 export const useAskPolicyDrawerProvider = () => {
                     return {
@@ -121,7 +122,7 @@ public sealed class TypeScriptExtractionPassesTests
                     };
                 };
                 """),
-            ("/repo/src/App.tsx",
+            (Absolute("/repo/src/App.tsx"),
                 """
                 import { useAskPolicyDrawerProvider } from "./state";
 
@@ -132,7 +133,7 @@ public sealed class TypeScriptExtractionPassesTests
         var extractor = CreateExtractor(fileSystem);
 
         var result = await extractor.Extract(
-            new ExtractionContext("/repo/SharpSense.sln", null),
+            new ExtractionContext(Absolute("/repo/SharpSense.sln"), null),
             TestContext.Current.CancellationToken);
 
         result.Value.CodeNodes.Should().Contain(node =>
@@ -148,8 +149,8 @@ public sealed class TypeScriptExtractionPassesTests
     public async Task WhenPassesAreProvidedOutOfOrder_ThenExtractorStillProducesImportEdges()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/SharpSense.sln", string.Empty),
-            ("/repo/tsconfig.json",
+            (Absolute("/repo/SharpSense.sln"), string.Empty),
+            (Absolute("/repo/tsconfig.json"),
                 """
                 {
                   "compilerOptions": {
@@ -160,13 +161,13 @@ public sealed class TypeScriptExtractionPassesTests
                   }
                 }
                 """),
-            ("/repo/src/shared/api.ts",
+            (Absolute("/repo/src/shared/api.ts"),
                 """
                 export function api() {
                     return 1;
                 }
                 """),
-            ("/repo/src/App.ts",
+            (Absolute("/repo/src/App.ts"),
                 """
                 import { api } from '@shared/api';
 
@@ -177,7 +178,7 @@ public sealed class TypeScriptExtractionPassesTests
         var extractor = CreateExtractor(fileSystem, reversePassOrder: true);
 
         var result = await extractor.Extract(
-            new ExtractionContext("/repo/SharpSense.sln", null),
+            new ExtractionContext(Absolute("/repo/SharpSense.sln"), null),
             TestContext.Current.CancellationToken);
 
         result.Value.Edges.Should().ContainSingle(edge =>
@@ -190,9 +191,9 @@ public sealed class TypeScriptExtractionPassesTests
     public async Task WhenExtractingHttpClientCalls_ThenCreatesHttpRequestEdgesWithUrlMetadata()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/SharpSense.sln", string.Empty),
-            ("/repo/tsconfig.json", "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
-            ("/repo/src/Api.ts",
+            (Absolute("/repo/SharpSense.sln"), string.Empty),
+            (Absolute("/repo/tsconfig.json"), "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
+            (Absolute("/repo/src/Api.ts"),
                 """
                 export function loadUsers() {
                     return fetch("/api/users");
@@ -205,7 +206,7 @@ public sealed class TypeScriptExtractionPassesTests
         var extractor = CreateExtractor(fileSystem);
 
         var result = await extractor.Extract(
-            new ExtractionContext("/repo/SharpSense.sln", null),
+            new ExtractionContext(Absolute("/repo/SharpSense.sln"), null),
             TestContext.Current.CancellationToken);
 
         result.Value.Edges.Should().Contain(edge =>
@@ -224,9 +225,9 @@ public sealed class TypeScriptExtractionPassesTests
     public async Task WhenExtractingExternalImports_ThenItKeepsThemAsPackagesEvenWhenUsedInJsx()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/SharpSense.sln", string.Empty),
-            ("/repo/tsconfig.json", "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
-            ("/repo/src/WorkspaceTree.tsx",
+            (Absolute("/repo/SharpSense.sln"), string.Empty),
+            (Absolute("/repo/tsconfig.json"), "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
+            (Absolute("/repo/src/WorkspaceTree.tsx"),
                 """
                 import { Alert, Box } from "@mui/material";
                 import { useEffect } from "react";
@@ -244,7 +245,7 @@ public sealed class TypeScriptExtractionPassesTests
         var extractor = CreateExtractor(fileSystem);
 
         var result = await extractor.Extract(
-            new ExtractionContext("/repo/SharpSense.sln", null),
+            new ExtractionContext(Absolute("/repo/SharpSense.sln"), null),
             TestContext.Current.CancellationToken);
 
         result.Value.Edges.Should().Contain(edge =>
@@ -268,9 +269,9 @@ public sealed class TypeScriptExtractionPassesTests
     public async Task WhenExtractingDefaultExternalImportsUsedInJsx_ThenItKeepsThemAsPackages()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/SharpSense.sln", string.Empty),
-            ("/repo/tsconfig.json", "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
-            ("/repo/src/Graph.tsx",
+            (Absolute("/repo/SharpSense.sln"), string.Empty),
+            (Absolute("/repo/tsconfig.json"), "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
+            (Absolute("/repo/src/Graph.tsx"),
                 """
                 import ForceGraph3D from "react-force-graph-3d";
 
@@ -281,7 +282,7 @@ public sealed class TypeScriptExtractionPassesTests
         var extractor = CreateExtractor(fileSystem);
 
         var result = await extractor.Extract(
-            new ExtractionContext("/repo/SharpSense.sln", null),
+            new ExtractionContext(Absolute("/repo/SharpSense.sln"), null),
             TestContext.Current.CancellationToken);
 
         result.Value.Edges.Should().Contain(edge =>
@@ -295,9 +296,9 @@ public sealed class TypeScriptExtractionPassesTests
     public async Task WhenExtractingNamespaceExternalImportsUsedInJsx_ThenItUsesTheMemberNameAsThePackageIdentity()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/SharpSense.sln", string.Empty),
-            ("/repo/tsconfig.json", "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
-            ("/repo/src/Tree.tsx",
+            (Absolute("/repo/SharpSense.sln"), string.Empty),
+            (Absolute("/repo/tsconfig.json"), "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
+            (Absolute("/repo/src/Tree.tsx"),
                 """
                 import * as Mui from "@mui/material";
 
@@ -308,7 +309,7 @@ public sealed class TypeScriptExtractionPassesTests
         var extractor = CreateExtractor(fileSystem);
 
         var result = await extractor.Extract(
-            new ExtractionContext("/repo/SharpSense.sln", null),
+            new ExtractionContext(Absolute("/repo/SharpSense.sln"), null),
             TestContext.Current.CancellationToken);
 
         result.Value.Edges.Should().Contain(edge =>
@@ -322,9 +323,9 @@ public sealed class TypeScriptExtractionPassesTests
     public async Task WhenExtractingBareNamespaceJsxTag_ThenItFallsBackToThePackageImport()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/SharpSense.sln", string.Empty),
-            ("/repo/tsconfig.json", "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
-            ("/repo/src/Tree.tsx",
+            (Absolute("/repo/SharpSense.sln"), string.Empty),
+            (Absolute("/repo/tsconfig.json"), "{ \"compilerOptions\": { \"baseUrl\": \".\" } }"),
+            (Absolute("/repo/src/Tree.tsx"),
                 """
                 import * as Mui from "@mui/material";
 
@@ -335,7 +336,7 @@ public sealed class TypeScriptExtractionPassesTests
         var extractor = CreateExtractor(fileSystem);
 
         var result = await extractor.Extract(
-            new ExtractionContext("/repo/SharpSense.sln", null),
+            new ExtractionContext(Absolute("/repo/SharpSense.sln"), null),
             TestContext.Current.CancellationToken);
 
         result.Value.Edges.Should().Contain(edge =>
@@ -349,8 +350,8 @@ public sealed class TypeScriptExtractionPassesTests
     public async Task WhenExtractingWorkspacePackageImports_ThenItIndexesReachableAliasTargetsAsInternalNodes()
     {
         var fileSystem = CreateRepositoryFileSystem(
-            ("/repo/SharpSense.sln", string.Empty),
-            ("/repo/apps/web/tsconfig.json",
+            (Absolute("/repo/SharpSense.sln"), string.Empty),
+            (Absolute("/repo/apps/web/tsconfig.json"),
                 """
                 {
                   "compilerOptions": {
@@ -358,7 +359,7 @@ public sealed class TypeScriptExtractionPassesTests
                   }
                 }
                 """),
-            ("/repo/apps/web/src/App.tsx",
+            (Absolute("/repo/apps/web/src/App.tsx"),
                 """
                 import { useGetNodeById } from "@sharpsense/graph-api/query-hooks/use-get-node-by-id-query.g";
 
@@ -372,13 +373,13 @@ public sealed class TypeScriptExtractionPassesTests
                     });
                 }
                 """),
-            ("/repo/packages/graph-api/package.json",
+            (Absolute("/repo/packages/graph-api/package.json"),
                 """
                 {
                   "name": "@sharpsense/graph-api"
                 }
                 """),
-            ("/repo/packages/graph-api/tsconfig.json",
+            (Absolute("/repo/packages/graph-api/tsconfig.json"),
                 """
                 {
                   "compilerOptions": {
@@ -386,7 +387,7 @@ public sealed class TypeScriptExtractionPassesTests
                   }
                 }
                 """),
-            ("/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts",
+            (Absolute("/repo/packages/graph-api/src/query-hooks/use-get-node-by-id-query.g.ts"),
                 """
                 const useGetNodeById = () => {
                     return null;
@@ -397,7 +398,7 @@ public sealed class TypeScriptExtractionPassesTests
         var extractor = CreateExtractor(fileSystem);
 
         var result = await extractor.Extract(
-            new ExtractionContext("/repo/apps/web/tsconfig.json", null),
+            new ExtractionContext(Absolute("/repo/apps/web/tsconfig.json"), null),
             TestContext.Current.CancellationToken);
 
         result.Value.CodeNodes.Should().Contain(node =>
@@ -416,7 +417,7 @@ public sealed class TypeScriptExtractionPassesTests
         MockFileSystem fileSystem,
         bool reversePassOrder = false)
     {
-        var repositoryWorkspace = new RepositoryWorkspace("/repo", "/test-storage/index.db", fileSystem);
+        var repositoryWorkspace = new RepositoryWorkspace(Absolute("/repo"), Absolute("/test-storage/index.db"), fileSystem);
         var tsConfigResolver = new TsConfigResolver(repositoryWorkspace, fileSystem);
         var sourceDiscoverer = new TypeScriptSourceDiscoverer(
             repositoryWorkspace,
@@ -444,7 +445,7 @@ public sealed class TypeScriptExtractionPassesTests
     {
         var fileData = new Dictionary<string, MockFileData>
         {
-            ["/repo/.git/HEAD"] = new("ref: refs/heads/main")
+            [Absolute("/repo/.git/HEAD")] = new("ref: refs/heads/main")
         };
 
         foreach (var (path, content) in files)
@@ -452,6 +453,6 @@ public sealed class TypeScriptExtractionPassesTests
             fileData[path] = new MockFileData(content);
         }
 
-        return new MockFileSystem(fileData, "/repo");
+        return new MockFileSystem(fileData, Absolute("/repo"));
     }
 }

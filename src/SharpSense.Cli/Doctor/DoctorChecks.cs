@@ -2,8 +2,8 @@ using Microsoft.Build.Locator;
 using SharpSense.Application.GraphStats.Models;
 using SharpSense.Infrastructure.Embeddings;
 using SharpSense.Infrastructure.Storage;
+using SharpSense.TypeScript.Parsing;
 using System.Runtime.InteropServices;
-using TreeSitter;
 
 namespace SharpSense.Cli.Doctor;
 
@@ -95,21 +95,29 @@ internal static class DoctorChecks
         ct.ThrowIfCancellationRequested();
         try
         {
-            using var typeScript = new Language("TypeScript");
-            using var tsx = new Language("TSX");
-            using var typeScriptParser = new Parser(typeScript);
-            using var tsxParser = new Parser(tsx);
-            using var source = typeScriptParser.Parse("export const value: number = 1;");
-            using var component = tsxParser.Parse("export const View = () => <div />;");
-            if (source is null || component is null || source.RootNode.HasError || component.RootNode.HasError)
+            var source = TypeScriptParser.Parse(
+                "check.ts",
+                """
+                export type * from './model';
+                export type Producer<out T> = () => T;
+                export interface Check { run: (string) => boolean; }
+                mock<typeof import('library')>('library', () => ({}),);
+                """,
+                ct);
+            var component = TypeScriptParser.Parse("check.tsx", "export const View = () => <div>A & B &amp; C</div>;", ct);
+            if (source.HasErrors || component.HasErrors)
             {
-                throw new InvalidOperationException("Packaged grammars could not parse valid TypeScript/TSX.");
+                throw new InvalidOperationException("The managed parser could not parse valid TypeScript/TSX.");
             }
 
             checks.Add(new(
                 "typescript-runtime",
                 "info",
-                "Native TypeScript and TSX parsers loaded and parsed successfully."));
+                "Managed TypeScript and TSX parsing passed compatibility checks."));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception)
         {
@@ -117,7 +125,7 @@ internal static class DoctorChecks
                 "typescript-runtime-unavailable",
                 "error",
                 $"TypeScript runtime check failed: {exception.Message}",
-                Suggestion: "Reinstall SharpSense for this operating system and architecture."));
+                Suggestion: "Reinstall SharpSense to restore the managed TypeScript parser."));
         }
 
         foreach (var path in new[]
