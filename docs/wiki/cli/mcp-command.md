@@ -20,7 +20,7 @@ The checked-in `mcp-config.json` is a portable discovery example. `copilot.sh` u
 | Tool | Purpose |
 | --- | --- |
 | `graph_stats` | Read graph coverage, database state, indexing timings, and recorded diagnostics; no node ID needed. |
-| `semantic_search` | Hybrid keyword/vector search from plain text, with a result limit that defaults to 10. |
+| `semantic_search` | Find implementations from a behavior, concept or distinctive symbol; returns source locations and node IDs. Limit defaults to 10. |
 | `context` | Bounded immediate relationships for a node ID. |
 | `trace_node` | Caller or callee navigation for a known node; caller traversal uses impact-analysis defaults. |
 | `get_inheritors` | Direct derived classes and interface implementers. |
@@ -28,16 +28,16 @@ The checked-in `mcp-config.json` is a portable discovery example. `copilot.sh` u
 | `delete_memory` | Delete a memory by GUID. |
 | `get_memory` | Fetch one memory's full content. |
 | `get_memories` | Fetch several memories in one request. |
-| `ctx_execute` | Run a local command in the workspace root and return bounded matching output excerpts. |
+| `ctx_execute` | Run an authorized noisy build, test or diagnostic command in the workspace root and return bounded matching excerpts. |
 
 Refactoring and rename tools are not part of the version 1 surface.
 
-Verify the workspace identity and language coverage with `graph_stats` before discovery. Its timestamps and ready state do not guarantee filesystem freshness. Search for a relevant node, request context, and trace only the necessary direction. Node IDs belong to this server's workspace. Use `edgeCategories: "All"` on context or trace to include memory metadata; the default `"Structural"` omits it. Fetch full notes separately. Caller traces default to depth three; CLI caller tracing defaults to immediate callers. Static traces show dependencies, not runtime execution order.
+Verify the workspace identity and language coverage with `graph_stats` before discovery. Its timestamps and ready state do not guarantee filesystem freshness. When the implementation location is unknown, search from the behavior being investigated, read the returned source, and request context or trace only when a relationship remains unresolved. Read known files directly and use text search for exact strings and exhaustive occurrence checks. Node IDs belong to this server's workspace. Use `edgeCategories: "All"` on context or trace to include memory metadata; the default `"Structural"` omits it. Fetch full notes separately. Caller traces default to depth three; CLI caller tracing defaults to immediate callers. Static traces show dependencies, not runtime execution order.
 
 `context`, `semantic_search`, `ctx_execute`, and the memory tools report expected application failures with `isError: true` and a readable explanation. Successful results retain the existing compact text. An executed child command's nonzero exit code remains part of the `ctx_execute` payload, distinct from failure to start or validate the tool request.
 
-`ctx_execute` runs real local commands with the server process's filesystem permissions. It launches an executable without a shell, so shell operators are not interpreted. Its optional FTS query selects context windows; an omitted or unmatched query returns a summary. See [command execution](execute-command.md).
+`ctx_execute` runs real local commands with the server process's filesystem permissions. It launches an executable without a shell, so shell operators are not interpreted. Quote individual arguments containing spaces; pipelines, redirection and chaining require an explicit shell. Its optional FTS query selects context windows, for example `error OR warning OR failed`; it is not a natural-language summarization instruction. An omitted or unmatched query returns a summary. Use ordinary source tools for small file reads. See [command execution](execute-command.md).
 
-Semantic search treats input as plain text. Symbol/path punctuation is safe, FTS operators and column selectors have no special meaning, and punctuation-only input returns no hits. The separate `ctx_execute` output query still accepts FTS syntax.
+Use a concise behavior or concept as the semantic query, such as `conversation cancellation`, or a distinctive known symbol. Multiple terms can broaden lexical matching; avoid lists of unrelated concepts or guessed identifiers. Semantic search treats input as plain text. Symbol/path punctuation is safe, FTS operators and column selectors have no special meaning, and punctuation-only input returns no hits. The separate `ctx_execute` output query still accepts FTS syntax.
 
 Install the [SharpSense plugin](skills-command.md) through Claude Code, Codex or Copilot for skills and an automatic MCP connection. The CLI must already be on the client's `PATH`, with a registered and analysed workspace. The client must inherit the same custom `SHARPSENSE_HOME` if used.

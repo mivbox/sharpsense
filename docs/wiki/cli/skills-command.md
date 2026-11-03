@@ -1,11 +1,12 @@
 # SharpSense plugin
 
-The `sharpsense` plugin provides code navigation, change assessment, memory maintenance and command-output summaries for Claude Code,
-Codex, Copilot CLI, and Copilot in VS Code. It also registers a local stdio MCP connection.
+The `sharpsense` plugin finds implementations from behavior, explores code relationships, assesses change impact,
+maintains code memories and summarizes noisy command output for Claude Code, Codex, Copilot CLI, and Copilot in
+VS Code. It also registers a local stdio MCP connection.
 
 | Skill | Purpose |
 | --- | --- |
-| `sharpsense-exploring` | Find relevant code, expand unresolved relationships and verify source. |
+| `sharpsense-exploring` | Find implementations during debugging, feature work, refactoring or review; verify returned source. |
 | `sharpsense-impact-analysis` | Inspect callers, contracts and source evidence before a change. |
 | `sharpsense-summarize-output` | Reduce large command output through `ctx_execute`. |
 | `sharpsense-memory` | Save, replace, delete or audit code notes when requested. |
@@ -26,11 +27,29 @@ development skills link references only for the relevant work. Examples use port
 external reference repository. The four plugin skills include Codex UI metadata and allow implicit selection.
 Refresh the client's catalog if updated skills are not visible.
 
-Use graph navigation when relationships are unclear, impact analysis for a proposed contract change, and output
-reduction for noisy commands. Use `sharpsense-memory` for remember/forget requests and stale-note reviews;
-ordinary exploration and impact analysis retrieve relevant notes themselves. Small commands and existing logs use
-ordinary tools. The skills verify workspace binding, avoid unnecessary tracing and preserve source verification.
-See [evaluating token usage](../../token-usage.md).
+Use semantic search when the implementation location is unknown, including discovery within debugging, feature work,
+refactoring and review. Read known files directly and use exact text search for exhaustive occurrences. Expand graph
+relationships only when they answer an unresolved question. Use `sharpsense-memory` for remember/forget requests
+and stale-note reviews; ordinary exploration and impact analysis retrieve relevant notes themselves.
+Use `ctx_execute` for authorized noisy builds, tests and diagnostics; small source reads and existing logs use
+ordinary tools. Its query is an FTS expression such as `error OR warning OR failed`, not a summarization instruction.
+The skills verify workspace binding and preserve source verification. See [evaluating token usage](../../token-usage.md).
+
+### Optional repository guidance
+
+A consuming repository can add the following to its `AGENTS.md` when it wants to make conceptual discovery explicit:
+
+```markdown
+For an unfamiliar behavior or implementation location, begin discovery
+with SharpSense semantic search in the verified workspace. Read relevant
+returned source and expand graph relationships only when needed.
+Use `rg` for exact strings and exhaustive occurrence checks, and read
+known files directly. If SharpSense cannot answer because of availability,
+coverage, or relevance, continue with source tools.
+```
+
+Higher-priority harness instructions still apply. This guidance distinguishes conceptual discovery from exact
+text search; installing the plugin does not edit a consuming repository's instructions.
 
 ## Prerequisites
 
@@ -207,5 +226,5 @@ The root manifest deliberately omits the portable `$schema`: portable plugin MCP
 working directory from the installed plugin root, which would defeat workspace discovery from the project directory.
 No executable wrappers or hooks are required.
 
-Plugin version `1.3.0` is independent of the CLI/NuGet version. When releasing a plugin update, keep its identity and
+Plugin version `1.3.1` is independent of the CLI/NuGet version. When releasing a plugin update, keep its identity and
 version consistent across all three manifests and marketplace metadata.

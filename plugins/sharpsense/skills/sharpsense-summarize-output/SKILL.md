@@ -5,8 +5,16 @@ description: "Run noisy builds, tests or diagnostics through SharpSense and summ
 
 # Summarize command output with SharpSense
 
-Use `ctx_execute` for an authorized command expected to produce large output. Read existing logs and run small
-commands with ordinary tools. Output reduction is useful only if it retains the evidence needed for the task.
+Use `ctx_execute` for an authorized command expected to produce large output,
+such as a build, test run, or diagnostic command.
+
+For discovering unfamiliar code, use `semantic_search`. Read known files,
+bounded source excerpts, and existing logs with ordinary source tools.
+Do not route a small source read through output reduction merely because
+SharpSense is available.
+
+Output reduction is useful only when it preserves the evidence needed
+for the task.
 
 ## Execute once in the right place
 
@@ -16,7 +24,12 @@ wrong or unavailable, use a normal command tool with the correct directory.
 
 Preserve the requested command and its authorization. The tool starts a process without an implicit shell:
 quote individual arguments with spaces; pipes, redirection, expansion and chaining need an explicit shell.
-Choose a query for the actual output vocabulary. This query uses FTS syntax, unlike `semantic_search`:
+Choose an FTS expression using words expected in the command output, such
+as `error OR warning OR failed`. This query is a search expression, not an
+instruction to an AI summarizer. Do not supply requests such as
+"explain the failures and summarize the changes".
+
+Unlike `semantic_search`, this output query accepts FTS syntax.
 
 ```json
 {"command":"dotnet build Example.sln --no-restore", "query":"error OR warning OR failed"}
