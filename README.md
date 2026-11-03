@@ -73,7 +73,8 @@ agent and MCP startup; the **24.5-second index build** is separate.
 ## Connect your AI assistant
 
 Install the CLI and analyse a workspace first. The `sharpsense` plugin includes an MCP connection and skills for
-exploration, impact analysis, memory maintenance, and reducing command output.
+finding implementations from behavior, exploring relationships, assessing change impact, maintaining code memories,
+and summarizing noisy command output.
 
 <details>
 <summary><strong>Claude Code</strong></summary>
@@ -123,13 +124,13 @@ with a manual entry. Each server stays bound to one workspace; restart it to sel
 
 | Tool | Purpose |
 | --- | --- |
-| `semantic_search` | Find symbols and documentation using keyword and vector search. |
+| `semantic_search` | Find implementations from behavior when the symbol or file location is unknown. |
 | `context` | Inspect a symbol's immediate callers, callees, and inheritance relationships. |
 | `trace_node` | Follow dependencies or inspect callers affected by a change. |
 | `get_inheritors` | Find direct derived classes and interface implementations. |
 | `graph_stats` | Check graph coverage, indexing timings, and diagnostics. |
 | `attach_memory`, `get_memory`, `get_memories`, `delete_memory` | Maintain notes attached to indexed symbols. |
-| `ctx_execute` | Run a local command and return bounded excerpts relevant to a query. |
+| `ctx_execute` | Run an authorized noisy build, test or diagnostic command and return matching excerpts. |
 
 Try asking your assistant:
 

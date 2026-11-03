@@ -1,16 +1,26 @@
 ---
 name: sharpsense-impact-analysis
-description: "Assess a proposed code change or deletion with SharpSense: affected callers, contracts and validation. Use for change-risk questions, not routine edits or general code explanation."
+description: "Locate unknown change targets with SharpSense semantic search before guessing filenames or symbols, then assess affected callers, implementations, and contracts. Use when a proposed change could affect other code or external consumers."
 ---
 
 # Assess change impact with SharpSense
 
-Identify the proposed signature, behavior or lifecycle change. A caller is a candidate to inspect, not proof of
-breakage: a contract-preserving cleanup differs from adding a required parameter.
+Identify the proposed signature, behavior, or lifecycle change and the
+contracts it could affect.
 
-Inspect the declaration and relevant uses first. For a purely local change whose contract and observable behavior
-remain unchanged, answer from that source evidence; a graph inventory adds no evidence. Otherwise, use the graph
-to find consumers or relationships that still need inspection.
+When the affected implementation is unknown, locate it with
+`semantic_search` using the behavior being changed before filename or text
+searches based on guessed implementation names. This includes `rg --files`
+globs; keep any `AGENTS.md` lookup separate from implementation discovery.
+When its location is already known, inspect the declaration and relevant
+source directly.
+
+For a purely local change whose contracts and observable behavior remain
+unchanged, assess it from that source evidence. Use graph relationships
+when consumers, implementations, or ownership still need investigation.
+
+A caller is a candidate to inspect, not proof of breakage. A
+contract-preserving cleanup differs from adding a required parameter.
 
 ## Find affected contracts
 
@@ -18,8 +28,11 @@ Before graph calls, use `graph_stats({})` once unless the MCP workspace is alrea
 the root, index outcome and coverage against the intended checkout. Index timestamps are not revision guarantees.
 For an unavailable or wrong workspace, use source evidence and report the limitation; do not silently analyze a different checkout.
 
-1. Locate the target with `semantic_search({query: "<distinctive symbol>", limit: 5})`. Disambiguate by source path,
-   project and declaration before using its persisted numeric ID. Queries are plain text, not FTS syntax.
+1. If discovery has not already identified the target, use
+   `semantic_search({query: "<behavior, concept, or distinctive symbol>", limit: 5})`.
+   Disambiguate results by source path and declaration. Reuse the resulting
+   node ID and source location; do not repeat a completed discovery step.
+   Queries are plain text, not FTS syntax.
 2. Inspect `context({nodeId: 42})` and the target's source. Check the direct consumers against the proposed contract.
    `incoming.callers` identifies consumers; `incoming.implementers` identifies affected implementations.
 3. Trace a changed member for its callers and a type/interface for its implementations. Reuse relationships

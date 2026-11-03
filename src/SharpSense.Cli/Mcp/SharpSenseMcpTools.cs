@@ -56,11 +56,11 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool, Description("Run a local command, index its streamed output with a transient full-text search index, and return compact reduced context blocks for the supplied query.")]
+    [McpServerTool, Description("Run an authorized build, test, or diagnostic command expected to produce large output and return bounded matching excerpts. Use semantic_search to discover code and ordinary source tools for small file reads.")]
     public static async Task<CallToolResult> ctx_execute(
         ICommandHandler<ExecuteProcessCommand, Result<CommandExecutionResult>> handler,
-        [Description("The OS command to run without a shell. Quote the full string when it contains spaces.")] string command,
-        [Description("Optional FTS query used to locate relevant output lines. When omitted or unmatched, only a compact summary is returned.")] string? query = null,
+        [Description("Executable followed by arguments. No implicit shell is used. Quote individual arguments containing spaces; pipelines, redirection, and chaining require an explicit shell.")] string command,
+        [Description("Optional FTS expression selecting relevant output lines, for example error OR warning OR failed. This is not a natural-language instruction. Missing or unmatched queries return a compact summary.")] string? query = null,
         CancellationToken ct = default)
     {
         using var activity = SharpSenseTraceSpan.Start("mcp.tool.ctx_execute");
@@ -97,10 +97,10 @@ internal sealed class SharpSenseMcpTools
         }
     }
 
-    [McpServerTool(ReadOnly = true), Description("Run hybrid BM25 and semantic search against the indexed workspace.")]
+    [McpServerTool(ReadOnly = true), Description("Find code implementing a behavior or concept when its symbol name or file location is unknown. Use for discovery during debugging, feature work, refactoring, and review. Returns source locations and node IDs for inspection. Use ordinary text search for exact strings and exhaustive occurrence checks.")]
     public static async Task<CallToolResult> semantic_search(
         IQueryHandler<HybridSearchQuery, Result<HybridSearchResult>> searchHandler,
-        [Description("Plain-text query. Punctuation is handled safely; FTS operators and column selectors are not supported.")] string query,
+        [Description("A concise behavior, concept, or distinctive symbol to locate. Plain text only; FTS operators and column selectors are not supported.")] string query,
         [Description("Maximum number of hits to return. Defaults to 10.")] int limit = 10,
         CancellationToken ct = default)
     {
