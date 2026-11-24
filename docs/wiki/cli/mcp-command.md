@@ -31,6 +31,29 @@ The checked-in `mcp-config.json` is a portable discovery example. `copilot.sh` u
 | `get_memories` | Fetch several memories in one request. |
 | `ctx_execute` | Run an authorized noisy build, test or diagnostic command in the workspace root and return bounded matching excerpts. |
 
+## Resources
+
+MCP resources expose read-only workspace snapshots and a node-context template without invoking a tool:
+
+| URI | MIME type | Purpose |
+| --- | --- | --- |
+| `sharpsense://workspace/stats` | `application/json` | Same diagnostic snapshot as `graph_stats`; preserves missing or incompatible databases without modifying them. |
+| `sharpsense://workspace/memories` | `text/plain` | Compact TOON list of up to 100 workspace memories, newest first. |
+| `sharpsense://workspace/memories/stale` | `text/plain` | Compact TOON list of up to 100 stale memories whose target symbol hash changed. |
+| `sharpsense://node/{nodeId}/context` | `text/plain` | Combined structural and semantic 360-degree context for a persisted positive integer node ID. |
+
+`sharpsense://workspace/stats`, unknown URIs, and invalid node IDs never initialize or alter missing or incompatible databases.
+
+## Prompts
+
+MCP prompts provide reusable workflow templates that clients can invoke directly:
+
+| Prompt | Arguments | Purpose |
+| --- | --- | --- |
+| `explain_symbol` | `target`, optional `question` | Locate an unfamiliar behavior or symbol, inspect relevant relationships and memories, and explain it with source evidence. |
+| `impact_review` | `target`, optional `changeDescription` | Assess callers, implementations, truncation totals, memories, and validation needs before a change. |
+| `memory_audit` | optional `scope` | Review stale or scoped workspace memories against current source and summarize recommended updates without unprompted writes. |
+
 Refactoring and rename tools are not part of the version 1 surface.
 
 Verify the workspace identity and language coverage with `graph_stats` before discovery. Its timestamps and ready state do not guarantee filesystem freshness. When the implementation location is unknown, search from the behavior being investigated, read the returned source, and request context or trace only when a relationship remains unresolved. Read known files directly and use text search for exact strings and exhaustive occurrence checks. Node IDs belong to this server's workspace. Use `edgeCategories: "All"` on context or trace to include memory metadata; the default `"Structural"` omits it. Fetch full notes separately. Caller traces default to depth three; CLI caller tracing defaults to immediate callers unless `--max-depth` is supplied. Static traces show dependencies, not runtime execution order.

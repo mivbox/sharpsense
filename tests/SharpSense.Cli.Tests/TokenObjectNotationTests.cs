@@ -445,7 +445,7 @@ public sealed class TokenObjectNotationTests
                 "src/Fixture.App/MessageConsumer.cs",
                 20,
                 28),
-            [new Context360RelatedNode(2, "HttpEndpoint.Handle")],
+            [new Context360RelatedNode(2, "HttpEndpoint.Handle", 2, "src\\Fixture.App\\HttpEndpoint.cs", 5)],
             [],
             [],
             [],
@@ -464,7 +464,7 @@ public sealed class TokenObjectNotationTests
             "  file: src/Fixture.App/MessageConsumer.cs:20-28" + Environment.NewLine +
             Environment.NewLine +
             "incoming:" + Environment.NewLine +
-            "  callers (1 of 5): [HttpEndpoint.Handle (Id:2)]" + Environment.NewLine +
+            "  callers (1 of 5): [HttpEndpoint.Handle (Id:2 @ src/Fixture.App/HttpEndpoint.cs:5)]" + Environment.NewLine +
             "  implementers: []" + Environment.NewLine +
             Environment.NewLine +
             "omitted_sections: [Callees, Inherits, Parents, Children]");

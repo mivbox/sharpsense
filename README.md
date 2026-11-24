@@ -54,8 +54,8 @@ Your AI client controls where the context it retrieves is sent. SharpSense does 
 
 | Source | Tokens without | Tokens with | Token change | Time without | Time with | Time change |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| C# | 220,279 | 147,614 | **33.0% fewer** | 74.4 s | 63.1 s | **15.2% less** |
-| Markdown | 101,194 | 124,917 | 23.4% more | 43.0 s | 52.2 s | 21.4% more |
+| C# | 425,351 | 335,496 | **21.1% fewer** | 79.1 s | 86.2 s | 9.0% more |
+| Markdown | 201,460 | 82,080 | **59.3% fewer** | 59.4 s | 37.3 s | **37.2% less** |
 
 Example queries used for both runs:
 
@@ -64,11 +64,10 @@ Example queries used for both runs:
 | C# | If source extraction fails during indexing, what happens to the previous graph? Show the failure path and its tests. |
 | Markdown | How do the CLI and MCP choose a workspace when no explicit workspace is supplied? Cite the relevant documentation. |
 
-Results are medians of three runs per question and condition. All 12 answers passed source review.
-This is a small pilot; results depend on the task and model.
+Results are medians of three independent runs per question and condition (`copilot -p`, `google/gemini-4-neon`, plugin `1.4.0`). All 12 answers passed source review. Against the prior SharpSense CLI (`1.2.1`) and plugin (`1.3.1`) on the same benchmark, filtered search, `@ path:line` context locations, and slimmed skills cut median tokens by **27.2%** on C# (`460,972` → `335,496`, `128.9 s` → `86.2 s`) and **64.5%** on Markdown (`231,022` → `82,080`, `87.2 s` → `37.3 s`). This is a small pilot; results depend on the task and model.
 
 Tokens are provider-reported input plus output across the whole task, including cached input once. Time includes
-agent and MCP startup; the **24.5-second index build** is separate.
+agent and MCP startup; the **4.7-second index refresh** is separate.
 
 ## Connect your AI assistant
 
@@ -124,13 +123,15 @@ with a manual entry. Each server stays bound to one workspace; restart it to sel
 
 | Tool | Purpose |
 | --- | --- |
-| `semantic_search` | Find implementations from behavior when the symbol or file location is unknown. |
-| `context` | Inspect a symbol's immediate callers, callees, and inheritance relationships. |
-| `trace_node` | Follow dependencies or inspect callers affected by a change. |
+| `semantic_search` | Find implementations or docs from behavior; supports `project`, `nodeTypes`, `includeMemories`, and `tags` filters. |
+| `context` | Inspect a symbol's immediate callers, callees, and inheritance with `limit`, `sections`, and truncation totals. |
+| `trace_node` | Follow dependencies or inspect callers affected by a change with configurable `maxDepth` and edge filters. |
 | `get_inheritors` | Find direct derived classes and interface implementations. |
 | `graph_stats` | Check graph coverage, indexing timings, and diagnostics. |
-| `attach_memory`, `get_memory`, `get_memories`, `delete_memory` | Maintain notes attached to indexed symbols. |
+| `attach_memory`, `list_memories`, `get_memory`, `get_memories`, `delete_memory` | List, filter, inspect, and maintain notes attached to indexed symbols. |
 | `ctx_execute` | Run an authorized noisy build, test or diagnostic command and return matching excerpts. |
+
+The MCP server also exposes read-only resources (`sharpsense://workspace/stats`, `sharpsense://workspace/memories`, `sharpsense://workspace/memories/stale`, `sharpsense://node/{nodeId}/context`) and workflow prompts (`explain_symbol`, `impact_review`, `memory_audit`).
 
 Try asking your assistant:
 

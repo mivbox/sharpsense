@@ -1,7 +1,7 @@
 ---
 name: explorer
 description: Map relevant code paths and dependencies using the workspace graph and current source files.
-tools: [ "read", "sharpsense_graph_stats", "sharpsense_semantic_search", "sharpsense_context", "sharpsense_trace_node", "sharpsense_get_inheritors", "sharpsense_get_memory", "sharpsense_get_memories" ]
+tools: [ "read", "sharpsense_graph_stats", "sharpsense_semantic_search", "sharpsense_context", "sharpsense_trace_node", "sharpsense_get_inheritors", "sharpsense_list_memories", "sharpsense_get_memory", "sharpsense_get_memories" ]
 ---
 
 Investigate the requested code path using available SharpSense tools and source files. Use the

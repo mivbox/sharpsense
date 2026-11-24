@@ -166,16 +166,19 @@ internal sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> d
             .AsNoTracking()
             .Where(codeNode => relatedNodeIds.Contains(codeNode.Id));
 
-        var probe = await matchingNodes
-            .OrderBy(static codeNode => codeNode.FullyQualifiedName)
-            .ThenBy(static codeNode => codeNode.Id)
-            .Take(maxRelated + 1)
-            .Select(static codeNode => new Context360RelatedNode(
+        var probe = await (
+            from codeNode in matchingNodes
+            join document in context.Documents.AsNoTracking() on codeNode.DocumentId equals document.Id
+            orderby codeNode.FullyQualifiedName, codeNode.Id
+            select new Context360RelatedNode(
                 codeNode.Id,
                 codeNode.NodeType == NodeType.Method && codeNode.DisplayName.Contains("(")
                     ? codeNode.DisplayName.Substring(0, codeNode.DisplayName.IndexOf("("))
                     : codeNode.DisplayName,
-                codeNode.Id))
+                codeNode.Id,
+                document.RelativePath,
+                codeNode.StartLine))
+            .Take(maxRelated + 1)
             .ToArrayAsync(ct);
 
         if (probe.Length <= maxRelated)
@@ -200,17 +203,20 @@ internal sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> d
             : edgeQuery.Select(static edge => edge.CalleeNodeId))
             .Distinct();
 
-        var codeNodes = context.CodeNodes
-            .AsNoTracking()
-            .Where(codeNode => relatedNodeIds.Contains(codeNode.Id))
-            .Select(static codeNode => new
+        var codeNodes =
+            from codeNode in context.CodeNodes.AsNoTracking()
+            join document in context.Documents.AsNoTracking() on codeNode.DocumentId equals document.Id
+            where relatedNodeIds.Contains(codeNode.Id)
+            select new
             {
                 codeNode.Id,
                 Name = codeNode.NodeType == NodeType.Method && codeNode.DisplayName.Contains("(")
                     ? codeNode.DisplayName.Substring(0, codeNode.DisplayName.IndexOf("("))
                     : codeNode.DisplayName,
-                CodeNodeId = (int?)codeNode.Id
-            });
+                CodeNodeId = (int?)codeNode.Id,
+                RelativeFilePath = (string?)document.RelativePath,
+                StartLine = (int?)codeNode.StartLine
+            };
         var projectNodes = context.ProjectNodes
             .AsNoTracking()
             .Where(projectNode => relatedNodeIds.Contains(projectNode.Id))
@@ -218,7 +224,9 @@ internal sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> d
             {
                 projectNode.Id,
                 Name = projectNode.Name,
-                CodeNodeId = (int?)null
+                CodeNodeId = (int?)null,
+                RelativeFilePath = (string?)null,
+                StartLine = (int?)null
             });
         var combined = codeNodes.Concat(projectNodes);
 
@@ -229,7 +237,9 @@ internal sealed class ContextRepository(IDbContextFactory<SharpSenseDbContext> d
             .Select(static node => new Context360RelatedNode(
                 node.Id,
                 node.Name,
-                node.CodeNodeId))
+                node.CodeNodeId,
+                node.RelativeFilePath,
+                node.StartLine))
             .ToArrayAsync(ct);
 
         if (probe.Length <= maxRelated)

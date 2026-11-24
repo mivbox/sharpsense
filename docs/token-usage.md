@@ -2,7 +2,7 @@
 
 SharpSense returns bounded graph context and reduced command output so an agent can request relevant information in smaller steps. Actual token usage depends on the model, repository, task, tool calls, and output limits.
 
-The [README benchmarks](../README.md#benchmarks) report provider-measured tokens, elapsed time, and answer correctness for C# and documentation questions. The C# task used fewer tokens with SharpSense; the documentation task used more. This is a small pilot on one repository and model.
+The [README benchmarks](../README.md#benchmarks) report provider-measured tokens, elapsed time, and answer correctness for C# and documentation questions. Both tasks used fewer tokens with SharpSense (plugin `1.4.0`) using filtered search, `@ path:line` context locations, and leaner skills. This is a small pilot on one repository and model.
 
 ## What to measure
 
