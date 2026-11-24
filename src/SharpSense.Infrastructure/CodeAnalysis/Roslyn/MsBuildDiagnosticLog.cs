@@ -1,6 +1,5 @@
-using Microsoft.Build.Framework;
 using Microsoft.Build.Logging;
-using Microsoft.CodeAnalysis;
+using Serilog;
 using System.Runtime.CompilerServices;
 
 namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
@@ -11,6 +10,7 @@ namespace SharpSense.Infrastructure.CodeAnalysis.Roslyn;
 /// </summary>
 internal sealed class MsBuildDiagnosticLog : IDisposable
 {
+    private static readonly Serilog.ILogger _logger = Log.ForContext<MsBuildDiagnosticLog>();
     private readonly DirectoryInfo _directory;
 
     // Construct only after the workspace factory registers the installed MSBuild SDK.
@@ -42,7 +42,7 @@ internal sealed class MsBuildDiagnosticLog : IDisposable
         }
     }
 
-    public ILogger Logger { get; }
+    public Microsoft.Build.Framework.ILogger Logger { get; }
 
     internal string DirectoryPath => _directory.FullName;
 
@@ -54,7 +54,17 @@ internal sealed class MsBuildDiagnosticLog : IDisposable
         {
             ct.ThrowIfCancellationRequested();
             using var stream = File.OpenRead(path);
-            var events = new BinaryLogReplayEventSource();
+            // Roslyn's external build host may run a newer installed SDK (writing a higher
+            // binlog format version) than the MSBuild version registered in this process.
+            var events = new BinaryLogReplayEventSource
+            {
+                AllowForwardCompatibility = true
+            };
+            events.RecoverableReadError += readError => _logger.Debug(
+                "Skipped forward-compatible MSBuild binlog record ({ErrorType}/{RecordKind}): {Message}",
+                readError.ErrorType,
+                readError.RecordKind,
+                readError.GetFormattedMessage());
             events.WarningRaised += (_, warning) => warnings.Add(new MsBuildMessage(
                 warning.ProjectFile,
                 warning.Code,
