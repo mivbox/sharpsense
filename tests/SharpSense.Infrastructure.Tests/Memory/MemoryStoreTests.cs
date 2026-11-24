@@ -1,6 +1,7 @@
 using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Moq;
+using SharpSense.Application.Memory.ListMemories.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
@@ -189,6 +190,110 @@ public sealed class MemoryStoreTests
         embeddings.Verify(
             candidate => candidate.Generate("Reusable memory", ct),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task WhenListingMemoriesWithFiltersAndPaging_ThenReturnsOrderedSummariesAndAccurateCounts()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(UseMigrations: true));
+        var oldestId = Guid.NewGuid();
+        var middleId = Guid.NewGuid();
+        var newestId = Guid.NewGuid();
+        var excludedId = Guid.NewGuid();
+        await using (var seedContext = await inMemoryFactory.GetContext(ct))
+        {
+            await KnowledgeGraphFixture.Seed(seedContext, ct);
+            var targetNode = await seedContext.CodeNodes
+                .SingleAsync(candidate => candidate.Id == KnowledgeGraphFixture.TargetNodeId, ct);
+            targetNode.BodyHash = "current-hash";
+            var callerNode = await seedContext.CodeNodes
+                .SingleAsync(candidate => candidate.Id == KnowledgeGraphFixture.DirectCallerNodeId, ct);
+            callerNode.BodyHash = "stable-hash";
+            seedContext.MemoryNodes.AddRange(
+                new MemoryNodeRecord
+                {
+                    Id = oldestId,
+                    TargetCodeNodeId = KnowledgeGraphFixture.TargetNodeId,
+                    TargetCodeHash = "old-hash",
+                    Content = "Keep   SQLite\ntransactions   bounded when traversing.",
+                    ContentHash = "h1",
+                    TagsJson = "[\"sqlite\",\"perf\"]",
+                    Intent = nameof(MemoryIntent.Invariant),
+                    CreatedAt = DateTimeOffset.Parse("2026-05-01T00:00:00+00:00")
+                },
+                new MemoryNodeRecord
+                {
+                    Id = middleId,
+                    TargetCodeNodeId = KnowledgeGraphFixture.DirectCallerNodeId,
+                    TargetCodeHash = "stable-hash",
+                    Content = new string('x', 200) + " sqlite",
+                    ContentHash = "h2",
+                    TagsJson = "[\"sqlite\",\"perf\"]",
+                    Intent = nameof(MemoryIntent.Invariant),
+                    CreatedAt = DateTimeOffset.Parse("2026-05-02T00:00:00+00:00")
+                },
+                new MemoryNodeRecord
+                {
+                    Id = newestId,
+                    TargetCodeNodeId = KnowledgeGraphFixture.TargetNodeId,
+                    TargetCodeHash = "old-hash-2",
+                    Content = "Another SQLite note.",
+                    ContentHash = "h3",
+                    TagsJson = "[\"sqlite\",\"perf\"]",
+                    Intent = nameof(MemoryIntent.Warning),
+                    CreatedAt = DateTimeOffset.Parse("2026-05-03T00:00:00+00:00")
+                },
+                new MemoryNodeRecord
+                {
+                    Id = excludedId,
+                    TargetCodeNodeId = KnowledgeGraphFixture.DirectCallerNodeId,
+                    TargetCodeHash = "stable-hash",
+                    Content = "Unrelated decision",
+                    ContentHash = "h4",
+                    TagsJson = "[\"ui\"]",
+                    Intent = nameof(MemoryIntent.Decision),
+                    CreatedAt = DateTimeOffset.Parse("2026-05-04T00:00:00+00:00")
+                });
+
+            await seedContext.SaveChangesAsync(ct);
+        }
+
+        var store = new MemoryStore(
+            inMemoryFactory.CreateDbContextFactory(),
+            new Mock<IEmbeddingGenerator>(MockBehavior.Strict).Object);
+
+        var firstPage = await store.ListMemories(
+            new ListMemoriesQuery(
+                Intents: [MemoryIntent.Invariant, MemoryIntent.Warning],
+                Tags: ["sqlite", "perf"],
+                StaleOnly: false,
+                SearchText: "SQLITE",
+                Limit: 2,
+                Offset: 0),
+            ct);
+        var staleOnly = await store.ListMemories(
+            new ListMemoriesQuery(StaleOnly: true, Limit: 10, Offset: 0),
+            ct);
+
+        firstPage.TotalCount.Should().Be(3);
+        firstPage.StaleCount.Should().Be(2);
+        firstPage.HasMore.Should().BeTrue();
+        firstPage.Items.Select(static item => item.Id).Should().Equal(newestId, middleId);
+        firstPage.Items[0].TargetCodeNodeId.Should().Be(KnowledgeGraphFixture.TargetNodeId);
+        firstPage.Items[0].TargetRelativeFilePath.Should().NotBeNullOrWhiteSpace();
+        firstPage.Items[0].IsStale.Should().BeTrue();
+        firstPage.Items[1].IsStale.Should().BeFalse();
+        firstPage.Items[1].ContentPreview.Should().HaveLength(160);
+        firstPage.Items[1].ContentPreview.Should().EndWith("...");
+
+        staleOnly.TotalCount.Should().Be(2);
+        staleOnly.StaleCount.Should().Be(2);
+        staleOnly.HasMore.Should().BeFalse();
+        staleOnly.Items.Select(static item => item.Id).Should().Equal(newestId, oldestId);
+        staleOnly.Items[1].ContentPreview.Should().Be("Keep SQLite transactions bounded when traversing.");
     }
 
     private static async Task<MemoryNodeRecord[]> SeedMemories(SharpSenseDbContext context, CancellationToken ct)

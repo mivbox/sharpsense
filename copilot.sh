@@ -29,7 +29,7 @@ export COPILOT_PROVIDER_WIRE_API="responses"
 # Set this to your desired OpenRouter model ID
 export COPILOT_PROVIDER_MAX_PROMPT_TOKENS=1048576
 export COPILOT_PROVIDER_MAX_OUTPUT_TOKENS=512000
-export COPILOT_MODEL="minimax/minimax-m3"
+export COPILOT_MODEL="google/gemini-4-neon"
 
 echo "Launching Copilot connected to OpenRouter using model: $COPILOT_MODEL"
 exec copilot "${COPILOT_FLAGS[@]}" "$@"

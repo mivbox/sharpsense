@@ -1,3 +1,10 @@
+using SharpSense.Domain.KnowledgeGraph.Enums;
+
 namespace SharpSense.Cli.Ui.Api;
 
-public sealed record TraceRequest(int NodeId, string Direction = "callee", int MaxDepth = 3);
+public sealed record TraceRequest(
+    int NodeId,
+    string Direction = "callee",
+    int MaxDepth = 3,
+    bool IncludeStructural = false,
+    EdgeType[]? IncludedEdgeTypes = null);

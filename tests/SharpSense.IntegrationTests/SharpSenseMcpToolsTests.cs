@@ -11,7 +11,6 @@ using SharpSense.Application.Context360.GetNodeContext.Models;
 using SharpSense.Application.Context360.Models;
 using SharpSense.Application.HybridSearch.HybridSearch.Models;
 using SharpSense.Application.HybridSearch.Models;
-using SharpSense.Application.ImpactAnalysis.ImpactAnalysis.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.Inheritors.GetInheritors.Models;
 using SharpSense.Application.Memory.Abstractions;
@@ -20,11 +19,13 @@ using SharpSense.Application.Memory.DeleteMemory.Models;
 using SharpSense.Application.Memory.GetMemories.Models;
 using SharpSense.Application.Memory.GetMemory.Models;
 using SharpSense.Application.Memory.GetNodeMemories.Models;
+using SharpSense.Application.Memory.ListMemories.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Errors;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Trace.Abstractions;
-using SharpSense.Application.Trace.Trace.Models;
+using SharpSense.Application.Trace.GetTraceGraph.Models;
+using SharpSense.Application.Trace.Models;
 using SharpSense.Cli.Mcp;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
@@ -202,9 +203,10 @@ public sealed class SharpSenseMcpToolsTests
     }
 
     [Fact]
-    public async Task WhenAttachMemorySucceeds_ThenItReturnsConciseSuccessMessage()
+    public async Task WhenAttachMemorySucceeds_ThenItReturnsCreatedMemoryIdAndStaleState()
     {
         var ct = TestContext.Current.CancellationToken;
+        var memoryId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         var tags = new[] { "security" };
         var handler = new Mock<ICommandHandler<AttachMemoryCommand, Result<MemoryNode>>>(MockBehavior.Strict);
         handler
@@ -216,7 +218,7 @@ public sealed class SharpSenseMcpToolsTests
                     Domain.KnowledgeGraph.Enums.MemoryIntent.Convention),
                 ct))
             .ReturnsAsync(Result.Ok(new MemoryNode(
-                Guid.NewGuid(),
+                memoryId,
                 "Sample",
                 "hash",
                 "Security review",
@@ -238,12 +240,62 @@ public sealed class SharpSenseMcpToolsTests
         var text = result.Content
             .OfType<TextContentBlock>()
             .Should().ContainSingle().Which.Text;
-        text.Should().Be("attached memory to node 42 (intent=Convention)");
+        text.Should().Be($"attached memory {memoryId} to node 42 (intent=Convention, stale=false)");
         handler.Verify(
             candidate => candidate.Handle(
                 new AttachMemoryCommand(42, "Security review", tags, MemoryIntent.Convention),
                 ct),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task WhenListMemoriesSucceeds_ThenItFormatsCompactMemoryList()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var memoryId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var handler = new Mock<IQueryHandler<ListMemoriesQuery, Result<ListMemoriesResult>>>(MockBehavior.Strict);
+        handler
+            .Setup(candidate => candidate.Handle(
+                It.Is<ListMemoriesQuery>(query =>
+                    query.StaleOnly &&
+                    query.SearchText == "sqlite" &&
+                    query.Limit == 25 &&
+                    query.Offset == 5 &&
+                    query.Intents != null &&
+                    query.Intents.SequenceEqual(new[] { MemoryIntent.Invariant })),
+                ct))
+            .ReturnsAsync(Result.Ok(new ListMemoriesResult(
+                [
+                    new MemoryNodeSummary(
+                        memoryId,
+                        42,
+                        "Fixture.App.Store.Save",
+                        "src/Store.cs",
+                        MemoryIntent.Invariant,
+                        ["sqlite"],
+                        true,
+                        DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
+                        "Keep transactions short.")
+                ],
+                TotalCount: 1,
+                StaleCount: 1,
+                HasMore: false)));
+
+        var result = await InvokeTool(
+            SharpSenseMcpTools.list_memories,
+            services => services.AddSingleton(handler.Object),
+            new
+            {
+                intents = new[] { "Invariant" },
+                staleOnly = true,
+                searchText = "sqlite",
+                limit = 25,
+                offset = 5
+            },
+            ct);
+
+        result.IsError.Should().NotBe(true);
+        result.Content.OfType<TextContentBlock>().Should().ContainSingle().Which.Text.Should().Contain(memoryId.ToString());
     }
 
     [Fact]
@@ -253,7 +305,15 @@ public sealed class SharpSenseMcpToolsTests
         var searchHandler = new Mock<IQueryHandler<HybridSearchQuery, Result<HybridSearchResult>>>(MockBehavior.Strict);
         searchHandler
             .Setup(candidate => candidate.Handle(
-                new HybridSearchQuery("graph node", 3),
+                It.Is<HybridSearchQuery>(query =>
+                    query.SearchText == "graph node" &&
+                    query.Limit == 3 &&
+                    query.ProjectId == "SharpSense.Infrastructure" &&
+                    query.IncludeMemories &&
+                    query.IncludedNodeTypes != null &&
+                    query.IncludedNodeTypes.SequenceEqual(new[] { NodeType.Method }) &&
+                    query.TagFilters != null &&
+                    query.TagFilters.SequenceEqual(new[] { "graph" })),
                 ct))
             .ReturnsAsync(
                 Result.Ok(new HybridSearchResult(
@@ -294,7 +354,15 @@ public sealed class SharpSenseMcpToolsTests
                             "Project identifier.")
                     ])));
 
-        var result = await SharpSenseMcpTools.semantic_search(searchHandler.Object, "graph node", 3, ct);
+        var result = await SharpSenseMcpTools.semantic_search(
+            searchHandler.Object,
+            "graph node",
+            3,
+            "SharpSense.Infrastructure",
+            [NodeType.Method],
+            includeMemories: true,
+            tags: ["graph"],
+            ct: ct);
 
         result.IsError.Should().NotBe(true);
         result.Content.OfType<TextContentBlock>().Should().ContainSingle().Which.Text.Should().Be(
@@ -306,21 +374,21 @@ public sealed class SharpSenseMcpToolsTests
             "src/SharpSense.Domain/KnowledgeGraph/Nodes/:" + Environment.NewLine +
             "  ProjectNode.cs:" + Environment.NewLine +
             "    - [P] `373` Id L5");
-        searchHandler.Verify(
-            candidate => candidate.Handle(
-                new HybridSearchQuery("graph node", 3),
-                ct),
-            Times.Once);
     }
 
     [Fact]
     public async Task WhenGetInheritorsHasMatches_ThenItFormatsDerivedClassesAsToonOutput()
     {
+        var ct = TestContext.Current.CancellationToken;
         var inheritorsHandler = new Mock<IQueryHandler<GetInheritorsQuery, CodeNodeResult[]>>(MockBehavior.Strict);
+        var traceNavigator = new Mock<ITraceNavigator>(MockBehavior.Strict);
+        traceNavigator
+            .Setup(candidate => candidate.GetRootNode("42", ct))
+            .ReturnsAsync(new CodeNodeResult(42, "node-base", "project-app", "Fixture.App.Base", "Base", NodeType.Interface, "src/Base.cs", 1, 5, ""));
         inheritorsHandler
             .Setup(candidate => candidate.Handle(
                 new GetInheritorsQuery(42),
-                TestContext.Current.CancellationToken))
+                ct))
             .ReturnsAsync(
                 [
                     new CodeNodeResult(
@@ -349,79 +417,122 @@ public sealed class SharpSenseMcpToolsTests
 
         var result = await SharpSenseMcpTools.get_inheritors(
             inheritorsHandler.Object,
+            traceNavigator.Object,
             42,
-            ct: TestContext.Current.CancellationToken);
+            ct: ct);
 
-        result.Should().Be(
+        result.IsError.Should().NotBe(true);
+        result.Content.OfType<TextContentBlock>().Should().ContainSingle().Which.Text.Should().Be(
             "[C] `7` DerivedAlpha @ src/Fixture.App/DerivedAlpha.cs:3-16" + Environment.NewLine +
             "[C] `8` DerivedBeta @ src/Fixture.App/DerivedBeta.cs:3-17");
         inheritorsHandler.Verify(
-            candidate => candidate.Handle(
-                new GetInheritorsQuery(42),
-                TestContext.Current.CancellationToken),
+            candidate => candidate.Handle(new GetInheritorsQuery(42), ct),
             Times.Once);
     }
 
     [Fact]
-    public async Task WhenTraceNodeUsesDefaultDirection_ThenItCallsTheCalleeNavigator()
+    public async Task WhenGetInheritorsTargetIsMissing_ThenProtocolMarksToolResultAsError()
     {
-        var impactHandler = new Mock<IQueryHandler<ImpactAnalysisQuery, ImpactAnalysisResult>>(MockBehavior.Strict);
-        var traceHandler = new Mock<IQueryHandler<TraceQuery, CodeNodeResult[]>>(MockBehavior.Strict);
-        var memoryReader = new Mock<IMemoryRepository>(MockBehavior.Strict);
+        var ct = TestContext.Current.CancellationToken;
+        var inheritorsHandler = new Mock<IQueryHandler<GetInheritorsQuery, CodeNodeResult[]>>(MockBehavior.Strict);
         var traceNavigator = new Mock<ITraceNavigator>(MockBehavior.Strict);
         traceNavigator
-            .Setup(candidate => candidate.GetRootNode("node-root", TestContext.Current.CancellationToken))
-            .ReturnsAsync(
-                new CodeNodeResult(
-                    42,
-                    "node-root",
-                    "project-app",
-                    "Fixture.App.MessageConsumer.Render()",
-                    "MessageConsumer.Render()",
-                    NodeType.Method,
-                    "src/Fixture.App/MessageConsumer.cs",
-                    20,
-                    28,
-                    "Renders a message."));
-        traceHandler
+            .Setup(candidate => candidate.GetRootNode("404", ct))
+            .ReturnsAsync((CodeNodeResult?)null);
+
+        var result = await SharpSenseMcpTools.get_inheritors(
+            inheritorsHandler.Object,
+            traceNavigator.Object,
+            404,
+            ct);
+
+        result.IsError.Should().BeTrue();
+        result.Content.OfType<TextContentBlock>().Should().ContainSingle()
+            .Which.Text.Should().Be("get_inheritors failed: No persisted node exists for id 404.");
+        inheritorsHandler.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task WhenTraceNodeUsesDefaultDirection_ThenItDelegatesToTraceGraphWithDepthOne()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var traceGraphHandler = new Mock<IQueryHandler<GetTraceGraphQuery, Result<TraceGraphResult>>>(MockBehavior.Strict);
+        var memoryReader = new Mock<IMemoryRepository>(MockBehavior.Strict);
+        var root = new CodeNodeResult(
+            42,
+            "node-root",
+            "project-app",
+            "Fixture.App.MessageConsumer.Render()",
+            "MessageConsumer.Render()",
+            NodeType.Method,
+            "src/Fixture.App/MessageConsumer.cs",
+            20,
+            28,
+            "Renders a message.");
+        var callee = new CodeNodeResult(
+            1,
+            "node-callee",
+            "project-app",
+            "Fixture.App.MessageProvider.GetMessage()",
+            "MessageProvider.GetMessage()",
+            NodeType.Method,
+            "src/Fixture.App/MessageProvider.cs",
+            7,
+            11,
+            "Gets a message.");
+        traceGraphHandler
             .Setup(candidate => candidate.Handle(
-                new TraceQuery("node-root"),
-                TestContext.Current.CancellationToken))
-            .ReturnsAsync(
-                [
-                    new CodeNodeResult(
-                        1,
-                        "node-callee",
-                        "project-app",
-                        "Fixture.App.MessageProvider.GetMessage()",
-                        "MessageProvider.GetMessage()",
-                        NodeType.Method,
-                        "src/Fixture.App/MessageProvider.cs",
-                        7,
-                        11,
-                        "Gets a message.")
-                ]);
+                new GetTraceGraphQuery(42, TraceDirection.Callee, 1, null),
+                ct))
+            .ReturnsAsync(Result.Ok(new TraceGraphResult(
+                root,
+                TraceDirection.Callee,
+                [callee],
+                [new ImpactedDependencyEdge("node-root", "node-callee", EdgeType.MethodCall)])));
 
         var result = await SharpSenseMcpTools.trace_node(
-            impactHandler.Object,
-            traceHandler.Object,
+            traceGraphHandler.Object,
             memoryReader.Object,
-            traceNavigator.Object,
-            "node-root",
-            ct: TestContext.Current.CancellationToken);
+            42,
+            ct: ct);
 
-        result.Should().Be(
+        result.IsError.Should().NotBe(true);
+        result.Content.OfType<TextContentBlock>().Should().ContainSingle().Which.Text.Should().Be(
             "- [M] `42` MessageConsumer.Render @ src/Fixture.App/MessageConsumer.cs:L20-28" + Environment.NewLine +
             "  -> [M] `1` MessageProvider.GetMessage @ src/Fixture.App/MessageProvider.cs:L7-11");
-        traceNavigator.Verify(
-            candidate => candidate.GetRootNode("node-root", TestContext.Current.CancellationToken),
-            Times.Once);
-        traceHandler.Verify(
-            candidate => candidate.Handle(
-                new TraceQuery("node-root"),
-                TestContext.Current.CancellationToken),
-            Times.Once);
-        impactHandler.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task WhenTraceNodeTargetIsMissing_ThenProtocolMarksToolResultAsError()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var traceGraphHandler = new Mock<IQueryHandler<GetTraceGraphQuery, Result<TraceGraphResult>>>(MockBehavior.Strict);
+        var memoryReader = new Mock<IMemoryRepository>(MockBehavior.Strict);
+        traceGraphHandler
+            .Setup(candidate => candidate.Handle(
+                new GetTraceGraphQuery(999, TraceDirection.Caller, 3, null),
+                ct))
+            .ReturnsAsync(Result.Fail<TraceGraphResult>(new ServiceError(
+                ServiceErrorCode.NotFound,
+                "No indexed code node exists for id 999.")));
+
+        var result = await InvokeTool(
+            SharpSenseMcpTools.trace_node,
+            services =>
+            {
+                services.AddSingleton(traceGraphHandler.Object);
+                services.AddSingleton(memoryReader.Object);
+            },
+            new
+            {
+                nodeId = 999,
+                direction = "caller"
+            },
+            ct);
+
+        result.IsError.Should().BeTrue();
+        result.Content.OfType<TextContentBlock>().Should().ContainSingle()
+            .Which.Text.Should().Be("trace_node failed: No indexed code node exists for id 999.");
     }
 
     [Fact]
@@ -553,6 +664,37 @@ public sealed class SharpSenseMcpToolsTests
             .Which.Text.Should().Be("semantic_search failed: Invalid request.");
     }
 
+    [Fact]
+    public async Task WhenContextMemoryLookupFails_ThenReturnsStructuralContextWithoutThrowing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var handler = new Mock<IQueryHandler<GetNodeContextQuery, Result<Context360Result>>>(MockBehavior.Strict);
+        var memoryHandler = new Mock<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>>(MockBehavior.Strict);
+        handler
+            .Setup(candidate => candidate.Handle(
+                It.Is<GetNodeContextQuery>(query => query.NodeId == 42 && query.MaxRelated == 10),
+                ct))
+            .ReturnsAsync(Result.Ok(new Context360Result(
+                new Context360Node(42, "Example.Run()", NodeType.Method, "src/Example.cs", 1, 10),
+                [],
+                [],
+                [],
+                [],
+                [],
+                [])));
+        memoryHandler
+            .Setup(candidate => candidate.Handle(
+                It.Is<GetNodeMemoriesQuery>(query => query.NodeId == 42),
+                ct))
+            .ReturnsAsync(Result.Fail<MemoryNode[]>("Node disappeared."));
+
+        var response = await InvokeContextTool(handler.Object, memoryHandler.Object, 42, EdgeCategory.All, ct);
+
+        response.IsError.Should().NotBe(true);
+        response.Content.OfType<TextContentBlock>().Should().ContainSingle()
+            .Which.Text.Should().NotContain("semantic_context:");
+    }
+
     private static Task<CallToolResult> InvokeContextTool(
         IQueryHandler<GetNodeContextQuery, Result<Context360Result>> handler,
         IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>> memoryHandler,
@@ -586,6 +728,11 @@ public sealed class SharpSenseMcpToolsTests
         await using var server = McpServer.Create(transport, new McpServerOptions(), null, provider);
         var serializerOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
         serializerOptions.Converters.Add(new JsonStringEnumConverter<EdgeCategory>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<EdgeType>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<MemoryIntent>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<NodeType>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<ContextSection>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<TraceDirection>());
         var tool = McpServerTool.Create(
             method,
             new McpServerToolCreateOptions

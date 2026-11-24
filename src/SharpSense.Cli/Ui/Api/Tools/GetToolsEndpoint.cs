@@ -24,6 +24,7 @@ internal static class GetToolsEndpoint
             "Inspect graph coverage, the last successful index, phase timings, and indexing diagnostics.",
             false),
         new("search", "Semantic search", "Find code and documentation using keyword and semantic matching.", false),
+        new("memories", "Workspace memories", "Browse, filter, and audit persisted memories across the workspace.", false),
         new("context", "Node context", "Inspect immediate callers, callees, and hierarchy.", true),
         new("trace", "Trace dependencies", "Follow callers or callees across the indexed graph.", true),
         new("inheritors", "Find inheritors", "Find direct subclasses and interface implementations.", true),

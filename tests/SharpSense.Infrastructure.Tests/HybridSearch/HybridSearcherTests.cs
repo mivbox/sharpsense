@@ -234,4 +234,35 @@ public sealed class HybridSearcherTests
 
         result.Value.Hits.Should().ContainSingle().Which.Id.Should().Be(KnowledgeGraphFixture.DirectCallerNodeId);
     }
+
+    [Fact]
+    public async Task WhenSearchFiltersByProjectName_ThenMatchesCaseInsensitivelyAndExcludesOtherProjects()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(UseMigrations: true, LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext(ct);
+        await KnowledgeGraphFixture.Seed(context, ct);
+        var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
+        embeddings
+            .Setup(candidate => candidate.Generate("Message", ct))
+            .ReturnsAsync(new TextEmbedding("Message", [1f, 0f]));
+        var searcher = new HybridSearcher(
+            inMemoryFactory.CreateDbContextFactory(),
+            embeddings.Object,
+            new SqliteKeywordCandidateProvider());
+
+        var result = await searcher.Search(
+            new HybridSearchQuery(
+                "Message",
+                Limit: 10,
+                ProjectId: "fixture.app"),
+            ct);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Hits.Should().NotBeEmpty();
+        result.Value.Hits.Should().OnlyContain(static hit => hit.ProjectId == KnowledgeGraphFixture.AppProjectId);
+        result.Value.Hits.Should().NotContain(static hit => hit.Id == KnowledgeGraphFixture.MessageNodeId);
+    }
 }

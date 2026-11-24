@@ -6,12 +6,14 @@ import {
   Chip,
   Divider,
   Drawer,
+  FormControlLabel,
   InputAdornment,
   List,
   ListItemButton,
   MenuItem,
   Paper,
   Stack,
+  Switch,
   TextField,
   Typography,
   useMediaQuery,
@@ -21,7 +23,11 @@ import type { Theme } from "@mui/material/styles";
 import { SearchResultDetails } from "./SearchResultDetails";
 import DataObjectRoundedIcon from "@mui/icons-material/DataObjectRounded";
 import { useWorkspaceApi } from "../../shared/workspace/context";
-import type { ToolSelection } from "../../shared/api/models";
+import {
+  searchNodeTypes,
+  type SearchNodeType,
+  type ToolSelection,
+} from "../../shared/api/models";
 import type { WorkspaceSearch } from "../../app/searchState";
 import { EmptyState, ErrorState, LoadingRows } from "../../shared/ui/States";
 
@@ -38,6 +44,9 @@ export default function SearchPage({
   const narrow = useMediaQuery((theme: Theme) => theme.breakpoints.down("lg"));
   const [query, setQuery] = useState(state.q);
   const [limit, setLimit] = useState(state.limit);
+  const [project, setProject] = useState(state.project);
+  const [nodeTypes, setNodeTypes] = useState<SearchNodeType[]>(state.nodeTypes);
+  const [includeMemories, setIncludeMemories] = useState(state.includeMemories);
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const queryClient = useQueryClient();
   const recent = [
@@ -54,12 +63,23 @@ export default function SearchPage({
     .slice(0, 4);
   const input = useRef<HTMLInputElement | null>(null);
   const search = useQuery({
-    queryKey: ["search", state.q, state.limit],
+    queryKey: [
+      "search",
+      state.q,
+      state.limit,
+      state.project,
+      state.nodeTypes,
+      state.includeMemories,
+    ],
     enabled: Boolean(state.q.trim()),
     queryFn: async ({ signal }) => {
       const started = performance.now();
       return {
-        hits: await searchWorkspace(state.q, state.limit, signal),
+        hits: await searchWorkspace(state.q, state.limit, signal, {
+          project: state.project || undefined,
+          nodeTypes: state.nodeTypes.length > 0 ? state.nodeTypes : undefined,
+          includeMemories: state.includeMemories,
+        }),
         query: state.q,
         elapsed: performance.now() - started,
       };
@@ -67,12 +87,34 @@ export default function SearchPage({
   });
   const selected =
     search.data?.hits.find((hit) => hit.nodeId === selectedNodeId) ?? null;
+  const toggleNodeType = (nodeType: SearchNodeType) => {
+    setNodeTypes((previous) => {
+      const next = previous.includes(nodeType)
+        ? previous.filter((item) => item !== nodeType)
+        : [...previous, nodeType];
+      return searchNodeTypes.filter((item) => next.includes(item));
+    });
+  };
   const run = (value = query) => {
     const text = value.trim();
     if (!text) return;
+    const trimmedProject = project.trim();
     setQuery(text);
-    if (text === state.q && limit === state.limit) void search.refetch();
-    else onStateChange({ q: text, limit });
+    const sameFilters =
+      text === state.q &&
+      limit === state.limit &&
+      trimmedProject === state.project &&
+      includeMemories === state.includeMemories &&
+      JSON.stringify(nodeTypes) === JSON.stringify(state.nodeTypes);
+    if (sameFilters) void search.refetch();
+    else
+      onStateChange({
+        q: text,
+        limit,
+        project: trimmedProject,
+        nodeTypes,
+        includeMemories,
+      });
   };
   return (
     <Stack spacing={2.5}>
@@ -127,6 +169,51 @@ export default function SearchPage({
           >
             {search.isLoading ? "Searching…" : "Search"}
           </Button>
+        </Stack>
+        <Stack
+          direction={{ xs: "column", md: "row" }}
+          spacing={1.5}
+          sx={{ mt: 2, alignItems: { md: "center" } }}
+        >
+          <TextField
+            size="small"
+            label="Project filter"
+            placeholder="Project name or ID"
+            value={project}
+            onChange={(event) => setProject(event.target.value)}
+            sx={{ minWidth: { sm: 220 } }}
+          />
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={includeMemories}
+                onChange={(event) => setIncludeMemories(event.target.checked)}
+              />
+            }
+            label="Include memories"
+            sx={{ m: 0 }}
+          />
+          <Stack
+            direction="row"
+            spacing={0.75}
+            sx={{ flexWrap: "wrap", alignItems: "center", gap: 0.75 }}
+          >
+            {searchNodeTypes.map((type) => {
+              const active = nodeTypes.includes(type);
+              return (
+                <Chip
+                  key={type}
+                  label={type}
+                  size="small"
+                  color={active ? "primary" : "default"}
+                  variant={active ? "filled" : "outlined"}
+                  onClick={() => toggleNodeType(type)}
+                  disabled={search.isLoading}
+                />
+              );
+            })}
+          </Stack>
         </Stack>
         {recent.length > 0 && (
           <Stack

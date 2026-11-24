@@ -1,6 +1,7 @@
 using FluentResults;
 using Microsoft.EntityFrameworkCore;
 using SharpSense.Application.Memory.Abstractions;
+using SharpSense.Application.Memory.ListMemories.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
@@ -251,6 +252,124 @@ internal sealed class MemoryStore(
         }
 
         return result;
+    }
+
+    public async Task<ListMemoriesResult> ListMemories(
+        ListMemoriesQuery query,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        var normalizedIntents = NormalizeIntentFilter(query.Intents);
+        var normalizedTags = MemoryTags.Normalize(query.Tags);
+        var searchText = string.IsNullOrWhiteSpace(query.SearchText)
+            ? null
+            : query.SearchText.Trim();
+        var limit = Math.Clamp(query.Limit, 1, 200);
+        var offset = Math.Max(query.Offset, 0);
+
+        await using var context = await dbContextFactory.CreateDbContextAsync(ct);
+        var rowsQuery =
+            from memory in context.MemoryNodes.AsNoTracking()
+            join codeNode in context.CodeNodes.AsNoTracking() on memory.TargetCodeNodeId equals codeNode.Id
+            join document in context.Documents.AsNoTracking() on codeNode.DocumentId equals document.Id
+            select new
+            {
+                memory.Id,
+                memory.TargetCodeNodeId,
+                memory.TargetCodeHash,
+                memory.Content,
+                memory.TagsJson,
+                memory.Intent,
+                memory.CreatedAt,
+                TargetFullyQualifiedName = codeNode.FullyQualifiedName,
+                TargetRelativeFilePath = document.RelativePath,
+                CurrentBodyHash = codeNode.BodyHash
+            };
+
+        if (normalizedIntents.Length > 0)
+        {
+            var intentNames = normalizedIntents
+                .Select(static intent => intent.ToString())
+                .ToArray();
+            rowsQuery = rowsQuery.Where(row => intentNames.Contains(row.Intent));
+        }
+
+        if (query.StaleOnly)
+        {
+            rowsQuery = rowsQuery.Where(row => (row.CurrentBodyHash ?? string.Empty) != row.TargetCodeHash);
+        }
+
+        var rows = await rowsQuery.ToArrayAsync(ct);
+
+        var matched = new List<MemoryNodeSummary>(rows.Length);
+        var staleCount = 0;
+
+        foreach (var row in rows)
+        {
+            var tags = DeserializeTags(row.TagsJson);
+            if (normalizedTags.Length > 0 && !normalizedTags.All(required => tags.Contains(required, StringComparer.Ordinal)))
+            {
+                continue;
+            }
+
+            if (searchText is not null && !MatchesSearchText(row.Content, row.TargetFullyQualifiedName, row.TargetRelativeFilePath, tags, searchText))
+            {
+                continue;
+            }
+
+            var isStale = !string.Equals(row.CurrentBodyHash ?? string.Empty, row.TargetCodeHash, StringComparison.Ordinal);
+            if (isStale)
+            {
+                staleCount++;
+            }
+
+            matched.Add(new MemoryNodeSummary(
+                row.Id,
+                row.TargetCodeNodeId,
+                row.TargetFullyQualifiedName,
+                row.TargetRelativeFilePath,
+                ParseIntent(row.Intent),
+                tags,
+                isStale,
+                row.CreatedAt,
+                CreateContentPreview(row.Content)));
+        }
+
+        var ordered = matched
+            .OrderByDescending(static item => item.CreatedAt)
+            .ThenBy(static item => item.Id)
+            .ToArray();
+        var items = ordered
+            .Skip(offset)
+            .Take(limit)
+            .ToArray();
+        var hasMore = offset + items.Length < ordered.Length;
+
+        return new ListMemoriesResult(items, ordered.Length, staleCount, hasMore);
+    }
+
+    private static bool MatchesSearchText(
+        string content,
+        string fullyQualifiedName,
+        string relativeFilePath,
+        string[] tags,
+        string searchText)
+        => content.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+            || fullyQualifiedName.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+            || relativeFilePath.Contains(searchText, StringComparison.OrdinalIgnoreCase)
+            || tags.Any(tag => tag.Contains(searchText, StringComparison.OrdinalIgnoreCase));
+
+    private static string CreateContentPreview(string content)
+    {
+        const int maxLength = 160;
+        var collapsed = string.Join(
+            ' ',
+            content.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+        return collapsed.Length <= maxLength
+            ? collapsed
+            : string.Concat(collapsed.AsSpan(0, maxLength - 3).TrimEnd(), "...");
     }
 
     private static MemoryIntent[] NormalizeIntentFilter(IReadOnlyCollection<MemoryIntent>? intents)

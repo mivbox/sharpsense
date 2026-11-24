@@ -41,7 +41,12 @@ internal static class AddMemoryEndpoint
             ct);
 
         return result.IsSuccess
-            ? Results.Ok(new AddMemoryResponse(true, nodeId, request.Intent))
+            ? Results.Ok(new AddMemoryResponse(
+                true,
+                nodeId,
+                result.Value.Id,
+                result.Value.Intent,
+                result.Value.IsStale))
             : UiProblemResults.Failure(result.Errors);
     }
 }

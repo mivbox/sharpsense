@@ -24,6 +24,14 @@ export interface AddMemoryResponse extends AdditionalDataHolder, Parsable {
      */
     intent?: MemoryIntent | null;
     /**
+     * The isStale property
+     */
+    isStale?: boolean | null;
+    /**
+     * The memoryId property
+     */
+    memoryId?: Guid | null;
+    /**
      * The nodeId property
      */
     nodeId?: number | null;
@@ -266,6 +274,10 @@ export interface Context360Result extends AdditionalDataHolder, Parsable {
      */
     implementers?: Context360RelatedNode[] | null;
     /**
+     * The includedSections property
+     */
+    includedSections?: ContextSection[] | null;
+    /**
      * The inherits property
      */
     inherits?: Context360RelatedNode[] | null;
@@ -277,6 +289,39 @@ export interface Context360Result extends AdditionalDataHolder, Parsable {
      * The targetNode property
      */
     targetNode?: Context360Node | null;
+    /**
+     * The totals property
+     */
+    totals?: Context360Totals | null;
+}
+/**
+ * Total distinct related node counts per Context360 bucket before applying the per-bucket result limit.
+ */
+export interface Context360Totals extends AdditionalDataHolder, Parsable {
+    /**
+     * The callees property
+     */
+    callees?: number | null;
+    /**
+     * The callers property
+     */
+    callers?: number | null;
+    /**
+     * The children property
+     */
+    children?: number | null;
+    /**
+     * The implementers property
+     */
+    implementers?: number | null;
+    /**
+     * The inherits property
+     */
+    inherits?: number | null;
+    /**
+     * The parents property
+     */
+    parents?: number | null;
 }
 export interface ContextRequest extends AdditionalDataHolder, Parsable {
     /**
@@ -287,7 +332,12 @@ export interface ContextRequest extends AdditionalDataHolder, Parsable {
      * The nodeId property
      */
     nodeId?: number | null;
+    /**
+     * The sections property
+     */
+    sections?: ContextSection[] | null;
 }
+export type ContextSection = (typeof ContextSectionObject)[keyof typeof ContextSectionObject];
 /**
  * Creates a new instance of the appropriate class based on discriminator value
  * @param parseNode The parse node to use to read the discriminator value and create the object
@@ -368,6 +418,15 @@ export function createContext360RelatedNodeFromDiscriminatorValue(parseNode: Par
 // @ts-ignore
 export function createContext360ResultFromDiscriminatorValue(parseNode: ParseNode | undefined) : ((instance?: Parsable) => Record<string, (node: ParseNode) => void>) {
     return deserializeIntoContext360Result;
+}
+/**
+ * Creates a new instance of the appropriate class based on discriminator value
+ * @param parseNode The parse node to use to read the discriminator value and create the object
+ * @returns {Context360Totals}
+ */
+// @ts-ignore
+export function createContext360TotalsFromDiscriminatorValue(parseNode: ParseNode | undefined) : ((instance?: Parsable) => Record<string, (node: ParseNode) => void>) {
+    return deserializeIntoContext360Totals;
 }
 /**
  * Creates a new instance of the appropriate class based on discriminator value
@@ -597,11 +656,29 @@ export function createLanguageStatsFromDiscriminatorValue(parseNode: ParseNode |
 /**
  * Creates a new instance of the appropriate class based on discriminator value
  * @param parseNode The parse node to use to read the discriminator value and create the object
+ * @returns {ListMemoriesResult}
+ */
+// @ts-ignore
+export function createListMemoriesResultFromDiscriminatorValue(parseNode: ParseNode | undefined) : ((instance?: Parsable) => Record<string, (node: ParseNode) => void>) {
+    return deserializeIntoListMemoriesResult;
+}
+/**
+ * Creates a new instance of the appropriate class based on discriminator value
+ * @param parseNode The parse node to use to read the discriminator value and create the object
  * @returns {MemoryNode}
  */
 // @ts-ignore
 export function createMemoryNodeFromDiscriminatorValue(parseNode: ParseNode | undefined) : ((instance?: Parsable) => Record<string, (node: ParseNode) => void>) {
     return deserializeIntoMemoryNode;
+}
+/**
+ * Creates a new instance of the appropriate class based on discriminator value
+ * @param parseNode The parse node to use to read the discriminator value and create the object
+ * @returns {MemoryNodeSummary}
+ */
+// @ts-ignore
+export function createMemoryNodeSummaryFromDiscriminatorValue(parseNode: ParseNode | undefined) : ((instance?: Parsable) => Record<string, (node: ParseNode) => void>) {
+    return deserializeIntoMemoryNodeSummary;
 }
 /**
  * Creates a new instance of the appropriate class based on discriminator value
@@ -802,6 +879,8 @@ export function deserializeIntoAddMemoryRequest(addMemoryRequest: Partial<AddMem
 export function deserializeIntoAddMemoryResponse(addMemoryResponse: Partial<AddMemoryResponse> | undefined = {}) : Record<string, (node: ParseNode) => void> {
     return {
         "intent": n => { addMemoryResponse.intent = n.getEnumValue<MemoryIntent>(MemoryIntentObject); },
+        "isStale": n => { addMemoryResponse.isStale = n.getBooleanValue(); },
+        "memoryId": n => { addMemoryResponse.memoryId = n.getGuidValue(); },
         "nodeId": n => { addMemoryResponse.nodeId = n.getNumberValue(); },
         "ok": n => { addMemoryResponse.ok = n.getBooleanValue(); },
     }
@@ -927,9 +1006,27 @@ export function deserializeIntoContext360Result(context360Result: Partial<Contex
         "callers": n => { context360Result.callers = n.getCollectionOfObjectValues<Context360RelatedNode>(createContext360RelatedNodeFromDiscriminatorValue); },
         "children": n => { context360Result.children = n.getCollectionOfObjectValues<Context360RelatedNode>(createContext360RelatedNodeFromDiscriminatorValue); },
         "implementers": n => { context360Result.implementers = n.getCollectionOfObjectValues<Context360RelatedNode>(createContext360RelatedNodeFromDiscriminatorValue); },
+        "includedSections": n => { context360Result.includedSections = n.getCollectionOfEnumValues<ContextSection>(ContextSectionObject); },
         "inherits": n => { context360Result.inherits = n.getCollectionOfObjectValues<Context360RelatedNode>(createContext360RelatedNodeFromDiscriminatorValue); },
         "parents": n => { context360Result.parents = n.getCollectionOfObjectValues<Context360RelatedNode>(createContext360RelatedNodeFromDiscriminatorValue); },
         "targetNode": n => { context360Result.targetNode = n.getObjectValue<Context360Node>(createContext360NodeFromDiscriminatorValue); },
+        "totals": n => { context360Result.totals = n.getObjectValue<Context360Totals>(createContext360TotalsFromDiscriminatorValue); },
+    }
+}
+/**
+ * The deserialization information for the current model
+ * @param Context360Totals The instance to deserialize into.
+ * @returns {Record<string, (node: ParseNode) => void>}
+ */
+// @ts-ignore
+export function deserializeIntoContext360Totals(context360Totals: Partial<Context360Totals> | undefined = {}) : Record<string, (node: ParseNode) => void> {
+    return {
+        "callees": n => { context360Totals.callees = n.getNumberValue(); },
+        "callers": n => { context360Totals.callers = n.getNumberValue(); },
+        "children": n => { context360Totals.children = n.getNumberValue(); },
+        "implementers": n => { context360Totals.implementers = n.getNumberValue(); },
+        "inherits": n => { context360Totals.inherits = n.getNumberValue(); },
+        "parents": n => { context360Totals.parents = n.getNumberValue(); },
     }
 }
 /**
@@ -942,6 +1039,7 @@ export function deserializeIntoContextRequest(contextRequest: Partial<ContextReq
     return {
         "maxRelated": n => { contextRequest.maxRelated = n.getNumberValue() ?? 10; },
         "nodeId": n => { contextRequest.nodeId = n.getNumberValue(); },
+        "sections": n => { contextRequest.sections = n.getCollectionOfEnumValues<ContextSection>(ContextSectionObject); },
     }
 }
 /**
@@ -1302,6 +1400,20 @@ export function deserializeIntoLanguageStats(languageStats: Partial<LanguageStat
 }
 /**
  * The deserialization information for the current model
+ * @param ListMemoriesResult The instance to deserialize into.
+ * @returns {Record<string, (node: ParseNode) => void>}
+ */
+// @ts-ignore
+export function deserializeIntoListMemoriesResult(listMemoriesResult: Partial<ListMemoriesResult> | undefined = {}) : Record<string, (node: ParseNode) => void> {
+    return {
+        "hasMore": n => { listMemoriesResult.hasMore = n.getBooleanValue(); },
+        "items": n => { listMemoriesResult.items = n.getCollectionOfObjectValues<MemoryNodeSummary>(createMemoryNodeSummaryFromDiscriminatorValue); },
+        "staleCount": n => { listMemoriesResult.staleCount = n.getNumberValue(); },
+        "totalCount": n => { listMemoriesResult.totalCount = n.getNumberValue(); },
+    }
+}
+/**
+ * The deserialization information for the current model
  * @param MemoryNode The instance to deserialize into.
  * @returns {Record<string, (node: ParseNode) => void>}
  */
@@ -1317,6 +1429,25 @@ export function deserializeIntoMemoryNode(memoryNode: Partial<MemoryNode> | unde
         "tags": n => { memoryNode.tags = n.getCollectionOfPrimitiveValues<string>("string"); },
         "targetCodeHash": n => { memoryNode.targetCodeHash = n.getStringValue(); },
         "targetFullyQualifiedName": n => { memoryNode.targetFullyQualifiedName = n.getStringValue(); },
+    }
+}
+/**
+ * The deserialization information for the current model
+ * @param MemoryNodeSummary The instance to deserialize into.
+ * @returns {Record<string, (node: ParseNode) => void>}
+ */
+// @ts-ignore
+export function deserializeIntoMemoryNodeSummary(memoryNodeSummary: Partial<MemoryNodeSummary> | undefined = {}) : Record<string, (node: ParseNode) => void> {
+    return {
+        "contentPreview": n => { memoryNodeSummary.contentPreview = n.getStringValue(); },
+        "createdAt": n => { memoryNodeSummary.createdAt = n.getDateValue(); },
+        "id": n => { memoryNodeSummary.id = n.getGuidValue(); },
+        "intent": n => { memoryNodeSummary.intent = n.getEnumValue<MemoryIntent>(MemoryIntentObject); },
+        "isStale": n => { memoryNodeSummary.isStale = n.getBooleanValue(); },
+        "tags": n => { memoryNodeSummary.tags = n.getCollectionOfPrimitiveValues<string>("string"); },
+        "targetCodeNodeId": n => { memoryNodeSummary.targetCodeNodeId = n.getNumberValue(); },
+        "targetFullyQualifiedName": n => { memoryNodeSummary.targetFullyQualifiedName = n.getStringValue(); },
+        "targetRelativeFilePath": n => { memoryNodeSummary.targetRelativeFilePath = n.getStringValue(); },
     }
 }
 /**
@@ -1354,8 +1485,12 @@ export function deserializeIntoProblemDetails(problemDetails: Partial<ProblemDet
 // @ts-ignore
 export function deserializeIntoSearchRequest(searchRequest: Partial<SearchRequest> | undefined = {}) : Record<string, (node: ParseNode) => void> {
     return {
+        "includeMemories": n => { searchRequest.includeMemories = n.getBooleanValue() ?? false; },
         "limit": n => { searchRequest.limit = n.getNumberValue() ?? 10; },
+        "nodeTypes": n => { searchRequest.nodeTypes = n.getCollectionOfEnumValues<NodeType>(NodeTypeObject); },
+        "project": n => { searchRequest.project = n.getStringValue(); },
         "query": n => { searchRequest.query = n.getStringValue(); },
+        "tags": n => { searchRequest.tags = n.getCollectionOfPrimitiveValues<string>("string"); },
     }
 }
 /**
@@ -1393,6 +1528,8 @@ export function deserializeIntoToolDescriptor(toolDescriptor: Partial<ToolDescri
 export function deserializeIntoTraceRequest(traceRequest: Partial<TraceRequest> | undefined = {}) : Record<string, (node: ParseNode) => void> {
     return {
         "direction": n => { traceRequest.direction = n.getStringValue() ?? "callee"; },
+        "includedEdgeTypes": n => { traceRequest.includedEdgeTypes = n.getCollectionOfEnumValues<EdgeType>(EdgeTypeObject); },
+        "includeStructural": n => { traceRequest.includeStructural = n.getBooleanValue() ?? false; },
         "maxDepth": n => { traceRequest.maxDepth = n.getNumberValue() ?? 3; },
         "nodeId": n => { traceRequest.nodeId = n.getNumberValue(); },
     }
@@ -2052,6 +2189,27 @@ export interface LanguageStats extends AdditionalDataHolder, Parsable {
      */
     nodeCount?: number | null;
 }
+/**
+ * Paged result of workspace memories matching a ListMemoriesQuery, including aggregate totals for thematched filter scope.
+ */
+export interface ListMemoriesResult extends AdditionalDataHolder, Parsable {
+    /**
+     * The hasMore property
+     */
+    hasMore?: boolean | null;
+    /**
+     * The items property
+     */
+    items?: MemoryNodeSummary[] | null;
+    /**
+     * The staleCount property
+     */
+    staleCount?: number | null;
+    /**
+     * The totalCount property
+     */
+    totalCount?: number | null;
+}
 export type MemoryIntent = (typeof MemoryIntentObject)[keyof typeof MemoryIntentObject];
 export interface MemoryNode extends AdditionalDataHolder, Parsable {
     /**
@@ -2091,6 +2249,47 @@ export interface MemoryNode extends AdditionalDataHolder, Parsable {
      */
     targetFullyQualifiedName?: string | null;
 }
+/**
+ * Summarizes a persisted semantic memory and its owning indexed code node without transferring full Markdown content.
+ */
+export interface MemoryNodeSummary extends AdditionalDataHolder, Parsable {
+    /**
+     * The contentPreview property
+     */
+    contentPreview?: string | null;
+    /**
+     * The createdAt property
+     */
+    createdAt?: Date | null;
+    /**
+     * The id property
+     */
+    id?: Guid | null;
+    /**
+     * Classifies the human or AI intent of a persistent semantic memory. The agent can filter retrievals by intentso a MemoryIntent.Warning survives an unrelated MemoryIntent.Todo sweep, and a MemoryIntent.Decisioncan be queried separately from a MemoryIntent.Convention.
+     */
+    intent?: MemoryIntent | null;
+    /**
+     * The isStale property
+     */
+    isStale?: boolean | null;
+    /**
+     * The tags property
+     */
+    tags?: string[] | null;
+    /**
+     * The targetCodeNodeId property
+     */
+    targetCodeNodeId?: number | null;
+    /**
+     * The targetFullyQualifiedName property
+     */
+    targetFullyQualifiedName?: string | null;
+    /**
+     * The targetRelativeFilePath property
+     */
+    targetRelativeFilePath?: string | null;
+}
 export interface MergeWorkspacesRequest extends AdditionalDataHolder, Parsable {
     /**
      * The name property
@@ -2126,13 +2325,29 @@ export interface ProblemDetails extends AdditionalDataHolder, ApiError, Parsable
 }
 export interface SearchRequest extends AdditionalDataHolder, Parsable {
     /**
+     * The includeMemories property
+     */
+    includeMemories?: boolean | null;
+    /**
      * The limit property
      */
     limit?: number | null;
     /**
+     * The nodeTypes property
+     */
+    nodeTypes?: NodeType[] | null;
+    /**
+     * The project property
+     */
+    project?: string | null;
+    /**
      * The query property
      */
     query?: string | null;
+    /**
+     * The tags property
+     */
+    tags?: string[] | null;
 }
 /**
  * Serializes information the current object
@@ -2158,6 +2373,8 @@ export function serializeAddMemoryRequest(writer: SerializationWriter, addMemory
 export function serializeAddMemoryResponse(writer: SerializationWriter, addMemoryResponse: Partial<AddMemoryResponse> | undefined | null = {}, isSerializingDerivedType: boolean = false) : void {
     if (!addMemoryResponse || isSerializingDerivedType) { return; }
     writer.writeEnumValue<MemoryIntent>("intent", addMemoryResponse.intent);
+    writer.writeBooleanValue("isStale", addMemoryResponse.isStale);
+    writer.writeGuidValue("memoryId", addMemoryResponse.memoryId);
     writer.writeNumberValue("nodeId", addMemoryResponse.nodeId);
     writer.writeBooleanValue("ok", addMemoryResponse.ok);
     writer.writeAdditionalData(addMemoryResponse.additionalData);
@@ -2290,10 +2507,30 @@ export function serializeContext360Result(writer: SerializationWriter, context36
     writer.writeCollectionOfObjectValues<Context360RelatedNode>("callers", context360Result.callers, serializeContext360RelatedNode);
     writer.writeCollectionOfObjectValues<Context360RelatedNode>("children", context360Result.children, serializeContext360RelatedNode);
     writer.writeCollectionOfObjectValues<Context360RelatedNode>("implementers", context360Result.implementers, serializeContext360RelatedNode);
+    if(context360Result.includedSections)
+    writer.writeCollectionOfEnumValues<ContextSection>("includedSections", context360Result.includedSections);
     writer.writeCollectionOfObjectValues<Context360RelatedNode>("inherits", context360Result.inherits, serializeContext360RelatedNode);
     writer.writeCollectionOfObjectValues<Context360RelatedNode>("parents", context360Result.parents, serializeContext360RelatedNode);
     writer.writeObjectValue<Context360Node>("targetNode", context360Result.targetNode, serializeContext360Node);
+    writer.writeObjectValue<Context360Totals>("totals", context360Result.totals, serializeContext360Totals);
     writer.writeAdditionalData(context360Result.additionalData);
+}
+/**
+ * Serializes information the current object
+ * @param Context360Totals The instance to serialize from.
+ * @param isSerializingDerivedType A boolean indicating whether the serialization is for a derived type.
+ * @param writer Serialization writer to use to serialize this model
+ */
+// @ts-ignore
+export function serializeContext360Totals(writer: SerializationWriter, context360Totals: Partial<Context360Totals> | undefined | null = {}, isSerializingDerivedType: boolean = false) : void {
+    if (!context360Totals || isSerializingDerivedType) { return; }
+    writer.writeNumberValue("callees", context360Totals.callees);
+    writer.writeNumberValue("callers", context360Totals.callers);
+    writer.writeNumberValue("children", context360Totals.children);
+    writer.writeNumberValue("implementers", context360Totals.implementers);
+    writer.writeNumberValue("inherits", context360Totals.inherits);
+    writer.writeNumberValue("parents", context360Totals.parents);
+    writer.writeAdditionalData(context360Totals.additionalData);
 }
 /**
  * Serializes information the current object
@@ -2306,6 +2543,8 @@ export function serializeContextRequest(writer: SerializationWriter, contextRequ
     if (!contextRequest || isSerializingDerivedType) { return; }
     writer.writeNumberValue("maxRelated", contextRequest.maxRelated ?? 10);
     writer.writeNumberValue("nodeId", contextRequest.nodeId);
+    if(contextRequest.sections)
+    writer.writeCollectionOfEnumValues<ContextSection>("sections", contextRequest.sections);
     writer.writeAdditionalData(contextRequest.additionalData);
 }
 /**
@@ -2691,6 +2930,21 @@ export function serializeLanguageStats(writer: SerializationWriter, languageStat
 /**
  * Serializes information the current object
  * @param isSerializingDerivedType A boolean indicating whether the serialization is for a derived type.
+ * @param ListMemoriesResult The instance to serialize from.
+ * @param writer Serialization writer to use to serialize this model
+ */
+// @ts-ignore
+export function serializeListMemoriesResult(writer: SerializationWriter, listMemoriesResult: Partial<ListMemoriesResult> | undefined | null = {}, isSerializingDerivedType: boolean = false) : void {
+    if (!listMemoriesResult || isSerializingDerivedType) { return; }
+    writer.writeBooleanValue("hasMore", listMemoriesResult.hasMore);
+    writer.writeCollectionOfObjectValues<MemoryNodeSummary>("items", listMemoriesResult.items, serializeMemoryNodeSummary);
+    writer.writeNumberValue("staleCount", listMemoriesResult.staleCount);
+    writer.writeNumberValue("totalCount", listMemoriesResult.totalCount);
+    writer.writeAdditionalData(listMemoriesResult.additionalData);
+}
+/**
+ * Serializes information the current object
+ * @param isSerializingDerivedType A boolean indicating whether the serialization is for a derived type.
  * @param MemoryNode The instance to serialize from.
  * @param writer Serialization writer to use to serialize this model
  */
@@ -2707,6 +2961,26 @@ export function serializeMemoryNode(writer: SerializationWriter, memoryNode: Par
     writer.writeStringValue("targetCodeHash", memoryNode.targetCodeHash);
     writer.writeStringValue("targetFullyQualifiedName", memoryNode.targetFullyQualifiedName);
     writer.writeAdditionalData(memoryNode.additionalData);
+}
+/**
+ * Serializes information the current object
+ * @param isSerializingDerivedType A boolean indicating whether the serialization is for a derived type.
+ * @param MemoryNodeSummary The instance to serialize from.
+ * @param writer Serialization writer to use to serialize this model
+ */
+// @ts-ignore
+export function serializeMemoryNodeSummary(writer: SerializationWriter, memoryNodeSummary: Partial<MemoryNodeSummary> | undefined | null = {}, isSerializingDerivedType: boolean = false) : void {
+    if (!memoryNodeSummary || isSerializingDerivedType) { return; }
+    writer.writeStringValue("contentPreview", memoryNodeSummary.contentPreview);
+    writer.writeDateValue("createdAt", memoryNodeSummary.createdAt);
+    writer.writeGuidValue("id", memoryNodeSummary.id);
+    writer.writeEnumValue<MemoryIntent>("intent", memoryNodeSummary.intent);
+    writer.writeBooleanValue("isStale", memoryNodeSummary.isStale);
+    writer.writeCollectionOfPrimitiveValues<string>("tags", memoryNodeSummary.tags);
+    writer.writeNumberValue("targetCodeNodeId", memoryNodeSummary.targetCodeNodeId);
+    writer.writeStringValue("targetFullyQualifiedName", memoryNodeSummary.targetFullyQualifiedName);
+    writer.writeStringValue("targetRelativeFilePath", memoryNodeSummary.targetRelativeFilePath);
+    writer.writeAdditionalData(memoryNodeSummary.additionalData);
 }
 /**
  * Serializes information the current object
@@ -2746,8 +3020,13 @@ export function serializeProblemDetails(writer: SerializationWriter, problemDeta
 // @ts-ignore
 export function serializeSearchRequest(writer: SerializationWriter, searchRequest: Partial<SearchRequest> | undefined | null = {}, isSerializingDerivedType: boolean = false) : void {
     if (!searchRequest || isSerializingDerivedType) { return; }
+    writer.writeBooleanValue("includeMemories", searchRequest.includeMemories ?? false);
     writer.writeNumberValue("limit", searchRequest.limit ?? 10);
+    if(searchRequest.nodeTypes)
+    writer.writeCollectionOfEnumValues<NodeType>("nodeTypes", searchRequest.nodeTypes);
+    writer.writeStringValue("project", searchRequest.project);
     writer.writeStringValue("query", searchRequest.query);
+    writer.writeCollectionOfPrimitiveValues<string>("tags", searchRequest.tags);
     writer.writeAdditionalData(searchRequest.additionalData);
 }
 /**
@@ -2788,6 +3067,9 @@ export function serializeToolDescriptor(writer: SerializationWriter, toolDescrip
 export function serializeTraceRequest(writer: SerializationWriter, traceRequest: Partial<TraceRequest> | undefined | null = {}, isSerializingDerivedType: boolean = false) : void {
     if (!traceRequest || isSerializingDerivedType) { return; }
     writer.writeStringValue("direction", traceRequest.direction ?? "callee");
+    if(traceRequest.includedEdgeTypes)
+    writer.writeCollectionOfEnumValues<EdgeType>("includedEdgeTypes", traceRequest.includedEdgeTypes);
+    writer.writeBooleanValue("includeStructural", traceRequest.includeStructural ?? false);
     writer.writeNumberValue("maxDepth", traceRequest.maxDepth ?? 3);
     writer.writeNumberValue("nodeId", traceRequest.nodeId);
     writer.writeAdditionalData(traceRequest.additionalData);
@@ -3002,6 +3284,14 @@ export interface TraceRequest extends AdditionalDataHolder, Parsable {
      * The direction property
      */
     direction?: string | null;
+    /**
+     * The includedEdgeTypes property
+     */
+    includedEdgeTypes?: EdgeType[] | null;
+    /**
+     * The includeStructural property
+     */
+    includeStructural?: boolean | null;
     /**
      * The maxDepth property
      */
@@ -3271,6 +3561,17 @@ export const AnalysisPhaseObject = {
     Embeddings: "Embeddings",
     Persistence: "Persistence",
     OpenapiJsonNullSentinelValue2BF936000FE44250987AE5DDB203E464: "openapi-json-null-sentinel-value-2BF93600-0FE4-4250-987A-E5DDB203E464",
+} as const;
+/**
+ * Selects individual relationship buckets returned by a Context360 query.
+ */
+export const ContextSectionObject = {
+    Callers: "Callers",
+    Implementers: "Implementers",
+    Callees: "Callees",
+    Inherits: "Inherits",
+    Parents: "Parents",
+    Children: "Children",
 } as const;
 export const EdgeTypeObject = {
     ProjectReference: "ProjectReference",

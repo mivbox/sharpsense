@@ -36,10 +36,32 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
         [CommandOption("--include-memories")]
         public bool IncludeMemories { get; init; }
 
+        [CommandOption("--limit <LIMIT>")]
+        public int Limit { get; init; } = 10;
+
+        [CommandOption("--section <SECTION>")]
+        public string[]? SectionsRaw { get; init; }
+
         public override ValidationResult Validate()
-            => NodeId <= 0
-                ? ValidationResult.Error("A positive node id is required.")
-                : base.Validate();
+        {
+            if (NodeId <= 0)
+            {
+                return ValidationResult.Error("A positive node id is required.");
+            }
+
+            if (Limit is < 1 or > 50)
+            {
+                return ValidationResult.Error("--limit must be between 1 and 50.");
+            }
+
+            if (SectionsRaw is { Length: > 0 }
+                && SectionsRaw.Any(static raw => !Enum.TryParse<ContextSection>(raw, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed)))
+            {
+                return ValidationResult.Error("--section values must be one of: Callers, Implementers, Callees, Inherits, Parents, Children.");
+            }
+
+            return base.Validate();
+        }
     }
 
     protected override void Configure(
@@ -64,10 +86,17 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
         await using var scope = host.Services.CreateAsyncScope();
         var services = scope.ServiceProvider;
         var contextHandler = services.GetRequiredService<IQueryHandler<GetNodeContextQuery, Result<Context360Result>>>();
+        var sections = settings.SectionsRaw is { Length: > 0 }
+            ? settings.SectionsRaw
+                .Select(static raw => Enum.Parse<ContextSection>(raw, ignoreCase: true))
+                .Distinct()
+                .ToArray()
+            : null;
         var result = await contextHandler.Handle(
             new GetNodeContextQuery(
                 settings.NodeId,
-                10),
+                settings.Limit,
+                sections),
             ct);
 
         if (result.IsFailed)
@@ -100,6 +129,8 @@ internal sealed class ContextCommand : AbstractAsyncCommand<ContextCommand.Setti
                     nodeContext.Inherits,
                     nodeContext.Parents,
                     nodeContext.Children,
+                    nodeContext.Totals,
+                    nodeContext.IncludedSections,
                     Memories = semanticContext?.Select(static memory => new
                     {
                         memory.Id,

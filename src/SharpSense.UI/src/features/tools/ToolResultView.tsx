@@ -65,7 +65,9 @@ export function ToolResultView({
           description={
             tool === "graph_stats"
               ? "Run graph statistics to inspect this workspace’s index and latest indexing outcome."
-              : "Choose a tool and a symbol, then run a query. Results will appear here without changing your code."
+              : tool === "memories"
+                ? "Run workspace memories to browse and audit persisted notes across this workspace."
+                : "Choose a tool and a symbol, then run a query. Results will appear here without changing your code."
           }
         />
       ) : (

@@ -4,7 +4,12 @@ import type { ToolResult } from "./models";
 
 type ToolApi = Pick<
   WorkspaceApi,
-  "getContext" | "traceNode" | "getInheritors" | "getImpact" | "getGraphStats"
+  | "getContext"
+  | "traceNode"
+  | "getInheritors"
+  | "getImpact"
+  | "getGraphStats"
+  | "listMemories"
 >;
 
 export async function executeTool(
@@ -18,6 +23,13 @@ export async function executeTool(
     return {
       tool,
       data: await api.getGraphStats(signal),
+      elapsedMs: performance.now() - started,
+    };
+  }
+  if (tool === "memories") {
+    return {
+      tool,
+      data: await api.listMemories(input.memoryFilter ?? {}, signal),
       elapsedMs: performance.now() - started,
     };
   }
