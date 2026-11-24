@@ -6,11 +6,13 @@ Search combines keyword and embedding rankings over indexed code and documentati
 sharpsense search "request validation" --workspace product
 sharpsense search "request validation" --workspace product --toon
 sharpsense search "request validation" --workspace product --include-memories
+sharpsense search "read transaction" --workspace product \
+  --project SharpSense.Infrastructure --node-type Method --include-memories --tag sqlite --limit 15 --toon
 ```
 
 Empty queries return a readable validation error: exit code 1 in the CLI, HTTP 400 in the UI API, and `isError: true` in MCP.
 
-JSON is the default output. `--toon` groups compact results by directory and file, using `[UI]` for TSX components. `--include-memories` lets attached memory content contribute to relevance.
+JSON is the default output. `--toon` groups compact results by directory and file, using `[UI]` for TSX components. `--include-memories` lets attached memory content contribute to relevance. Optional `--project` matches either a project's canonical ID or its name (case-insensitively across multi-target variants); `--node-type` and `--tag` are repeatable, and `--limit` accepts `1` to `50` (default `10`).
 
 Search input is plain text. The keyword side splits symbol/path separators, including `*` and `:`, ignores tokens
 shorter than two characters, deduplicates case-insensitively, and ORs quoted prefix terms. `Payment AND Other`

@@ -67,6 +67,53 @@ public sealed class McpHostIntegrationTests
             response.IsError.Should().NotBe(true);
             using var stats = JsonDocument.Parse(response.Content.OfType<TextContentBlock>().Single().Text);
             stats.RootElement.GetProperty("databaseState").GetString().Should().Be(expectedState);
+
+            var resources = await client.ListResourcesAsync(cancellationToken: ct);
+            resources.Select(resource => resource.Uri).Should().BeEquivalentTo(
+                [
+                    "sharpsense://workspace/stats",
+                    "sharpsense://workspace/memories",
+                    "sharpsense://workspace/memories/stale"
+                ]);
+
+            var templates = await client.ListResourceTemplatesAsync(cancellationToken: ct);
+            templates.Select(template => template.UriTemplate).Should().BeEquivalentTo(
+                [
+                    "sharpsense://node/{nodeId}/context"
+                ]);
+
+            var prompts = await client.ListPromptsAsync(cancellationToken: ct);
+            prompts.Select(prompt => prompt.Name).Should().BeEquivalentTo(
+                [
+                    "explain_symbol",
+                    "impact_review",
+                    "memory_audit"
+                ]);
+
+            var statsResource = await client.ReadResourceAsync("sharpsense://workspace/stats", cancellationToken: ct);
+            var statsResourceText = statsResource.Contents.OfType<TextResourceContents>().Single().Text;
+            using var resourceStats = JsonDocument.Parse(statsResourceText);
+            resourceStats.RootElement.GetProperty("databaseState").GetString().Should().Be(expectedState);
+
+            var unknownResource = async () => await client.ReadResourceAsync("sharpsense://workspace/unknown", cancellationToken: ct);
+            await unknownResource.Should().ThrowAsync<ModelContextProtocol.McpException>();
+
+            var invalidNodeResource = async () => await client.ReadResourceAsync("sharpsense://node/0/context", cancellationToken: ct);
+            await invalidNodeResource.Should().ThrowAsync<ModelContextProtocol.McpException>();
+
+            var promptResult = await client.GetPromptAsync(
+                "impact_review",
+                new Dictionary<string, object?>
+                {
+                    ["target"] = "WorkspaceCatalog.Create",
+                    ["changeDescription"] = "Add optional validation parameter"
+                },
+                cancellationToken: ct);
+            promptResult.Messages.Should().ContainSingle();
+            promptResult.Messages[0].Content.Should().BeOfType<TextContentBlock>()
+                .Which.Text.Should().Contain("WorkspaceCatalog.Create")
+                .And.Contain("Add optional validation parameter");
+
             if (original is not null)
             {
                 (await File.ReadAllBytesAsync(databasePath, ct)).Should().Equal(original);
@@ -74,12 +121,24 @@ public sealed class McpHostIntegrationTests
             else
             {
                 File.Exists(databasePath).Should().BeFalse();
+
+                var memoriesResource = await client.ReadResourceAsync("sharpsense://workspace/memories", cancellationToken: ct);
+                memoriesResource.Contents.OfType<TextResourceContents>().Should().ContainSingle()
+                    .Which.Text.Should().Be("memories: 0 of 0 (stale: 0, has_more: false)");
+                File.Exists(databasePath).Should().BeTrue();
+
+                var staleMemoriesResource = await client.ReadResourceAsync("sharpsense://workspace/memories/stale", cancellationToken: ct);
+                staleMemoriesResource.Contents.OfType<TextResourceContents>().Should().ContainSingle()
+                    .Which.Text.Should().Be("memories: 0 of 0 (stale: 0, has_more: false)");
+
+                var missingNodeResource = async () => await client.ReadResourceAsync("sharpsense://node/999/context", cancellationToken: ct);
+                await missingNodeResource.Should().ThrowAsync<ModelContextProtocol.McpException>();
+
                 var search = await client.CallToolAsync(
                     "semantic_search",
                     new Dictionary<string, object?> { ["query"] = "missing" },
                     cancellationToken: ct);
                 search.IsError.Should().NotBe(true);
-                File.Exists(databasePath).Should().BeTrue();
             }
 
             var tools = await client.ListToolsAsync(cancellationToken: ct);
@@ -91,7 +150,8 @@ public sealed class McpHostIntegrationTests
                 "trace_node",
                 "get_inheritors",
                 "get_memory",
-                "get_memories"
+                "get_memories",
+                "list_memories"
             ];
             tools.Where(tool => readTools.Contains(tool.Name))
                 .Should().HaveCount(readTools.Length)

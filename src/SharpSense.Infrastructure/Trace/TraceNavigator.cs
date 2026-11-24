@@ -75,12 +75,15 @@ internal sealed class TraceNavigator(IDbContextFactory<SharpSenseDbContext> dbCo
 
     public async Task<ImpactedDependencyEdge[]> GetDependencies(
         IReadOnlyCollection<CodeNodeResult> nodes,
+        EdgeType[]? includedEdgeTypes,
         CancellationToken ct)
     {
         await using var db = await dbContextFactory.CreateDbContextAsync(ct);
         var byId = nodes.ToDictionary(node => node.Id);
         var ids = byId.Keys.ToArray();
-        var edgeTypes = KnowledgeGraphEdgeTypes.Functional;
+        var edgeTypes = includedEdgeTypes is { Length: > 0 }
+            ? includedEdgeTypes
+            : KnowledgeGraphEdgeTypes.Functional;
         var edges = await db.DependencyEdges
             .AsNoTracking()
             .Where(edge =>

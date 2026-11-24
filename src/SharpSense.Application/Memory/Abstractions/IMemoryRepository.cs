@@ -1,4 +1,5 @@
 using FluentResults;
+using SharpSense.Application.Memory.ListMemories.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 
@@ -55,5 +56,13 @@ public interface IMemoryRepository
     /// </summary>
     Task<IReadOnlyDictionary<Guid, MemoryNode?>> GetMemories(
         IReadOnlyCollection<Guid> memoryIds,
+        CancellationToken ct);
+
+    /// <summary>
+    /// Lists persisted semantic memories across the selected workspace with optional intent, tag, staleness, text,
+    /// and paging filters.
+    /// </summary>
+    Task<ListMemoriesResult> ListMemories(
+        ListMemoriesQuery query,
         CancellationToken ct);
 }

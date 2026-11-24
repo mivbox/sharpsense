@@ -17,8 +17,25 @@ internal sealed class GetNodeContextQueryHandler(IContextRepository contextRepos
             return Result.Fail(new ServiceError(ServiceErrorCode.InvalidArgument, "NodeId must be greater than zero."));
         }
 
+        if (query.IncludedSections?.Any(static section => !Enum.IsDefined(section)) == true)
+        {
+            return Result.Fail(new ServiceError(
+                ServiceErrorCode.InvalidArgument,
+                "Context sections must be values of: Callers, Implementers, Callees, Inherits, Parents, Children."));
+        }
+
         var normalizedMaxRelated = Math.Clamp(query.MaxRelated, 1, 50);
-        var context = await contextRepository.GetNodeContext(query.NodeId, normalizedMaxRelated, ct);
+        var normalizedSections = query.IncludedSections is { Length: > 0 }
+            ? query.IncludedSections
+                .Distinct()
+                .OrderBy(static section => section)
+                .ToArray()
+            : null;
+        var context = await contextRepository.GetNodeContext(
+            query.NodeId,
+            normalizedMaxRelated,
+            normalizedSections,
+            ct);
 
         return context is null
             ? Result.Fail(new ServiceError(

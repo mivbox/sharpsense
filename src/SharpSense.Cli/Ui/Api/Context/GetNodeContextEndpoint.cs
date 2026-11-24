@@ -32,7 +32,12 @@ internal static class GetNodeContextEndpoint
             return UiProblemResults.Invalid("A positive nodeId and maxRelated between 1 and 50 are required.");
         }
 
-        var result = await handler.Handle(new GetNodeContextQuery(request.NodeId, request.MaxRelated), ct);
+        var result = await handler.Handle(
+            new GetNodeContextQuery(
+                request.NodeId,
+                request.MaxRelated,
+                request.Sections),
+            ct);
 
         return result.IsSuccess ? Results.Ok(result.Value) : UiProblemResults.Failure(result.Errors);
     }

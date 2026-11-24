@@ -11,7 +11,8 @@ internal static class MemoryEndpointRouteBuilderExtensions
         var group = builder.MapGroup("/api/memory")
             .WithTags("Memory");
 
-        group.MapGetNodeMemoriesEndpoint()
+        group.MapListMemoriesEndpoint()
+            .MapGetNodeMemoriesEndpoint()
             .MapGetMemoryEndpoint()
             .MapGetMemoriesEndpoint()
             .MapAddMemoryEndpoint()

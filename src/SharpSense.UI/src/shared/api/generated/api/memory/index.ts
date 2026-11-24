@@ -6,6 +6,8 @@ import { createMemoryNodeFromDiscriminatorValue, createProblemDetailsFromDiscrim
 // @ts-ignore
 import { type WithMemoryItemRequestBuilder, WithMemoryItemRequestBuilderRequestsMetadata } from './item/index.js';
 // @ts-ignore
+import { ListRequestBuilderRequestsMetadata, type ListRequestBuilder } from './list/index.js';
+// @ts-ignore
 import { NodeRequestBuilderNavigationMetadata, type NodeRequestBuilder } from './node/index.js';
 // @ts-ignore
 import { type BaseRequestBuilder, type Guid, type KeysToExcludeForNavigationMetadata, type NavigationMetadata, type Parsable, type ParsableFactory, type RequestConfiguration, type RequestInformation, type RequestsMetadata } from '@microsoft/kiota-abstractions';
@@ -14,6 +16,10 @@ import { type BaseRequestBuilder, type Guid, type KeysToExcludeForNavigationMeta
  * Builds and executes requests for operations under /api/memory
  */
 export interface MemoryRequestBuilder extends BaseRequestBuilder<MemoryRequestBuilder> {
+    /**
+     * The list property
+     */
+    get list(): ListRequestBuilder;
     /**
      * The node property
      */
@@ -50,6 +56,9 @@ export const MemoryRequestBuilderNavigationMetadata: Record<Exclude<keyof Memory
     byMemoryId: {
         requestsMetadata: WithMemoryItemRequestBuilderRequestsMetadata,
         pathParametersMappings: ["memoryId"],
+    },
+    list: {
+        requestsMetadata: ListRequestBuilderRequestsMetadata,
     },
     node: {
         navigationMetadata: NodeRequestBuilderNavigationMetadata,

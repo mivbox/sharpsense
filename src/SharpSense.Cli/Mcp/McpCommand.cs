@@ -5,6 +5,7 @@ using ModelContextProtocol;
 using Serilog;
 using SharpSense.Application.CommandExecution;
 using SharpSense.Application.Context360;
+using SharpSense.Application.Context360.Models;
 using SharpSense.Application.GraphStats;
 using SharpSense.Application.HybridSearch;
 using SharpSense.Application.ImpactAnalysis;
@@ -69,24 +70,41 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
 
         services.AddMcpServer()
             .WithStdioServerTransport()
-            .WithRequestFilters(filters => filters.AddCallToolFilter(next => async (request, ct) =>
+            .WithRequestFilters(filters =>
             {
-                if (request.Params?.Name is nameof(SharpSenseMcpTools.semantic_search)
-                    or nameof(SharpSenseMcpTools.context)
-                    or nameof(SharpSenseMcpTools.trace_node)
-                    or nameof(SharpSenseMcpTools.get_inheritors)
-                    or nameof(SharpSenseMcpTools.attach_memory)
-                    or nameof(SharpSenseMcpTools.delete_memory)
-                    or nameof(SharpSenseMcpTools.get_memory)
-                    or nameof(SharpSenseMcpTools.get_memories))
+                filters.AddCallToolFilter(next => async (request, ct) =>
                 {
-                    await request.Services!.GetRequiredService<IWorkspaceDatabaseInitializer>()
-                        .Initialize(ct);
-                }
+                    if (request.Params?.Name is nameof(SharpSenseMcpTools.semantic_search)
+                        or nameof(SharpSenseMcpTools.context)
+                        or nameof(SharpSenseMcpTools.trace_node)
+                        or nameof(SharpSenseMcpTools.get_inheritors)
+                        or nameof(SharpSenseMcpTools.attach_memory)
+                        or nameof(SharpSenseMcpTools.delete_memory)
+                        or nameof(SharpSenseMcpTools.get_memory)
+                        or nameof(SharpSenseMcpTools.get_memories)
+                        or nameof(SharpSenseMcpTools.list_memories))
+                    {
+                        await request.Services!.GetRequiredService<IWorkspaceDatabaseInitializer>()
+                            .Initialize(ct);
+                    }
 
-                return await next(request, ct);
-            }))
-            .WithTools<SharpSenseMcpTools>(_toolSerializerOptions);
+                    return await next(request, ct);
+                });
+
+                filters.AddReadResourceFilter(next => async (request, ct) =>
+                {
+                    if (SharpSenseMcpResources.RequiresDatabaseInitialization(request.Params?.Uri))
+                    {
+                        await request.Services!.GetRequiredService<IWorkspaceDatabaseInitializer>()
+                            .Initialize(ct);
+                    }
+
+                    return await next(request, ct);
+                });
+            })
+            .WithTools<SharpSenseMcpTools>(_toolSerializerOptions)
+            .WithResources<SharpSenseMcpResources>()
+            .WithPrompts<SharpSenseMcpPrompts>(_toolSerializerOptions);
     }
 
     protected override async Task<int> Execute(
@@ -106,6 +124,10 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
     {
         var serializerOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
         serializerOptions.Converters.Add(new JsonStringEnumConverter<Domain.KnowledgeGraph.Enums.EdgeCategory>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<Domain.KnowledgeGraph.Enums.EdgeType>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<Domain.KnowledgeGraph.Enums.MemoryIntent>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<Domain.KnowledgeGraph.Enums.NodeType>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<ContextSection>());
         serializerOptions.Converters.Add(new JsonStringEnumConverter<TraceDirection>());
 
         return serializerOptions;

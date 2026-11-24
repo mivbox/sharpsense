@@ -31,7 +31,15 @@ internal static class SearchWorkspaceEndpoint
             return UiProblemResults.Invalid("A query and limit between 1 and 50 are required.");
         }
 
-        var result = await handler.Handle(new HybridSearchQuery(request.Query, request.Limit), ct);
+        var result = await handler.Handle(
+            new HybridSearchQuery(
+                request.Query,
+                request.Limit,
+                request.Project,
+                request.NodeTypes,
+                request.IncludeMemories,
+                request.Tags),
+            ct);
 
         return result.IsSuccess ? Results.Ok(result.Value) : UiProblemResults.Failure(result.Errors);
     }

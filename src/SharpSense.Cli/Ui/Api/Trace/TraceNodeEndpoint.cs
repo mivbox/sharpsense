@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Trace.GetTraceGraph.Models;
 using SharpSense.Application.Trace.Models;
+using SharpSense.Domain.KnowledgeGraph.Enums;
 
 namespace SharpSense.Cli.Ui.Api;
 
@@ -38,11 +39,17 @@ internal static class TraceNodeEndpoint
             return UiProblemResults.Invalid("A positive nodeId, caller/callee direction, and maxDepth between 1 and 10 are required.");
         }
 
+        var includedEdgeTypes = request.IncludedEdgeTypes is { Length: > 0 }
+            ? request.IncludedEdgeTypes
+            : request.IncludeStructural
+                ? KnowledgeGraphEdgeTypes.All
+                : null;
         var result = await handler.Handle(
             new GetTraceGraphQuery(
                 request.NodeId,
                 direction.Value,
-                request.MaxDepth),
+                request.MaxDepth,
+                includedEdgeTypes),
             ct);
         if (result.IsFailed)
         {

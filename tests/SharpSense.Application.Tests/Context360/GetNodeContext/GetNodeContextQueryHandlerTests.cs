@@ -31,7 +31,7 @@ public sealed class GetNodeContextQueryHandlerTests
             []);
         var repository = new Mock<IContextRepository>(MockBehavior.Strict);
         repository
-            .Setup(candidate => candidate.GetNodeContext(42, 50, ct))
+            .Setup(candidate => candidate.GetNodeContext(42, 50, null, ct))
             .ReturnsAsync(expected);
         var handler = new GetNodeContextQueryHandler(repository.Object);
 
@@ -41,7 +41,7 @@ public sealed class GetNodeContextQueryHandlerTests
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().BeSameAs(expected);
-        repository.Verify(candidate => candidate.GetNodeContext(42, 50, ct), Times.Once);
+        repository.Verify(candidate => candidate.GetNodeContext(42, 50, null, ct), Times.Once);
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public sealed class GetNodeContextQueryHandlerTests
         var ct = TestContext.Current.CancellationToken;
         var repository = new Mock<IContextRepository>(MockBehavior.Strict);
         repository
-            .Setup(candidate => candidate.GetNodeContext(42, 10, ct))
+            .Setup(candidate => candidate.GetNodeContext(42, 10, null, ct))
             .ReturnsAsync((Context360Result?)null);
         var handler = new GetNodeContextQueryHandler(repository.Object);
 
@@ -64,7 +64,7 @@ public sealed class GetNodeContextQueryHandlerTests
             .Should().ContainSingle().Which;
         error.ErrorCode.Should().Be(ServiceErrorCode.NotFound);
         error.Message.Should().Be("No persisted node exists for id 42.");
-        repository.Verify(candidate => candidate.GetNodeContext(42, 10, ct), Times.Once);
+        repository.Verify(candidate => candidate.GetNodeContext(42, 10, null, ct), Times.Once);
     }
 
     [Theory]
@@ -86,12 +86,28 @@ public sealed class GetNodeContextQueryHandlerTests
     }
 
     [Fact]
+    public async Task WhenIncludedSectionsContainsUndefinedValue_ThenItReturnsInvalidArgument()
+    {
+        var repository = new Mock<IContextRepository>(MockBehavior.Strict);
+        var handler = new GetNodeContextQueryHandler(repository.Object);
+
+        var result = await handler.Handle(
+            new GetNodeContextQuery(42, 10, [(ContextSection)99]),
+            TestContext.Current.CancellationToken);
+
+        result.IsFailed.Should().BeTrue();
+        result.Errors.OfType<ServiceError>().Should().ContainSingle()
+            .Which.ErrorCode.Should().Be(ServiceErrorCode.InvalidArgument);
+        repository.VerifyNoOtherCalls();
+    }
+
+    [Fact]
     public async Task WhenRepositoryCancels_ThenCancellationPropagates()
     {
         var ct = TestContext.Current.CancellationToken;
         var repository = new Mock<IContextRepository>(MockBehavior.Strict);
         repository
-            .Setup(candidate => candidate.GetNodeContext(42, 10, ct))
+            .Setup(candidate => candidate.GetNodeContext(42, 10, null, ct))
             .ThrowsAsync(new OperationCanceledException(ct));
         var handler = new GetNodeContextQueryHandler(repository.Object);
 

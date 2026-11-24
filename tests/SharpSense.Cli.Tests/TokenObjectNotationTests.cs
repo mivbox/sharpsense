@@ -3,6 +3,7 @@ using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Context360.Models;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
+using SharpSense.Application.Memory.ListMemories.Models;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Cli.Shared;
 using SharpSense.Domain.KnowledgeGraph.Enums;
@@ -431,5 +432,175 @@ public sealed class TokenObjectNotationTests
             "command: missing-command" + Environment.NewLine +
             "status: error" + Environment.NewLine +
             "error_message: Failed to start command 'missing-command'.");
+    }
+
+    [Fact]
+    public void WhenSerializeContext360HasTruncatedTotalsAndOmittedSections_ThenReportsCountsAndOmissions()
+    {
+        var result = new Context360Result(
+            new Context360Node(
+                1,
+                "MessageConsumer.Render()",
+                NodeType.Method,
+                "src/Fixture.App/MessageConsumer.cs",
+                20,
+                28),
+            [new Context360RelatedNode(2, "HttpEndpoint.Handle", 2, "src\\Fixture.App\\HttpEndpoint.cs", 5)],
+            [],
+            [],
+            [],
+            [],
+            [],
+            new Context360Totals(Callers: 5, Implementers: 0, Callees: 0, Inherits: 0, Parents: 0, Children: 0),
+            [ContextSection.Callers, ContextSection.Implementers]);
+
+        var output = TokenObjectNotation.SerializeContext360(result);
+
+        output.Should().Be(
+            "node:" + Environment.NewLine +
+            "  id: 1" + Environment.NewLine +
+            "  name: MessageConsumer.Render()" + Environment.NewLine +
+            "  kind: M" + Environment.NewLine +
+            "  file: src/Fixture.App/MessageConsumer.cs:20-28" + Environment.NewLine +
+            Environment.NewLine +
+            "incoming:" + Environment.NewLine +
+            "  callers (1 of 5): [HttpEndpoint.Handle (Id:2 @ src/Fixture.App/HttpEndpoint.cs:5)]" + Environment.NewLine +
+            "  implementers: []" + Environment.NewLine +
+            Environment.NewLine +
+            "omitted_sections: [Callees, Inherits, Parents, Children]");
+    }
+
+    [Fact]
+    public void WhenSerializeMemoryListHasItems_ThenFormatsCountsMetadataAndPreviews()
+    {
+        var memoryId = Guid.Parse("44444444-4444-4444-4444-444444444444");
+        var list = new ListMemoriesResult(
+            [
+                new MemoryNodeSummary(
+                    memoryId,
+                    42,
+                    "Fixture.App.ImpactAnalyzer.Analyze",
+                    "src/ImpactAnalyzer.cs",
+                    MemoryIntent.Invariant,
+                    ["sqlite"],
+                    true,
+                    DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
+                    "Use a single deferred read transaction.")
+            ],
+            TotalCount: 3,
+            StaleCount: 2,
+            HasMore: true);
+
+        var output = TokenObjectNotation.SerializeMemoryList(list);
+
+        output.Should().Be(
+            "memories: 1 of 3 (stale: 2, has_more: true)" + Environment.NewLine +
+            "- [*] id=44444444-4444-4444-4444-444444444444 node=42 intent=Invariant stale=true tags=[sqlite] target=Fixture.App.ImpactAnalyzer.Analyze @ src/ImpactAnalyzer.cs" + Environment.NewLine +
+            "  preview: Use a single deferred read transaction.");
+    }
+
+    [Fact]
+    public void WhenSerializeCalleeTraceHasMultipleDepthsAndTruncation_ThenIndentsTreeAndMarksTruncated()
+    {
+        var root = new CodeNodeResult(1, "node-1", "p", "A.Root()", "A.Root()", NodeType.Method, "A.cs", 1, 5, "");
+        var mid = new CodeNodeResult(2, "node-2", "p", "A.Mid()", "A.Mid()", NodeType.Method, "A.cs", 6, 10, "");
+        var leaf = new CodeNodeResult(3, "node-3", "p", "A.Leaf()", "A.Leaf()", NodeType.Method, "A.cs", 11, 15, "");
+
+        var output = TokenObjectNotation.SerializeCalleeTrace(
+            root,
+            [mid, leaf],
+            dependencies:
+            [
+                new ImpactedDependencyEdge("node-1", "node-2", EdgeType.MethodCall),
+                new ImpactedDependencyEdge("node-2", "node-3", EdgeType.MethodCall)
+            ],
+            truncated: true);
+
+        output.Should().Be(
+            "- [M] `1` A.Root @ A.cs:L1-5" + Environment.NewLine +
+            "  -> [M] `2` A.Mid @ A.cs:L6-10" + Environment.NewLine +
+            "    -> [M] `3` A.Leaf @ A.cs:L11-15" + Environment.NewLine +
+            Environment.NewLine +
+            "truncated: true (reached 1000-node limit; reduce maxDepth to narrow results)");
+    }
+
+    [Fact]
+    public void WhenSerializeContext360HasOmittedSectionsAndSemanticContext_ThenMemorySummaryIsTopLevelAfterOmissions()
+    {
+        var result = new Context360Result(
+            new Context360Node(
+                1,
+                "MessageConsumer.Render()",
+                NodeType.Method,
+                "src/Fixture.App/MessageConsumer.cs",
+                20,
+                28),
+            [new Context360RelatedNode(2, "HttpEndpoint.Handle")],
+            [],
+            [],
+            [],
+            [],
+            [],
+            new Context360Totals(Callers: 1, Implementers: 0, Callees: 0, Inherits: 0, Parents: 0, Children: 0),
+            [ContextSection.Callers]);
+
+        var output = TokenObjectNotation.SerializeContext360(
+            result,
+            [
+                new MemoryNode(
+                    Guid.Parse("55555555-5555-5555-5555-555555555555"),
+                    "Fixture.App.MessageConsumer.Render()",
+                    "hash-1",
+                    "Keep deterministic ordering",
+                    "content-hash",
+                    ["ordering"],
+                    MemoryIntent.Invariant,
+                    DateTimeOffset.Parse("2026-05-14T00:00:00+00:00"),
+                    false)
+            ]);
+
+        output.Should().Be(
+            "node:" + Environment.NewLine +
+            "  id: 1" + Environment.NewLine +
+            "  name: MessageConsumer.Render()" + Environment.NewLine +
+            "  kind: M" + Environment.NewLine +
+            "  file: src/Fixture.App/MessageConsumer.cs:20-28" + Environment.NewLine +
+            Environment.NewLine +
+            "incoming:" + Environment.NewLine +
+            "  callers: [HttpEndpoint.Handle (Id:2)]" + Environment.NewLine +
+            Environment.NewLine +
+            "omitted_sections: [Implementers, Callees, Inherits, Parents, Children]" + Environment.NewLine +
+            Environment.NewLine +
+            "memories: 1 (0 stale; use get_memory <id> to fetch content)" + Environment.NewLine +
+            Environment.NewLine +
+            "semantic_context:" + Environment.NewLine +
+            "  memories:" + Environment.NewLine +
+            "    - [*] id=55555555-5555-5555-5555-555555555555 intent=Invariant stale=false tags=[ordering]");
+    }
+
+    [Fact]
+    public void WhenSerializeCalleeTraceHasSiblingCrossEdge_ThenRendersDirectCalleesAtShortestDepth()
+    {
+        var root = new CodeNodeResult(1, "node-root", "p", "A.Root()", "A.Root()", NodeType.Method, "A.cs", 1, 5, "");
+        var first = new CodeNodeResult(2, "node-a", "p", "A.First()", "A.First()", NodeType.Method, "A.cs", 6, 10, "");
+        var second = new CodeNodeResult(3, "node-b", "p", "A.Second()", "A.Second()", NodeType.Method, "A.cs", 11, 15, "");
+        var leaf = new CodeNodeResult(4, "node-c", "p", "A.Leaf()", "A.Leaf()", NodeType.Method, "A.cs", 16, 20, "");
+
+        var output = TokenObjectNotation.SerializeCalleeTrace(
+            root,
+            [first, second, leaf],
+            dependencies:
+            [
+                new ImpactedDependencyEdge("node-root", "node-a", EdgeType.MethodCall),
+                new ImpactedDependencyEdge("node-root", "node-b", EdgeType.MethodCall),
+                new ImpactedDependencyEdge("node-a", "node-b", EdgeType.MethodCall),
+                new ImpactedDependencyEdge("node-b", "node-c", EdgeType.MethodCall)
+            ]);
+
+        output.Should().Be(
+            "- [M] `1` A.Root @ A.cs:L1-5" + Environment.NewLine +
+            "  -> [M] `2` A.First @ A.cs:L6-10" + Environment.NewLine +
+            "  -> [M] `3` A.Second @ A.cs:L11-15" + Environment.NewLine +
+            "    -> [M] `4` A.Leaf @ A.cs:L16-20");
     }
 }

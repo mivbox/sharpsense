@@ -22,10 +22,10 @@ They follow the consuming repository's conventions and can move with their refer
 | `ef-query-work` | Preserve query shape, persistence semantics and transaction ownership. |
 | `async-workflows` | Preserve operation identity, cancellation, bounded work and disposal. |
 
-Skill descriptions identify when each workflow applies. Claude Code and Codex load the matching `SKILL.md` on demand; the
-development skills link references only for the relevant work. Examples use portable standards and require no
-external reference repository. The four plugin skills include Codex UI metadata and allow implicit selection.
-Refresh the client's catalog if updated skills are not visible.
+Skill descriptions identify when each workflow applies. Claude Code and Codex load the matching `SKILL.md` on demand; both
+the plugin skills and development skills keep core routing concise in `SKILL.md` and link deeper `references/` files only
+when needed. Examples use portable standards and require no external reference repository. The four plugin skills include
+Codex UI metadata and allow implicit selection. Refresh the client's catalog if updated skills are not visible.
 
 Use semantic search when the implementation location is unknown, including discovery within debugging, feature work,
 refactoring and review. Read known files directly and use exact text search for exhaustive occurrences. Expand graph
@@ -226,5 +226,5 @@ The root manifest deliberately omits the portable `$schema`: portable plugin MCP
 working directory from the installed plugin root, which would defeat workspace discovery from the project directory.
 No executable wrappers or hooks are required.
 
-Plugin version `1.3.1` is independent of the CLI/NuGet version. When releasing a plugin update, keep its identity and
+Plugin version `1.4.0` is independent of the CLI/NuGet version. When releasing a plugin update, keep its identity and
 version consistent across all three manifests and marketplace metadata.

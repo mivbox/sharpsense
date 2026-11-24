@@ -1,3 +1,4 @@
+using FluentResults;
 using JetBrains.Annotations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -10,6 +11,8 @@ using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Trace;
 using SharpSense.Application.Trace.Abstractions;
+using SharpSense.Application.Trace.GetTraceGraph.Models;
+using SharpSense.Application.Trace.Models;
 using SharpSense.Application.Trace.Trace.Models;
 using SharpSense.Cli.Shared;
 using SharpSense.Domain.KnowledgeGraph.Enums;
@@ -45,6 +48,9 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
         [CommandOption("--include-memories")]
         public bool IncludeMemories { get; init; }
 
+        [CommandOption("--max-depth <DEPTH>")]
+        public int MaxDepth { get; init; } = 1;
+
         public override ValidationResult Validate()
         {
             if (string.IsNullOrWhiteSpace(Identifier))
@@ -55,6 +61,11 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
             if (NormalizeDirection(Direction) is null)
             {
                 return ValidationResult.Error("Direction must be either 'caller' or 'callee'.");
+            }
+
+            if (MaxDepth is < 1 or > 10)
+            {
+                return ValidationResult.Error("--max-depth must be between 1 and 10.");
             }
 
             return base.Validate();
@@ -90,11 +101,13 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
         var includedEdgeTypes = settings.IncludeStructural
             ? KnowledgeGraphEdgeTypes.All
             : null;
-        var rootNode = settings.UseToonFormat || settings.IncludeMemories
+        var rootNode = settings.UseToonFormat || settings.IncludeMemories || (direction == "callee" && settings.MaxDepth > 1)
             ? await traceNavigator.GetRootNode(settings.Identifier, ct)
             : null;
         CodeNodeResult[] nodes;
         ImpactAnalysisResult? impactResult = null;
+        ImpactedDependencyEdge[]? calleeDependencies = null;
+        var calleeTruncated = false;
         switch (direction)
         {
             case "caller":
@@ -104,8 +117,8 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
                         .Handle(
                             new ImpactAnalysisQuery(
                                 settings.Identifier,
-                                MaxDepth: 1,
-                                IncludeTransitive: false,
+                                MaxDepth: settings.MaxDepth,
+                                IncludeTransitive: settings.MaxDepth > 1,
                                 IncludedEdgeTypes: includedEdgeTypes),
                             ct);
 
@@ -113,9 +126,35 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
                     break;
                 }
             case "callee":
-                nodes = await services
-                    .GetRequiredService<IQueryHandler<TraceQuery, CodeNodeResult[]>>()
-                    .Handle(new TraceQuery(settings.Identifier, includedEdgeTypes), ct);
+                if (settings.MaxDepth > 1)
+                {
+                    if (rootNode is null)
+                    {
+                        nodes = [];
+                    }
+                    else
+                    {
+                        var graphResult = await services
+                            .GetRequiredService<IQueryHandler<GetTraceGraphQuery, Result<TraceGraphResult>>>()
+                            .Handle(
+                                new GetTraceGraphQuery(
+                                    rootNode.Id,
+                                    TraceDirection.Callee,
+                                    settings.MaxDepth,
+                                    includedEdgeTypes),
+                                ct);
+                        nodes = graphResult.IsSuccess ? graphResult.Value.Nodes : [];
+                        calleeDependencies = graphResult.IsSuccess ? graphResult.Value.Dependencies : null;
+                        calleeTruncated = graphResult.IsSuccess && graphResult.Value.Truncated;
+                    }
+                }
+                else
+                {
+                    nodes = await services
+                        .GetRequiredService<IQueryHandler<TraceQuery, CodeNodeResult[]>>()
+                        .Handle(new TraceQuery(settings.Identifier, includedEdgeTypes), ct);
+                }
+
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported direction '{direction}'.");
@@ -142,7 +181,12 @@ internal sealed class TraceCommand : AbstractAsyncCommand<TraceCommand.Settings>
                         nodes,
                         impactResult?.Dependencies ?? [],
                         memoriesByNodeId)
-                    : TokenObjectNotation.SerializeCalleeTrace(rootNode, nodes, memoriesByNodeId);
+                    : TokenObjectNotation.SerializeCalleeTrace(
+                        rootNode,
+                        nodes,
+                        memoriesByNodeId,
+                        calleeDependencies,
+                        calleeTruncated);
         }
         else if (settings.IncludeMemories)
         {

@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using SharpSense.Application.Context360.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.Context360;
 using SharpSense.Infrastructure.Persistence;
@@ -21,7 +22,7 @@ public sealed class ContextRepositoryTests
         await KnowledgeGraphFixture.Seed(context, TestContext.Current.CancellationToken);
         var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory());
 
-        var result = await repository.GetNodeContext(KnowledgeGraphFixture.TargetNodeId, 10, ct);
+        var result = await repository.GetNodeContext(KnowledgeGraphFixture.TargetNodeId, 10, null, ct);
 
         result.Should().NotBeNull();
         result!.TargetNode.Name.Should().Be(KnowledgeGraphFixture.TargetDisplayName);
@@ -47,7 +48,7 @@ public sealed class ContextRepositoryTests
         await KnowledgeGraphFixture.Seed(context, TestContext.Current.CancellationToken);
         var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory());
 
-        var result = await repository.GetNodeContext(999, 10, ct);
+        var result = await repository.GetNodeContext(999, 10, null, ct);
 
         result.Should().BeNull();
     }
@@ -63,7 +64,7 @@ public sealed class ContextRepositoryTests
         await KnowledgeGraphFixture.Seed(context, TestContext.Current.CancellationToken);
         var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory());
 
-        var result = await repository.GetNodeContext(KnowledgeGraphFixture.MessageProviderTypeNodeId, 10, ct);
+        var result = await repository.GetNodeContext(KnowledgeGraphFixture.MessageProviderTypeNodeId, 10, null, ct);
 
         result.Should().NotBeNull();
         result!.Callers.Should().BeEmpty();
@@ -89,7 +90,7 @@ public sealed class ContextRepositoryTests
         await SeedMarkdownHierarchy(context, ct);
         var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory());
 
-        var result = await repository.GetNodeContext(101, 10, ct);
+        var result = await repository.GetNodeContext(101, 10, null, ct);
 
         result.Should().NotBeNull();
         result!.Callers.Should().BeEmpty();
@@ -99,6 +100,44 @@ public sealed class ContextRepositoryTests
         result.Parents
             .Select(static node => node.Name).Should().Equal("Guide");
         result.Children.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task WhenMaxRelatedTruncatesAndSectionsAreFiltered_ThenItReturnsExactTotalsAndOmitsUnrequestedSections()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(UseMigrations: true));
+        await using var context = await inMemoryFactory.GetContext(ct);
+        await KnowledgeGraphFixture.Seed(context, ct);
+        var repository = new ContextRepository(inMemoryFactory.CreateDbContextFactory());
+
+        var result = await repository.GetNodeContext(
+            KnowledgeGraphFixture.TargetNodeId,
+            maxRelated: 1,
+            [ContextSection.Callers, ContextSection.Parents],
+            ct);
+
+        result.Should().NotBeNull();
+        result!.Callers.Select(static node => node.Name).Should().Equal("MessageConsumer.Render");
+        result.Callers[0].RelativeFilePath.Should().NotBeNullOrWhiteSpace();
+        result.Callers[0].StartLine.Should().BeGreaterThan(0);
+        result.Parents.Select(static node => node.Name).Should().Equal("MessageProvider");
+        result.Parents[0].RelativeFilePath.Should().NotBeNullOrWhiteSpace();
+        result.Parents[0].StartLine.Should().BeGreaterThan(0);
+        result.Callees.Should().BeEmpty();
+        result.Implementers.Should().BeEmpty();
+        result.Inherits.Should().BeEmpty();
+        result.Children.Should().BeEmpty();
+        result.Totals.Should().Be(new Context360Totals(
+            Callers: 2,
+            Implementers: 0,
+            Callees: 0,
+            Inherits: 0,
+            Parents: 1,
+            Children: 0));
+        result.IncludedSections.Should().Equal(ContextSection.Callers, ContextSection.Parents);
     }
 
     private static async Task SeedMarkdownHierarchy(

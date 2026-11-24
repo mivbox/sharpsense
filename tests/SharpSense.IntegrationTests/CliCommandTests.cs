@@ -346,11 +346,11 @@ public sealed class CliCommandTests
             "  file: src/Fixture.App/MessageConsumer.cs:20-28" + Environment.NewLine +
             Environment.NewLine +
             "incoming:" + Environment.NewLine +
-            $"  callers: [HttpEndpoint.Handle (Id:{CliCommandTestDatabase.CallerNodeId})]" + Environment.NewLine +
+            $"  callers: [HttpEndpoint.Handle (Id:{CliCommandTestDatabase.CallerNodeId} @ src/Fixture.App/HttpEndpoint.cs:5)]" + Environment.NewLine +
             "  implementers: []" + Environment.NewLine +
             Environment.NewLine +
             "outgoing:" + Environment.NewLine +
-            $"  callees: [MessageProvider.GetMessage (Id:{CliCommandTestDatabase.CalleeNodeId})]" + Environment.NewLine +
+            $"  callees: [MessageProvider.GetMessage (Id:{CliCommandTestDatabase.CalleeNodeId} @ src/Fixture.App/MessageProvider.cs:7)]" + Environment.NewLine +
             "  inherits: []" + Environment.NewLine +
             Environment.NewLine +
             "structural:" + Environment.NewLine +
@@ -386,7 +386,7 @@ public sealed class CliCommandTests
             Environment.NewLine +
             "incoming:" + Environment.NewLine +
             "  callers: []" + Environment.NewLine +
-            $"  implementers: [HtmlRenderer (Id:{CliCommandTestDatabase.HtmlRendererNodeId}), TerminalRenderer (Id:{CliCommandTestDatabase.TerminalRendererNodeId})]" + Environment.NewLine +
+            $"  implementers: [HtmlRenderer (Id:{CliCommandTestDatabase.HtmlRendererNodeId} @ src/Fixture.App/HtmlRenderer.cs:3), TerminalRenderer (Id:{CliCommandTestDatabase.TerminalRendererNodeId} @ src/Fixture.App/TerminalRenderer.cs:3)]" + Environment.NewLine +
             Environment.NewLine +
             "outgoing:" + Environment.NewLine +
             "  callees: []" + Environment.NewLine +
@@ -429,7 +429,7 @@ public sealed class CliCommandTests
             Environment.NewLine +
             "outgoing:" + Environment.NewLine +
             "  callees: []" + Environment.NewLine +
-            $"  inherits: [BaseRenderer (Id:{CliCommandTestDatabase.BaseClassNodeId})]" + Environment.NewLine +
+            $"  inherits: [BaseRenderer (Id:{CliCommandTestDatabase.BaseClassNodeId} @ src/Fixture.App/BaseRenderer.cs:3)]" + Environment.NewLine +
             Environment.NewLine +
             "structural:" + Environment.NewLine +
             "  parents: []" + Environment.NewLine +
@@ -1118,6 +1118,84 @@ public sealed class CliCommandTests
                 .EnumerateArray()
                 .Select(tag => tag.GetString()).Should().Equal("review");
         }
+    }
+
+    [Fact]
+    public async Task WhenMemoryListRunsWithoutNodeId_ThenListsWorkspaceMemoriesWithTrailingNewline()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await CliCommandTestDatabase.Create(ct);
+
+        using var addConsole = new TestConsole();
+        var addExit = await CreateCommandApp(addConsole, database).RunAsync(
+            [
+                "memory",
+                "add",
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--content",
+                "Keep rendering deterministic.",
+                "--intent",
+                "Invariant",
+                "--tag",
+                "rendering",
+                "--repo-root",
+                RepositoryRoot
+            ],
+            ct);
+        addExit.Should().Be(0);
+
+        using var listConsole = new TestConsole();
+        var listExit = await CreateCommandApp(listConsole, database).RunAsync(
+            [
+                "memory",
+                "list",
+                "--intent-filter",
+                "Invariant",
+                "--tag",
+                "rendering",
+                "--query",
+                "deterministic",
+                "--repo-root",
+                RepositoryRoot
+            ],
+            ct);
+
+        listExit.Should().Be(0);
+        listConsole.Output.Should().EndWith(Environment.NewLine);
+        listConsole.Output.Should().Contain("memories: 1 of 1 (stale: 0, has_more: false)");
+        listConsole.Output.Should().Contain("Keep rendering deterministic.");
+    }
+
+    [Fact]
+    public async Task WhenContextRunsWithSectionFilter_ThenOutputsOnlyRequestedSectionAndOmissions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await CliCommandTestDatabase.Create(ct);
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+
+        var exitCode = await app.RunAsync(
+            [
+                "context",
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--section",
+                "Callers",
+                "--limit",
+                "5",
+                "--toon",
+                "--repo-root",
+                RepositoryRoot
+            ],
+            ct);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Contain("incoming:");
+        console.Output.Should().Contain("callers: [HttpEndpoint.Handle");
+        console.Output.Should().NotContain("outgoing:");
+        console.Output.Should().NotContain("structural:");
+        console.Output.Should().Contain("omitted_sections: [Implementers, Callees, Inherits, Parents, Children]");
     }
 
     private static async Task<Guid> GetSingleMemoryId(CliCommandTestDatabase database, CancellationToken ct)

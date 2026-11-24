@@ -17,7 +17,7 @@ type ResultItem = {
 
 export type SymbolOverview = {
   targetName?: string;
-  groups: { title: string; items: ResultItem[] }[];
+  groups: { title: string; items: ResultItem[]; total?: number }[];
   emptyMessage: string;
   truncated?: boolean;
   dependencyCount?: number;
@@ -50,19 +50,31 @@ function codeItem(node: CodeNodeResult | ImpactedCodeNode): ResultItem {
 
 const noRelatedSymbols = "No related symbols were found for these parameters.";
 
+function contextGroup(
+  title: string,
+  nodes: Context360RelatedNode[] | null | undefined,
+  total: number | null | undefined,
+): SymbolOverview["groups"][number] {
+  const items = (nodes ?? []).map(contextItem);
+  return total != null && total > items.length
+    ? { title, items, total }
+    : { title, items };
+}
+
 export function contextOverview(data: Context360Result): SymbolOverview {
   return {
     targetName: data.targetNode?.name ?? undefined,
     groups: [
-      { title: "Callers", items: (data.callers ?? []).map(contextItem) },
-      { title: "Callees", items: (data.callees ?? []).map(contextItem) },
-      {
-        title: "Implementations",
-        items: (data.implementers ?? []).map(contextItem),
-      },
-      { title: "Inherits", items: (data.inherits ?? []).map(contextItem) },
-      { title: "Parents", items: (data.parents ?? []).map(contextItem) },
-      { title: "Children", items: (data.children ?? []).map(contextItem) },
+      contextGroup("Callers", data.callers, data.totals?.callers),
+      contextGroup("Callees", data.callees, data.totals?.callees),
+      contextGroup(
+        "Implementations",
+        data.implementers,
+        data.totals?.implementers,
+      ),
+      contextGroup("Inherits", data.inherits, data.totals?.inherits),
+      contextGroup("Parents", data.parents, data.totals?.parents),
+      contextGroup("Children", data.children, data.totals?.children),
     ],
     emptyMessage: noRelatedSymbols,
   };

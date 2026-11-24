@@ -16,8 +16,10 @@ import type {
   Context360Result,
   GraphStatsSnapshot,
   ImpactAnalysisResult,
+  ListMemoriesResult,
   TraceResponse,
 } from "../src/shared/api/generated/models";
+import type { MemoryListFilter } from "../src/shared/api/models";
 
 test("context results distinguish graph identifiers from valid code tool targets", () => {
   const data: Context360Result = {
@@ -178,6 +180,22 @@ test("feature execution preserves typed responses, tool defaults and cancellatio
     impactedNodes: [],
   };
   const stats: GraphStatsSnapshot = { codeNodeCount: 5 };
+  const memories: ListMemoriesResult = {
+    items: [
+      {
+        id: "11111111-1111-1111-1111-111111111111",
+        targetCodeNodeId: 7,
+        targetFullyQualifiedName: "App.Root",
+        targetRelativeFilePath: "src/Root.cs",
+        intent: "Invariant",
+        isStale: true,
+        contentPreview: "Keep transaction short.",
+      },
+    ],
+    totalCount: 2,
+    staleCount: 1,
+    hasMore: true,
+  };
   const api = {
     getContext: async (
       nodeId: number,
@@ -220,19 +238,39 @@ test("feature execution preserves typed responses, tool defaults and cancellatio
       assert.equal(actualSignal, signal);
       return stats;
     },
+    listMemories: async (
+      filter: MemoryListFilter = {},
+      actualSignal?: AbortSignal,
+    ) => {
+      assert.equal(filter.staleOnly, true);
+      assert.equal(actualSignal, signal);
+      return memories;
+    },
   };
-  const responses = { context, trace, inheritors, impact, graph_stats: stats };
+  const responses = {
+    context,
+    trace,
+    inheritors,
+    impact,
+    graph_stats: stats,
+    memories,
+  };
   for (const tool of [
     "context",
     "trace",
     "inheritors",
     "impact",
     "graph_stats",
+    "memories",
   ] as const) {
     const result = await executeTool(
       api,
       tool,
-      tool === "graph_stats" ? {} : { nodeId: 7 },
+      tool === "graph_stats"
+        ? {}
+        : tool === "memories"
+          ? { memoryFilter: { staleOnly: true } }
+          : { nodeId: 7 },
       signal,
     );
     assert.equal(result.tool, tool);
@@ -287,4 +325,50 @@ test("large typed results render the first page and navigation without changing 
   assert.match(markup, /Impacted symbols pages/);
   assert.match(markup, /Go to page 100/);
   assert.deepEqual(result, originalResult);
+});
+
+test("context truncation totals and workspace memories render summary badges", () => {
+  const contextMarkup = renderResult({
+    tool: "context",
+    data: {
+      targetNode: { id: 7, name: "Service.Run" },
+      callers: [{ id: 17, codeNodeId: 17, name: "Caller" }],
+      totals: {
+        callers: 12,
+        implementers: 0,
+        callees: 0,
+        inherits: 0,
+        parents: 0,
+        children: 0,
+      },
+    },
+    elapsedMs: 1,
+  });
+  assert.match(contextMarkup, /1 of 12/);
+
+  const memoriesMarkup = renderResult({
+    tool: "memories",
+    data: {
+      items: [
+        {
+          id: "22222222-2222-2222-2222-222222222222",
+          targetCodeNodeId: 42,
+          targetFullyQualifiedName: "App.Store.Save",
+          targetRelativeFilePath: "src/Store.cs",
+          intent: "Invariant",
+          isStale: true,
+          contentPreview: "Keep SQLite read transactions bounded.",
+        },
+      ],
+      totalCount: 4,
+      staleCount: 2,
+      hasMore: true,
+    },
+    elapsedMs: 2,
+  });
+  assert.match(memoriesMarkup, /1 of 4 memories/);
+  assert.match(memoriesMarkup, /2 stale/);
+  assert.match(memoriesMarkup, /More available/);
+  assert.match(memoriesMarkup, /Inspect App\.Store\.Save memory target/);
+  assert.match(memoriesMarkup, /Keep SQLite read transactions bounded\./);
 });

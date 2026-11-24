@@ -6,11 +6,12 @@ Context returns a compact snapshot of one indexed node's immediate callers, call
 sharpsense context --workspace product --node-id 42
 sharpsense context --workspace product --node-id 42 --toon
 sharpsense context --workspace product --node-id 42 --include-memories
+sharpsense context --workspace product --node-id 42 --limit 20 --section Callers --section Implementers --toon
 ```
 
 Obtain the positive integer node ID from [search](search-command.md) or the UI. IDs are local to a workspace.
 
-JSON is the default output; `--toon` selects the existing compact TOON format. Related-node breadth is bounded. It separates functional and structural relationships where available; it does not traverse an entire dependency graph. Use [trace](trace-command.md) when you need a particular direction.
+JSON is the default output; `--toon` selects the existing compact TOON format. `--limit` sets the per-section cap (`1` to `50`, default `10`), and repeatable `--section` values (`Callers`, `Implementers`, `Callees`, `Inherits`, `Parents`, `Children`) restrict which buckets are queried. Related code nodes include their workspace-relative file path and start line (`relativeFilePath`/`startLine` in JSON; `@ path:line` in TOON) so callers and implementers can be opened directly without extra lookups. When a bucket is truncated, JSON reports exact `totals` and TOON shows `(N of M)` beside the bucket name alongside `omitted_sections` when sections are excluded. It separates functional and structural relationships where available; it does not traverse an entire dependency graph. Use [trace](trace-command.md) when you need a particular direction.
 
 With `--include-memories`, attached notes appear as metadata, including their IDs, intents, tags and stale state. JSON adds a `memories` array; TOON includes the compact memory summary. Neither format embeds full note content. Fetch full content with [memory get](memory-command.md). The MCP equivalent is `context`, with an optional edge-category mask.
 

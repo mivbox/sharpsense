@@ -53,16 +53,11 @@ internal sealed class HybridSearcher(
         await using var context = await dbContextFactory.CreateDbContextAsync(ct);
         var candidateLimit = GetCandidateLimit(query.Limit);
 
-        int? projectNodeId = null;
+        int[] projectNodeIds = [];
         if (!string.IsNullOrWhiteSpace(query.ProjectId))
         {
-            projectNodeId = await context.GraphNodes
-                .AsNoTracking()
-                .Where(graphNode => graphNode.Kind == GraphNodeKind.Project && graphNode.CanonicalId == query.ProjectId)
-                .Select(static graphNode => (int?)graphNode.Id)
-                .FirstOrDefaultAsync(ct);
-
-            if (projectNodeId is null)
+            projectNodeIds = await ResolveProjectNodeIds(context, query.ProjectId.Trim(), ct);
+            if (projectNodeIds.Length == 0)
             {
                 return new HybridSearchResult(query.SearchText, []);
             }
@@ -83,7 +78,7 @@ internal sealed class HybridSearcher(
             matchQuery,
             query.SearchText,
             queryVector,
-            projectNodeId,
+            projectNodeIds,
             query.IncludedNodeTypes ?? [],
             query.TagFilters,
             query.IncludeMemories,
@@ -112,12 +107,36 @@ internal sealed class HybridSearcher(
             HybridSearchMapper.ToSearchHit(orderedNodes));
     }
 
+    private static async Task<int[]> ResolveProjectNodeIds(
+        SharpSenseDbContext context,
+        string projectFilter,
+        CancellationToken ct)
+    {
+        var byCanonicalId = await context.GraphNodes
+            .AsNoTracking()
+            .Where(graphNode => graphNode.Kind == GraphNodeKind.Project && graphNode.CanonicalId == projectFilter)
+            .Select(static graphNode => graphNode.Id)
+            .ToArrayAsync(ct);
+        if (byCanonicalId.Length > 0)
+        {
+            return byCanonicalId;
+        }
+
+        var normalizedName = projectFilter.ToLowerInvariant();
+
+        return await context.ProjectNodes
+            .AsNoTracking()
+            .Where(project => project.Name.ToLower() == normalizedName)
+            .Select(static project => project.Id)
+            .ToArrayAsync(ct);
+    }
+
     private static async Task<int[]> ExecuteHybridRanking(
         SharpSenseDbContext context,
         string matchQuery,
         string searchText,
         float[] queryVector,
-        int? projectNodeId,
+        IReadOnlyCollection<int> projectNodeIds,
         IReadOnlyCollection<NodeType> includedNodeTypes,
         string[]? tagFilters,
         bool includeMemories,
@@ -136,7 +155,8 @@ internal sealed class HybridSearcher(
 
         AddParameter(command, "@matchQuery", matchQuery);
         AddParameter(command, "@queryVector", ConvertToBytes(queryVector));
-        AddParameter(command, "@projectNodeId", (object?)projectNodeId ?? DBNull.Value);
+        AddParameter(command, "@projectNodeIds", SerializeProjectNodeIds(projectNodeIds));
+        AddParameter(command, "@projectNodeIdCount", projectNodeIds.Count);
         AddParameter(command, "@nodeTypes", SerializeNodeTypes(includedNodeTypes));
         AddParameter(command, "@nodeTypeCount", includedNodeTypes.Count);
         AddParameter(command, "@candidateLimit", candidateLimit);
@@ -190,7 +210,7 @@ internal sealed class HybridSearcher(
                            OR EXISTS (SELECT 1 FROM json_each(m.TagsJson) AS tag WHERE instr(lower(CAST(tag.value AS TEXT)), @memorySearchText) > 0)){{memoryTagFilterClause}}
                 ) memory_hits
                 INNER JOIN CodeNodes c ON c.Id = memory_hits.node_id
-                WHERE (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
+                WHERE (@projectNodeIdCount = 0 OR c.ProjectNodeId IN (SELECT value FROM json_each(@projectNodeIds)))
                   AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))
                 ORDER BY memory_hits.score DESC
                 LIMIT @candidateLimit
@@ -200,7 +220,7 @@ internal sealed class HybridSearcher(
                 FROM MemoryNodes m
                 INNER JOIN CodeNodes c ON c.Id = m.TargetCodeNodeId
                 WHERE m.VectorEmbedding IS NOT NULL{{memoryTagFilterClause}}
-                  AND (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
+                  AND (@projectNodeIdCount = 0 OR c.ProjectNodeId IN (SELECT value FROM json_each(@projectNodeIds)))
                   AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))
                 ORDER BY vec_distance_cosine(m.VectorEmbedding, vec_f32(@queryVector)) ASC
                 LIMIT @candidateLimit
@@ -231,7 +251,7 @@ internal sealed class HybridSearcher(
                 FROM CodeNodeSearch
                 INNER JOIN CodeNodes c ON c.Id = CodeNodeSearch.Id
                 WHERE CodeNodeSearch MATCH @matchQuery
-                  AND (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
+                  AND (@projectNodeIdCount = 0 OR c.ProjectNodeId IN (SELECT value FROM json_each(@projectNodeIds)))
                   AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))
                 ORDER BY bm25(CodeNodeSearch) ASC
                 LIMIT @candidateLimit
@@ -240,7 +260,7 @@ internal sealed class HybridSearcher(
                 SELECT c.Id AS Id, ROW_NUMBER() OVER (ORDER BY vec_distance_cosine(c.VectorEmbedding, vec_f32(@queryVector)) ASC) AS rank
                 FROM CodeNodes c
                 WHERE c.VectorEmbedding IS NOT NULL
-                  AND (@projectNodeId IS NULL OR c.ProjectNodeId = @projectNodeId)
+                  AND (@projectNodeIdCount = 0 OR c.ProjectNodeId IN (SELECT value FROM json_each(@projectNodeIds)))
                   AND (@nodeTypeCount = 0 OR c.NodeType IN (SELECT value FROM json_each(@nodeTypes)))
                 ORDER BY vec_distance_cosine(c.VectorEmbedding, vec_f32(@queryVector)) ASC
                 LIMIT @candidateLimit
@@ -263,6 +283,13 @@ internal sealed class HybridSearcher(
         parameter.Value = value;
         command.Parameters.Add(parameter);
     }
+
+    private static string SerializeProjectNodeIds(IReadOnlyCollection<int> projectNodeIds)
+        => projectNodeIds.Count == 0
+            ? "[]"
+            : "[" + string.Join(
+                ",",
+                projectNodeIds.Select(static id => id.ToString(CultureInfo.InvariantCulture))) + "]";
 
     private static string SerializeNodeTypes(IReadOnlyCollection<NodeType> nodeTypes)
         => nodeTypes.Count == 0

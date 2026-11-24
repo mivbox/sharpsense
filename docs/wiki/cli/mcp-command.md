@@ -20,21 +20,45 @@ The checked-in `mcp-config.json` is a portable discovery example. `copilot.sh` u
 | Tool | Purpose |
 | --- | --- |
 | `graph_stats` | Read graph coverage, database state, indexing timings, and recorded diagnostics; no node ID needed. |
-| `semantic_search` | Find implementations from a behavior, concept or distinctive symbol; returns source locations and node IDs. Limit defaults to 10. |
-| `context` | Bounded immediate relationships for a node ID. |
-| `trace_node` | Caller or callee navigation for a known node; caller traversal uses impact-analysis defaults. |
-| `get_inheritors` | Direct derived classes and interface implementers. |
-| `attach_memory` | Attach Markdown content, optional tags, and an intent to a node. |
+| `semantic_search` | Find implementations from a behavior, concept or distinctive symbol; supports optional `project` (name or ID), `nodeTypes`, `includeMemories`, and `tags` filters. Limit defaults to 10. |
+| `context` | Bounded immediate relationships for a node ID, with optional `limit` (1–50), `sections` subset, and truncation totals. |
+| `trace_node` | Caller or callee navigation for a persisted integer node ID, with optional `maxDepth` (1–10; defaults to 3 for callers, 1 for callees), `includeStructural`, and `includedEdgeTypes`. |
+| `get_inheritors` | Direct derived classes and interface implementers for a persisted integer node ID. |
+| `attach_memory` | Attach Markdown content, optional tags, and an intent to a node; returns the created memory GUID and stale state. |
+| `list_memories` | List persisted memories across the workspace with optional `intents`, `tags`, `staleOnly`, `searchText`, `limit`, and `offset` filters. |
 | `delete_memory` | Delete a memory by GUID. |
 | `get_memory` | Fetch one memory's full content. |
 | `get_memories` | Fetch several memories in one request. |
 | `ctx_execute` | Run an authorized noisy build, test or diagnostic command in the workspace root and return bounded matching excerpts. |
 
+## Resources
+
+MCP resources expose read-only workspace snapshots and a node-context template without invoking a tool:
+
+| URI | MIME type | Purpose |
+| --- | --- | --- |
+| `sharpsense://workspace/stats` | `application/json` | Same diagnostic snapshot as `graph_stats`; preserves missing or incompatible databases without modifying them. |
+| `sharpsense://workspace/memories` | `text/plain` | Compact TOON list of up to 100 workspace memories, newest first. |
+| `sharpsense://workspace/memories/stale` | `text/plain` | Compact TOON list of up to 100 stale memories whose target symbol hash changed. |
+| `sharpsense://node/{nodeId}/context` | `text/plain` | Combined structural and semantic 360-degree context for a persisted positive integer node ID. |
+
+`sharpsense://workspace/stats`, unknown URIs, and invalid node IDs never initialize or alter missing or incompatible databases.
+
+## Prompts
+
+MCP prompts provide reusable workflow templates that clients can invoke directly:
+
+| Prompt | Arguments | Purpose |
+| --- | --- | --- |
+| `explain_symbol` | `target`, optional `question` | Locate an unfamiliar behavior or symbol, inspect relevant relationships and memories, and explain it with source evidence. |
+| `impact_review` | `target`, optional `changeDescription` | Assess callers, implementations, truncation totals, memories, and validation needs before a change. |
+| `memory_audit` | optional `scope` | Review stale or scoped workspace memories against current source and summarize recommended updates without unprompted writes. |
+
 Refactoring and rename tools are not part of the version 1 surface.
 
-Verify the workspace identity and language coverage with `graph_stats` before discovery. Its timestamps and ready state do not guarantee filesystem freshness. When the implementation location is unknown, search from the behavior being investigated, read the returned source, and request context or trace only when a relationship remains unresolved. Read known files directly and use text search for exact strings and exhaustive occurrence checks. Node IDs belong to this server's workspace. Use `edgeCategories: "All"` on context or trace to include memory metadata; the default `"Structural"` omits it. Fetch full notes separately. Caller traces default to depth three; CLI caller tracing defaults to immediate callers. Static traces show dependencies, not runtime execution order.
+Verify the workspace identity and language coverage with `graph_stats` before discovery. Its timestamps and ready state do not guarantee filesystem freshness. When the implementation location is unknown, search from the behavior being investigated, read the returned source, and request context or trace only when a relationship remains unresolved. Read known files directly and use text search for exact strings and exhaustive occurrence checks. Node IDs belong to this server's workspace. Use `edgeCategories: "All"` on context or trace to include memory metadata; the default `"Structural"` omits it. Fetch full notes separately. Caller traces default to depth three; CLI caller tracing defaults to immediate callers unless `--max-depth` is supplied. Static traces show dependencies, not runtime execution order.
 
-`context`, `semantic_search`, `ctx_execute`, and the memory tools report expected application failures with `isError: true` and a readable explanation. Successful results retain the existing compact text. An executed child command's nonzero exit code remains part of the `ctx_execute` payload, distinct from failure to start or validate the tool request.
+`context`, `trace_node`, `get_inheritors`, `semantic_search`, `ctx_execute`, and the memory tools report expected application failures with `isError: true` and a readable explanation. Successful results retain the existing compact text. An executed child command's nonzero exit code remains part of the `ctx_execute` payload, distinct from failure to start or validate the tool request.
 
 `ctx_execute` runs real local commands with the server process's filesystem permissions. It launches an executable without a shell, so shell operators are not interpreted. Quote individual arguments containing spaces; pipelines, redirection and chaining require an explicit shell. Its optional FTS query selects context windows, for example `error OR warning OR failed`; it is not a natural-language summarization instruction. An omitted or unmatched query returns a summary. Use ordinary source tools for small file reads. See [command execution](execute-command.md).
 

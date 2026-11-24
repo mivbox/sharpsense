@@ -1,4 +1,8 @@
-import type { ToolId } from "../shared/api/models";
+import {
+  searchNodeTypes,
+  type SearchNodeType,
+  type ToolId,
+} from "../shared/api/models";
 
 export type ExplorerSearch = {
   scopes: string[];
@@ -8,7 +12,13 @@ export type ExplorerSearch = {
   edges: boolean;
   filter: string;
 };
-export type WorkspaceSearch = { q: string; limit: number };
+export type WorkspaceSearch = {
+  q: string;
+  limit: number;
+  project: string;
+  nodeTypes: SearchNodeType[];
+  includeMemories: boolean;
+};
 export type ToolsSearch = {
   tool: ToolId;
   nodeId?: number;
@@ -32,7 +42,13 @@ export const explorerDefaults: ExplorerSearch = {
   edges: false,
   filter: "",
 };
-export const searchDefaults: WorkspaceSearch = { q: "", limit: 20 };
+export const searchDefaults: WorkspaceSearch = {
+  q: "",
+  limit: 20,
+  project: "",
+  nodeTypes: [],
+  includeMemories: false,
+};
 export const toolsDefaults: ToolsSearch = {
   tool: "context",
   direction: "callee",
@@ -80,11 +96,25 @@ export function validateExplorerSearch(
 export function validateWorkspaceSearch(
   value: Record<string, unknown>,
 ): WorkspaceSearch {
+  const validTypes = new Set<string>(searchNodeTypes);
   return {
     q: typeof value.q === "string" ? value.q : "",
     limit: [10, 20, 50].includes(Number(value.limit))
       ? Number(value.limit)
       : 20,
+    project: typeof value.project === "string" ? value.project : "",
+    nodeTypes: Array.isArray(value.nodeTypes)
+      ? [
+          ...new Set(
+            value.nodeTypes.filter(
+              (type): type is SearchNodeType =>
+                typeof type === "string" && validTypes.has(type),
+            ),
+          ),
+        ]
+      : [],
+    includeMemories:
+      value.includeMemories === true || value.includeMemories === "true",
   };
 }
 export function validateToolsSearch(
@@ -92,9 +122,14 @@ export function validateToolsSearch(
 ): ToolsSearch {
   const nodeId = integer(value.nodeId, 0, 1, 2147483647);
   return {
-    tool: ["context", "trace", "inheritors", "impact", "graph_stats"].includes(
-      String(value.tool),
-    )
+    tool: [
+      "context",
+      "trace",
+      "inheritors",
+      "impact",
+      "graph_stats",
+      "memories",
+    ].includes(String(value.tool))
       ? (value.tool as ToolId)
       : "context",
     nodeId: nodeId || undefined,

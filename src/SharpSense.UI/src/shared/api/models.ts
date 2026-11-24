@@ -76,6 +76,37 @@ export const memoryIntents: MemoryIntent[] = [
   "Warning",
   "Decision",
 ];
+export type SearchNodeType =
+  | "Class"
+  | "Interface"
+  | "Method"
+  | "Property"
+  | "Field"
+  | "Document"
+  | "Component";
+export const searchNodeTypes: SearchNodeType[] = [
+  "Class",
+  "Interface",
+  "Method",
+  "Property",
+  "Field",
+  "Document",
+  "Component",
+];
+export type SearchFilters = {
+  project?: string;
+  nodeTypes?: SearchNodeType[];
+  includeMemories?: boolean;
+  tags?: string[];
+};
+export type MemoryListFilter = {
+  intents?: MemoryIntent[];
+  tags?: string[];
+  staleOnly?: boolean;
+  searchText?: string;
+  limit?: number;
+  offset?: number;
+};
 export type Memory = {
   id: string;
   targetFullyQualifiedName: string;
@@ -95,12 +126,13 @@ export type SearchHit = {
   endLine?: number;
 };
 export type ToolId =
-  "context" | "trace" | "inheritors" | "impact" | "graph_stats";
+  "context" | "trace" | "inheritors" | "impact" | "graph_stats" | "memories";
 export type ToolInput = {
   nodeId?: number;
   direction?: "caller" | "callee";
   maxDepth?: number;
   maxRelated?: number;
+  memoryFilter?: MemoryListFilter;
 };
 export type ToolSelection = {
   tool: ToolId;

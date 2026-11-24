@@ -51,7 +51,13 @@ export function SearchRoute() {
   const openTool = useOpenTool();
   return (
     <SearchPage
-      key={JSON.stringify([state.q, state.limit])}
+      key={JSON.stringify([
+        state.q,
+        state.limit,
+        state.project,
+        state.nodeTypes,
+        state.includeMemories,
+      ])}
       state={state}
       onStateChange={(next) => {
         void navigate({ search: next });
