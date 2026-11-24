@@ -346,11 +346,11 @@ public sealed class CliCommandTests
             "  file: src/Fixture.App/MessageConsumer.cs:20-28" + Environment.NewLine +
             Environment.NewLine +
             "incoming:" + Environment.NewLine +
-            $"  callers: [HttpEndpoint.Handle (Id:{CliCommandTestDatabase.CallerNodeId})]" + Environment.NewLine +
+            $"  callers: [HttpEndpoint.Handle (Id:{CliCommandTestDatabase.CallerNodeId} @ src/Fixture.App/HttpEndpoint.cs:5)]" + Environment.NewLine +
             "  implementers: []" + Environment.NewLine +
             Environment.NewLine +
             "outgoing:" + Environment.NewLine +
-            $"  callees: [MessageProvider.GetMessage (Id:{CliCommandTestDatabase.CalleeNodeId})]" + Environment.NewLine +
+            $"  callees: [MessageProvider.GetMessage (Id:{CliCommandTestDatabase.CalleeNodeId} @ src/Fixture.App/MessageProvider.cs:7)]" + Environment.NewLine +
             "  inherits: []" + Environment.NewLine +
             Environment.NewLine +
             "structural:" + Environment.NewLine +
@@ -386,7 +386,7 @@ public sealed class CliCommandTests
             Environment.NewLine +
             "incoming:" + Environment.NewLine +
             "  callers: []" + Environment.NewLine +
-            $"  implementers: [HtmlRenderer (Id:{CliCommandTestDatabase.HtmlRendererNodeId}), TerminalRenderer (Id:{CliCommandTestDatabase.TerminalRendererNodeId})]" + Environment.NewLine +
+            $"  implementers: [HtmlRenderer (Id:{CliCommandTestDatabase.HtmlRendererNodeId} @ src/Fixture.App/HtmlRenderer.cs:3), TerminalRenderer (Id:{CliCommandTestDatabase.TerminalRendererNodeId} @ src/Fixture.App/TerminalRenderer.cs:3)]" + Environment.NewLine +
             Environment.NewLine +
             "outgoing:" + Environment.NewLine +
             "  callees: []" + Environment.NewLine +
@@ -429,7 +429,7 @@ public sealed class CliCommandTests
             Environment.NewLine +
             "outgoing:" + Environment.NewLine +
             "  callees: []" + Environment.NewLine +
-            $"  inherits: [BaseRenderer (Id:{CliCommandTestDatabase.BaseClassNodeId})]" + Environment.NewLine +
+            $"  inherits: [BaseRenderer (Id:{CliCommandTestDatabase.BaseClassNodeId} @ src/Fixture.App/BaseRenderer.cs:3)]" + Environment.NewLine +
             Environment.NewLine +
             "structural:" + Environment.NewLine +
             "  parents: []" + Environment.NewLine +

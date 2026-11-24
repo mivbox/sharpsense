@@ -380,6 +380,19 @@
           },
           "name": {
             "type": "string"
+          },
+          "relativeFilePath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "startLine": {
+            "format": "int32",
+            "type": [
+              "null",
+              "integer"
+            ]
           }
         },
         "required": [

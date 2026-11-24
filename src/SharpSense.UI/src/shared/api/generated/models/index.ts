@@ -255,6 +255,14 @@ export interface Context360RelatedNode extends AdditionalDataHolder, Parsable {
      * The name property
      */
     name?: string | null;
+    /**
+     * The relativeFilePath property
+     */
+    relativeFilePath?: string | null;
+    /**
+     * The startLine property
+     */
+    startLine?: number | null;
 }
 export interface Context360Result extends AdditionalDataHolder, Parsable {
     /**
@@ -992,6 +1000,8 @@ export function deserializeIntoContext360RelatedNode(context360RelatedNode: Part
         "codeNodeId": n => { context360RelatedNode.codeNodeId = n.getNumberValue(); },
         "id": n => { context360RelatedNode.id = n.getNumberValue(); },
         "name": n => { context360RelatedNode.name = n.getStringValue(); },
+        "relativeFilePath": n => { context360RelatedNode.relativeFilePath = n.getStringValue(); },
+        "startLine": n => { context360RelatedNode.startLine = n.getNumberValue(); },
     }
 }
 /**
@@ -2492,6 +2502,8 @@ export function serializeContext360RelatedNode(writer: SerializationWriter, cont
     writer.writeNumberValue("codeNodeId", context360RelatedNode.codeNodeId);
     writer.writeNumberValue("id", context360RelatedNode.id);
     writer.writeStringValue("name", context360RelatedNode.name);
+    writer.writeStringValue("relativeFilePath", context360RelatedNode.relativeFilePath);
+    writer.writeNumberValue("startLine", context360RelatedNode.startLine);
     writer.writeAdditionalData(context360RelatedNode.additionalData);
 }
 /**

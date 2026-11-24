@@ -121,7 +121,11 @@ public sealed class ContextRepositoryTests
 
         result.Should().NotBeNull();
         result!.Callers.Select(static node => node.Name).Should().Equal("MessageConsumer.Render");
+        result.Callers[0].RelativeFilePath.Should().NotBeNullOrWhiteSpace();
+        result.Callers[0].StartLine.Should().BeGreaterThan(0);
         result.Parents.Select(static node => node.Name).Should().Equal("MessageProvider");
+        result.Parents[0].RelativeFilePath.Should().NotBeNullOrWhiteSpace();
+        result.Parents[0].StartLine.Should().BeGreaterThan(0);
         result.Callees.Should().BeEmpty();
         result.Implementers.Should().BeEmpty();
         result.Inherits.Should().BeEmpty();

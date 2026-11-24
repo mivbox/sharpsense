@@ -796,6 +796,7 @@ internal static class TokenObjectNotation
 
     private static string NormalizePathSeparators(string path)
         => path
+            .Replace('\\', '/')
             .Replace(Path.DirectorySeparatorChar, '/')
             .Replace(Path.AltDirectorySeparatorChar, '/');
 
@@ -966,8 +967,19 @@ internal static class TokenObjectNotation
 
             builder.Append(node.Name)
                 .Append(" (Id:")
-                .Append(node.Id)
-                .Append(')');
+                .Append(node.Id);
+            if (!string.IsNullOrWhiteSpace(node.RelativeFilePath))
+            {
+                builder.Append(" @ ")
+                    .Append(NormalizePathSeparators(node.RelativeFilePath));
+                if (node.StartLine is > 0)
+                {
+                    builder.Append(':')
+                        .Append(node.StartLine.Value);
+                }
+            }
+
+            builder.Append(')');
         }
 
         builder.Append(']');
