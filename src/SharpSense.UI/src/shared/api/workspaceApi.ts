@@ -11,6 +11,7 @@ import type {
   Context360Result,
   GraphStatsSnapshot,
   ImpactAnalysisResult,
+  ListMemoriesResult,
   TraceResponse,
 } from "./generated/models";
 import type {
@@ -22,6 +23,8 @@ import type {
   GraphPage,
   Memory,
   MemoryIntent,
+  MemoryListFilter,
+  SearchFilters,
   SearchHit,
   TreeResult,
   WorkspaceOverview,
@@ -290,16 +293,59 @@ export function createWorkspaceApi(workspaceId: string) {
       apiClient.api.memory.byMemoryId(memoryId).delete(requestConfiguration()),
     );
   }
+  async function listMemories(
+    filter: MemoryListFilter = {},
+    signal?: AbortSignal,
+  ): Promise<ListMemoriesResult> {
+    const queryParameters = {
+      ...(filter.intents && filter.intents.length > 0
+        ? { intents: filter.intents.join(",") }
+        : {}),
+      ...(filter.tags && filter.tags.length > 0
+        ? { tags: filter.tags.join(",") }
+        : {}),
+      ...(filter.staleOnly ? { staleOnly: true } : {}),
+      ...(filter.searchText?.trim()
+        ? { searchText: filter.searchText.trim() }
+        : {}),
+      ...(filter.limit !== undefined ? { limit: filter.limit } : {}),
+      ...(filter.offset !== undefined ? { offset: filter.offset } : {}),
+    };
+
+    return present(
+      await request(
+        () =>
+          apiClient.api.memory.list.get({
+            ...requestConfiguration(signal),
+            queryParameters,
+          }),
+        signal,
+      ),
+    );
+  }
   async function searchWorkspace(
     query: string,
     limit: number,
     signal?: AbortSignal,
+    filters?: SearchFilters,
   ): Promise<SearchHit[]> {
+    const project = filters?.project?.trim();
     const result = present(
       await request(
         () =>
           apiClient.api.tools.search.post(
-            { query, limit },
+            {
+              query,
+              limit,
+              ...(project ? { project } : {}),
+              ...(filters?.nodeTypes && filters.nodeTypes.length > 0
+                ? { nodeTypes: filters.nodeTypes }
+                : {}),
+              ...(filters?.includeMemories ? { includeMemories: true } : {}),
+              ...(filters?.tags && filters.tags.length > 0
+                ? { tags: filters.tags }
+                : {}),
+            },
             requestConfiguration(signal),
           ),
         signal,
@@ -415,6 +461,7 @@ export function createWorkspaceApi(workspaceId: string) {
     getGraphNodeConnections,
     getNodeMemories,
     getMemory,
+    listMemories,
     addMemory,
     deleteMemory,
     searchWorkspace,

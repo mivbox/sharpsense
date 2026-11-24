@@ -11,6 +11,8 @@ using SharpSense.Application.Memory.GetMemory;
 using SharpSense.Application.Memory.GetMemory.Models;
 using SharpSense.Application.Memory.GetNodeMemories;
 using SharpSense.Application.Memory.GetNodeMemories.Models;
+using SharpSense.Application.Memory.ListMemories;
+using SharpSense.Application.Memory.ListMemories.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
 
@@ -29,6 +31,8 @@ public static class MemoryServiceCollectionExtensions
         services.TryAddTransient<IQueryHandler<GetMemoryQuery, Result<MemoryNode>>, GetMemoryQueryHandler>();
         services
             .TryAddTransient<IQueryHandler<GetMemoriesQuery, Result<IReadOnlyDictionary<Guid, MemoryNode>>>, GetMemoriesQueryHandler>();
+        services
+            .TryAddTransient<IQueryHandler<ListMemoriesQuery, Result<ListMemoriesResult>>, ListMemoriesQueryHandler>();
 
         return services;
     }

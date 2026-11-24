@@ -5,12 +5,13 @@ Trace follows dependencies for an indexed node:
 ```bash
 sharpsense trace 42 --workspace product --direction callee --toon
 sharpsense trace 42 --workspace product --direction caller
+sharpsense trace 42 --workspace product --direction caller --max-depth 3 --toon
 sharpsense trace 42 --workspace product --include-memories --include-structural
 ```
 
 The identifier can resolve an indexed node, but the numeric ID from search is the most direct choice. Fully qualified names can be ambiguous when separate projects declare the same name.
 
-`callee` is the default direction. CLI caller tracing returns direct callers; it does not enumerate an unlimited transitive impact graph. Structural containment edges are excluded unless `--include-structural` is supplied. JSON is the default; `--toon` emits compact trace output.
+`callee` is the default direction. CLI tracing defaults to `--max-depth 1` (immediate callers or callees); pass `--max-depth` (`1` to `10`) for multi-hop transitive traversal. Structural containment edges are excluded unless `--include-structural` is supplied. JSON is the default; `--toon` emits compact trace output.
 
 `--include-memories` adds note metadata and stale indicators. Use [memory get](memory-command.md) to retrieve full content. With this flag, JSON is an object containing
 `rootNode`, the related `nodes` array, and `memoriesByNodeId`, keyed by persisted node ID. Each memory contains

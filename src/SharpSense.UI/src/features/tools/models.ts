@@ -3,6 +3,7 @@ import type {
   Context360Result,
   GraphStatsSnapshot,
   ImpactAnalysisResult,
+  ListMemoriesResult,
   TraceResponse,
 } from "../../shared/api/generated/models";
 import type { ToolId } from "../../shared/api/models";
@@ -13,6 +14,7 @@ type ToolResponses = {
   inheritors: CodeNodeResult[];
   impact: ImpactAnalysisResult;
   graph_stats: GraphStatsSnapshot;
+  memories: ListMemoriesResult;
 };
 
 export type ToolResult = {

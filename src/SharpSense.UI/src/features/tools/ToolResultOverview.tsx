@@ -10,6 +10,7 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
+import type { ListMemoriesResult } from "../../shared/api/generated/models";
 import { GraphStatsView } from "../diagnostics/GraphStatsView";
 import type { ToolResult } from "./models";
 import {
@@ -30,6 +31,7 @@ export function ToolResultOverview({
   const overview = useMemo(() => {
     switch (result.tool) {
       case "graph_stats":
+      case "memories":
         return null;
       case "context":
         return contextOverview(result.data);
@@ -43,10 +45,110 @@ export function ToolResultOverview({
   }, [result]);
   if (result.tool === "graph_stats")
     return <GraphStatsView stats={result.data} />;
+  if (result.tool === "memories")
+    return (
+      <WorkspaceMemoriesOverview result={result.data} onInspect={onInspect} />
+    );
   return (
     overview && (
       <SymbolResultOverview overview={overview} onInspect={onInspect} />
     )
+  );
+}
+
+function WorkspaceMemoriesOverview({
+  result,
+  onInspect,
+}: {
+  result: ListMemoriesResult;
+  onInspect: (nodeId: number) => void;
+}) {
+  const items = result.items ?? [];
+  const totalCount = result.totalCount ?? items.length;
+  const staleCount = result.staleCount ?? 0;
+
+  return (
+    <Stack spacing={2}>
+      <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+        <Chip
+          size="small"
+          label={`${items.length} of ${totalCount} memories`}
+        />
+        <Chip
+          size="small"
+          color={staleCount > 0 ? "warning" : "default"}
+          variant="outlined"
+          label={`${staleCount} stale`}
+        />
+        {result.hasMore && (
+          <Chip size="small" variant="outlined" label="More available" />
+        )}
+      </Stack>
+      {items.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          No persisted memories match the selected filters.
+        </Typography>
+      ) : (
+        <List dense aria-label="Workspace memories">
+          {items.map((item, index) => {
+            const targetId =
+              item.targetCodeNodeId != null &&
+              Number.isSafeInteger(item.targetCodeNodeId) &&
+              item.targetCodeNodeId > 0
+                ? item.targetCodeNodeId
+                : undefined;
+            const targetLabel =
+              item.targetFullyQualifiedName || "Unnamed symbol";
+
+            return (
+              <ListItemButton
+                key={item.id ?? index}
+                disabled={targetId === undefined}
+                onClick={() => targetId !== undefined && onInspect(targetId)}
+                aria-label={`Inspect ${targetLabel} memory target`}
+                sx={{ alignItems: "flex-start" }}
+              >
+                <ListItemText
+                  primary={targetLabel}
+                  secondary={[
+                    item.contentPreview,
+                    [
+                      item.targetRelativeFilePath,
+                      targetId ? "#" + targetId : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · "),
+                  ]
+                    .filter(Boolean)
+                    .join(" — ")}
+                  slotProps={{
+                    primary: {
+                      variant: "body2",
+                      sx: { overflowWrap: "anywhere" },
+                    },
+                    secondary: {
+                      sx: { overflowWrap: "anywhere" },
+                    },
+                  }}
+                />
+                <Stack
+                  direction="row"
+                  spacing={0.5}
+                  sx={{ ml: 1, flexShrink: 0, alignItems: "center" }}
+                >
+                  {item.intent && (
+                    <Chip label={item.intent} size="small" variant="outlined" />
+                  )}
+                  {item.isStale && (
+                    <Chip label="Stale" size="small" color="warning" />
+                  )}
+                </Stack>
+              </ListItemButton>
+            );
+          })}
+        </List>
+      )}
+    </Stack>
   );
 }
 
@@ -131,7 +233,14 @@ function SymbolResultGroup({
     <Box>
       <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
         <Typography variant="subtitle2">{group.title}</Typography>
-        <Chip size="small" label={group.items.length} />
+        <Chip
+          size="small"
+          label={
+            group.total !== undefined && group.total > group.items.length
+              ? `${group.items.length} of ${group.total}`
+              : group.items.length
+          }
+        />
       </Stack>
       {items.length === 0 ? (
         <Typography

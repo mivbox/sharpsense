@@ -30,6 +30,13 @@
           "intent": {
             "$ref": "#/components/schemas/MemoryIntent"
           },
+          "isStale": {
+            "type": "boolean"
+          },
+          "memoryId": {
+            "format": "uuid",
+            "type": "string"
+          },
           "nodeId": {
             "format": "int32",
             "type": "integer"
@@ -41,7 +48,9 @@
         "required": [
           "ok",
           "nodeId",
-          "intent"
+          "memoryId",
+          "intent",
+          "isStale"
         ],
         "type": "object"
       },
@@ -405,6 +414,15 @@
             },
             "type": "array"
           },
+          "includedSections": {
+            "items": {
+              "$ref": "#/components/schemas/ContextSection"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
           "inherits": {
             "items": {
               "$ref": "#/components/schemas/Context360RelatedNode"
@@ -419,10 +437,58 @@
           },
           "targetNode": {
             "$ref": "#/components/schemas/Context360Node"
+          },
+          "totals": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Context360Totals"
+              }
+            ]
           }
         },
         "required": [
           "targetNode",
+          "callers",
+          "implementers",
+          "callees",
+          "inherits",
+          "parents",
+          "children"
+        ],
+        "type": "object"
+      },
+      "Context360Totals": {
+        "description": "Total distinct related node counts per Context360 bucket before applying the per-bucket result limit.",
+        "properties": {
+          "callees": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "callers": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "children": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "implementers": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "inherits": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "parents": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
           "callers",
           "implementers",
           "callees",
@@ -442,12 +508,32 @@
           "nodeId": {
             "format": "int32",
             "type": "integer"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ContextSection"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
           }
         },
         "required": [
           "nodeId"
         ],
         "type": "object"
+      },
+      "ContextSection": {
+        "description": "Selects individual relationship buckets returned by a Context360 query.",
+        "enum": [
+          "Callers",
+          "Implementers",
+          "Callees",
+          "Inherits",
+          "Parents",
+          "Children"
+        ]
       },
       "CreateWorkspaceRequest": {
         "properties": {
@@ -1252,6 +1338,35 @@
         ],
         "type": "object"
       },
+      "ListMemoriesResult": {
+        "description": "Paged result of workspace memories matching a ListMemoriesQuery, including aggregate totals for the\nmatched filter scope.",
+        "properties": {
+          "hasMore": {
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryNodeSummary"
+            },
+            "type": "array"
+          },
+          "staleCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "totalCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "totalCount",
+          "staleCount",
+          "hasMore"
+        ],
+        "type": "object"
+      },
       "MemoryIntent": {
         "description": "Classifies the human or AI intent of a persistent semantic memory. The agent can filter retrievals by intent\nso a MemoryIntent.Warning survives an unrelated MemoryIntent.Todo sweep, and a MemoryIntent.Decision\ncan be queried separately from a MemoryIntent.Convention.",
         "enum": [
@@ -1307,6 +1422,56 @@
           "intent",
           "createdAt",
           "isStale"
+        ],
+        "type": "object"
+      },
+      "MemoryNodeSummary": {
+        "description": "Summarizes a persisted semantic memory and its owning indexed code node without transferring full Markdown content.",
+        "properties": {
+          "contentPreview": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "intent": {
+            "$ref": "#/components/schemas/MemoryIntent"
+          },
+          "isStale": {
+            "type": "boolean"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "targetCodeNodeId": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "targetFullyQualifiedName": {
+            "type": "string"
+          },
+          "targetRelativeFilePath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "targetCodeNodeId",
+          "targetFullyQualifiedName",
+          "targetRelativeFilePath",
+          "intent",
+          "tags",
+          "isStale",
+          "createdAt",
+          "contentPreview"
         ],
         "type": "object"
       },
@@ -1379,13 +1544,41 @@
       },
       "SearchRequest": {
         "properties": {
+          "includeMemories": {
+            "default": false,
+            "type": "boolean"
+          },
           "limit": {
             "default": 10,
             "format": "int32",
             "type": "integer"
           },
+          "nodeTypes": {
+            "items": {
+              "$ref": "#/components/schemas/NodeType"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
+          },
+          "project": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "query": {
             "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
           }
         },
         "required": [
@@ -1434,6 +1627,19 @@
           "direction": {
             "default": "callee",
             "type": "string"
+          },
+          "includeStructural": {
+            "default": false,
+            "type": "boolean"
+          },
+          "includedEdgeTypes": {
+            "items": {
+              "$ref": "#/components/schemas/EdgeType"
+            },
+            "type": [
+              "null",
+              "array"
+            ]
           },
           "maxDepth": {
             "default": 3,
@@ -2175,6 +2381,92 @@
                     "$ref": "#/components/schemas/MemoryNode"
                   },
                   "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          }
+        },
+        "tags": [
+          "Memory"
+        ]
+      }
+    },
+    "/api/memory/list": {
+      "get": {
+        "operationId": "ListMemories",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "intents",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tags",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "staleOnly",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "searchText",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Stable ID of the registered workspace used for this request. Obtain it from the workspace catalog.",
+            "in": "header",
+            "name": "X-SharpSense-Workspace",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListMemoriesResult"
                 }
               }
             },

@@ -1140,6 +1140,7 @@ public sealed class UiCommandIntegrationTests
             }
 
 
+            string addedMemoryId;
             using (var addResponse = await httpClient.PostAsync(
                 $"{baseUrl}/api/memory/node/{nodeId}",
                 new StringContent(
@@ -1149,6 +1150,24 @@ public sealed class UiCommandIntegrationTests
                 ct))
             {
                 addResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+                using var addDocument = JsonDocument.Parse(await addResponse.Content.ReadAsStringAsync(ct));
+                addedMemoryId = addDocument.RootElement.GetProperty("memoryId").GetString()!;
+                Guid.TryParse(addedMemoryId, out var parsedId).Should().BeTrue();
+                parsedId.Should().NotBe(Guid.Empty);
+                addDocument.RootElement.GetProperty("isStale").GetBoolean().Should().BeFalse();
+            }
+
+            var workspaceListJson = await httpClient.GetStringAsync(
+                $"{baseUrl}/api/memory/list?intents=Invariant&tags=convention&searchText=Always",
+                ct);
+            using (var workspaceListDoc = JsonDocument.Parse(workspaceListJson))
+            {
+                workspaceListDoc.RootElement.GetProperty("totalCount").GetInt32().Should().Be(1);
+                workspaceListDoc.RootElement.GetProperty("staleCount").GetInt32().Should().Be(0);
+                workspaceListDoc.RootElement.GetProperty("hasMore").GetBoolean().Should().BeFalse();
+                var item = workspaceListDoc.RootElement.GetProperty("items").EnumerateArray().Should().ContainSingle().Which;
+                item.GetProperty("id").GetString().Should().Be(addedMemoryId);
+                item.GetProperty("targetCodeNodeId").GetInt32().Should().Be(nodeId);
             }
 
             var listJson = await httpClient.GetStringAsync(

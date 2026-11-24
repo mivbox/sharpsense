@@ -1,6 +1,7 @@
 using SharpSense.Application.ImpactAnalysis.Models;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Application.Trace.Trace.Models;
+using SharpSense.Domain.KnowledgeGraph.Enums;
 
 namespace SharpSense.Application.Trace.Abstractions;
 
@@ -13,6 +14,9 @@ public interface ITraceNavigator
     /// <summary>Returns immediate downstream nodes using the query's edge filter.</summary>
     Task<CodeNodeResult[]> GetCallees(TraceQuery query, CancellationToken ct);
 
-    /// <summary>Returns functional dependencies between the supplied visible trace nodes.</summary>
-    Task<ImpactedDependencyEdge[]> GetDependencies(IReadOnlyCollection<CodeNodeResult> nodes, CancellationToken ct);
+    /// <summary>Returns dependencies between the supplied visible trace nodes matching the optional edge filter.</summary>
+    Task<ImpactedDependencyEdge[]> GetDependencies(
+        IReadOnlyCollection<CodeNodeResult> nodes,
+        EdgeType[]? includedEdgeTypes,
+        CancellationToken ct);
 }

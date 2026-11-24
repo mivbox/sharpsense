@@ -91,7 +91,8 @@ public sealed class McpHostIntegrationTests
                 "trace_node",
                 "get_inheritors",
                 "get_memory",
-                "get_memories"
+                "get_memories",
+                "list_memories"
             ];
             tools.Where(tool => readTools.Contains(tool.Name))
                 .Should().HaveCount(readTools.Length)

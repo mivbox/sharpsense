@@ -13,6 +13,13 @@ export const toolDefinitions: {
       "Inspect graph size, languages, memories, embedding coverage, and the latest indexing outcome. This tool reads the whole workspace and needs no symbol.",
   },
   {
+    id: "memories",
+    label: "Workspace memories",
+    description: "Browse and audit notes across the workspace.",
+    detail:
+      "Filter persisted memories by intent, tag, text, or staleness without needing a symbol ID first.",
+  },
+  {
     id: "context",
     label: "Context",
     description: "Understand a symbol’s neighborhood.",

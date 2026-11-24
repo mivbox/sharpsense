@@ -8,6 +8,7 @@ using SharpSense.Application.Memory.DeleteMemory.Models;
 using SharpSense.Application.Memory.GetMemories.Models;
 using SharpSense.Application.Memory.GetMemory.Models;
 using SharpSense.Application.Memory.GetNodeMemories.Models;
+using SharpSense.Application.Memory.ListMemories.Models;
 using SharpSense.Application.Shared.Abstractions;
 using SharpSense.Cli.Shared;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
@@ -50,6 +51,18 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
         [CommandOption("--intent-filter <INTENT>")]
         public string[]? IntentFilterRaw { get; init; }
 
+        [CommandOption("--stale-only")]
+        public bool StaleOnly { get; init; }
+
+        [CommandOption("--query <QUERY>")]
+        public string? Query { get; init; }
+
+        [CommandOption("--limit <LIMIT>")]
+        public int Limit { get; init; } = 50;
+
+        [CommandOption("--offset <OFFSET>")]
+        public int Offset { get; init; }
+
         public override ValidationResult Validate()
         {
             if (!string.Equals(Action, "add", StringComparison.OrdinalIgnoreCase)
@@ -71,9 +84,14 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
                 return ValidationResult.Error("`remove` requires --memory-id.");
             }
 
-            if (string.Equals(Action, "list", StringComparison.OrdinalIgnoreCase) && NodeId is null)
+            if (string.Equals(Action, "list", StringComparison.OrdinalIgnoreCase) && Limit < 1)
             {
-                return ValidationResult.Error("`list` requires --node-id.");
+                return ValidationResult.Error("--limit must be greater than zero.");
+            }
+
+            if (string.Equals(Action, "list", StringComparison.OrdinalIgnoreCase) && Offset < 0)
+            {
+                return ValidationResult.Error("--offset must not be negative.");
             }
 
             if (string.Equals(Action, "get", StringComparison.OrdinalIgnoreCase)
@@ -198,7 +216,7 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
             return 1;
         }
 
-        CommandOutput.Write(
+        WriteLine(
             context,
             $"removed_memory: {settings.MemoryId.Value}");
 
@@ -221,9 +239,36 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
                 .ToArray();
         }
 
+        if (settings.NodeId is null)
+        {
+            var workspaceResult = await services
+                .GetRequiredService<IQueryHandler<ListMemoriesQuery, Result<ListMemoriesResult>>>()
+                .Handle(
+                    new ListMemoriesQuery(
+                        intentFilter,
+                        settings.Tags,
+                        settings.StaleOnly,
+                        settings.Query,
+                        settings.Limit,
+                        settings.Offset),
+                    ct);
+            if (workspaceResult.IsFailed)
+            {
+                CommandOutput.Write(
+                    context,
+                    $"list failed: {string.Join("; ", workspaceResult.Errors.Select(static error => error.Message))}");
+
+                return 1;
+            }
+
+            WriteLine(context, TokenObjectNotation.SerializeMemoryList(workspaceResult.Value));
+
+            return 0;
+        }
+
         var memoriesResult = await services
             .GetRequiredService<IQueryHandler<GetNodeMemoriesQuery, Result<MemoryNode[]>>>()
-            .Handle(new GetNodeMemoriesQuery(settings.NodeId!.Value, intentFilter), ct);
+            .Handle(new GetNodeMemoriesQuery(settings.NodeId.Value, intentFilter), ct);
 
         if (memoriesResult.IsFailed)
         {
@@ -288,7 +333,7 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
                 return 1;
             }
 
-            CommandOutput.Write(context, TokenObjectNotation.SerializeMemories(batchResult.Value!));
+            WriteLine(context, TokenObjectNotation.SerializeMemories(batchResult.Value!));
 
             return 0;
         }
@@ -305,9 +350,18 @@ internal sealed class MemoryCommand : AbstractAsyncCommand<MemoryCommand.Setting
             return 1;
         }
 
-        CommandOutput.Write(context, TokenObjectNotation.SerializeMemory(result.Value!));
+        WriteLine(context, TokenObjectNotation.SerializeMemory(result.Value!));
 
         return 0;
+    }
+
+    private static void WriteLine(CommandContext context, string output)
+    {
+        var terminated = output.EndsWith(Environment.NewLine, StringComparison.Ordinal)
+            ? output
+            : output + Environment.NewLine;
+
+        CommandOutput.Write(context, terminated);
     }
 
     private static int Fail(CommandContext context, string message)

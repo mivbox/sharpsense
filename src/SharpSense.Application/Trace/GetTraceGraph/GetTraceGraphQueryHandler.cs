@@ -24,6 +24,18 @@ internal sealed class GetTraceGraphQueryHandler(ITraceNavigator navigator, IImpa
                 "A positive nodeId, caller/callee direction, and maxDepth between 1 and 10 are required."));
         }
 
+        if (query.IncludedEdgeTypes?.Any(static edgeType => !Enum.IsDefined(edgeType)) == true)
+        {
+            return Result.Fail(new ServiceError(
+                ServiceErrorCode.InvalidArgument,
+                "Included edge types must be valid graph edge types."));
+        }
+
+        var includedEdgeTypes = query.IncludedEdgeTypes is { Length: > 0 }
+            ? query.IncludedEdgeTypes
+                .Distinct()
+                .ToArray()
+            : null;
         var identifier = query.NodeId.ToString(CultureInfo.InvariantCulture);
         var root = await navigator.GetRootNode(identifier, ct);
         if (root is null)
@@ -35,7 +47,12 @@ internal sealed class GetTraceGraphQueryHandler(ITraceNavigator navigator, IImpa
 
         if (query.Direction == TraceDirection.Caller)
         {
-            var impact = await impactAnalyzer.Analyze(new ImpactAnalysisQuery(identifier, query.MaxDepth), ct);
+            var impact = await impactAnalyzer.Analyze(
+                new ImpactAnalysisQuery(
+                    identifier,
+                    query.MaxDepth,
+                    IncludedEdgeTypes: includedEdgeTypes),
+                ct);
             var callers = impact.ImpactedNodes
                 .Select(node => new CodeNodeResult(
                     node.Id,
@@ -70,7 +87,9 @@ internal sealed class GetTraceGraphQueryHandler(ITraceNavigator navigator, IImpa
             var next = new List<int>();
             foreach (var id in frontier)
             {
-                var callees = await navigator.GetCallees(new TraceQuery(id.ToString(CultureInfo.InvariantCulture)), ct);
+                var callees = await navigator.GetCallees(
+                    new TraceQuery(id.ToString(CultureInfo.InvariantCulture), includedEdgeTypes),
+                    ct);
                 foreach (var node in callees)
                 {
                     if (visited.ContainsKey(node.Id))
@@ -92,7 +111,7 @@ internal sealed class GetTraceGraphQueryHandler(ITraceNavigator navigator, IImpa
             frontier = next;
         }
 
-        var dependencies = await navigator.GetDependencies(visited.Values, ct);
+        var dependencies = await navigator.GetDependencies(visited.Values, includedEdgeTypes, ct);
         var nodes = visited.Values
             .Where(node => node.Id != root.Id)
             .ToArray();

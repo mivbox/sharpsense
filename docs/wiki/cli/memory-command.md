@@ -7,22 +7,26 @@ sharpsense memory add --workspace product --node-id 42 \
   --content "Keep this operation idempotent." --intent Invariant --tag reliability
 sharpsense memory list --workspace product --node-id 42
 sharpsense memory list --workspace product --node-id 42 --intent-filter Invariant
+sharpsense memory list --workspace product --stale-only --intent-filter Invariant --query "transaction" --limit 50
 sharpsense memory get --workspace product --memory-id "<memory-guid>"
 sharpsense memory get --workspace product --memory-ids "<first-guid>" --memory-ids "<second-guid>"
 sharpsense memory remove --workspace product --memory-id "<memory-guid>"
 ```
 
-The add command prints the identity and content returned by its own save, even when another writer attaches a note concurrently. Replace placeholder IDs with values returned by search or memory commands. Quote values containing shell-special characters.
+The add command prints the identity and content returned by its own save, even when another writer attaches a note concurrently. Omitting `--node-id` on `list` queries across the whole workspace and prints compact metadata summaries with total and stale counts; use `get` to read full Markdown content. Replace placeholder IDs with values returned by search or memory commands. Quote values containing shell-special characters.
 
 | Option | Purpose |
 | --- | --- |
-| `--node-id` | Required for add and list; an integer ID in the selected workspace. |
+| `--node-id` | Required for add; optional for list (omit to list across the whole workspace). |
 | `--content` | Required Markdown content for add. |
 | `--memory-id` | A memory GUID for get or remove. |
 | `--memory-ids` | Repeat once per memory GUID for batch get. |
-| `--tag` | Repeatable tags for add; normalized and deduplicated. |
+| `--tag` | Repeatable tags for add or workspace list filtering; normalized and deduplicated. |
 | `--intent` | Convention, Invariant, Todo, Warning, or Decision; defaults to Convention. |
 | `--intent-filter` | Repeatable intent filters for list. |
+| `--stale-only` | For workspace list: return only memories whose target hash has changed. |
+| `--query` | For workspace list: case-insensitive match across content, symbol, path, and tags. |
+| `--limit` / `--offset` | For workspace list: page size (1–200, default 50) and starting offset (default 0). |
 
 Memories are immutable. Save and verify a replacement before deleting the superseded note when content changes. A memory is marked stale when its saved target hash differs from the current node hash. Markdown root memories track the whole document; section memories track their own heading and body. The first reindex after upgrading conservatively marks older Markdown memories stale because they were attached without a content hash. Tags may be omitted, but null elements in a supplied tag list are rejected. Undefined memory intents are rejected before saving.
 

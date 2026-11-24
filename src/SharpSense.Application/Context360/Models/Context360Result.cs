@@ -7,4 +7,6 @@ public sealed record Context360Result(
     Context360RelatedNode[] Callees,
     Context360RelatedNode[] Inherits,
     Context360RelatedNode[] Parents,
-    Context360RelatedNode[] Children);
+    Context360RelatedNode[] Children,
+    Context360Totals? Totals = null,
+    ContextSection[]? IncludedSections = null);

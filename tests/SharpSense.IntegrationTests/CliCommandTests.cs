@@ -1120,6 +1120,84 @@ public sealed class CliCommandTests
         }
     }
 
+    [Fact]
+    public async Task WhenMemoryListRunsWithoutNodeId_ThenListsWorkspaceMemoriesWithTrailingNewline()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await CliCommandTestDatabase.Create(ct);
+
+        using var addConsole = new TestConsole();
+        var addExit = await CreateCommandApp(addConsole, database).RunAsync(
+            [
+                "memory",
+                "add",
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--content",
+                "Keep rendering deterministic.",
+                "--intent",
+                "Invariant",
+                "--tag",
+                "rendering",
+                "--repo-root",
+                RepositoryRoot
+            ],
+            ct);
+        addExit.Should().Be(0);
+
+        using var listConsole = new TestConsole();
+        var listExit = await CreateCommandApp(listConsole, database).RunAsync(
+            [
+                "memory",
+                "list",
+                "--intent-filter",
+                "Invariant",
+                "--tag",
+                "rendering",
+                "--query",
+                "deterministic",
+                "--repo-root",
+                RepositoryRoot
+            ],
+            ct);
+
+        listExit.Should().Be(0);
+        listConsole.Output.Should().EndWith(Environment.NewLine);
+        listConsole.Output.Should().Contain("memories: 1 of 1 (stale: 0, has_more: false)");
+        listConsole.Output.Should().Contain("Keep rendering deterministic.");
+    }
+
+    [Fact]
+    public async Task WhenContextRunsWithSectionFilter_ThenOutputsOnlyRequestedSectionAndOmissions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var database = await CliCommandTestDatabase.Create(ct);
+        using var console = new TestConsole();
+        var app = CreateCommandApp(console, database);
+
+        var exitCode = await app.RunAsync(
+            [
+                "context",
+                "--node-id",
+                CliCommandTestDatabase.SeedNodeId.ToString(CultureInfo.InvariantCulture),
+                "--section",
+                "Callers",
+                "--limit",
+                "5",
+                "--toon",
+                "--repo-root",
+                RepositoryRoot
+            ],
+            ct);
+
+        exitCode.Should().Be(0);
+        console.Output.Should().Contain("incoming:");
+        console.Output.Should().Contain("callers: [HttpEndpoint.Handle");
+        console.Output.Should().NotContain("outgoing:");
+        console.Output.Should().NotContain("structural:");
+        console.Output.Should().Contain("omitted_sections: [Implementers, Callees, Inherits, Parents, Children]");
+    }
+
     private static async Task<Guid> GetSingleMemoryId(CliCommandTestDatabase database, CancellationToken ct)
     {
         await using var context = await database.GetDbContext(ct);

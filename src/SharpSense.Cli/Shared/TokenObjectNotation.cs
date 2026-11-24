@@ -2,6 +2,7 @@ using SharpSense.Application.CommandExecution.Models;
 using SharpSense.Application.Context360.Models;
 using SharpSense.Application.HybridSearch.Models;
 using SharpSense.Application.ImpactAnalysis.Models;
+using SharpSense.Application.Memory.ListMemories.Models;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Domain.KnowledgeGraph.Nodes;
@@ -28,7 +29,9 @@ internal static class TokenObjectNotation
     public static string SerializeCalleeTrace(
         CodeNodeResult rootNode,
         IReadOnlyList<CodeNodeResult> callees,
-        IReadOnlyDictionary<int, MemoryNode[]>? memoriesByNodeId = null)
+        IReadOnlyDictionary<int, MemoryNode[]>? memoriesByNodeId = null,
+        IReadOnlyList<ImpactedDependencyEdge>? dependencies = null,
+        bool truncated = false)
     {
         ArgumentNullException.ThrowIfNull(rootNode);
         ArgumentNullException.ThrowIfNull(callees);
@@ -36,10 +39,24 @@ internal static class TokenObjectNotation
         var builder = new StringBuilder();
         AppendTraceLine(builder, 0, rootNode, memoriesByNodeId);
 
-        foreach (var callee in callees)
+        if (callees.Count > 0 && dependencies is { Count: > 0 })
         {
-            builder.AppendLine();
-            AppendTraceLine(builder, 1, callee, memoriesByNodeId);
+            AppendCalleeTree(builder, rootNode, callees, dependencies, memoriesByNodeId);
+        }
+        else
+        {
+            foreach (var callee in callees)
+            {
+                builder.AppendLine();
+                AppendTraceLine(builder, 1, callee, memoriesByNodeId);
+            }
+        }
+
+        if (truncated)
+        {
+            builder.AppendLine()
+                .AppendLine()
+                .Append("truncated: true (reached 1000-node limit; reduce maxDepth to narrow results)");
         }
 
         AppendMemorySummary(builder, rootNode, callees, memoriesByNodeId);
@@ -149,6 +166,13 @@ internal static class TokenObjectNotation
         ArgumentException.ThrowIfNullOrWhiteSpace(result.TargetNode.Name);
         ArgumentException.ThrowIfNullOrWhiteSpace(result.TargetNode.RelativeFilePath);
 
+        var includedSections = result.IncludedSections is { Length: > 0 }
+            ? result.IncludedSections.ToHashSet()
+            : Enum.GetValues<ContextSection>().ToHashSet();
+        var omittedSections = Enum.GetValues<ContextSection>()
+            .Where(section => !includedSections.Contains(section))
+            .ToArray();
+
         var builder = new StringBuilder();
         builder.AppendLine("node:");
         builder.Append("  id: ")
@@ -165,37 +189,81 @@ internal static class TokenObjectNotation
             .Append(':')
             .Append(result.TargetNode.StartLine)
             .Append('-')
-            .Append(result.TargetNode.EndLine)
-            .AppendLine();
-        builder.AppendLine();
-        builder.AppendLine("incoming:");
-        builder.Append("  callers: ")
-            .Append(FormatContext360RelatedNodes(result.Callers))
-            .AppendLine();
-        builder.Append("  implementers: ")
-            .Append(FormatContext360RelatedNodes(result.Implementers))
-            .AppendLine();
-        builder.AppendLine();
-        builder.AppendLine("outgoing:");
-        builder.Append("  callees: ")
-            .Append(FormatContext360RelatedNodes(result.Callees))
-            .AppendLine();
-        builder.Append("  inherits: ")
-            .Append(FormatContext360RelatedNodes(result.Inherits))
-            .AppendLine();
-        builder.AppendLine();
-        builder.AppendLine("structural:");
-        builder.Append("  parents: ")
-            .Append(FormatContext360RelatedNodes(result.Parents))
-            .AppendLine();
-        builder.Append("  children: ")
-            .Append(FormatContext360RelatedNodes(result.Children));
+            .Append(result.TargetNode.EndLine);
+
+        if (includedSections.Contains(ContextSection.Callers) || includedSections.Contains(ContextSection.Implementers))
+        {
+            builder.AppendLine();
+            builder.AppendLine();
+            builder.Append("incoming:");
+            if (includedSections.Contains(ContextSection.Callers))
+            {
+                AppendContextBucket(builder, "callers", result.Callers, result.Totals?.Callers);
+            }
+
+            if (includedSections.Contains(ContextSection.Implementers))
+            {
+                AppendContextBucket(builder, "implementers", result.Implementers, result.Totals?.Implementers);
+            }
+        }
+
+        if (includedSections.Contains(ContextSection.Callees) || includedSections.Contains(ContextSection.Inherits))
+        {
+            builder.AppendLine();
+            builder.AppendLine();
+            builder.Append("outgoing:");
+            if (includedSections.Contains(ContextSection.Callees))
+            {
+                AppendContextBucket(builder, "callees", result.Callees, result.Totals?.Callees);
+            }
+
+            if (includedSections.Contains(ContextSection.Inherits))
+            {
+                AppendContextBucket(builder, "inherits", result.Inherits, result.Totals?.Inherits);
+            }
+        }
+
+        if (includedSections.Contains(ContextSection.Parents) || includedSections.Contains(ContextSection.Children))
+        {
+            builder.AppendLine();
+            builder.AppendLine();
+            builder.Append("structural:");
+            if (includedSections.Contains(ContextSection.Parents))
+            {
+                AppendContextBucket(builder, "parents", result.Parents, result.Totals?.Parents);
+            }
+
+            if (includedSections.Contains(ContextSection.Children))
+            {
+                AppendContextBucket(builder, "children", result.Children, result.Totals?.Children);
+            }
+        }
+
+        if (omittedSections.Length > 0)
+        {
+            builder.AppendLine();
+            builder.AppendLine();
+            builder.Append("omitted_sections: [")
+                .Append(string.Join(", ", omittedSections))
+                .Append(']');
+        }
+
         if (semanticContext is { Count: > 0 })
         {
             var staleCount = semanticContext.Count(static memory => memory.IsStale);
-            builder.AppendLine()
-                .Append("  memories: ")
-                .Append(semanticContext.Count)
+            if (omittedSections.Length == 0)
+            {
+                builder.AppendLine()
+                    .Append("  memories: ");
+            }
+            else
+            {
+                builder.AppendLine()
+                    .AppendLine()
+                    .Append("memories: ");
+            }
+
+            builder.Append(semanticContext.Count)
                 .Append(" (")
                 .Append(staleCount)
                 .Append(" stale; use get_memory <id> to fetch content)");
@@ -260,6 +328,52 @@ internal static class TokenObjectNotation
             builder.AppendLine();
         }
         builder.Length -= Environment.NewLine.Length;
+
+        return builder.ToString();
+    }
+
+    public static string SerializeMemoryList(ListMemoriesResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(result.Items);
+
+        var builder = new StringBuilder()
+            .Append("memories: ")
+            .Append(result.Items.Length)
+            .Append(" of ")
+            .Append(result.TotalCount)
+            .Append(" (stale: ")
+            .Append(result.StaleCount)
+            .Append(", has_more: ")
+            .Append(result.HasMore ? "true" : "false")
+            .Append(')');
+
+        foreach (var memory in result.Items)
+        {
+            builder.AppendLine()
+                .Append("- [")
+                .Append(GetNodeTypeShorthand(NodeType.Memory))
+                .Append("] id=")
+                .Append(memory.Id)
+                .Append(" node=")
+                .Append(memory.TargetCodeNodeId)
+                .Append(" intent=")
+                .Append(memory.Intent)
+                .Append(" stale=")
+                .Append(memory.IsStale ? "true" : "false")
+                .Append(" tags=")
+                .Append(FormatTags(memory.Tags))
+                .Append(" target=")
+                .Append(memory.TargetFullyQualifiedName)
+                .Append(" @ ")
+                .Append(memory.TargetRelativeFilePath);
+            if (!string.IsNullOrWhiteSpace(memory.ContentPreview))
+            {
+                builder.AppendLine()
+                    .Append("  preview: ")
+                    .Append(memory.ContentPreview);
+            }
+        }
 
         return builder.ToString();
     }
@@ -684,6 +798,152 @@ internal static class TokenObjectNotation
         => path
             .Replace(Path.DirectorySeparatorChar, '/')
             .Replace(Path.AltDirectorySeparatorChar, '/');
+
+    private static void AppendContextBucket(
+        StringBuilder builder,
+        string name,
+        IReadOnlyList<Context360RelatedNode> items,
+        int? total)
+    {
+        builder.AppendLine()
+            .Append("  ")
+            .Append(name);
+        if (total is { } totalCount && totalCount > items.Count)
+        {
+            builder.Append(" (")
+                .Append(items.Count)
+                .Append(" of ")
+                .Append(totalCount)
+                .Append(')');
+        }
+
+        builder.Append(": ")
+            .Append(FormatContext360RelatedNodes(items));
+    }
+
+    private static void AppendCalleeTree(
+        StringBuilder builder,
+        CodeNodeResult rootNode,
+        IReadOnlyList<CodeNodeResult> callees,
+        IReadOnlyList<ImpactedDependencyEdge> dependencies,
+        IReadOnlyDictionary<int, MemoryNode[]>? memoriesByNodeId)
+    {
+        var nodeByCanonicalId = callees
+            .Concat([rootNode])
+            .GroupBy(static node => node.CanonicalId, StringComparer.Ordinal)
+            .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.Ordinal);
+        var calleesByCallerId = dependencies
+            .Where(edge =>
+                nodeByCanonicalId.ContainsKey(edge.CallerId) &&
+                nodeByCanonicalId.ContainsKey(edge.CalleeId))
+            .GroupBy(static edge => edge.CallerId, StringComparer.Ordinal)
+            .ToDictionary(
+                static group => group.Key,
+                group => group
+                    .Select(static edge => edge.CalleeId)
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(calleeId => nodeByCanonicalId[calleeId].FullyQualifiedName, StringComparer.Ordinal)
+                    .ThenBy(calleeId => nodeByCanonicalId[calleeId].Id)
+                    .ToArray(),
+                StringComparer.Ordinal);
+        var distances = ComputeShortestDistances(rootNode.CanonicalId, calleesByCallerId);
+        var visited = new HashSet<string>(StringComparer.Ordinal)
+        {
+            rootNode.CanonicalId
+        };
+
+        AppendCalleeChildren(
+            builder,
+            rootNode.CanonicalId,
+            1,
+            nodeByCanonicalId,
+            calleesByCallerId,
+            distances,
+            visited,
+            memoriesByNodeId);
+
+        foreach (var remaining in callees
+            .Where(callee => visited.Add(callee.CanonicalId))
+            .OrderBy(static callee => callee.FullyQualifiedName, StringComparer.Ordinal)
+            .ThenBy(static callee => callee.Id))
+        {
+            builder.AppendLine();
+            AppendTraceLine(builder, 1, remaining, memoriesByNodeId);
+        }
+    }
+
+    private static Dictionary<string, int> ComputeShortestDistances(
+        string rootCanonicalId,
+        IReadOnlyDictionary<string, string[]> calleesByCallerId)
+    {
+        var distances = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            [rootCanonicalId] = 0
+        };
+        var queue = new Queue<string>();
+        queue.Enqueue(rootCanonicalId);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (!calleesByCallerId.TryGetValue(current, out var children))
+            {
+                continue;
+            }
+
+            var nextDistance = distances[current] + 1;
+            foreach (var child in children)
+            {
+                if (distances.TryAdd(child, nextDistance))
+                {
+                    queue.Enqueue(child);
+                }
+            }
+        }
+
+        return distances;
+    }
+
+    private static void AppendCalleeChildren(
+        StringBuilder builder,
+        string callerCanonicalId,
+        int depth,
+        IReadOnlyDictionary<string, CodeNodeResult> nodeByCanonicalId,
+        IReadOnlyDictionary<string, string[]> calleesByCallerId,
+        IReadOnlyDictionary<string, int> distances,
+        HashSet<string> visited,
+        IReadOnlyDictionary<int, MemoryNode[]>? memoriesByNodeId)
+    {
+        if (!calleesByCallerId.TryGetValue(callerCanonicalId, out var childIds))
+        {
+            return;
+        }
+
+        foreach (var childId in childIds)
+        {
+            if (!distances.TryGetValue(childId, out var shortestDepth) || shortestDepth != depth)
+            {
+                continue;
+            }
+
+            if (!visited.Add(childId))
+            {
+                continue;
+            }
+
+            builder.AppendLine();
+            AppendTraceLine(builder, depth, nodeByCanonicalId[childId], memoriesByNodeId);
+            AppendCalleeChildren(
+                builder,
+                childId,
+                depth + 1,
+                nodeByCanonicalId,
+                calleesByCallerId,
+                distances,
+                visited,
+                memoriesByNodeId);
+        }
+    }
 
     private static string FormatContext360RelatedNodes(IReadOnlyList<Context360RelatedNode> nodes)
     {

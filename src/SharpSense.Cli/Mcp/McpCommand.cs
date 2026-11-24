@@ -5,6 +5,7 @@ using ModelContextProtocol;
 using Serilog;
 using SharpSense.Application.CommandExecution;
 using SharpSense.Application.Context360;
+using SharpSense.Application.Context360.Models;
 using SharpSense.Application.GraphStats;
 using SharpSense.Application.HybridSearch;
 using SharpSense.Application.ImpactAnalysis;
@@ -78,7 +79,8 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
                     or nameof(SharpSenseMcpTools.attach_memory)
                     or nameof(SharpSenseMcpTools.delete_memory)
                     or nameof(SharpSenseMcpTools.get_memory)
-                    or nameof(SharpSenseMcpTools.get_memories))
+                    or nameof(SharpSenseMcpTools.get_memories)
+                    or nameof(SharpSenseMcpTools.list_memories))
                 {
                     await request.Services!.GetRequiredService<IWorkspaceDatabaseInitializer>()
                         .Initialize(ct);
@@ -106,6 +108,10 @@ internal sealed class McpCommand : AbstractAsyncCommand<McpCommand.Settings>
     {
         var serializerOptions = new JsonSerializerOptions(McpJsonUtilities.DefaultOptions);
         serializerOptions.Converters.Add(new JsonStringEnumConverter<Domain.KnowledgeGraph.Enums.EdgeCategory>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<Domain.KnowledgeGraph.Enums.EdgeType>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<Domain.KnowledgeGraph.Enums.MemoryIntent>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<Domain.KnowledgeGraph.Enums.NodeType>());
+        serializerOptions.Converters.Add(new JsonStringEnumConverter<ContextSection>());
         serializerOptions.Converters.Add(new JsonStringEnumConverter<TraceDirection>());
 
         return serializerOptions;

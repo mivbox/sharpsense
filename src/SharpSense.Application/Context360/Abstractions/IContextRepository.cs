@@ -14,9 +14,11 @@ public interface IContextRepository
     /// </summary>
     /// <param name="nodeId">The persisted integer code-node handle.</param>
     /// <param name="maxRelated">The maximum number of related rows to return per bucket.</param>
+    /// <param name="includedSections">Optional subset of sections to populate; null or empty loads all sections.</param>
     /// <param name="ct"><see cref="CancellationToken" /> for the current request.</param>
     Task<Context360Result?> GetNodeContext(
         int nodeId,
         int maxRelated,
+        IReadOnlyCollection<ContextSection>? includedSections,
         CancellationToken ct);
 }

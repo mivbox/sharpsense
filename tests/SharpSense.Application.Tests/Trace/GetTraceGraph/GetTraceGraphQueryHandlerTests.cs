@@ -44,6 +44,7 @@ public sealed class GetTraceGraphQueryHandlerTests
         navigator
             .Setup(candidate => candidate.GetDependencies(
                 It.Is<IReadOnlyCollection<CodeNodeResult>>(nodes => nodes.Count == expectedNodes.Length + 1 && nodes.Contains(root)),
+                null,
                 ct))
             .ReturnsAsync([edge]);
         var impactAnalyzer = new Mock<IImpactAnalyzer>(MockBehavior.Strict);
@@ -91,6 +92,7 @@ public sealed class GetTraceGraphQueryHandlerTests
         navigator
             .Setup(candidate => candidate.GetDependencies(
                 It.Is<IReadOnlyCollection<CodeNodeResult>>(nodes => nodes.Count == 1000 && nodes.All(node => node.Id <= 1000)),
+                null,
                 ct))
             .ReturnsAsync([]);
         var handler = new GetTraceGraphQueryHandler(navigator.Object, Mock.Of<IImpactAnalyzer>());
@@ -211,6 +213,43 @@ public sealed class GetTraceGraphQueryHandlerTests
         var act = () => handler.Handle(new GetTraceGraphQuery(1), ct);
 
         await act.Should().ThrowExactlyAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task WhenIncludedEdgeTypesAreSupplied_ThenItForwardsThemToCalleeAndDependencyQueries()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var root = Node(1);
+        var child = Node(2);
+        EdgeType[] edges = [EdgeType.MethodCall, EdgeType.ParentOf];
+        var navigator = new Mock<ITraceNavigator>(MockBehavior.Strict);
+        navigator
+            .Setup(candidate => candidate.GetRootNode("1", ct))
+            .ReturnsAsync(root);
+        navigator
+            .Setup(candidate => candidate.GetCallees(
+                It.Is<TraceQuery>(query =>
+                    query.Identifier == "1" &&
+                    query.IncludedEdgeTypes != null &&
+                    query.IncludedEdgeTypes.SequenceEqual(edges)),
+                ct))
+            .ReturnsAsync([child]);
+        navigator
+            .Setup(candidate => candidate.GetDependencies(
+                It.Is<IReadOnlyCollection<CodeNodeResult>>(nodes => nodes.Count == 2),
+                It.Is<EdgeType[]?>(filter => filter != null && filter.SequenceEqual(edges)),
+                ct))
+            .ReturnsAsync([new ImpactedDependencyEdge(root.CanonicalId, child.CanonicalId, EdgeType.ParentOf)]);
+        var handler = new GetTraceGraphQueryHandler(navigator.Object, Mock.Of<IImpactAnalyzer>());
+
+        var result = await handler.Handle(
+            new GetTraceGraphQuery(1, TraceDirection.Callee, 1, [EdgeType.MethodCall, EdgeType.ParentOf, EdgeType.MethodCall]),
+            ct);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Nodes.Should().Equal(child);
+        result.Value.Dependencies.Should().ContainSingle()
+            .Which.EdgeType.Should().Be(EdgeType.ParentOf);
     }
 
     private static CodeNodeResult Node(int id) => new(

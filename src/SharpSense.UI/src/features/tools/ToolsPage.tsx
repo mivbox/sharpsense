@@ -6,6 +6,7 @@ import {
   Button,
   Chip,
   Divider,
+  FormControlLabel,
   InputAdornment,
   List,
   ListItemButton,
@@ -13,6 +14,7 @@ import {
   MenuItem,
   Paper,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from "@mui/material";
@@ -20,7 +22,12 @@ import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import TerminalRoundedIcon from "@mui/icons-material/TerminalRounded";
 import { useWorkspaceApi } from "../../shared/workspace/context";
-import type { ToolId, ToolInput } from "../../shared/api/models";
+import {
+  memoryIntents,
+  type MemoryIntent,
+  type ToolId,
+  type ToolInput,
+} from "../../shared/api/models";
 import type { ToolsSearch } from "../../app/searchState";
 import { useWorkspaceTools } from "../../shared/api/queries";
 import { ErrorState } from "../../shared/ui/States";
@@ -57,6 +64,11 @@ export default function ToolsPage({
   const direction = state.direction;
   const depth = state.depth;
   const maxRelated = state.maxRelated;
+  const [memorySearch, setMemorySearch] = useState("");
+  const [memoryIntent, setMemoryIntent] = useState<MemoryIntent | "all">("all");
+  const [memoryTags, setMemoryTags] = useState("");
+  const [memoryStaleOnly, setMemoryStaleOnly] = useState(false);
+  const [memoryLimit, setMemoryLimit] = useState(50);
   const setDirection = (value: "caller" | "callee") =>
     onStateChange({ direction: value });
   const setDepth = (value: number) => onStateChange({ depth: value });
@@ -75,12 +87,27 @@ export default function ToolsPage({
     },
   });
   const definition = toolDefinitions.find((item) => item.id === tool)!;
-  const requiresNode = tool !== "graph_stats";
+  const requiresNode = tool !== "graph_stats" && tool !== "memories";
   const numericId = Number(nodeId);
   const valid = !requiresNode || (Number.isInteger(numericId) && numericId > 0);
   const selectedLabel = numericId === state.nodeId ? state.label : undefined;
+  const parsedMemoryTags = memoryTags
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
   const parameterKey = JSON.stringify(
-    requiresNode ? [tool, numericId, direction, depth, maxRelated] : [tool],
+    tool === "memories"
+      ? [
+          tool,
+          memorySearch,
+          memoryIntent,
+          parsedMemoryTags,
+          memoryStaleOnly,
+          memoryLimit,
+        ]
+      : requiresNode
+        ? [tool, numericId, direction, depth, maxRelated]
+        : [tool],
   );
   const matchesCurrentParameters = run.variables?.parameterKey === parameterKey;
   const submit = () => {
@@ -96,7 +123,23 @@ export default function ToolsPage({
             ? { maxDepth: depth }
             : tool === "context"
               ? { maxRelated }
-              : {}),
+              : tool === "memories"
+                ? {
+                    memoryFilter: {
+                      ...(memoryIntent !== "all"
+                        ? { intents: [memoryIntent] }
+                        : {}),
+                      ...(parsedMemoryTags.length > 0
+                        ? { tags: parsedMemoryTags }
+                        : {}),
+                      staleOnly: memoryStaleOnly,
+                      ...(memorySearch.trim()
+                        ? { searchText: memorySearch.trim() }
+                        : {}),
+                      limit: memoryLimit,
+                    },
+                  }
+                : {}),
       },
     });
   };
@@ -166,7 +209,9 @@ export default function ToolsPage({
           <Alert severity="info">
             {requiresNode
               ? "Choose a symbol in Explorer or Search to prefill its node ID. Tools only run when you choose Run."
-              : "Graph statistics reads the whole workspace. Choose Run to take a fresh snapshot of the index."}
+              : tool === "memories"
+                ? "Workspace memories reads persisted notes across the whole workspace. Filter by intent, tag, text, or staleness."
+                : "Graph statistics reads the whole workspace. Choose Run to take a fresh snapshot of the index."}
           </Alert>
           {requiresNode && (
             <Button
@@ -282,7 +327,88 @@ export default function ToolsPage({
                   ))}
                 </TextField>
               )}
+              {tool === "memories" && (
+                <>
+                  <TextField
+                    label="Filter text"
+                    placeholder="Content, symbol, or path"
+                    value={memorySearch}
+                    onChange={(event) => {
+                      setMemorySearch(event.target.value);
+                      run.reset();
+                    }}
+                    fullWidth
+                    disabled={run.isPending}
+                  />
+                  <TextField
+                    select
+                    label="Intent"
+                    value={memoryIntent}
+                    onChange={(event) => {
+                      setMemoryIntent(
+                        event.target.value as MemoryIntent | "all",
+                      );
+                      run.reset();
+                    }}
+                    sx={{ minWidth: 150, flexShrink: 0 }}
+                    disabled={run.isPending}
+                  >
+                    <MenuItem value="all">All intents</MenuItem>
+                    {memoryIntents.map((intent) => (
+                      <MenuItem key={intent} value={intent}>
+                        {intent}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField
+                    label="Tags"
+                    placeholder="sqlite, security"
+                    value={memoryTags}
+                    onChange={(event) => {
+                      setMemoryTags(event.target.value);
+                      run.reset();
+                    }}
+                    sx={{ minWidth: 160 }}
+                    disabled={run.isPending}
+                  />
+                  <TextField
+                    select
+                    label="Limit"
+                    value={memoryLimit}
+                    onChange={(event) => {
+                      setMemoryLimit(Number(event.target.value));
+                      run.reset();
+                    }}
+                    sx={{ minWidth: 100 }}
+                    disabled={run.isPending}
+                  >
+                    {[25, 50, 100, 200].map((value) => (
+                      <MenuItem key={value} value={value}>
+                        {value}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </>
+              )}
             </Stack>
+            {tool === "memories" && (
+              <Box sx={{ mt: 1.5 }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      size="small"
+                      checked={memoryStaleOnly}
+                      onChange={(event) => {
+                        setMemoryStaleOnly(event.target.checked);
+                        run.reset();
+                      }}
+                      disabled={run.isPending}
+                    />
+                  }
+                  label="Stale memories only"
+                />
+              </Box>
+            )}
             <Stack direction="row" sx={{ justifyContent: "flex-end", mt: 2 }}>
               <Button
                 type="submit"
@@ -305,7 +431,17 @@ export default function ToolsPage({
             loading={matchesCurrentParameters && run.isPending}
             tool={tool}
             onInspect={(id) => {
-              changeNode(String(id));
+              if (tool === "memories") {
+                setNodeId(String(id));
+                onStateChange({
+                  tool: "context",
+                  nodeId: id,
+                  label: undefined,
+                });
+                run.reset();
+              } else {
+                changeNode(String(id));
+              }
             }}
           />
         </Stack>
