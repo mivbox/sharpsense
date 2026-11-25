@@ -8,6 +8,7 @@ using SharpSense.Application.Shared.Errors;
 using SharpSense.Application.Shared.Models;
 using SharpSense.Domain.KnowledgeGraph.Enums;
 using SharpSense.Infrastructure.HybridSearch;
+using SharpSense.Infrastructure.Indexing;
 using SharpSense.Infrastructure.Persistence;
 using SharpSense.Infrastructure.Persistence.Records;
 using SharpSense.Infrastructure.Tests.TestData;
@@ -264,5 +265,83 @@ public sealed class HybridSearcherTests
         result.Value.Hits.Should().NotBeEmpty();
         result.Value.Hits.Should().OnlyContain(static hit => hit.ProjectId == KnowledgeGraphFixture.AppProjectId);
         result.Value.Hits.Should().NotContain(static hit => hit.Id == KnowledgeGraphFixture.MessageNodeId);
+    }
+
+    [Theory]
+    [InlineData("sharpsense-ui")]
+    [InlineData("SharpSense.UI")]
+    public async Task WhenSearchFiltersByTypeScriptProjectPackageNameOrDirectoryName_ThenMatchesOnlyThatProject(
+        string projectFilter)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var inMemoryFactory = new InMemoryContextFactory<SharpSenseDbContext>(
+            options => new SharpSenseDbContext(options),
+            new InMemoryContextFactoryOptions(UseMigrations: true, LoadVectorExtension: true));
+        await using var context = await inMemoryFactory.GetContext(ct);
+        var repository = new KnowledgeGraphRepository(inMemoryFactory.CreateDbContextFactory());
+        await repository.ReplaceWorkspace(
+            new Application.Indexing.Models.ExtractedNodes(
+                [
+                    new Application.Indexing.Models.IndexedProject(
+                        "project:ts:src/SharpSense.UI/package.json",
+                        "sharpsense-ui",
+                        "src/SharpSense.UI/package.json",
+                        "hash-ui"),
+                    new Application.Indexing.Models.IndexedProject(
+                        "project:cs:src/SharpSense.App/SharpSense.App.csproj",
+                        "SharpSense.App",
+                        "src/SharpSense.App/SharpSense.App.csproj",
+                        "hash-cs")
+                ],
+                [
+                    new Application.Indexing.Models.IndexedCodeNode(
+                        "code:ts:src/SharpSense.UI/src/GraphCanvas.tsx:GraphCanvas",
+                        "project:ts:src/SharpSense.UI/package.json",
+                        "ts:src/SharpSense.UI/src/GraphCanvas.tsx::GraphCanvas",
+                        "GraphCanvas",
+                        NodeType.Component,
+                        "src/SharpSense.UI/src/GraphCanvas.tsx",
+                        1,
+                        20,
+                        "Renders canvas",
+                        "GraphCanvas\nsrc/SharpSense.UI/src/GraphCanvas\nRenders canvas",
+                        "body-ui",
+                        [1f, 0f]),
+                    new Application.Indexing.Models.IndexedCodeNode(
+                        "code:cs:src/SharpSense.App/GraphCanvas.cs:GraphCanvas",
+                        "project:cs:src/SharpSense.App/SharpSense.App.csproj",
+                        "SharpSense.App.GraphCanvas",
+                        "GraphCanvas",
+                        NodeType.Class,
+                        "src/SharpSense.App/GraphCanvas.cs",
+                        1,
+                        20,
+                        "Backend helper",
+                        "GraphCanvas\nBackend helper",
+                        "body-cs",
+                        [1f, 0f])
+                ],
+                [],
+                []),
+            ct);
+        var embeddings = new Mock<IEmbeddingGenerator>(MockBehavior.Strict);
+        embeddings
+            .Setup(candidate => candidate.Generate("GraphCanvas", ct))
+            .ReturnsAsync(new TextEmbedding("GraphCanvas", [1f, 0f]));
+        var searcher = new HybridSearcher(
+            inMemoryFactory.CreateDbContextFactory(),
+            embeddings.Object,
+            new SqliteKeywordCandidateProvider());
+
+        var result = await searcher.Search(
+            new HybridSearchQuery(
+                "GraphCanvas",
+                Limit: 10,
+                ProjectId: projectFilter),
+            ct);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Hits.Should().ContainSingle()
+            .Which.RelativeFilePath.Should().Be("src/SharpSense.UI/src/GraphCanvas.tsx");
     }
 }

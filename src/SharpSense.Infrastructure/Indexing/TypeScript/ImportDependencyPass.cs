@@ -17,6 +17,10 @@ internal sealed class ImportDependencyPass(
         var knownNodeIds = context.CodeNodes
             .Select(static node => node.CanonicalId)
             .ToHashSet(StringComparer.Ordinal);
+        var memberIds = context.ParentEdges
+            .Where(edge => knownNodeIds.Contains(edge.ParentId))
+            .Select(static edge => edge.MemberId)
+            .ToHashSet(StringComparer.Ordinal);
         var callerIdsByFile = context.CodeNodes
             .GroupBy(static node => node.RelativeFilePath, StringComparer.Ordinal)
             .ToDictionary(
@@ -32,13 +36,24 @@ internal sealed class ImportDependencyPass(
         foreach (var parsedFile in context.ParsedFiles)
         {
             context.CancellationToken.ThrowIfCancellationRequested();
-            if (!callerIdsByFile.TryGetValue(parsedFile.DiscoveredFile.RelativeFilePath, out var callerIds) ||
+            var filePath = parsedFile.DiscoveredFile.RelativeFilePath;
+            var localImports = context.LocalImportsByFile[filePath] = new(StringComparer.Ordinal);
+            if (!callerIdsByFile.TryGetValue(filePath, out var callerIds) ||
                 callerIds.Length == 0)
             {
+                CollectLocalImportsWithoutCallers(parsedFile, context, localImports);
                 continue;
             }
 
-            var jsxTagNames = ExtractJsxTagNames(parsedFile, context.CancellationToken);
+            var topLevelCallerIds = callerIds
+                .Where(id => !memberIds.Contains(id))
+                .ToArray();
+            var referencedIdentifiersByCaller = BuildReferencedIdentifiersByCaller(
+                parsedFile,
+                callerIds,
+                context);
+            var jsxTagNamesByCaller = BuildJsxTagNamesByCaller(parsedFile, callerIds, context);
+
             foreach (var importNode in (parsedFile.RootNode.Statements ?? [])
                 .OfType<ImportDeclaration>())
             {
@@ -52,7 +67,10 @@ internal sealed class ImportDependencyPass(
                     importPath,
                     parsedFile.DiscoveredFile.AbsolutePath,
                     context.CancellationToken);
-                IReadOnlyList<ResolvedImportTarget> targets;
+                var importedBindings = TypeScriptSyntax.ReadImports(importNode)
+                    .Distinct()
+                    .ToArray();
+
                 if (string.IsNullOrWhiteSpace(resolvedImportPath))
                 {
                     if (IsRelativeImport(importPath))
@@ -60,97 +78,500 @@ internal sealed class ImportDependencyPass(
                         continue;
                     }
 
-                    targets = BuildExternalImportTargets(importNode, importPath, jsxTagNames);
+                    AddExternalImportEdges(
+                        context,
+                        importPath,
+                        importedBindings,
+                        callerIds,
+                        topLevelCallerIds,
+                        referencedIdentifiersByCaller,
+                        jsxTagNamesByCaller,
+                        edgeIdentities);
+                    continue;
                 }
-                else
+
+                var targetRelativePath = repositoryWorkspace.ToRepositoryRelativePath(resolvedImportPath);
+                AddResolvedImportEdges(
+                    context,
+                    targetRelativePath,
+                    importedBindings,
+                    callerIds,
+                    topLevelCallerIds,
+                    referencedIdentifiersByCaller,
+                    knownNodeIds,
+                    edgeIdentities,
+                    localImports);
+            }
+
+            AddDynamicImportBindingEdges(
+                parsedFile,
+                context,
+                callerIds,
+                topLevelCallerIds,
+                referencedIdentifiersByCaller,
+                knownNodeIds,
+                edgeIdentities,
+                localImports);
+        }
+    }
+
+    private void AddDynamicImportBindingEdges(
+        TypeScriptParsedFile parsedFile,
+        TypeScriptPassContext context,
+        string[] callerIds,
+        string[] topLevelCallerIds,
+        Dictionary<string, HashSet<string>> referencedIdentifiersByCaller,
+        HashSet<string> knownNodeIds,
+        HashSet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeIdentities,
+        Dictionary<string, ResolvedLocalImportBinding> localImports)
+    {
+        foreach (var statement in (parsedFile.RootNode.Statements ?? []).OfType<VariableStatement>())
+        {
+            foreach (var variable in statement.DeclarationList.Declarations ?? [])
+            {
+                if (variable.Name is not Identifier { Text: { } localName } ||
+                    variable.Initializer is null)
                 {
-                    var targetRelativePath = repositoryWorkspace.ToRepositoryRelativePath(resolvedImportPath);
-                    targets = BuildResolvedImportTargets(importNode, targetRelativePath, context);
+                    continue;
                 }
 
-                foreach (var target in targets)
+                var dynamicSpecifiers = variable.Initializer
+                    .DescendantsAndSelf(context.CancellationToken)
+                    .OfType<CallExpression>()
+                    .Select(static call => TypeScriptSyntax.TryGetDynamicImportSpecifier(call, out var specifier)
+                        ? specifier
+                        : null)
+                    .Where(static specifier => !string.IsNullOrWhiteSpace(specifier))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                if (dynamicSpecifiers.Length != 1)
                 {
-                    if (!knownNodeIds.Contains(target.CalleeId) &&
-                        !PackageNodeIdentity.IsPlaceholderId(target.CalleeId))
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    foreach (var callerId in callerIds)
-                    {
-                        if (string.Equals(callerId, target.CalleeId, StringComparison.Ordinal))
-                        {
-                            continue;
-                        }
+                var importPath = dynamicSpecifiers[0]!;
+                var resolvedImportPath = tsConfigResolver.ResolveImport(
+                    importPath,
+                    parsedFile.DiscoveredFile.AbsolutePath,
+                    context.CancellationToken);
+                if (string.IsNullOrWhiteSpace(resolvedImportPath))
+                {
+                    continue;
+                }
 
-                        var edgeIdentity = (callerId, target.CalleeId, EdgeType.Import);
-                        if (!edgeIdentities.Add(edgeIdentity))
-                        {
-                            continue;
-                        }
+                var targetRelativePath = repositoryWorkspace.ToRepositoryRelativePath(resolvedImportPath);
+                var defaultTargets = ResolveExports(context, targetRelativePath, "default", new(StringComparer.Ordinal))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                var targetIds = defaultTargets.Length > 0
+                    ? defaultTargets
+                    : [.. ResolveExports(context, targetRelativePath, null, new(StringComparer.Ordinal)).Distinct(StringComparer.Ordinal)];
+                if (targetIds.Length == 0)
+                {
+                    continue;
+                }
 
-                        context.Edges.Add(new IndexedDependency(
-                            callerId,
-                            target.CalleeId,
-                            EdgeType.Import,
-                            target.Metadata));
-                    }
+                localImports[localName] = new ResolvedLocalImportBinding(
+                    localName,
+                    IsNamespaceImport: false,
+                    targetRelativePath,
+                    targetIds);
+
+                var matchingCallers = GetReferencingCallers(
+                    callerIds,
+                    topLevelCallerIds,
+                    referencedIdentifiersByCaller,
+                    localName);
+                foreach (var calleeId in targetIds)
+                {
+                    AddImportEdgesToCallers(context, matchingCallers, calleeId, null, knownNodeIds, edgeIdentities);
                 }
             }
         }
     }
 
-    private IReadOnlyList<ResolvedImportTarget> BuildResolvedImportTargets(
-        ImportDeclaration importNode,
-        string targetRelativePath,
-        TypeScriptPassContext context)
+    private void CollectLocalImportsWithoutCallers(
+        TypeScriptParsedFile parsedFile,
+        TypeScriptPassContext context,
+        Dictionary<string, ResolvedLocalImportBinding> localImports)
     {
-        var importedBindings = TypeScriptSyntax.ReadImports(importNode)
-            .Distinct()
-            .ToArray();
+        foreach (var importNode in (parsedFile.RootNode.Statements ?? []).OfType<ImportDeclaration>())
+        {
+            var importPath = TypeScriptSyntax.GetModuleSpecifier(importNode);
+            if (string.IsNullOrWhiteSpace(importPath))
+            {
+                continue;
+            }
+
+            var resolvedImportPath = tsConfigResolver.ResolveImport(
+                importPath,
+                parsedFile.DiscoveredFile.AbsolutePath,
+                context.CancellationToken);
+            if (string.IsNullOrWhiteSpace(resolvedImportPath))
+            {
+                continue;
+            }
+
+            var targetRelativePath = repositoryWorkspace.ToRepositoryRelativePath(resolvedImportPath);
+            foreach (var binding in TypeScriptSyntax.ReadImports(importNode).Distinct())
+            {
+                var targets = ResolveBindingTargetIds(context, targetRelativePath, binding);
+                localImports[binding.LocalName] = new ResolvedLocalImportBinding(
+                    binding.LocalName,
+                    binding.IsNamespaceImport,
+                    targetRelativePath,
+                    targets);
+            }
+        }
+    }
+
+    private void AddResolvedImportEdges(
+        TypeScriptPassContext context,
+        string targetRelativePath,
+        TypeScriptImportBinding[] importedBindings,
+        string[] callerIds,
+        string[] topLevelCallerIds,
+        Dictionary<string, HashSet<string>> referencedIdentifiersByCaller,
+        HashSet<string> knownNodeIds,
+        HashSet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeIdentities,
+        Dictionary<string, ResolvedLocalImportBinding> localImports)
+    {
         if (importedBindings.Length == 0)
         {
-            return
-            [
-                .. ResolveExports(context, targetRelativePath, null, new(StringComparer.Ordinal))
-                    .Select(id => new ResolvedImportTarget(id, null))
-            ];
+            var sideEffectTargets = ResolveExports(context, targetRelativePath, null, new(StringComparer.Ordinal))
+                .Distinct(StringComparer.Ordinal);
+            foreach (var calleeId in sideEffectTargets)
+            {
+                AddImportEdgesToCallers(context, topLevelCallerIds, calleeId, null, knownNodeIds, edgeIdentities);
+            }
+
+            return;
         }
 
-        var targetsByCalleeId = new Dictionary<string, ResolvedImportTarget>(StringComparer.Ordinal);
         foreach (var importedBinding in importedBindings)
         {
+            var targetIds = ResolveBindingTargetIds(context, targetRelativePath, importedBinding);
+            localImports[importedBinding.LocalName] = new ResolvedLocalImportBinding(
+                importedBinding.LocalName,
+                importedBinding.IsNamespaceImport,
+                targetRelativePath,
+                targetIds);
+
+            var matchingCallers = GetReferencingCallers(
+                callerIds,
+                topLevelCallerIds,
+                referencedIdentifiersByCaller,
+                importedBinding.LocalName);
+            foreach (var calleeId in targetIds)
+            {
+                AddImportEdgesToCallers(context, matchingCallers, calleeId, null, knownNodeIds, edgeIdentities);
+            }
+        }
+    }
+
+    private string[] ResolveBindingTargetIds(
+        TypeScriptPassContext context,
+        string targetRelativePath,
+        TypeScriptImportBinding importedBinding)
+    {
+        var exportName = importedBinding.IsNamespaceImport
+            ? null
+            : string.IsNullOrWhiteSpace(importedBinding.ExportName)
+                ? "default"
+                : importedBinding.ExportName;
+
+        return
+        [
+            .. ResolveExports(context, targetRelativePath, exportName, new(StringComparer.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+        ];
+    }
+
+    private static void AddExternalImportEdges(
+        TypeScriptPassContext context,
+        string importPath,
+        TypeScriptImportBinding[] importedBindings,
+        string[] callerIds,
+        string[] topLevelCallerIds,
+        Dictionary<string, HashSet<string>> referencedIdentifiersByCaller,
+        Dictionary<string, HashSet<string>> jsxTagNamesByCaller,
+        HashSet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeIdentities)
+    {
+        if (importedBindings.Length == 0)
+        {
+            var packageId = PackageNodeIdentity.CreateCanonicalId(importPath);
+            AddPackageEdgesToCallers(context, topLevelCallerIds, packageId, edgeIdentities);
+
+            return;
+        }
+
+        foreach (var importedBinding in importedBindings)
+        {
+            var matchingCallers = GetReferencingCallers(
+                callerIds,
+                topLevelCallerIds,
+                referencedIdentifiersByCaller,
+                importedBinding.LocalName);
             if (importedBinding.IsNamespaceImport)
             {
-                foreach (var id in ResolveExports(context, targetRelativePath, null, new(StringComparer.Ordinal)))
+                foreach (var callerId in matchingCallers)
                 {
-                    AddTarget(targetsByCalleeId, new(id, null));
+                    var matchingNamespaceTags = jsxTagNamesByCaller
+                        .GetValueOrDefault(callerId, [])
+                        .Where(tagName =>
+                            tagName.StartsWith($"{importedBinding.LocalName}.", StringComparison.Ordinal))
+                        .Distinct(StringComparer.Ordinal)
+                        .ToArray();
+                    if (matchingNamespaceTags.Length > 0)
+                    {
+                        foreach (var matchingNamespaceTag in matchingNamespaceTags)
+                        {
+                            var componentName = matchingNamespaceTag[(importedBinding.LocalName.Length + 1)..];
+                            AddPackageEdgesToCallers(
+                                context,
+                                [callerId],
+                                PackageNodeIdentity.CreateCanonicalId(importPath, componentName),
+                                edgeIdentities);
+                        }
+
+                        continue;
+                    }
+
+                    AddPackageEdgesToCallers(
+                        context,
+                        [callerId],
+                        PackageNodeIdentity.CreateCanonicalId(importPath),
+                        edgeIdentities);
                 }
 
                 continue;
             }
 
-            if (!string.IsNullOrWhiteSpace(importedBinding.ExportName))
-            {
-                foreach (var id in ResolveExports(
-                    context,
-                    targetRelativePath,
-                    importedBinding.ExportName,
-                    new(StringComparer.Ordinal)))
-                {
-                    AddTarget(targetsByCalleeId, new(id, null));
-                }
+            var targetName = importedBinding.ExportName ?? importedBinding.LocalName;
+            AddPackageEdgesToCallers(
+                context,
+                matchingCallers,
+                PackageNodeIdentity.CreateCanonicalId(importPath, targetName),
+                edgeIdentities);
+        }
+    }
 
+    private static void AddImportEdgesToCallers(
+        TypeScriptPassContext context,
+        IEnumerable<string> callerIds,
+        string calleeId,
+        string? metadata,
+        HashSet<string> knownNodeIds,
+        HashSet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeIdentities)
+    {
+        if (!knownNodeIds.Contains(calleeId) &&
+            !PackageNodeIdentity.IsPlaceholderId(calleeId))
+        {
+            return;
+        }
+
+        foreach (var callerId in callerIds)
+        {
+            if (string.Equals(callerId, calleeId, StringComparison.Ordinal))
+            {
                 continue;
             }
 
-            foreach (var id in ResolveExports(context, targetRelativePath, "default", new(StringComparer.Ordinal)))
+            if (edgeIdentities.Add((callerId, calleeId, EdgeType.Import)))
             {
-                AddTarget(targetsByCalleeId, new(id, null));
+                context.Edges.Add(new IndexedDependency(callerId, calleeId, EdgeType.Import, metadata));
+            }
+        }
+    }
+
+    private static void AddPackageEdgesToCallers(
+        TypeScriptPassContext context,
+        IEnumerable<string> callerIds,
+        string packageId,
+        HashSet<(string CallerId, string CalleeId, EdgeType EdgeType)> edgeIdentities)
+    {
+        foreach (var callerId in callerIds)
+        {
+            if (edgeIdentities.Add((callerId, packageId, EdgeType.Import)))
+            {
+                context.Edges.Add(new IndexedDependency(callerId, packageId, EdgeType.Import, null));
+            }
+        }
+    }
+
+    private static IReadOnlyList<string> GetReferencingCallers(
+        string[] callerIds,
+        string[] topLevelCallerIds,
+        Dictionary<string, HashSet<string>> referencedIdentifiersByCaller,
+        string localName)
+    {
+        var matching = new List<string>();
+        foreach (var callerId in callerIds)
+        {
+            if (referencedIdentifiersByCaller.TryGetValue(callerId, out var identifiers) &&
+                identifiers.Contains(localName))
+            {
+                matching.Add(callerId);
             }
         }
 
-        return [.. targetsByCalleeId.Values];
+        // Preserve unused or type-only imports on top-level exports without broadcasting them onto class members.
+        return matching.Count > 0 ? matching : topLevelCallerIds;
+    }
+
+    private static Dictionary<string, HashSet<string>> BuildReferencedIdentifiersByCaller(
+        TypeScriptParsedFile parsedFile,
+        string[] callerIds,
+        TypeScriptPassContext context)
+    {
+        var indexedDeclarations = callerIds
+            .Where(context.DeclarationNodes.ContainsKey)
+            .Select(id => context.DeclarationNodes[id])
+            .ToHashSet();
+        var helperIdentifiers = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var statement in parsedFile.RootNode.Statements ?? [])
+        {
+            context.CancellationToken.ThrowIfCancellationRequested();
+            if (statement is ImportDeclaration or ExportDeclaration)
+            {
+                continue;
+            }
+
+            if (statement is VariableStatement variableStatement)
+            {
+                foreach (var variable in variableStatement.DeclarationList.Declarations ?? [])
+                {
+                    if (indexedDeclarations.Contains(variable) ||
+                        variable.Name is not Identifier { Text: { } name })
+                    {
+                        continue;
+                    }
+
+                    helperIdentifiers[name] = CollectReferencedIdentifiers(variable, context.CancellationToken);
+                }
+
+                continue;
+            }
+
+            if (indexedDeclarations.Contains(statement))
+            {
+                continue;
+            }
+
+            var helperName = TypeScriptSyntax.GetName((statement as IHasNameProperty)?.Name);
+            if (!string.IsNullOrWhiteSpace(helperName))
+            {
+                helperIdentifiers[helperName] = CollectReferencedIdentifiers(statement, context.CancellationToken);
+            }
+        }
+
+        var result = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var callerId in callerIds)
+        {
+            context.CancellationToken.ThrowIfCancellationRequested();
+            if (!context.DeclarationNodes.TryGetValue(callerId, out var declarationNode))
+            {
+                continue;
+            }
+
+            var identifiers = CollectReferencedIdentifiers(declarationNode, context.CancellationToken);
+            if (helperIdentifiers.Count > 0)
+            {
+                ExpandThroughLocalHelpers(identifiers, helperIdentifiers);
+            }
+
+            result[callerId] = identifiers;
+        }
+
+        return result;
+    }
+
+    private static void ExpandThroughLocalHelpers(
+        HashSet<string> identifiers,
+        Dictionary<string, HashSet<string>> helperIdentifiers)
+    {
+        var pending = new Queue<string>(identifiers.Where(helperIdentifiers.ContainsKey));
+        var visitedHelpers = new HashSet<string>(pending, StringComparer.Ordinal);
+        while (pending.Count > 0)
+        {
+            var helperName = pending.Dequeue();
+            foreach (var referenced in helperIdentifiers[helperName])
+            {
+                identifiers.Add(referenced);
+                if (helperIdentifiers.ContainsKey(referenced) && visitedHelpers.Add(referenced))
+                {
+                    pending.Enqueue(referenced);
+                }
+            }
+        }
+    }
+
+    private static HashSet<string> CollectReferencedIdentifiers(INode root, CancellationToken ct)
+    {
+        var identifiers = new HashSet<string>(StringComparer.Ordinal);
+        var ignoredIdentifiers = new HashSet<INode>();
+
+        foreach (var node in root.DescendantsAndSelf(ct))
+        {
+            switch (node)
+            {
+                case PropertyAccessExpression { Name: { } propertyName }:
+                    ignoredIdentifiers.Add(propertyName);
+                    break;
+                case PropertyAssignment { Name: Identifier propertyKey }:
+                    ignoredIdentifiers.Add(propertyKey);
+                    break;
+                case ImportDeclaration:
+                    continue;
+                case Identifier { Text: { } text } identifier when !string.IsNullOrWhiteSpace(text):
+                    if (!ignoredIdentifiers.Contains(identifier))
+                    {
+                        identifiers.Add(text);
+                    }
+
+                    break;
+            }
+        }
+
+        return identifiers;
+    }
+
+    private static Dictionary<string, HashSet<string>> BuildJsxTagNamesByCaller(
+        TypeScriptParsedFile parsedFile,
+        string[] callerIds,
+        TypeScriptPassContext context)
+    {
+        var result = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        foreach (var callerId in callerIds)
+        {
+            context.CancellationToken.ThrowIfCancellationRequested();
+            if (!context.DeclarationNodes.TryGetValue(callerId, out var declarationNode))
+            {
+                continue;
+            }
+
+            var tags = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var node in declarationNode.DescendantsAndSelf(context.CancellationToken))
+            {
+                if (node is not IJsxOpeningLikeElement || node is not IJsxHasTagName { TagName: { } tag })
+                {
+                    continue;
+                }
+
+                var tagName = parsedFile.SyntaxTree.GetText(tag).Trim();
+                if (!string.IsNullOrWhiteSpace(tagName))
+                {
+                    tags.Add(tagName);
+                }
+            }
+
+            if (tags.Count > 0)
+            {
+                result[callerId] = tags;
+            }
+        }
+
+        return result;
     }
 
     private IEnumerable<string> ResolveExports(
@@ -303,104 +724,7 @@ internal sealed class ImportDependencyPass(
         }
     }
 
-    private static IReadOnlyList<ResolvedImportTarget> BuildExternalImportTargets(
-        ImportDeclaration importNode,
-        string importPath,
-        IReadOnlySet<string> jsxTagNames)
-    {
-        var importedBindings = TypeScriptSyntax.ReadImports(importNode)
-            .Distinct()
-            .ToArray();
-        if (importedBindings.Length == 0)
-        {
-            return
-            [
-                new ResolvedImportTarget(
-                    PackageNodeIdentity.CreateCanonicalId(importPath),
-                    null)
-            ];
-        }
-
-        var targetsByCalleeId = new Dictionary<string, ResolvedImportTarget>(StringComparer.Ordinal);
-
-        foreach (var importedBinding in importedBindings)
-        {
-            if (importedBinding.IsNamespaceImport)
-            {
-                var matchingNamespaceTags = jsxTagNames
-                    .Where(tagName =>
-                        tagName.StartsWith(
-                            $"{importedBinding.LocalName}.",
-                            StringComparison.Ordinal))
-                    .Distinct(StringComparer.Ordinal)
-                    .ToArray();
-                if (matchingNamespaceTags.Length > 0)
-                {
-                    foreach (var matchingNamespaceTag in matchingNamespaceTags)
-                    {
-                        var componentName = matchingNamespaceTag[(importedBinding.LocalName.Length + 1)..];
-                        AddTarget(
-                            targetsByCalleeId,
-                            new ResolvedImportTarget(
-                                PackageNodeIdentity.CreateCanonicalId(importPath, componentName),
-                                null));
-                    }
-
-                    continue;
-                }
-
-                AddTarget(
-                    targetsByCalleeId,
-                    new ResolvedImportTarget(
-                        PackageNodeIdentity.CreateCanonicalId(importPath),
-                        null));
-                continue;
-            }
-
-            var targetName = importedBinding.ExportName ?? importedBinding.LocalName;
-            AddTarget(
-                targetsByCalleeId,
-                new ResolvedImportTarget(
-                    PackageNodeIdentity.CreateCanonicalId(importPath, targetName),
-                    null));
-        }
-
-        return [.. targetsByCalleeId.Values];
-    }
-
     private static bool IsRelativeImport(string importPath)
         => importPath.StartsWith("./", StringComparison.Ordinal) ||
            importPath.StartsWith("../", StringComparison.Ordinal);
-
-    private static IReadOnlySet<string> ExtractJsxTagNames(TypeScriptParsedFile parsedFile, CancellationToken ct)
-    {
-        var jsxTagNames = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var node in parsedFile.RootNode.DescendantsAndSelf(ct))
-        {
-            if (node is not IJsxOpeningLikeElement || node is not IJsxHasTagName { TagName: { } tag })
-            {
-                continue;
-            }
-
-            var tagName = parsedFile.SyntaxTree.GetText(tag).Trim();
-            if (!string.IsNullOrWhiteSpace(tagName))
-            {
-                jsxTagNames.Add(tagName);
-            }
-        }
-
-        return jsxTagNames;
-    }
-
-    private static void AddTarget(
-        IDictionary<string, ResolvedImportTarget> targetsByCalleeId,
-        ResolvedImportTarget target)
-    {
-        targetsByCalleeId.TryAdd(target.CalleeId, target);
-    }
-
-    private sealed record ResolvedImportTarget(
-        string CalleeId,
-        string? Metadata);
 }

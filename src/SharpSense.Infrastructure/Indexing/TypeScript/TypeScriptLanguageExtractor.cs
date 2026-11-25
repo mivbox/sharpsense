@@ -12,9 +12,12 @@ namespace SharpSense.Infrastructure.Indexing.TypeScript;
 internal sealed class TypeScriptLanguageExtractor(
     TypeScriptSourceDiscoverer sourceDiscoverer,
     IFileSystem fileSystem,
-    IEnumerable<ITypeScriptExtractionPass> extractionPasses)
+    IEnumerable<ITypeScriptExtractionPass> extractionPasses,
+    TypeScriptProjectResolver? projectResolver = null)
     : ILanguageExtractor
 {
+    private readonly TypeScriptProjectResolver _projectResolver = projectResolver
+        ?? new TypeScriptProjectResolver(sourceDiscoverer.RepositoryWorkspace, fileSystem);
     public WorkspaceSourceKind SourceKind => WorkspaceSourceKind.TypeScript;
 
     public async Task<Result<ExtractedNodes>> Extract(
@@ -106,7 +109,8 @@ internal sealed class TypeScriptLanguageExtractor(
             return Result.Fail(diagnostics.GetErrors());
         }
 
-        var passContext = new TypeScriptPassContext(parsedFiles, ct);
+        var projectResolution = _projectResolver.Resolve(parsedFiles, ct);
+        var passContext = new TypeScriptPassContext(parsedFiles, ct, projectResolution.ProjectIdByFilePath);
         foreach (var extractionPass in orderedPasses)
         {
             ct.ThrowIfCancellationRequested();
@@ -119,7 +123,7 @@ internal sealed class TypeScriptLanguageExtractor(
         }
 
         return Result.Ok(new ExtractedNodes(
-            [],
+            projectResolution.Projects,
             [
                 .. passContext.CodeNodes
                     .OrderBy(static codeNode => codeNode.FullyQualifiedName, StringComparer.Ordinal)
@@ -136,6 +140,7 @@ internal sealed class TypeScriptLanguageExtractor(
                 .. parsedFiles
                     .Select(static file => file.DiscoveredFile.AbsolutePath)
                     .Concat(sourceDiscoverer.ResolutionInputPaths)
+                    .Concat(projectResolution.ProjectInputPaths)
                     .Distinct(FileSystemPaths.Comparer)
             ],
             CanReuseForDocumentationChanges: true));
@@ -146,7 +151,8 @@ internal sealed class TypeScriptLanguageExtractor(
         {
             CodeNodeExtractionPass => 0,
             ImportDependencyPass => 1,
-            HttpEdgeExtractionPass => 2,
+            TypeScriptSymbolReferencePass => 2,
+            HttpEdgeExtractionPass => 3,
             _ => 100
         };
 
@@ -155,6 +161,7 @@ internal sealed class TypeScriptLanguageExtractor(
         {
             CodeNodeExtractionPass => "Extracting TypeScript nodes...",
             ImportDependencyPass => "Resolving TypeScript imports...",
+            TypeScriptSymbolReferencePass => "Extracting TypeScript symbol references...",
             HttpEdgeExtractionPass => "Extracting TypeScript HTTP edges...",
             _ => "Running TypeScript extraction pass..."
         };

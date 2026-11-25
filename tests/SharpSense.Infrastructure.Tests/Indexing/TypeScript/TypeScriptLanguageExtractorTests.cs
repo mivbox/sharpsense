@@ -30,6 +30,9 @@ public sealed class TypeScriptLanguageExtractorTests
         repositoryWorkspace
             .SetupGet(candidate => candidate.RootPath)
             .Returns(Absolute("/repo"));
+        repositoryWorkspace
+            .Setup(candidate => candidate.IsSameOrSubPath(It.IsAny<string>()))
+            .Returns(true);
         var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
         fileDiscoverer
             .Setup(candidate => candidate.GetAllowedFiles(
@@ -74,6 +77,9 @@ public sealed class TypeScriptLanguageExtractorTests
         repositoryWorkspace
             .SetupGet(candidate => candidate.RootPath)
             .Returns(Absolute("/repo"));
+        repositoryWorkspace
+            .Setup(candidate => candidate.IsSameOrSubPath(It.IsAny<string>()))
+            .Returns(true);
         var fileDiscoverer = new Mock<IWorkspaceFileDiscoverer>(MockBehavior.Strict);
         fileDiscoverer
             .Setup(candidate => candidate.GetAllowedFiles(
@@ -131,7 +137,7 @@ public sealed class TypeScriptLanguageExtractorTests
             .SetupGet(candidate => candidate.RootPath)
             .Returns(repositoryRoot);
         repositoryWorkspace
-            .Setup(candidate => candidate.IsSameOrSubPath(changedFilePath))
+            .Setup(candidate => candidate.IsSameOrSubPath(It.IsAny<string>()))
             .Returns(true);
         repositoryWorkspace
             .Setup(candidate => candidate.ToRepositoryRelativePath(changedFilePath))

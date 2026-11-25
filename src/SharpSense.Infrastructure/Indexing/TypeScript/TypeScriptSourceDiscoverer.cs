@@ -17,6 +17,8 @@ internal sealed class TypeScriptSourceDiscoverer(
 
     public IReadOnlyCollection<string> ResolutionInputPaths => tsConfigResolver.ResolutionInputPaths;
 
+    internal IRepositoryWorkspace RepositoryWorkspace => repositoryWorkspace;
+
     internal void ClearCache()
     {
         _repositoryFilesByAbsolutePath = null;
@@ -112,6 +114,11 @@ internal sealed class TypeScriptSourceDiscoverer(
                 throw new TypeScriptSourceException(discoveredFile.RelativeFilePath, exception.Message, exception);
             }
 
+            if (TypeScriptGeneratedFileDetector.IsGenerated(discoveredFile.RelativeFilePath, sourceText))
+            {
+                continue;
+            }
+
             TypeScriptSyntaxTree tree;
             try
             {
@@ -123,14 +130,8 @@ internal sealed class TypeScriptSourceDiscoverer(
             }
 
             parsedFiles.Add(new TypeScriptParsedFile(discoveredFile, tree));
-            foreach (var node in tree.Root.Statements ?? [])
+            foreach (var importPath in CollectModuleSpecifiers(tree.Root, ct))
             {
-                var importPath = TypeScriptSyntax.GetModuleSpecifier(node);
-                if (string.IsNullOrWhiteSpace(importPath))
-                {
-                    continue;
-                }
-
                 var resolvedImportPath = tsConfigResolver.ResolveImport(importPath, discoveredFile.AbsolutePath, ct);
                 if (string.IsNullOrWhiteSpace(resolvedImportPath))
                 {
@@ -181,5 +182,24 @@ internal sealed class TypeScriptSourceDiscoverer(
             .ToDictionary(static file => file.AbsolutePath, FileSystemPaths.Comparer);
 
         return _repositoryFilesByAbsolutePath;
+    }
+
+    private static IEnumerable<string> CollectModuleSpecifiers(SourceFile root, CancellationToken ct)
+    {
+        foreach (var statement in root.Statements ?? [])
+        {
+            if (TypeScriptSyntax.GetModuleSpecifier(statement) is { Length: > 0 } staticSpecifier)
+            {
+                yield return staticSpecifier;
+            }
+        }
+
+        foreach (var call in root.DescendantsAndSelf(ct).OfType<CallExpression>())
+        {
+            if (TypeScriptSyntax.TryGetDynamicImportSpecifier(call, out var dynamicSpecifier))
+            {
+                yield return dynamicSpecifier;
+            }
+        }
     }
 }

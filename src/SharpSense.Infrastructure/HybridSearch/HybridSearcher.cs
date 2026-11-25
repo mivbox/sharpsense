@@ -123,12 +123,39 @@ internal sealed class HybridSearcher(
         }
 
         var normalizedName = projectFilter.ToLowerInvariant();
-
-        return await context.ProjectNodes
+        var byName = await context.ProjectNodes
             .AsNoTracking()
             .Where(project => project.Name.ToLower() == normalizedName)
             .Select(static project => project.Id)
             .ToArrayAsync(ct);
+        if (byName.Length > 0)
+        {
+            return byName;
+        }
+
+        var projectsWithPaths = await (
+            from project in context.ProjectNodes.AsNoTracking()
+            join document in context.Documents.AsNoTracking() on project.ProjectDocumentId equals document.Id
+            select new
+            {
+                project.Id,
+                document.RelativePath
+            })
+            .ToArrayAsync(ct);
+
+        return projectsWithPaths
+            .Where(project =>
+            {
+                var normalizedPath = project.RelativePath.Replace('\\', '/');
+                var directory = Path.GetDirectoryName(normalizedPath)?.Replace('\\', '/');
+                var directoryName = string.IsNullOrWhiteSpace(directory)
+                    ? null
+                    : Path.GetFileName(directory.TrimEnd('/'));
+
+                return string.Equals(directoryName, projectFilter, StringComparison.OrdinalIgnoreCase);
+            })
+            .Select(static project => project.Id)
+            .ToArray();
     }
 
     private static async Task<int[]> ExecuteHybridRanking(

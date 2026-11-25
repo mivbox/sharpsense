@@ -109,7 +109,9 @@ public sealed class TypeScriptPathNormalizationTests
 
             result.IsSuccess.Should().BeTrue(string.Join("; ", result.Errors.Select(error => error.Message)));
             result.Value.CodeNodes.Should().HaveCount(2);
-            var edge = result.Value.Edges.Should().ContainSingle().Which;
+            var edge = result.Value.Edges
+                .Where(static candidate => candidate.EdgeType == EdgeType.Import)
+                .Should().ContainSingle().Which;
             edge.CallerId.Should().Be("code:ts:client/src/app.ts:app");
             edge.CalleeId.Should().Be("code:ts:shared/api.ts:api");
             edge.EdgeType.Should().Be(EdgeType.Import);

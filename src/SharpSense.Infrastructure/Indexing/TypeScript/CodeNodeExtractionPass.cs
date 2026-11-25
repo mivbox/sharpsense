@@ -60,13 +60,15 @@ internal sealed class CodeNodeExtractionPass : ITypeScriptExtractionPass
                     }
                     else if (IsFunction(value))
                     {
-                        exports["default"] = AddNode(
+                        var defaultId = AddNode(
                             context,
                             file,
                             value,
                             "default",
                             FunctionKind(file, "default", value, context.CancellationToken),
-                            statement);
+                            statement,
+                            isTopLevel: true);
+                        exports["default"] = defaultId;
                     }
 
                     continue;
@@ -80,7 +82,14 @@ internal sealed class CodeNodeExtractionPass : ITypeScriptExtractionPass
                 foreach (var declaration in ReadDeclarations([statement], file, context.CancellationToken))
                 {
                     var selected = declarations.GetValueOrDefault(declaration.Name, declaration);
-                    var id = AddNode(context, file, selected.Node, selected.Name, selected.Kind, statement);
+                    var id = AddNode(
+                        context,
+                        file,
+                        selected.Node,
+                        selected.Name,
+                        selected.Kind,
+                        statement,
+                        isTopLevel: true);
                     exports[statement.HasModifier(SyntaxKind.DefaultKeyword) ? "default" : selected.Name] = id;
                     AddMembers(context, file, selected, id);
                 }
@@ -95,7 +104,14 @@ internal sealed class CodeNodeExtractionPass : ITypeScriptExtractionPass
 
                 if (declarations.TryGetValue(local, out var declaration))
                 {
-                    exports[alias] = AddNode(context, file, declaration.Node, declaration.Name, declaration.Kind, declaration.Node);
+                    exports[alias] = AddNode(
+                        context,
+                        file,
+                        declaration.Node,
+                        declaration.Name,
+                        declaration.Kind,
+                        declaration.Node,
+                        isTopLevel: true);
                     AddMembers(context, file, declaration, exports[alias]);
                 }
                 else if (importedBindings.TryGetValue(local, out var imported))
@@ -228,9 +244,11 @@ internal sealed class CodeNodeExtractionPass : ITypeScriptExtractionPass
         string name,
         NodeType kind,
         INode documentationNode,
-        string? memberKind = null)
+        string? memberKind = null,
+        bool isTopLevel = false)
     {
         var path = file.DiscoveredFile.RelativeFilePath;
+        var projectId = context.ProjectIdByFilePath.GetValueOrDefault(path);
         var id = TypeScriptNodeIdentity.CreateCanonicalId(path, name) + (memberKind is null ? string.Empty : $":{memberKind}");
         var hasExisting = context.CodeNodeIndexes.TryGetValue(id, out var existingIndex);
         if (hasExisting)
@@ -238,6 +256,11 @@ internal sealed class CodeNodeExtractionPass : ITypeScriptExtractionPass
             var existing = context.DeclarationNodes[id];
             if (!TypeScriptSyntax.HasBody(node) || TypeScriptSyntax.HasBody(existing))
             {
+                if (isTopLevel && projectId is not null && context.ParentEdges.Add((projectId, id)))
+                {
+                    context.Edges.Add(new(projectId, id, EdgeType.ParentOf));
+                }
+
                 return id;
             }
         }
@@ -245,6 +268,7 @@ internal sealed class CodeNodeExtractionPass : ITypeScriptExtractionPass
         var symbolName = memberKind is null ? name : $"{name} [{memberKind}]";
         var display = TypeScriptNodeIdentity.CreateDisplayName(symbolName, kind);
         var summary = ReadDocumentation(file, documentationNode);
+        var signatureContext = ExtractSignatureContext(node, file.SyntaxTree);
         var start = TypeScriptSyntax.GetDeclarationStart(file.SyntaxTree, node);
         var declarationText = file.SourceText[start..(node.End ?? file.SourceText.Length)];
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(declarationText)))
@@ -252,7 +276,7 @@ internal sealed class CodeNodeExtractionPass : ITypeScriptExtractionPass
         context.DeclarationNodes[id] = node;
         var codeNode = new IndexedCodeNode(
             id,
-            null,
+            projectId,
             TypeScriptNodeIdentity.CreateFullyQualifiedName(path, symbolName),
             display,
             kind,
@@ -260,7 +284,7 @@ internal sealed class CodeNodeExtractionPass : ITypeScriptExtractionPass
             file.SyntaxTree.GetPosition(start).Line,
             file.SyntaxTree.GetPosition(node.End ?? file.SourceText.Length).Line,
             summary,
-            TypeScriptNodeIdentity.CreateSearchText(display, summary),
+            TypeScriptNodeIdentity.CreateSearchText(display, summary, path, signatureContext),
             hash);
         if (hasExisting)
         {
@@ -273,7 +297,104 @@ internal sealed class CodeNodeExtractionPass : ITypeScriptExtractionPass
             context.CodeNodes.Add(codeNode);
         }
 
+        if (isTopLevel && projectId is not null && context.ParentEdges.Add((projectId, id)))
+        {
+            context.Edges.Add(new(projectId, id, EdgeType.ParentOf));
+        }
+
         return id;
+    }
+
+    private static string? ExtractSignatureContext(INode node, TypeScriptSyntaxTree tree)
+    {
+        const int maxLength = 200;
+
+        var signatureNode = node is VariableDeclaration { Initializer: { } initializer }
+            ? initializer
+            : node;
+
+        if (signatureNode is ISignatureDeclaration { Parameters: { Count: > 0 } parameters })
+        {
+            var names = new List<string>();
+            foreach (var parameter in parameters)
+            {
+                CollectBindingNames(parameter.Name, names);
+            }
+
+            if (names.Count == 0)
+            {
+                return null;
+            }
+
+            var joined = $"({string.Join(", ", names.Distinct(StringComparer.Ordinal))})";
+
+            return joined.Length <= maxLength ? joined : joined[..maxLength];
+        }
+
+        var heritageClauses = signatureNode switch
+        {
+            IClassLikeDeclaration { HeritageClauses: { Count: > 0 } clauses } => clauses,
+            InterfaceDeclaration { HeritageClauses: { Count: > 0 } clauses } => clauses,
+            _ => null
+        };
+        if (heritageClauses is null)
+        {
+            return null;
+        }
+
+        var heritageParts = new List<string>();
+        foreach (var clause in heritageClauses)
+        {
+            var keyword = clause.Token == SyntaxKind.ImplementsKeyword ? "implements" : "extends";
+            var types = clause.Types
+                .Select(type => tree.GetText(type.Expression).Trim())
+                .Where(static text => !string.IsNullOrWhiteSpace(text))
+                .ToArray();
+            if (types.Length > 0)
+            {
+                heritageParts.Add($"{keyword} {string.Join(", ", types)}");
+            }
+        }
+
+        if (heritageParts.Count == 0)
+        {
+            return null;
+        }
+
+        var heritage = string.Join(" ", heritageParts);
+
+        return heritage.Length <= maxLength ? heritage : heritage[..maxLength];
+    }
+
+    private static void CollectBindingNames(IBindingName? bindingName, List<string> names)
+    {
+        switch (bindingName)
+        {
+            case Identifier { Text: { } text } when !string.IsNullOrWhiteSpace(text):
+                names.Add(text);
+                break;
+            case ObjectBindingPattern { Elements: { } elements }:
+                foreach (var element in elements.OfType<BindingElement>())
+                {
+                    if (TypeScriptSyntax.GetName(element.PropertyName) is { } propertyName)
+                    {
+                        names.Add(propertyName);
+                    }
+                    else
+                    {
+                        CollectBindingNames(element.Name, names);
+                    }
+                }
+
+                break;
+            case ArrayBindingPattern { Elements: { } elements }:
+                foreach (var element in elements.OfType<BindingElement>())
+                {
+                    CollectBindingNames(element.Name, names);
+                }
+
+                break;
+        }
     }
 
     private static string ReadDocumentation(TypeScriptParsedFile file, INode declaration)
