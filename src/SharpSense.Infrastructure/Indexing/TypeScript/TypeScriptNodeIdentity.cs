@@ -25,10 +25,45 @@ internal static class TypeScriptNodeIdentity
 
     public static string CreateSearchText(
         string displayName,
-        string summary)
-        => string.IsNullOrWhiteSpace(summary)
+        string summary,
+        string? relativeFilePath = null,
+        string? signatureContext = null)
+    {
+        var header = string.IsNullOrWhiteSpace(signatureContext)
             ? displayName
-            : $"{displayName}\n{summary}";
+            : $"{displayName} {signatureContext}";
+        var pathContext = FormatPathContext(relativeFilePath);
+        var parts = new List<string>(3)
+        {
+            header
+        };
+        if (!string.IsNullOrWhiteSpace(pathContext))
+        {
+            parts.Add(pathContext);
+        }
+
+        if (!string.IsNullOrWhiteSpace(summary))
+        {
+            parts.Add(summary);
+        }
+
+        return string.Join('\n', parts);
+    }
+
+    private static string? FormatPathContext(string? relativeFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativeFilePath))
+        {
+            return null;
+        }
+
+        var normalized = Normalize(relativeFilePath);
+        var extension = Path.GetExtension(normalized);
+
+        return string.IsNullOrEmpty(extension)
+            ? normalized
+            : normalized[..^extension.Length];
+    }
 
     private static string Normalize(string relativeFilePath)
         => relativeFilePath.Replace('\\', '/');

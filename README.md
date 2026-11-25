@@ -55,6 +55,7 @@ Your AI client controls where the context it retrieves is sent. SharpSense does 
 | Source | Tokens without | Tokens with | Token change | Time without | Time with | Time change |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | C# | 425,351 | 335,496 | **21.1% fewer** | 79.1 s | 86.2 s | 9.0% more |
+| TypeScript / TSX | 182,593 | 169,481 | **7.2% fewer** | 72.0 s | 71.2 s | **1.1% less** |
 | Markdown | 201,460 | 82,080 | **59.3% fewer** | 59.4 s | 37.3 s | **37.2% less** |
 
 Example queries used for both runs:
@@ -62,9 +63,10 @@ Example queries used for both runs:
 | Source | Question for both runs |
 | --- | --- |
 | C# | If source extraction fails during indexing, what happens to the previous graph? Show the failure path and its tests. |
+| TypeScript / TSX | In the browser UI, how does clicking a node on the WebGL graph canvas pick the node and open its inspector? Trace the files and components involved. |
 | Markdown | How do the CLI and MCP choose a workspace when no explicit workspace is supplied? Cite the relevant documentation. |
 
-Results are medians of three independent runs per question and condition (`copilot -p`, `google/gemini-4-neon`, plugin `1.4.0`). All 12 answers passed source review. Against the prior SharpSense CLI (`1.2.1`) and plugin (`1.3.1`) on the same benchmark, filtered search, `@ path:line` context locations, and slimmed skills cut median tokens by **27.2%** on C# (`460,972` → `335,496`, `128.9 s` → `86.2 s`) and **64.5%** on Markdown (`231,022` → `82,080`, `87.2 s` → `37.3 s`). This is a small pilot; results depend on the task and model.
+Results are medians of three independent runs per question and condition (`copilot -p`, `google/gemini-4-neon`, plugin `1.4.0`). All 18 answers passed source review. Against the prior SharpSense CLI (`1.2.1`) and plugin (`1.3.1`) on the same benchmark, filtered search, `@ path:line` context locations, TypeScript symbol-level call/JSX/`React.lazy` edges, generated-file filtering, and slimmed skills cut median tokens by **27.2%** on C# (`460,972` → `335,496`, `128.9 s` → `86.2 s`), **37.0%** on TypeScript/TSX (`268,853` → `169,481`, `106.5 s` → `71.2 s`), and **64.5%** on Markdown (`231,022` → `82,080`, `87.2 s` → `37.3 s`). This is a small pilot; results depend on the task and model.
 
 Tokens are provider-reported input plus output across the whole task, including cached input once. Time includes
 agent and MCP startup; the **4.7-second index refresh** is separate.
@@ -211,13 +213,10 @@ See [workspace management](https://github.com/mivbox/sharpsense/blob/main/docs/w
 | Language | Analysis | Scope |
 | --- | --- | --- |
 | C# | Roslyn | Semantic symbols, references, calls, and inheritance from selected projects. |
-| TypeScript / TSX | Managed `SharpSense.TypeScript` parser | Declarations, members, components, imports, package dependencies, and statically recognisable HTTP requests. |
+| TypeScript / TSX | Managed `SharpSense.TypeScript` parser | Project nodes, declarations, members, components, scoped imports, syntax-based calls/JSX/instantiations/inheritance, static `lazy(() => import(...))` bindings, package dependencies, and HTTP requests. |
 | Markdown | Markdig | Documentation nodes and links alongside code. |
 
-TypeScript relationships are syntax-based: import edges describe module dependencies, and do not imply resolved
-function calls or type checking. Dynamic imports, computed URLs, runtime dispatch, and arbitrary framework wrappers
-have limited coverage. The parser has a July 2024 grammar baseline with targeted compatibility fixes and a pinned
-compiler corpus; it does not claim complete support for every later TypeScript release.
+TypeScript relationships are syntax-based (no TypeScript type checker): direct/imported calls, `this.` calls and arrow callbacks, `new`/typed/`useRef<T>` receivers, JSX components, heritage clauses, and static string-literal `import(...)` bindings resolve statically, while arbitrary inferred types, non-literal dynamic imports, computed URLs, and runtime dispatch have limited coverage. Auto-generated files (matching standard generated header banners or `*.generated.ts[x]` suffixes) are skipped during indexing. The parser has a July 2024 grammar baseline with targeted compatibility fixes and a pinned compiler corpus; it does not claim complete support for every later TypeScript release.
 
 See [C# analysis](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/extractors/csharp.md), [TypeScript compatibility and diagnostics](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/extractors/typescript.md),
 and [Markdown analysis](https://github.com/mivbox/sharpsense/blob/main/docs/wiki/extractors/markdown.md) for details.

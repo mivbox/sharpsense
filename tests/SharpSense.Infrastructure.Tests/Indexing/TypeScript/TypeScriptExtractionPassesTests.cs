@@ -427,14 +427,16 @@ public sealed class TypeScriptExtractionPassesTests
         var extractionPasses = reversePassOrder
             ? new ITypeScriptExtractionPass[]
             {
-                new ImportDependencyPass(tsConfigResolver, repositoryWorkspace),
                 new HttpEdgeExtractionPass(),
+                new TypeScriptSymbolReferencePass(),
+                new ImportDependencyPass(tsConfigResolver, repositoryWorkspace),
                 new CodeNodeExtractionPass()
             }
             :
             [
                 new CodeNodeExtractionPass(),
                 new ImportDependencyPass(tsConfigResolver, repositoryWorkspace),
+                new TypeScriptSymbolReferencePass(),
                 new HttpEdgeExtractionPass()
             ];
 

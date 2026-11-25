@@ -218,7 +218,7 @@ public sealed class TypeScriptRestorationTests
                 ChangedFiles: [new(WorkspaceFileChangeAction.Deleted, OldPath: Absolute("/repo/shared/api.ts"))]),
             _ct));
         deleted.CodeNodes.Should().ContainSingle();
-        deleted.Edges.Should().BeEmpty();
+        deleted.Edges.Where(static edge => edge.EdgeType != EdgeType.ParentOf).Should().BeEmpty();
     }
 
     [Fact]

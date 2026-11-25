@@ -29,10 +29,12 @@ public static class IndexingInfrastructureServiceCollectionExtensions
         services.TryAddScoped<IWorkspaceChangeFilter, WorkspaceChangeFilter>();
         services.TryAddScoped<DocumentDiscoverer>();
         services.TryAddScoped<TsConfigResolver>();
+        services.TryAddScoped<TypeScriptProjectResolver>();
         services.TryAddScoped<TypeScriptSourceDiscoverer>();
         services.TryAddScoped<ICSharpWorkspaceTargetResolver, CSharpWorkspaceTargetResolver>();
         services.AddTransient<ITypeScriptExtractionPass, CodeNodeExtractionPass>();
         services.AddTransient<ITypeScriptExtractionPass, ImportDependencyPass>();
+        services.AddTransient<ITypeScriptExtractionPass, TypeScriptSymbolReferencePass>();
         services.AddTransient<ITypeScriptExtractionPass, HttpEdgeExtractionPass>();
         services.AddTransient<ILanguageExtractor, CSharpLanguageExtractor>();
         services.AddTransient<ILanguageExtractor, MarkdownDocumentExtractor>();

@@ -47,6 +47,23 @@ internal static class TypeScriptSyntax
             _ => null
         };
 
+    public static bool TryGetDynamicImportSpecifier(CallExpression call, out string specifier)
+    {
+        if (call.Expression.Kind == SyntaxKind.ImportKeyword &&
+            call.Arguments is { Count: > 0 } &&
+            call.Arguments[0] is ILiteralLikeNode { Kind: SyntaxKind.StringLiteral or SyntaxKind.NoSubstitutionTemplateLiteral, Text: { } text } &&
+            !string.IsNullOrWhiteSpace(text))
+        {
+            specifier = text;
+
+            return true;
+        }
+
+        specifier = string.Empty;
+
+        return false;
+    }
+
     public static bool HasBody(INode node) => node is FunctionLikeDeclarationBase { Body: not null };
 
     public static int GetDeclarationStart(TypeScriptSyntaxTree tree, INode node)

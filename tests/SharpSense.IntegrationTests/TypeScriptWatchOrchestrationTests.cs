@@ -141,6 +141,7 @@ public sealed class TypeScriptWatchOrchestrationTests
                               join callee in context.GraphNodes on edge.CalleeNodeId equals callee.Id
                               where caller.CanonicalId == "code:ts:client/src/consumer.ts:consumer"
                               select callee.CanonicalId)
+                    .Distinct()
                     .ToArrayAsync(ct);
             }
 
